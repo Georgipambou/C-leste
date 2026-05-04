@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { subscribePush } from './usePush';
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -475,16 +476,15 @@ export default function App() {
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s || null);
-      if (s) { loadMyProfile(s.user.id); requestPushPermission(); }
+      if (s) { loadMyProfile(s.user.id); subscribePush(sb, s.user.id); }
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       setSession(s || null);
-      if (s) { loadMyProfile(s.user.id); requestPushPermission(); }
+     if (s) { loadMyProfile(s.user.id); subscribePush(sb, s.user.id); }
       else { setMyProfile(null); setIsPending(false); }
     });
     return () => subscription.unsubscribe();
   }, [loadMyProfile]);
-
   /* ── Loaders ── */
   const loadMembers = useCallback(async () => {
     const { data } = await sb.from("profiles").select("*").neq("status","pending");
