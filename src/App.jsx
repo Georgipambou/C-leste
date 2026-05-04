@@ -45,6 +45,12 @@ const normProfile = p => ({
   is_admin: p.is_admin || false,
 });
 
+// ── Détecte si une URL est une vidéo ──
+const isVideoUrl = url => {
+  if (!url) return false;
+  return /\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url) || url.includes("video");
+};
+
 const GS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -98,11 +104,28 @@ function Toast({ msg }) {
   );
 }
 
+// ── BUG CORRIGÉ : MediaPlayer sans code mort après le return ──
 function MediaPlayer({ url, style={} }) {
   if (!url) return null;
-  const isVideo = /\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url) || url.includes("video");
-  if (isVideo) return <video src={url} controls style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000", ...style }} onError={e => e.target.style.display="none"} />;
-  return <img src={url} alt="" style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", cursor:"zoom-in", ...style }} onClick={() => window.open(url, "_blank")} onError={e => e.target.style.display="none"} />;
+  if (isVideoUrl(url)) {
+    return (
+      <video
+        src={url}
+        controls
+        playsInline
+        style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000", ...style }}
+        onError={e => e.target.style.display="none"}
+      />
+    );
+  }
+  return (
+    <img
+      src={url} alt=""
+      style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", cursor:"zoom-in", ...style }}
+      onClick={() => window.open(url, "_blank")}
+      onError={e => e.target.style.display="none"}
+    />
+  );
 }
 
 /* ── AUTH ── */
@@ -227,13 +250,11 @@ export default function App() {
 
   const notify = useCallback(m => { setToast(m); setTimeout(() => setToast(null), 2800); }, []);
 
-  /* ── loadMyProfile ── */
   const loadMyProfile = useCallback(async uid => {
     const { data } = await sb.from("profiles").select("*").eq("id", uid).single();
     if (data) { setMyProfile(normProfile(data)); setIsPending(data.status === "pending"); }
   }, []);
 
-  /* ── Auth ── */
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s || null);
@@ -247,7 +268,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [loadMyProfile]);
 
-  /* ── Loaders ── */
   const loadMembers = useCallback(async () => {
     const { data } = await sb.from("profiles").select("*").neq("status","pending");
     if (data) setMembers(data.map(normProfile));
@@ -305,14 +325,12 @@ export default function App() {
     })));
   }, []);
 
-  /* ── Chargement initial ── */
   useEffect(() => {
     if (session?.user && myProfile && !isPending) {
       loadMembers(); loadPosts(1); loadConvs(session.user.id);
     }
   }, [session, myProfile, isPending, loadMembers, loadPosts, loadConvs]);
 
-  /* ── REALTIME — écoute tout ── */
   useEffect(() => {
     if (!session?.user) return;
     const ch = sb.channel("celeste_realtime")
@@ -375,7 +393,6 @@ export default function App() {
       {showNewPost && <NewPostModal myProfile={myProfile} session={session} onClose={() => setShowNewPost(false)} onPost={() => { loadPosts(1); setShowNewPost(false); notify("Publié ✦"); }} />}
       {showAdmin && myProfile?.is_admin && <AdminPanel members={members} setMembers={setMembers} onClose={() => setShowAdmin(false)} notify={notify} reload={loadMembers} />}
 
-      {/* TOP BAR */}
       <div style={{ height:56, background:"rgba(10,7,5,0.95)", backdropFilter:"blur(20px)", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", padding:"0 16px", gap:12, flexShrink:0, zIndex:30 }}>
         {(openConvId || openUserId)
           ? <>
@@ -398,7 +415,6 @@ export default function App() {
         }
       </div>
 
-      {/* CONTENT */}
       <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {openUserId && openUser
           ? <UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={() => setOpenUserId(null)}
@@ -422,7 +438,6 @@ export default function App() {
         }
       </div>
 
-      {/* BOTTOM NAV */}
       {!openConvId && !openUserId && (
         <div style={{ height:60, background:"rgba(10,7,5,0.97)", backdropFilter:"blur(20px)", borderTop:`1px solid ${T.border}`, display:"flex", flexShrink:0, zIndex:30 }}>
           {[
@@ -526,6 +541,7 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
                       </div>
                     : <>
                         {p.text && <p style={{ margin:"0 16px 12px", fontSize:14, color:T.text, lineHeight:1.75, whiteSpace:"pre-line" }}>{p.text}</p>}
+                        {/* BUG CORRIGÉ : on utilise isVideoUrl pour décider du rendu */}
                         {p.img && <div style={{ overflow:"hidden" }}><MediaPlayer url={p.img} /></div>}
                       </>
                   }
@@ -585,6 +601,7 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
 }
 
 /* ── NEW POST MODAL ── */
+// BUG CORRIGÉ : isVideoFile déclaré avec useState
 function NewPostModal({ myProfile, session, onClose, onPost }) {
   const [type, setType] = useState("text");
   const [text, setText] = useState("");
@@ -595,25 +612,42 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
   const [evDate, setEvDate] = useState("");
   const [evLoc, setEvLoc] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isVideoFile, setIsVideoFile] = useState(false); // ← CORRECTION
   const fRef = useRef();
 
   const handlePick = async e => {
     const f = e.target.files[0]; if (!f) return;
+    setIsVideoFile(f.type.startsWith("video/"));
     const r = new FileReader(); r.onload = ev => setPreview(ev.target.result); r.readAsDataURL(f);
     setUploading(true);
     const path = `posts/${session.user.id}/${Date.now()}_${f.name}`;
     const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
-    if (!error) { const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path); setImgUrl(publicUrl); }
+    if (!error) {
+      const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
+      setImgUrl(publicUrl);
+    }
     setUploading(false);
   };
 
   const submit = async () => {
-    if (busy) return; setBusy(true);
-    const { error } = await sb.from("posts").insert({ author_id:session.user.id, type, text:text.trim()||"", img_url:type==="photo"?imgUrl:null, event_title:type==="event"?evTitle.trim():null, event_date:type==="event"?evDate:null, event_loc:type==="event"?evLoc:null });
-    setBusy(false); if (!error) onPost();
+    if (busy) return;
+    setBusy(true);
+    // BUG CORRIGÉ : on utilise isVideoFile (state) pour déterminer le type réel
+    const postType = type === "photo" ? (isVideoFile ? "video" : "photo") : type;
+    const { error } = await sb.from("posts").insert({
+      author_id: session.user.id,
+      type: postType,
+      text: text.trim() || "",
+      img_url: type === "photo" ? imgUrl : null,
+      event_title: type === "event" ? evTitle.trim() : null,
+      event_date: type === "event" ? evDate : null,
+      event_loc: type === "event" ? evLoc : null,
+    });
+    setBusy(false);
+    if (!error) onPost();
   };
 
-  const ok = type === "text" ? text.trim().length > 0 : type === "photo" ? (imgUrl !== null || preview !== null) : evTitle.trim().length > 0;
+  const ok = type === "text" ? text.trim().length > 0 : type === "photo" ? (imgUrl !== null || preview !== null) && !uploading : evTitle.trim().length > 0;
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => e.target===e.currentTarget && onClose()}>
@@ -628,16 +662,21 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
             </div>
           </div>
           <Btn onClick={onClose} style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${T.border}`, borderRadius:"50%", width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, color:T.muted }}>✕</Btn>
-        </div>        <div style={{ display:"flex", gap:8, marginBottom:16, background:"rgba(255,255,255,0.03)", borderRadius:12, padding:4 }}>
-          {[{id:"text",l:"✍ Texte"},{id:"photo", l:"📷 Photo/Vidéo"},{id:"event",l:"📅 Événement"}].map(t => (
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:16, background:"rgba(255,255,255,0.03)", borderRadius:12, padding:4 }}>
+          {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Média"},{id:"event",l:"📅 Événement"}].map(t => (
             <Btn key={t.id} onClick={() => setType(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:type===t.id?T.goldBg:"none", color:type===t.id?T.gold:T.muted, fontSize:12, fontWeight:type===t.id?700:400, border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
           ))}
         </div>
         {type==="photo" && (preview
           ? <div style={{ position:"relative", marginBottom:12 }}>
-              <MediaPlayer url={preview} style={{ borderRadius:14, maxHeight:280 }} />
+              {/* BUG CORRIGÉ : prévisualisation correcte selon le type de fichier */}
+              {isVideoFile
+                ? <video src={preview} controls playsInline style={{ width:"100%", maxHeight:280, borderRadius:14, display:"block", background:"#000" }} />
+                : <img src={preview} alt="" style={{ width:"100%", maxHeight:280, objectFit:"cover", borderRadius:14, display:"block" }} />
+              }
               {uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} /></div>}
-              <Btn onClick={() => { setPreview(null); setImgUrl(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+              <Btn onClick={() => { setPreview(null); setImgUrl(null); setIsVideoFile(false); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
             </div>
           : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}><span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo</Btn>
         )}
@@ -676,15 +715,7 @@ function StatusesTab({ myProfile, session, members, notify }) {
       .gte("created_at", cutoff)
       .order("created_at", { ascending: false });
     if (data) {
-      const mapped = data.map(s => ({
-        id: s.id,
-        userId: s.user_id,
-        author: normProfile(s.author || {}),
-        type: s.type || "text",
-        text: s.text || "",
-        mediaUrl: s.media_url || null,
-        ts: new Date(s.created_at).getTime(),
-      }));
+      const mapped = data.map(s => ({ id:s.id, userId:s.user_id, author:normProfile(s.author||{}), type:s.type||"text", text:s.text||"", mediaUrl:s.media_url||null, ts:new Date(s.created_at).getTime() }));
       setAllStatuses(mapped);
       setMyStatuses(mapped.filter(s => s.userId === session?.user?.id));
     }
@@ -754,6 +785,7 @@ function StatusesTab({ myProfile, session, members, notify }) {
 }
 
 /* ── ADD STATUS MODAL ── */
+// BUG CORRIGÉ : isVideoFile déclaré avec useState
 function AddStatusModal({ session, myStatuses, onClose, onDone }) {
   const [type, setType] = useState("text");
   const [text, setText] = useState("");
@@ -761,11 +793,13 @@ function AddStatusModal({ session, myStatuses, onClose, onDone }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [isVideoFile, setIsVideoFile] = useState(false); // ← CORRECTION
   const fRef = useRef();
   const canAdd = myStatuses.length < 10;
 
   const handlePick = async e => {
     const f = e.target.files[0]; if (!f) return;
+    setIsVideoFile(f.type.startsWith("video/")); // ← CORRECTION : appel valide
     const r = new FileReader(); r.onload = ev => setPreview(ev.target.result); r.readAsDataURL(f);
     setUploading(true);
     const path = `statuses/${session.user.id}/${Date.now()}_${f.name}`;
@@ -779,7 +813,9 @@ function AddStatusModal({ session, myStatuses, onClose, onDone }) {
     if (type==="text" && !text.trim()) return;
     if (type!=="text" && !mediaUrl) return;
     setBusy(true);
-    await sb.from("statuses").insert({ user_id:session.user.id, type, text:text.trim()||null, media_url:mediaUrl||null });
+    // BUG CORRIGÉ : type correct enregistré en base
+    const statusType = type === "photo" ? (isVideoFile ? "video" : "photo") : type;
+    await sb.from("statuses").insert({ user_id:session.user.id, type:statusType, text:text.trim()||null, media_url:mediaUrl||null });
     setBusy(false); onDone();
   };
 
@@ -799,9 +835,13 @@ function AddStatusModal({ session, myStatuses, onClose, onDone }) {
         </div>
         {type==="photo" && (preview
           ? <div style={{ position:"relative", marginBottom:12 }}>
-              <MediaPlayer url={preview} style={{ borderRadius:14, maxHeight:280 }} />
+              {/* BUG CORRIGÉ : prévisualisation correcte dans le modal statut */}
+              {isVideoFile
+                ? <video src={preview} controls playsInline style={{ width:"100%", maxHeight:280, borderRadius:14, display:"block", background:"#000" }} />
+                : <img src={preview} alt="" style={{ width:"100%", maxHeight:280, objectFit:"cover", borderRadius:14, display:"block" }} />
+              }
               {uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} /></div>}
-              <Btn onClick={() => { setPreview(null); setMediaUrl(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+              <Btn onClick={() => { setPreview(null); setMediaUrl(null); setIsVideoFile(false); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
             </div>
           : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}><span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo</Btn>
         )}
@@ -974,7 +1014,7 @@ function MsgsTab({ convs, members, getM, onOpen }) {
           const u = getM(c.uid);
           const last = c.msgs[c.msgs.length-1];
           const unreads = c.msgs.filter(m => m.f!=="me"&&!m.read).length;
-          const prev = !last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.text||"";
+          const prev = !last?"":last.type==="photo"?"📷 Photo":last.type==="video"?"🎥 Vidéo":last.type==="file"?`📎 ${last.fileName}`:last.text||"";
           return (
             <Btn key={c.id} onClick={() => onOpen(c.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderBottom:`1px solid ${T.border}`, width:"100%", textAlign:"left" }}>
               <Av u={u} size={52} online={u?.online} />
@@ -1024,9 +1064,15 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
 
   const handleFile = async (e, isImg) => {
     const f = e.target.files[0]; if (!f) return;
+    const isVideo = f.type.startsWith("video/");
     const path = `messages/${session.user.id}/${Date.now()}_${f.name}`;
     const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
-    if (!error) { const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path); sendMsg(isImg?{type:"photo",file_url:publicUrl,file_name:f.name}:{type:"file",file_url:publicUrl,file_name:f.name}); }
+    if (!error) {
+      const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
+      // BUG CORRIGÉ : type "video" envoyé correctement pour les vidéos dans les messages
+      const msgType = isImg ? (isVideo ? "video" : "photo") : "file";
+      sendMsg({ type:msgType, file_url:publicUrl, file_name:f.name });
+    }
     e.target.value = "";
   };
 
@@ -1056,7 +1102,8 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
               {!mine && <Av u={user} size={28} />}
               <div style={{ maxWidth:"72%" }}>
                 <div style={{ background:mine?T.gradGold:"rgba(255,255,255,0.06)", borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px", padding:"10px 14px", border:mine?"none":`1px solid ${T.border}` }}>
-                  {(m.type==="photo"||m.type==="image")&&m.img && <MediaPlayer url={m.img} style={{ maxWidth:240, maxHeight:220, borderRadius:10, marginBottom:m.text?6:0 }} />}
+                  {/* BUG CORRIGÉ : on gère aussi le type "video" dans les messages */}
+                  {(m.type==="photo"||m.type==="image"||m.type==="video")&&m.img && <MediaPlayer url={m.img} style={{ maxWidth:240, maxHeight:220, borderRadius:10, marginBottom:m.text?6:0 }} />}
                   {m.type==="file" && <a href={m.img||"#"} download={m.fileName} target="_blank" rel="noreferrer" style={{ display:"flex", alignItems:"center", gap:9, textDecoration:"none" }}><span style={{ fontSize:22 }}>📄</span><span style={{ fontSize:12, fontWeight:600, color:mine?T.bg:T.text }}>{m.fileName}</span></a>}
                   {m.text && <p style={{ margin:0, fontSize:14, color:mine?T.bg:T.text, lineHeight:1.55, whiteSpace:"pre-wrap" }}>{m.text}</p>}
                 </div>
