@@ -45,23 +45,32 @@ const normProfile = p => ({
   is_admin: p.is_admin || false,
 });
 
-// ── CORRECTION PRINCIPALE : détection vidéo robuste ──
-// Les URLs Supabase Storage ressemblent à :
-// https://xxx.supabase.co/storage/v1/object/public/celeste-media/posts/uid/1234_video.mp4?token=...
-// La regex doit chercher l'extension AVANT le "?" éventuel
-const isVideoUrl = url => {
-  if (!url) return false;
-  // On coupe le query string avant de tester l'extension
-  const path = url.split("?")[0].toLowerCase();
-  return /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/.test(path);
+/* ── SOUND NOTIFICATION ── */
+const playNotifSound = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
+  } catch(_) {}
 };
 
-// Détecte le type d'un fichier File object
-const getFileMediaType = file => {
-  if (!file) return "unknown";
-  if (file.type.startsWith("video/")) return "video";
-  if (file.type.startsWith("image/")) return "photo";
-  return "file";
+/* ── PUSH NOTIFICATIONS ── */
+const requestPushPermission = async () => {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  const perm = await Notification.requestPermission();
+  return perm === "granted";
+};
+const sendPushNotif = (title, body, icon="") => {
+  if (Notification.permission === "granted") {
+    new Notification(title, { body, icon });
+  }
 };
 
 const GS = `
@@ -78,6 +87,8 @@ const GS = `
   @keyframes glow { 0%,100% { box-shadow: 0 0 20px rgba(212,160,80,0.2); } 50% { box-shadow: 0 0 40px rgba(212,160,80,0.5); } }
   @keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: none; opacity:1; } }
   @keyframes slideUp { from { transform: translateY(100%); opacity:0; } to { transform: none; opacity:1; } }
+  @keyframes notifIn { from { opacity:0; transform: translateY(-20px) scale(0.95); } to { opacity:1; transform: none; } }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 `;
 
 function Av({ u, size=40, online=false }) {
@@ -117,27 +128,191 @@ function Toast({ msg }) {
   );
 }
 
-// ── MediaPlayer : utilise isVideoUrl corrigé ──
-function MediaPlayer({ url, style={} }) {
-  if (!url) return null;
-  if (isVideoUrl(url)) {
-    return (
-      <video
-        src={url}
-        controls
-        playsInline
-        style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000", ...style }}
-        onError={e => { e.target.style.display="none"; }}
-      />
-    );
-  }
+/* ── IN-APP NOTIFICATION BANNER ── */
+function NotifBanner({ notifs, onDismiss, onTap }) {
+  if (!notifs.length) return null;
+  const n = notifs[0];
   return (
-    <img
-      src={url} alt=""
+    <div onClick={() => { onTap(n); onDismiss(n.id); }}
+      style={{ position:"fixed", top:0, left:0, right:0, zIndex:9998, display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:"rgba(17,13,10,0.97)", borderBottom:`1px solid ${T.gold}44`, backdropFilter:"blur(20px)", animation:"notifIn .4s ease", cursor:"pointer", boxShadow:"0 8px 32px rgba(0,0,0,0.6)" }}>
+      <div style={{ width:36, height:36, borderRadius:"50%", background:T.gradGold, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{n.icon}</div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <p style={{ margin:0, fontSize:13, fontWeight:700, color:T.text }}>{n.title}</p>
+        <p style={{ margin:0, fontSize:12, color:T.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.body}</p>
+      </div>
+      <Btn onClick={e => { e.stopPropagation(); onDismiss(n.id); }} style={{ color:T.muted, fontSize:18, padding:"0 4px" }}>✕</Btn>
+    </div>
+  );
+}
+
+/* ── IMAGE VIEWER avec pinch-zoom ── */
+function ImageViewer({ url, onClose }) {
+  const ref = useRef();
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x:0, y:0 });
+  const lastDist = useRef(null);
+  const lastPos = useRef(null);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const getDist = touches => {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  };
+
+  const onTouchStart = e => {
+    if (e.touches.length === 2) {
+      lastDist.current = getDist(e.touches);
+    } else if (e.touches.length === 1) {
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      isDragging.current = true;
+    }
+  };
+
+  const onTouchMove = e => {
+    e.preventDefault();
+    if (e.touches.length === 2 && lastDist.current) {
+      const newDist = getDist(e.touches);
+      const delta = newDist / lastDist.current;
+      setScale(s => Math.min(Math.max(s * delta, 0.5), 5));
+      lastDist.current = newDist;
+    } else if (e.touches.length === 1 && isDragging.current && lastPos.current && scale > 1) {
+      const dx = e.touches[0].clientX - lastPos.current.x;
+      const dy = e.touches[0].clientY - lastPos.current.y;
+      setOffset(o => ({ x: o.x + dx, y: o.y + dy }));
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+
+  const onTouchEnd = e => {
+    lastDist.current = null; isDragging.current = false; lastPos.current = null;
+  };
+
+  const reset = () => { setScale(1); setOffset({ x:0, y:0 }); };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:2000, background:"rgba(0,0,0,0.97)", display:"flex", alignItems:"center", justifyContent:"center", touchAction:"none" }}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div style={{ position:"absolute", top:16, right:16, display:"flex", gap:10, zIndex:1 }}>
+        <Btn onClick={reset} style={{ background:"rgba(255,255,255,0.1)", borderRadius:10, padding:"8px 14px", color:"#fff", fontSize:12, fontWeight:600 }}>↺ Reset</Btn>
+        <Btn onClick={onClose} style={{ background:"rgba(255,255,255,0.1)", borderRadius:"50%", width:40, height:40, color:"#fff", fontSize:20, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+      </div>
+      <img ref={ref} src={url} alt=""
+        style={{ maxWidth:"95vw", maxHeight:"90vh", objectFit:"contain", borderRadius:12, transform:`scale(${scale}) translate(${offset.x/scale}px, ${offset.y/scale}px)`, transition: isDragging.current ? "none" : "transform .1s ease", userSelect:"none", WebkitUserSelect:"none" }}
+        onDoubleClick={() => scale === 1 ? setScale(2) : reset()}
+        draggable={false}
+      />
+      <p style={{ position:"absolute", bottom:20, left:"50%", transform:"translateX(-50%)", color:"rgba(255,255,255,0.4)", fontSize:11 }}>Pincer pour zoomer · Double-tap pour agrandir</p>
+    </div>
+  );
+}
+
+/* ── MEDIA PLAYER — sans window.open ── */
+function MediaPlayer({ url, style={}, onImageClick }) {
+  if (!url) return null;
+  const isVideo = /\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url) || url.includes("video");
+  if (isVideo) return (
+    <video src={url} controls playsInline style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000", ...style }}
+      onError={e => e.target.style.display="none"} />
+  );
+  return (
+    <img src={url} alt=""
       style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", cursor:"zoom-in", ...style }}
-      onClick={() => window.open(url, "_blank")}
-      onError={e => { e.target.style.display="none"; }}
-    />
+      onClick={() => onImageClick ? onImageClick(url) : null}
+      onError={e => e.target.style.display="none"} />
+  );
+}
+
+/* ── POST DETAIL MODAL ── */
+function PostDetailModal({ post, myProfile, session, getM, onClose, onLike, onComment, notify }) {
+  const [cmtTxt, setCmtTxt] = useState("");
+  const [viewImg, setViewImg] = useState(null);
+  const auth = post.author || getM(post.by);
+  const liked = post.likes.includes(session.user.id);
+
+  const addCmt = async () => {
+    if (!cmtTxt.trim()) return;
+    const { error } = await sb.from("comments").insert({ post_id: post.id, author_id: session.user.id, text: cmtTxt.trim() });
+    if (!error) { setCmtTxt(""); onComment(); notify("Commentaire ajouté ✦"); }
+  };
+
+  return (
+    <>
+      {viewImg && <ImageViewer url={viewImg} onClose={() => setViewImg(null)} />}
+      <div style={{ position:"fixed", inset:0, zIndex:800, background:"rgba(0,0,0,0.85)", backdropFilter:"blur(8px)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+        onClick={e => e.target === e.currentTarget && onClose()}>
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:"24px 24px 0 0", width:"100%", maxWidth:640, maxHeight:"92vh", display:"flex", flexDirection:"column", animation:"slideUp .3s ease" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 16px 10px", borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <Av u={auth} size={38} />
+              <div>
+                <p style={{ margin:0, fontSize:14, fontWeight:600, color:T.text }}>{auth?.name}</p>
+                <p style={{ margin:0, fontSize:11, color:T.muted }}>{ago(post.ts)}</p>
+              </div>
+            </div>
+            <Btn onClick={onClose} style={{ color:T.muted, fontSize:22, padding:"0 6px" }}>✕</Btn>
+          </div>
+
+          <div style={{ overflowY:"auto", flex:1 }}>
+            {post.type === "event"
+              ? <div style={{ margin:"12px 16px", background:T.goldBg, borderRadius:14, padding:16, border:`1px solid ${T.gold}22` }}>
+                  <p style={{ margin:"0 0 6px", fontFamily:"'Cormorant Garamond',serif", fontSize:20, fontWeight:600, color:T.text }}>{post.title}</p>
+                  {post.text && <p style={{ margin:"0 0 10px", fontSize:13, color:T.sub, lineHeight:1.7 }}>{post.text}</p>}
+                  {post.eventDate && <p style={{ margin:"0 0 3px", fontSize:12, color:T.gold }}>🗓 {post.eventDate}</p>}
+                  {post.eventLoc && <p style={{ margin:0, fontSize:12, color:T.sub }}>📍 {post.eventLoc}</p>}
+                </div>
+              : <>
+                  {post.text && <p style={{ margin:"12px 16px 8px", fontSize:14, color:T.text, lineHeight:1.75, whiteSpace:"pre-line" }}>{post.text}</p>}
+                  {post.img && <MediaPlayer url={post.img} onImageClick={setViewImg} />}
+                </>
+            }
+
+            <div style={{ display:"flex", alignItems:"center", gap:16, padding:"10px 16px", borderTop:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}` }}>
+              <Btn onClick={() => onLike(post.id)} style={{ display:"flex", alignItems:"center", gap:6, color:liked?T.gold:T.muted, fontSize:13, fontWeight:600 }}>
+                <span style={{ fontSize:18, animation: liked ? "pulse .3s ease" : "none" }}>{liked?"❤️":"🤍"}</span>
+                {post.likes.length} {post.likes.length > 1 ? "j'aimes" : "j'aime"}
+              </Btn>
+              <span style={{ color:T.muted, fontSize:13 }}>💬 {post.comments.length} commentaire{post.comments.length > 1 ? "s" : ""}</span>
+            </div>
+
+            <div style={{ padding:"12px 16px" }}>
+              {post.comments.length === 0 && <p style={{ color:T.muted, fontSize:13, textAlign:"center", padding:"20px 0", fontStyle:"italic" }}>Aucun commentaire encore</p>}
+              {post.comments.map(c => {
+                const cu = c.author || getM(c.by);
+                return (
+                  <div key={c.id} style={{ display:"flex", gap:9, marginBottom:14 }}>
+                    <Av u={cu} size={32} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:"0 12px 12px 12px", padding:"9px 13px", border:`1px solid ${T.border}` }}>
+                        <p style={{ margin:"0 0 4px", fontSize:12, fontWeight:700, color:T.gold }}>{cu?.name}</p>
+                        <p style={{ margin:0, fontSize:13, color:T.text, lineHeight:1.55 }}>{c.text}</p>
+                      </div>
+                      <span style={{ fontSize:10, color:T.muted, paddingLeft:4 }}>{ago(c.ts)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display:"flex", gap:8, alignItems:"center", padding:"10px 14px", borderTop:`1px solid ${T.border}`, flexShrink:0, paddingBottom:"calc(10px + env(safe-area-inset-bottom, 0px))" }}>
+            <Av u={myProfile} size={32} />
+            <div style={{ flex:1, display:"flex", gap:6, background:"rgba(255,255,255,0.04)", borderRadius:22, padding:"6px 6px 6px 14px", border:`1px solid ${T.border}` }}>
+              <input value={cmtTxt} onChange={e => setCmtTxt(e.target.value)}
+                onKeyDown={e => e.key==="Enter" && addCmt()}
+                placeholder="Commenter…"
+                style={{ flex:1, background:"none", border:"none", color:T.text, fontSize:13, outline:"none" }} />
+              <Btn onClick={addCmt} style={{ background:cmtTxt.trim()?T.gradGold:"none", borderRadius:"50%", width:32, height:32, color:cmtTxt.trim()?T.bg:T.muted, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>↑</Btn>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -251,6 +426,8 @@ export default function App() {
   const [members, setMembers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [convs, setConvs] = useState([]);
+  const [myConnections, setMyConnections] = useState([]); // IDs que je suis
+  const [myFollowers, setMyFollowers] = useState([]);     // IDs qui me suivent
   const [tab, setTab] = useState("home");
   const [openConvId, setOpenConvId] = useState(null);
   const [openUserId, setOpenUserId] = useState(null);
@@ -260,32 +437,61 @@ export default function App() {
   const [postPage, setPostPage] = useState(1);
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [inAppNotifs, setInAppNotifs] = useState([]);
+  const [viewImg, setViewImg] = useState(null);
+  const prevMsgCount = useRef(0);
+  const prevCommentCount = useRef({});
 
   const notify = useCallback(m => { setToast(m); setTimeout(() => setToast(null), 2800); }, []);
 
+  const addInAppNotif = useCallback((icon, title, body, action) => {
+    const id = Date.now() + Math.random();
+    setInAppNotifs(p => [...p, { id, icon, title, body, action }]);
+    playNotifSound();
+    sendPushNotif(title, body);
+    setTimeout(() => setInAppNotifs(p => p.filter(n => n.id !== id)), 5000);
+  }, []);
+
+  const dismissNotif = useCallback(id => setInAppNotifs(p => p.filter(n => n.id !== id)), []);
+
+  /* ── loadMyProfile ── */
   const loadMyProfile = useCallback(async uid => {
     const { data } = await sb.from("profiles").select("*").eq("id", uid).single();
     if (data) { setMyProfile(normProfile(data)); setIsPending(data.status === "pending"); }
   }, []);
 
+  /* ── loadConnections ── */
+  const loadConnections = useCallback(async uid => {
+    if (!uid) return;
+    const [{ data: following }, { data: followers }] = await Promise.all([
+      sb.from("connections").select("to_id").eq("from_id", uid),
+      sb.from("connections").select("from_id").eq("to_id", uid),
+    ]);
+    if (following) setMyConnections(following.map(d => d.to_id));
+    if (followers) setMyFollowers(followers.map(d => d.from_id));
+  }, []);
+
+  /* ── Auth ── */
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s || null);
-      if (s) loadMyProfile(s.user.id);
+      if (s) { loadMyProfile(s.user.id); requestPushPermission(); }
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       setSession(s || null);
-      if (s) loadMyProfile(s.user.id);
+      if (s) { loadMyProfile(s.user.id); requestPushPermission(); }
       else { setMyProfile(null); setIsPending(false); }
     });
     return () => subscription.unsubscribe();
   }, [loadMyProfile]);
 
+  /* ── Loaders ── */
   const loadMembers = useCallback(async () => {
     const { data } = await sb.from("profiles").select("*").neq("status","pending");
     if (data) setMembers(data.map(normProfile));
   }, []);
 
+  // Pagination: on ne recharge page 1 que si explicitement demandé, pas à chaque event realtime
   const loadPosts = useCallback(async (page = 1) => {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
@@ -297,9 +503,7 @@ export default function App() {
       const mapped = data.map(p => ({
         id: p.id, by: p.author_id,
         author: normProfile(p.author || {}),
-        // CORRECTION : on conserve le type exact depuis la base (video, photo, text, event)
-        type: p.type,
-        text: p.text || "",
+        type: p.type, text: p.text || "",
         img: p.img_url || null,
         title: p.event_title || null,
         eventDate: p.event_date || null,
@@ -309,7 +513,11 @@ export default function App() {
         saved: [],
         ts: new Date(p.created_at).getTime(),
       }));
-      if (page === 1) setPosts(mapped); else setPosts(prev => [...prev, ...mapped]);
+      if (page === 1) setPosts(mapped);
+      else setPosts(prev => {
+        const ids = new Set(prev.map(p => p.id));
+        return [...prev, ...mapped.filter(p => !ids.has(p.id))];
+      });
       setHasMorePosts(data.length === PAGE_SIZE);
       setPostPage(page);
     }
@@ -322,49 +530,132 @@ export default function App() {
     setLoadingMore(false);
   }, [loadingMore, hasMorePosts, postPage, loadPosts]);
 
+  // Mise à jour silencieuse d'un post (likes/commentaires) sans pagination
+  const refreshPost = useCallback(async pid => {
+    const { data } = await sb.from("posts")
+      .select(`*, author:profiles(id,prenom,nom,badge,avatar_url,paroisse), likes(user_id), comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`)
+      .eq("id", pid).single();
+    if (data) {
+      const updated = {
+        id: data.id, by: data.author_id,
+        author: normProfile(data.author || {}),
+        type: data.type, text: data.text || "",
+        img: data.img_url || null,
+        title: data.event_title || null,
+        eventDate: data.event_date || null,
+        eventLoc: data.event_loc || null,
+        likes: (data.likes||[]).map(l => l.user_id),
+        comments: (data.comments||[]).map(c => ({ id:c.id, by:c.author?.id, author:normProfile(c.author||{}), text:c.text, ts:new Date(c.created_at).getTime() })),
+        saved: [],
+        ts: new Date(data.created_at).getTime(),
+      };
+      setPosts(prev => prev.map(p => p.id === pid ? updated : p));
+      return updated;
+    }
+    return null;
+  }, []);
+
   const loadConvs = useCallback(async myId => {
     if (!myId) return;
     const { data } = await sb.from("conversations")
       .select(`*, messages(id,sender_id,type,text,file_url,file_name,is_read,created_at)`)
       .or(`user1_id.eq.${myId},user2_id.eq.${myId}`)
       .order("created_at", { ascending: false });
-    if (data) setConvs(data.map(c => ({
-      id: c.id,
-      uid: c.user1_id === myId ? c.user2_id : c.user1_id,
-      msgs: (c.messages||[]).sort((a,b) => new Date(a.created_at)-new Date(b.created_at)).map(m => ({
-        id: m.id, f: m.sender_id === myId ? "me" : m.sender_id,
-        type: m.type, text: m.text || "", img: m.file_url,
-        fileName: m.file_name, read: m.is_read,
-        ts: new Date(m.created_at).getTime(),
-      })),
-    })));
+    if (data) {
+      const mapped = data.map(c => ({
+        id: c.id,
+        uid: c.user1_id === myId ? c.user2_id : c.user1_id,
+        msgs: (c.messages||[]).sort((a,b) => new Date(a.created_at)-new Date(b.created_at)).map(m => ({
+          id: m.id, f: m.sender_id === myId ? "me" : m.sender_id,
+          type: m.type, text: m.text || "", img: m.file_url,
+          fileName: m.file_name, read: m.is_read,
+          ts: new Date(m.created_at).getTime(),
+        })),
+      }));
+      setConvs(mapped);
+      return mapped;
+    }
+    return null;
   }, []);
 
+  /* ── Chargement initial ── */
   useEffect(() => {
     if (session?.user && myProfile && !isPending) {
-      loadMembers(); loadPosts(1); loadConvs(session.user.id);
+      loadMembers();
+      loadPosts(1);
+      loadConvs(session.user.id);
+      loadConnections(session.user.id);
     }
-  }, [session, myProfile, isPending, loadMembers, loadPosts, loadConvs]);
+  }, [session, myProfile, isPending, loadMembers, loadPosts, loadConvs, loadConnections]);
 
+  /* ── REALTIME — notifications intelligentes ── */
   useEffect(() => {
     if (!session?.user) return;
+    const myId = session.user.id;
+
     const ch = sb.channel("celeste_realtime")
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"messages" },
-        () => loadConvs(session.user.id))
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"posts" },
-        () => loadPosts(1))
-      .on("postgres_changes", { event:"*", schema:"public", table:"likes" },
-        () => loadPosts(1))
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"comments" },
-        () => loadPosts(1))
-      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"profiles" },
-        payload => {
-          if (payload.new?.id === session.user.id) loadMyProfile(session.user.id);
-          loadMembers();
-        })
+      // Nouveau message reçu
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"messages" }, async payload => {
+        const newMsg = payload.new;
+        if (newMsg.sender_id === myId) return; // mon propre message
+        const updated = await loadConvs(myId);
+        if (updated) {
+          const totalNew = updated.reduce((a, c) => a + c.msgs.filter(m => m.f !== "me" && !m.read).length, 0);
+          if (totalNew > prevMsgCount.current) {
+            const conv = updated.find(c => c.msgs.some(m => m.id === newMsg.id));
+            const sender = members.find(m => m.id === newMsg.sender_id);
+            const preview = newMsg.type === "photo" ? "📷 Photo" : newMsg.type === "file" ? "📎 Fichier" : newMsg.text || "";
+            addInAppNotif("✉", sender?.name || "Message", preview, () => {
+              setOpenConvId(conv?.id);
+              setTab("messages");
+            });
+          }
+          prevMsgCount.current = totalNew;
+        }
+      })
+      // Nouveau post
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"posts" }, () => {
+        loadPosts(1);
+      })
+      // Likes
+      .on("postgres_changes", { event:"*", schema:"public", table:"likes" }, payload => {
+        const pid = payload.new?.post_id || payload.old?.post_id;
+        if (pid) refreshPost(pid);
+      })
+      // Nouveau commentaire — notification si c'est sur mon post
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"comments" }, async payload => {
+        const cmt = payload.new;
+        if (!cmt) return;
+        const updated = await refreshPost(cmt.post_id);
+        // Notifier si le post est le mien et que ce n'est pas moi qui commente
+        if (updated && updated.by === myId && cmt.author_id !== myId) {
+          const commenter = members.find(m => m.id === cmt.author_id);
+          addInAppNotif("💬", `${commenter?.name || "Quelqu'un"} a commenté`, cmt.text || "…", () => {
+            setTab("home");
+          });
+        }
+      })
+      // Profil mis à jour
+      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"profiles" }, payload => {
+        if (payload.new?.id === myId) loadMyProfile(myId);
+        loadMembers();
+      })
+      // Nouvelle connexion vers moi
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"connections" }, async payload => {
+        if (payload.new?.to_id === myId) {
+          await loadConnections(myId);
+          const follower = members.find(m => m.id === payload.new.from_id);
+          addInAppNotif("✦", `${follower?.name || "Quelqu'un"} s'est connecté`, "Nouvelle connexion !", () => setTab("discover"));
+        } else if (payload.new?.from_id === myId) {
+          loadConnections(myId);
+        }
+      })
+      .on("postgres_changes", { event:"DELETE", schema:"public", table:"connections" }, () => {
+        loadConnections(myId);
+      })
       .subscribe();
     return () => sb.removeChannel(ch);
-  }, [session, loadConvs, loadPosts, loadMembers, loadMyProfile]);
+  }, [session, members, loadConvs, loadPosts, refreshPost, loadMembers, loadMyProfile, loadConnections, addInAppNotif]);
 
   const goTab = t => { setTab(t); setOpenConvId(null); setOpenUserId(null); };
   const unread = convs.reduce((a,c) => a + c.msgs.filter(m => m.f !== "me" && !m.read).length, 0);
@@ -405,9 +696,16 @@ export default function App() {
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:T.bg, color:T.text, overflow:"hidden", fontFamily:"'DM Sans',sans-serif" }}>
       <style>{GS}</style>
       {toast && <Toast msg={toast} />}
+      {viewImg && <ImageViewer url={viewImg} onClose={() => setViewImg(null)} />}
+      <NotifBanner
+        notifs={inAppNotifs}
+        onDismiss={dismissNotif}
+        onTap={n => { n.action?.(); dismissNotif(n.id); }}
+      />
       {showNewPost && <NewPostModal myProfile={myProfile} session={session} onClose={() => setShowNewPost(false)} onPost={() => { loadPosts(1); setShowNewPost(false); notify("Publié ✦"); }} />}
       {showAdmin && myProfile?.is_admin && <AdminPanel members={members} setMembers={setMembers} onClose={() => setShowAdmin(false)} notify={notify} reload={loadMembers} />}
 
+      {/* TOP BAR */}
       <div style={{ height:56, background:"rgba(10,7,5,0.95)", backdropFilter:"blur(20px)", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", padding:"0 16px", gap:12, flexShrink:0, zIndex:30 }}>
         {(openConvId || openUserId)
           ? <>
@@ -430,6 +728,7 @@ export default function App() {
         }
       </div>
 
+      {/* CONTENT */}
       <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
         {openUserId && openUser
           ? <UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={() => setOpenUserId(null)}
@@ -438,21 +737,28 @@ export default function App() {
                 let c = convs.find(x => x.uid === uid);
                 if (!c) { c = { id:"cv"+Date.now(), uid, msgs:[] }; setConvs(p => [...p, c]); }
                 setOpenConvId(c.id); setTab("messages");
-              }} notify={notify} />
+              }}
+              notify={notify}
+              myConnections={myConnections}
+              myFollowers={myFollowers}
+              onConnectionChange={() => loadConnections(session.user.id)}
+              onImageView={setViewImg}
+            />
           : openConvId && openConv
-            ? <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={() => loadConvs(session.user.id)} notify={notify} />
+            ? <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={() => loadConvs(session.user.id)} notify={notify} onImageView={setViewImg} />
             : tab === "home"
-              ? <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={() => setShowNewPost(true)} onUser={setOpenUserId} notify={notify} reload={() => loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} />
+              ? <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={() => setShowNewPost(true)} onUser={setOpenUserId} notify={notify} reload={() => loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} />
               : tab === "statuses"
-                ? <StatusesTab myProfile={myProfile} session={session} members={members} notify={notify} />
+                ? <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} />
                 : tab === "discover"
-                  ? <DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} />
+                  ? <DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={() => loadConnections(session.user.id)} />
                   : tab === "messages"
                     ? <MsgsTab convs={convs} members={members} getM={getM} onOpen={id => setOpenConvId(id)} />
-                    : <ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={() => setShowNewPost(true)} notify={notify} onLogout={() => sb.auth.signOut()} reload={() => { loadPosts(1); loadMyProfile(session.user.id); }} />
+                    : <ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={() => setShowNewPost(true)} notify={notify} onLogout={() => sb.auth.signOut()} reload={() => { loadPosts(1); loadMyProfile(session.user.id); }} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} />
         }
       </div>
 
+      {/* BOTTOM NAV */}
       {!openConvId && !openUserId && (
         <div style={{ height:60, background:"rgba(10,7,5,0.97)", backdropFilter:"blur(20px)", borderTop:`1px solid ${T.border}`, display:"flex", flexShrink:0, zIndex:30 }}>
           {[
@@ -476,16 +782,15 @@ export default function App() {
 }
 
 /* ── HOME TAB ── */
-function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser, notify, reload, loadMore, hasMore, loadingMore }) {
-  const [cmtOpen, setCmtOpen] = useState(null);
-  const [cmtTxt, setCmtTxt] = useState("");
+function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser, notify, reload, loadMore, hasMore, loadingMore, refreshPost, onImageView }) {
+  const [detailPost, setDetailPost] = useState(null);
   const bottomRef = useRef();
 
   useEffect(() => {
-    const obs = new IntersectionObserver(entries => { if (entries[0].isIntersecting && !loadingMore) loadMore(); }, { threshold: 0.1 });
+    const obs = new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadMore(); }, { threshold: 0.1 });
     if (bottomRef.current) obs.observe(bottomRef.current);
     return () => obs.disconnect();
-  }, [loadMore, loadingMore]);
+  }, [loadMore]);
 
   const toggleLike = async pid => {
     const post = posts.find(p => p.id === pid);
@@ -504,14 +809,31 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
     reload(); notify("Publication supprimée");
   };
 
-  const addCmt = async pid => {
-    if (!cmtTxt.trim()) return;
-    const { error } = await sb.from("comments").insert({ post_id:pid, author_id:session.user.id, text:cmtTxt.trim() });
-    if (!error) { setCmtTxt(""); reload(); notify("Commentaire ajouté ✦"); }
-  };
+  // Ouvrir le détail d'un post (commentaires etc.)
+  const openDetail = post => setDetailPost(post);
 
   return (
     <div style={{ flex:1, overflowY:"auto" }}>
+      {detailPost && (
+        <PostDetailModal
+          post={detailPost}
+          myProfile={myProfile}
+          session={session}
+          getM={getM}
+          onClose={() => setDetailPost(null)}
+          onLike={async pid => {
+            await toggleLike(pid);
+            const updated = await refreshPost(pid);
+            if (updated) setDetailPost(updated);
+          }}
+          onComment={async () => {
+            const updated = await refreshPost(detailPost.id);
+            if (updated) setDetailPost(updated);
+          }}
+          notify={notify}
+        />
+      )}
+
       <div style={{ position:"sticky", top:0, zIndex:10, background:"rgba(10,7,5,0.95)", backdropFilter:"blur(20px)", borderBottom:`1px solid ${T.border}`, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div>
           <p style={{ margin:0, fontSize:11, color:T.muted, letterSpacing:1 }}>BIENVENUE</p>
@@ -529,10 +851,7 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
           : posts.map((p, i) => {
               const auth = p.author || getM(p.by);
               const liked = p.likes.includes(session.user.id);
-              const open = cmtOpen === p.id;
               const canDelete = p.by === session.user.id || myProfile?.is_admin;
-              // CORRECTION : détection du type média (video ou photo) depuis p.type ET l'URL
-              const isVideo = p.type === "video" || isVideoUrl(p.img);
               return (
                 <div key={p.id} style={{ background:T.card, marginBottom:1, borderTop:`1px solid ${T.border}`, animation:`fadeUp .4s ease ${Math.min(i,5)*.05}s both` }}>
                   <div style={{ padding:"14px 16px 10px", display:"flex", alignItems:"center", gap:11 }}>
@@ -558,13 +877,9 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
                       </div>
                     : <>
                         {p.text && <p style={{ margin:"0 16px 12px", fontSize:14, color:T.text, lineHeight:1.75, whiteSpace:"pre-line" }}>{p.text}</p>}
-                        {/* CORRECTION : on force la lecture vidéo si isVideo, sinon image */}
                         {p.img && (
                           <div style={{ overflow:"hidden" }}>
-                            {isVideo
-                              ? <video src={p.img} controls playsInline style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000" }} />
-                              : <img src={p.img} alt="" style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", cursor:"zoom-in" }} onClick={() => window.open(p.img, "_blank")} onError={e => e.target.style.display="none"} />
-                            }
+                            <MediaPlayer url={p.img} onImageClick={onImageView} />
                           </div>
                         )}
                       </>
@@ -575,54 +890,20 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
                   <div style={{ display:"flex", borderTop:`1px solid ${T.border}`, marginTop:10 }}>
                     {[
                       { ic: liked ? "❤️" : "🤍", lb:"J'aime", fn:() => toggleLike(p.id), active:liked },
-                      { ic:"💬", lb: p.comments.length || "", fn:() => { setCmtOpen(open ? null : p.id); setCmtTxt(""); }, active:open },
+                      { ic:"💬", lb: p.comments.length || "", fn:() => openDetail(p), active:false },
                       { ic:"↗", lb:"Partager", fn:() => { navigator.clipboard?.writeText(window.location.href); notify("Lien copié 🔗"); } },
                     ].map(a => (
                       <Btn key={a.lb} onClick={a.fn} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5, color: a.active ? T.gold : T.muted, fontWeight:600, fontSize:12, padding:"10px 4px" }}>
-                        <span style={{ fontSize:15 }}>{a.ic}</span>{a.lb && <span>{a.lb}</span>}
+                        <span style={{ fontSize:15 }}>{a.ic}</span>{a.lb !== "" && <span>{a.lb}</span>}
                       </Btn>
                     ))}
                   </div>
-
-                  {open && (
-                    <div style={{ borderTop:`1px solid ${T.border}`, padding:"12px 16px", background:"rgba(0,0,0,0.2)" }}>
-                      {p.comments.length === 0 && <p style={{ color:T.muted, fontSize:12, textAlign:"center", margin:"4px 0 12px", fontStyle:"italic" }}>Soyez le premier à commenter</p>}
-                      {p.comments.map(c => {
-                        const cu = c.author || getM(c.by);
-                        return (
-                          <div key={c.id} style={{ display:"flex", gap:9, marginBottom:12 }}>
-                            <Av u={cu} size={28} />
-                            <div style={{ flex:1 }}>
-                              <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:"0 12px 12px 12px", padding:"8px 12px", border:`1px solid ${T.border}` }}>
-                                <p style={{ margin:"0 0 3px", fontSize:11, fontWeight:700, color:T.gold }}>{cu?.name}</p>
-                                <p style={{ margin:0, fontSize:13, color:T.text, lineHeight:1.5 }}>{c.text}</p>
-                              </div>
-                              <span style={{ fontSize:10, color:T.muted, paddingLeft:4 }}>{ago(c.ts)}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:8 }}>
-                        <Av u={myProfile} size={28} />
-                        <div style={{ flex:1, display:"flex", gap:6, background:"rgba(255,255,255,0.04)", borderRadius:20, padding:"4px 4px 4px 14px", border:`1px solid ${T.border}` }}>
-                          <input value={cmtTxt} onChange={e => setCmtTxt(e.target.value)} onKeyDown={e => e.key === "Enter" && addCmt(p.id)} placeholder="Commenter…" style={{ flex:1, background:"none", border:"none", color:T.text, fontSize:13, outline:"none" }} />
-                          <Btn onClick={() => addCmt(p.id)} style={{ background: cmtTxt.trim() ? T.gradGold : "none", borderRadius:"50%", width:30, height:30, color: cmtTxt.trim() ? T.bg : T.muted, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>↑</Btn>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })
         }
-        {/* Sentinelle de pagination */}
         <div ref={bottomRef} style={{ padding:"20px", textAlign:"center" }}>
-          {loadingMore && (
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, color:T.muted, fontSize:13 }}>
-              <div style={{ width:20, height:20, border:`2px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />
-              Chargement…
-            </div>
-          )}
+          {loadingMore && <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, color:T.muted, fontSize:13 }}><div style={{ width:20, height:20, border:`2px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />Chargement…</div>}
           {!hasMore && posts.length > 0 && <p style={{ color:T.muted, fontSize:12, fontStyle:"italic" }}>✦ Vous avez tout vu</p>}
         </div>
       </div>
@@ -632,7 +913,7 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
 
 /* ── NEW POST MODAL ── */
 function NewPostModal({ myProfile, session, onClose, onPost }) {
-  const [postTab, setPostTab] = useState("text"); // renommé pour éviter le conflit avec "type" de post
+  const [type, setType] = useState("text");
   const [text, setText] = useState("");
   const [preview, setPreview] = useState(null);
   const [imgUrl, setImgUrl] = useState(null);
@@ -641,65 +922,25 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
   const [evDate, setEvDate] = useState("");
   const [evLoc, setEvLoc] = useState("");
   const [busy, setBusy] = useState(false);
-  // CORRECTION : on stocke le type réel du fichier sélectionné ("photo" ou "video")
-  const [fileMediaType, setFileMediaType] = useState("photo");
-  const [uploadError, setUploadError] = useState("");
   const fRef = useRef();
 
   const handlePick = async e => {
     const f = e.target.files[0]; if (!f) return;
-    setUploadError("");
-    // CORRECTION : on détecte et stocke immédiatement le type réel
-    const mediaType = getFileMediaType(f);
-    setFileMediaType(mediaType);
-
-    const r = new FileReader();
-    r.onload = ev => setPreview(ev.target.result);
-    r.readAsDataURL(f);
-
+    const r = new FileReader(); r.onload = ev => setPreview(ev.target.result); r.readAsDataURL(f);
     setUploading(true);
-    const ext = f.name.split(".").pop();
-    const path = `posts/${session.user.id}/${Date.now()}.${ext}`;
-    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true, contentType: f.type });
-    if (!error) {
-      const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
-      setImgUrl(publicUrl);
-    } else {
-      setUploadError("Échec de l'upload : " + error.message);
-    }
+    const path = `posts/${session.user.id}/${Date.now()}_${f.name}`;
+    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
+    if (!error) { const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path); setImgUrl(publicUrl); }
     setUploading(false);
   };
 
   const submit = async () => {
-    if (busy || uploading) return;
-    setBusy(true);
-    setUploadError("");
-
-    // CORRECTION : le type réel à enregistrer en base
-    let dbType;
-    if (postTab === "text") dbType = "text";
-    else if (postTab === "photo") dbType = fileMediaType; // "photo" ou "video"
-    else dbType = "event";
-
-    const { error } = await sb.from("posts").insert({
-      author_id: session.user.id,
-      type: dbType,
-      text: text.trim() || "",
-      img_url: postTab === "photo" ? imgUrl : null,
-      event_title: postTab === "event" ? evTitle.trim() : null,
-      event_date: postTab === "event" ? evDate : null,
-      event_loc: postTab === "event" ? evLoc : null,
-    });
-    setBusy(false);
-    if (!error) onPost();
-    else setUploadError("Erreur publication : " + error.message);
+    if (busy) return; setBusy(true);
+    const { error } = await sb.from("posts").insert({ author_id:session.user.id, type, text:text.trim()||"", img_url:type==="photo"?imgUrl:null, event_title:type==="event"?evTitle.trim():null, event_date:type==="event"?evDate:null, event_loc:type==="event"?evLoc:null });
+    setBusy(false); if (!error) onPost();
   };
 
-  const ok = postTab === "text"
-    ? text.trim().length > 0
-    : postTab === "photo"
-      ? imgUrl !== null && !uploading
-      : evTitle.trim().length > 0;
+  const ok = type==="text" ? text.trim().length>0 : type==="photo" ? imgUrl!==null : evTitle.trim().length>0;
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => e.target===e.currentTarget && onClose()}>
@@ -717,53 +958,30 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:16, background:"rgba(255,255,255,0.03)", borderRadius:12, padding:4 }}>
           {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Média"},{id:"event",l:"📅 Événement"}].map(t => (
-            <Btn key={t.id} onClick={() => setPostTab(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:postTab===t.id?T.goldBg:"none", color:postTab===t.id?T.gold:T.muted, fontSize:12, fontWeight:postTab===t.id?700:400, border:postTab===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
+            <Btn key={t.id} onClick={() => setType(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:type===t.id?T.goldBg:"none", color:type===t.id?T.gold:T.muted, fontSize:12, fontWeight:type===t.id?700:400, border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
           ))}
         </div>
-
-        {/* Zone média */}
-        {postTab==="photo" && (preview
+        {type==="photo" && (preview
           ? <div style={{ position:"relative", marginBottom:12 }}>
-              {/* CORRECTION : on utilise fileMediaType pour la prévisualisation */}
-              {fileMediaType === "video"
-                ? <video src={preview} controls playsInline style={{ width:"100%", maxHeight:280, borderRadius:14, display:"block", background:"#000" }} />
-                : <img src={preview} alt="" style={{ width:"100%", maxHeight:280, objectFit:"cover", borderRadius:14, display:"block" }} />
-              }
-              {uploading && (
-                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10 }}>
-                  <div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />
-                  <span style={{ color:T.gold, fontSize:12 }}>Upload en cours…</span>
-                </div>
-              )}
-              {!uploading && imgUrl && (
-                <div style={{ position:"absolute", top:8, left:8, background:"rgba(80,192,128,0.9)", borderRadius:8, padding:"3px 8px", fontSize:11, fontWeight:700, color:"#fff" }}>
-                  {fileMediaType === "video" ? "🎥 Vidéo prête" : "📷 Photo prête"}
-                </div>
-              )}
-              <Btn onClick={() => { setPreview(null); setImgUrl(null); setFileMediaType("photo"); setUploadError(""); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+              <MediaPlayer url={preview} style={{ borderRadius:14, maxHeight:280 }} />
+              {uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} /></div>}
+              <Btn onClick={() => { setPreview(null); setImgUrl(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
             </div>
-          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}>
-              <span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo
-            </Btn>
+          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}><span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo</Btn>
         )}
-
-        {postTab==="event" && (
+        {type==="event" && (
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:8 }}>
             {[{val:evTitle,set:setEvTitle,ph:"Titre *"},{val:evDate,set:setEvDate,ph:"Date et heure"},{val:evLoc,set:setEvLoc,ph:"Lieu"}].map(({val,set,ph}) => (
               <input key={ph} value={val} onChange={e => set(e.target.value)} placeholder={ph} style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:13, outline:"none" }} />
             ))}
           </div>
         )}
-
-        <textarea value={text} onChange={e => setText(e.target.value)} placeholder={postTab==="photo"?"Légende…":postTab==="event"?"Description…":"Partagez avec la communauté 🌿"} rows={4}
+        <textarea value={text} onChange={e => setText(e.target.value)} placeholder={type==="photo"?"Légende…":type==="event"?"Description…":"Partagez avec la communauté 🌿"} rows={4}
           style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:14, padding:"13px 14px", color:T.text, fontSize:14, outline:"none", resize:"none", lineHeight:1.65, marginBottom:14 }} />
-
-        {uploadError && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:10, padding:"10px 14px", color:T.err, fontSize:12, marginBottom:10 }}>⚠ {uploadError}</div>}
-
         <div style={{ display:"flex", gap:8 }}>
           <Btn onClick={onClose} style={{ flex:1, padding:"13px", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:13, color:T.sub, fontSize:14, fontWeight:600 }}>Annuler</Btn>
           <Btn onClick={submit} disabled={!ok||busy||uploading} style={{ flex:2, padding:"13px", background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.05)", color:ok&&!busy&&!uploading?T.bg:T.muted, borderRadius:13, fontSize:14, fontWeight:700, transition:"all .2s" }}>
-            {busy?"Publication…":uploading?"Upload en cours…":"Publier ✦"}
+            {busy?"Publication…":uploading?"Upload…":"Publier ✦"}
           </Btn>
         </div>
       </div>
@@ -771,13 +989,17 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
   );
 }
 
-/* ── STATUSES TAB ── */
-function StatusesTab({ myProfile, session, members, notify }) {
+/* ── STATUSES TAB — visibilité basée sur connexion ── */
+function StatusesTab({ myProfile, session, members, myConnections, myFollowers, notify }) {
   const [allStatuses, setAllStatuses] = useState([]);
   const [myStatuses, setMyStatuses] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [viewUser, setViewUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // IDs autorisés à voir mes statuts : ceux qui me suivent (si A suit B, B peut voir les statuts de A)
+  // Et je peux voir les statuts de ceux que je suis
+  // Logique : si A suit B → A voit statuts de B, et B voit statuts de A (automatique dans les deux sens)
 
   const loadStatuses = useCallback(async () => {
     const cutoff = new Date(Date.now() - 86400000).toISOString();
@@ -800,12 +1022,20 @@ function StatusesTab({ myProfile, session, members, notify }) {
     loadStatuses(); notify("Statut supprimé");
   };
 
+  // Ensemble des IDs avec qui j'ai une connexion dans un sens ou dans l'autre
+  const connectedIds = new Set([...myConnections, ...myFollowers]);
+
   const byUser = {};
   allStatuses.forEach(s => {
     if (!byUser[s.userId]) byUser[s.userId] = { author:s.author, items:[] };
     byUser[s.userId].items.push(s);
   });
-  const otherUsers = Object.entries(byUser).filter(([uid]) => uid !== session?.user?.id);
+
+  // Filtrer : seulement moi + les gens avec qui je suis connecté (dans un sens ou l'autre)
+  const visibleUsers = Object.entries(byUser).filter(([uid]) =>
+    uid === session?.user?.id || connectedIds.has(uid)
+  );
+  const otherUsers = visibleUsers.filter(([uid]) => uid !== session?.user?.id);
 
   return (
     <div style={{ flex:1, overflowY:"auto" }}>
@@ -814,7 +1044,7 @@ function StatusesTab({ myProfile, session, members, notify }) {
         <Btn onClick={() => setShowAdd(true)} style={{ background:T.gradGold, color:T.bg, borderRadius:12, padding:"8px 16px", fontWeight:700, fontSize:13 }}>+ Ajouter</Btn>
       </div>
       {showAdd && <AddStatusModal session={session} myStatuses={myStatuses} onClose={() => setShowAdd(false)} onDone={() => { loadStatuses(); setShowAdd(false); notify("Statut publié ✦"); }} />}
-      {viewUser && <StatusViewer statuses={byUser[viewUser]?.items||[]} author={byUser[viewUser]?.author} isMe={viewUser===session?.user?.id} onDelete={deleteStatus} onClose={() => setViewUser(null)} />}
+      {viewUser && byUser[viewUser] && <StatusViewer statuses={byUser[viewUser].items} author={byUser[viewUser].author} isMe={viewUser===session?.user?.id} onDelete={deleteStatus} onClose={() => setViewUser(null)} />}
       <div style={{ maxWidth:640, margin:"0 auto", padding:"12px 16px 80px" }}>
         <div style={{ marginBottom:20 }}>
           <p style={{ fontSize:11, color:T.muted, letterSpacing:1, marginBottom:10 }}>MON STATUT</p>
@@ -826,16 +1056,20 @@ function StatusesTab({ myProfile, session, members, notify }) {
             </div>
             <div style={{ flex:1 }}>
               <p style={{ margin:"0 0 2px", fontSize:14, fontWeight:600, color:T.text }}>Mon statut</p>
-              <p style={{ margin:0, fontSize:12, color:T.muted }}>{myStatuses.length===0?"Appuyez pour ajouter un statut":`${myStatuses.length}/10 statut${myStatuses.length>1?"s":""} · ${ago(myStatuses[0].ts)}`}</p>
+              <p style={{ margin:0, fontSize:12, color:T.muted }}>{myStatuses.length===0?"Appuyez pour ajouter un statut":`${myStatuses.length}/10 · ${ago(myStatuses[0].ts)}`}</p>
             </div>
           </div>
         </div>
         {loading
           ? <div style={{ textAlign:"center", padding:30 }}><div style={{ width:24, height:24, border:`2px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite", margin:"0 auto" }} /></div>
           : otherUsers.length===0
-            ? <div style={{ textAlign:"center", padding:"40px 0", color:T.muted }}><div style={{ fontSize:36, marginBottom:10 }}>◑</div><p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:18 }}>Aucun statut récent</p></div>
+            ? <div style={{ textAlign:"center", padding:"40px 0", color:T.muted }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>◑</div>
+                <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:18 }}>Aucun statut de vos connexions</p>
+                <p style={{ fontSize:12, marginTop:8, color:T.muted }}>Connectez-vous à des membres pour voir leurs statuts</p>
+              </div>
             : <>
-                <p style={{ fontSize:11, color:T.muted, letterSpacing:1, marginBottom:10 }}>RÉCENTS</p>
+                <p style={{ fontSize:11, color:T.muted, letterSpacing:1, marginBottom:10 }}>CONNEXIONS RÉCENTES</p>
                 {otherUsers.map(([uid, { author, items }]) => (
                   <div key={uid} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:T.card, borderRadius:16, border:`1px solid ${T.border}`, marginBottom:8, cursor:"pointer" }} onClick={() => setViewUser(uid)}>
                     <div style={{ position:"relative" }}>
@@ -857,61 +1091,32 @@ function StatusesTab({ myProfile, session, members, notify }) {
 
 /* ── ADD STATUS MODAL ── */
 function AddStatusModal({ session, myStatuses, onClose, onDone }) {
-  const [statusTab, setStatusTab] = useState("text");
+  const [type, setType] = useState("text");
   const [text, setText] = useState("");
   const [mediaUrl, setMediaUrl] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
-  // CORRECTION : même approche que NewPostModal
-  const [fileMediaType, setFileMediaType] = useState("photo");
-  const [uploadError, setUploadError] = useState("");
   const fRef = useRef();
   const canAdd = myStatuses.length < 10;
 
   const handlePick = async e => {
     const f = e.target.files[0]; if (!f) return;
-    setUploadError("");
-    // CORRECTION : détection immédiate du type
-    const mediaType = getFileMediaType(f);
-    setFileMediaType(mediaType);
-
-    const r = new FileReader();
-    r.onload = ev => setPreview(ev.target.result);
-    r.readAsDataURL(f);
-
+    const r = new FileReader(); r.onload = ev => setPreview(ev.target.result); r.readAsDataURL(f);
     setUploading(true);
-    const ext = f.name.split(".").pop();
-    const path = `statuses/${session.user.id}/${Date.now()}.${ext}`;
-    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true, contentType: f.type });
-    if (!error) {
-      const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
-      setMediaUrl(publicUrl);
-    } else {
-      setUploadError("Échec upload : " + error.message);
-    }
+    const path = `statuses/${session.user.id}/${Date.now()}_${f.name}`;
+    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
+    if (!error) { const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path); setMediaUrl(publicUrl); }
     setUploading(false);
   };
 
   const submit = async () => {
-    if (busy || !canAdd || uploading) return;
-    if (statusTab === "text" && !text.trim()) return;
-    if (statusTab !== "text" && !mediaUrl) {
-      setUploadError("Attendez la fin de l'upload avant de publier.");
-      return;
-    }
+    if (busy || !canAdd) return;
+    if (type==="text" && !text.trim()) return;
+    if (type!=="text" && !mediaUrl) return;
     setBusy(true);
-    // CORRECTION : type correct en base
-    const dbType = statusTab === "photo" ? fileMediaType : "text";
-    const { error } = await sb.from("statuses").insert({
-      user_id: session.user.id,
-      type: dbType,
-      text: text.trim() || null,
-      media_url: mediaUrl || null,
-    });
-    setBusy(false);
-    if (!error) onDone();
-    else setUploadError("Erreur : " + error.message);
+    await sb.from("statuses").insert({ user_id:session.user.id, type, text:text.trim()||null, media_url:mediaUrl||null });
+    setBusy(false); onDone();
   };
 
   return (
@@ -925,38 +1130,21 @@ function AddStatusModal({ session, myStatuses, onClose, onDone }) {
         {!canAdd && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:12, padding:"10px 14px", color:T.err, fontSize:13, marginBottom:14, textAlign:"center" }}>⚠ Limite de 10 statuts atteinte.</div>}
         <div style={{ display:"flex", gap:8, marginBottom:16, background:"rgba(255,255,255,0.03)", borderRadius:12, padding:4 }}>
           {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Photo/Vidéo"}].map(t => (
-            <Btn key={t.id} onClick={() => setStatusTab(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:statusTab===t.id?T.goldBg:"none", color:statusTab===t.id?T.gold:T.muted, fontSize:12, fontWeight:statusTab===t.id?700:400, border:statusTab===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
+            <Btn key={t.id} onClick={() => setType(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:type===t.id?T.goldBg:"none", color:type===t.id?T.gold:T.muted, fontSize:12, fontWeight:type===t.id?700:400, border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
           ))}
         </div>
-        {statusTab==="photo" && (preview
+        {type==="photo" && (preview
           ? <div style={{ position:"relative", marginBottom:12 }}>
-              {/* CORRECTION : prévisualisation correcte */}
-              {fileMediaType === "video"
-                ? <video src={preview} controls playsInline style={{ width:"100%", maxHeight:280, borderRadius:14, display:"block", background:"#000" }} />
-                : <img src={preview} alt="" style={{ width:"100%", maxHeight:280, objectFit:"cover", borderRadius:14, display:"block" }} />
-              }
-              {uploading && (
-                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
-                  <div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />
-                  <span style={{ color:T.gold, fontSize:12 }}>Upload…</span>
-                </div>
-              )}
-              {!uploading && mediaUrl && (
-                <div style={{ position:"absolute", top:8, left:8, background:"rgba(80,192,128,0.9)", borderRadius:8, padding:"3px 8px", fontSize:11, fontWeight:700, color:"#fff" }}>
-                  {fileMediaType === "video" ? "🎥 Prête" : "📷 Prête"}
-                </div>
-              )}
-              <Btn onClick={() => { setPreview(null); setMediaUrl(null); setFileMediaType("photo"); setUploadError(""); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+              <MediaPlayer url={preview} style={{ borderRadius:14, maxHeight:280 }} />
+              {uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} /></div>}
+              <Btn onClick={() => { setPreview(null); setMediaUrl(null); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
             </div>
-          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}>
-              <span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo
-            </Btn>
+          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}><span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo</Btn>
         )}
-        {statusTab==="text"
+        {type==="text"
           ? <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4} style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:14, padding:"13px 14px", color:T.text, fontSize:14, outline:"none", resize:"none", lineHeight:1.65, marginBottom:8 }} />
           : <input value={text} onChange={e => setText(e.target.value)} placeholder="Légende (optionnel)" style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:12, padding:"11px 14px", color:T.text, fontSize:13, outline:"none", marginBottom:12 }} />
         }
-        {uploadError && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:10, padding:"10px 14px", color:T.err, fontSize:12, marginBottom:10 }}>⚠ {uploadError}</div>}
         <div style={{ display:"flex", gap:8, marginTop:8 }}>
           <Btn onClick={onClose} style={{ flex:1, padding:"13px", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:13, color:T.sub, fontSize:14, fontWeight:600 }}>Annuler</Btn>
           <Btn onClick={submit} disabled={!canAdd||busy||uploading} style={{ flex:2, padding:"13px", background:canAdd&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.05)", color:canAdd&&!busy&&!uploading?T.bg:T.muted, borderRadius:13, fontSize:14, fontWeight:700 }}>
@@ -973,10 +1161,6 @@ function StatusViewer({ statuses, author, isMe, onDelete, onClose }) {
   const [idx, setIdx] = useState(0);
   const current = statuses[idx];
   if (!current) return null;
-
-  // CORRECTION : détection vidéo dans le viewer (type "video" OU URL vidéo)
-  const isVideo = current.type === "video" || isVideoUrl(current.mediaUrl);
-
   return (
     <div style={{ position:"fixed", inset:0, zIndex:600, background:"rgba(0,0,0,0.95)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }} onClick={e => e.target===e.currentTarget && onClose()}>
       <div style={{ position:"absolute", top:16, left:16, right:16, display:"flex", gap:4 }}>
@@ -992,11 +1176,7 @@ function StatusViewer({ statuses, author, isMe, onDelete, onClose }) {
         <Btn onClick={onClose} style={{ color:"rgba(255,255,255,0.7)", fontSize:22 }}>✕</Btn>
       </div>
       <div style={{ width:"100%", maxWidth:480, padding:"80px 20px 100px", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
-        {current.mediaUrl && (
-          isVideo
-            ? <video src={current.mediaUrl} controls playsInline style={{ width:"100%", maxHeight:400, borderRadius:16, display:"block", background:"#000" }} />
-            : <img src={current.mediaUrl} alt="" style={{ width:"100%", maxHeight:400, objectFit:"cover", borderRadius:16, display:"block" }} onClick={() => window.open(current.mediaUrl, "_blank")} />
-        )}
+        {current.mediaUrl && <MediaPlayer url={current.mediaUrl} style={{ borderRadius:16, maxHeight:400 }} />}
         {current.text && <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:16, padding:"16px 20px", width:"100%", textAlign:"center" }}><p style={{ margin:0, fontSize:18, color:"#fff", lineHeight:1.6, fontFamily:"'Cormorant Garamond',serif" }}>{current.text}</p></div>}
       </div>
       <div style={{ position:"absolute", bottom:40, left:16, right:16, display:"flex", justifyContent:"space-between" }}>
@@ -1009,23 +1189,18 @@ function StatusViewer({ statuses, author, isMe, onDelete, onClose }) {
 }
 
 /* ── DISCOVER TAB ── */
-function DiscoverTab({ members, myProfile, session, onUser, notify }) {
-  const [connections, setConnections] = useState([]);
+function DiscoverTab({ members, myProfile, session, onUser, notify, myConnections, onConnectionChange }) {
   const [q, setQ] = useState("");
 
-  useEffect(() => {
-    if (!session?.user) return;
-    sb.from("connections").select("to_id").eq("from_id", session.user.id).then(({ data }) => { if (data) setConnections(data.map(d => d.to_id)); });
-  }, [session]);
-
   const toggle = async id => {
-    if (connections.includes(id)) {
+    if (myConnections.includes(id)) {
       await sb.from("connections").delete().eq("from_id",session.user.id).eq("to_id",id);
-      setConnections(p => p.filter(x => x!==id)); notify("Connexion retirée");
+      notify("Connexion retirée");
     } else {
       await sb.from("connections").insert({ from_id:session.user.id, to_id:id });
-      setConnections(p => [...p,id]); notify("Connecté ✦");
+      notify("Connecté ✦");
     }
+    onConnectionChange();
   };
 
   const active = members.filter(m => m.id!==session?.user?.id && (m.name.toLowerCase().includes(q.toLowerCase())||m.paroisse.toLowerCase().includes(q.toLowerCase())));
@@ -1044,7 +1219,7 @@ function DiscoverTab({ members, myProfile, session, onUser, notify }) {
         {active.length===0 && <div style={{ textAlign:"center", padding:"50px 0", color:T.muted }}><div style={{ fontSize:36, marginBottom:10 }}>✦</div><p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:18 }}>Aucun résultat</p></div>}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           {active.map((u,i) => {
-            const conn = connections.includes(u.id);
+            const conn = myConnections.includes(u.id);
             return (
               <div key={u.id} style={{ background:T.card, borderRadius:18, overflow:"hidden", border:`1px solid ${T.border}`, animation:`fadeUp .4s ease ${i*.05}s both` }}>
                 <div style={{ height:70, background:`linear-gradient(135deg, ${u.color}33, ${u.color}11)`, position:"relative" }}>
@@ -1071,21 +1246,54 @@ function DiscoverTab({ members, myProfile, session, onUser, notify }) {
 }
 
 /* ── USER VIEW ── */
-function UserView({ user, myProfile, session, posts, onBack, onChat, notify }) {
-  const [conn, setConn] = useState(false);
-  useEffect(() => {
-    if (!session?.user) return;
-    sb.from("connections").select("id").eq("from_id",session.user.id).eq("to_id",user.id).single().then(({ data }) => setConn(!!data));
-  }, [session, user.id]);
+function UserView({ user, myProfile, session, posts, onBack, onChat, notify, myConnections, myFollowers, onConnectionChange, onImageView }) {
+  const conn = myConnections.includes(user.id);
 
   const toggle = async () => {
-    if (conn) { await sb.from("connections").delete().eq("from_id",session.user.id).eq("to_id",user.id); setConn(false); notify("Retiré"); }
-    else { await sb.from("connections").insert({ from_id:session.user.id, to_id:user.id }); setConn(true); notify("Connecté ✦"); }
+    if (conn) {
+      await sb.from("connections").delete().eq("from_id",session.user.id).eq("to_id",user.id);
+      notify("Retiré");
+    } else {
+      await sb.from("connections").insert({ from_id:session.user.id, to_id:user.id });
+      notify("Connecté ✦");
+    }
+    onConnectionChange();
   };
 
+  const [userFollowersCount, setUserFollowersCount] = useState("…");
+  const [userFollowingCount, setUserFollowingCount] = useState("…");
+
+  useEffect(() => {
+    Promise.all([
+      sb.from("connections").select("id", { count:"exact", head:true }).eq("to_id", user.id),
+      sb.from("connections").select("id", { count:"exact", head:true }).eq("from_id", user.id),
+    ]).then(([{ count: fc }, { count: fg }]) => {
+      setUserFollowersCount(fc || 0);
+      setUserFollowingCount(fg || 0);
+    });
+  }, [user.id]);
+
   const uPosts = posts.filter(p => p.by===user.id);
+  const [detailPost, setDetailPost] = useState(null);
+
   return (
     <div style={{ flex:1, overflowY:"auto" }}>
+      {detailPost && (
+        <PostDetailModal
+          post={detailPost}
+          myProfile={myProfile}
+          session={session}
+          getM={id => id === user.id ? user : myProfile}
+          onClose={() => setDetailPost(null)}
+          onLike={async pid => {
+            const liked = detailPost.likes.includes(session.user.id);
+            if (liked) await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session.user.id);
+            else await sb.from("likes").insert({ post_id:pid, user_id:session.user.id });
+          }}
+          onComment={() => {}}
+          notify={notify}
+        />
+      )}
       <div style={{ height:160, background:`linear-gradient(160deg, ${user.color}44, ${user.color}11, transparent)`, position:"relative", overflow:"hidden" }}>
         <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", opacity:.05, fontSize:120, fontFamily:"'Cormorant Garamond',serif" }}>✦</div>
       </div>
@@ -1100,23 +1308,33 @@ function UserView({ user, myProfile, session, posts, onBack, onChat, notify }) {
         <h2 style={{ margin:"0 0 4px", fontFamily:"'Cormorant Garamond',serif", fontSize:28, fontWeight:400, color:T.text }}>{user.fullName||user.name}{user.age&&<span style={{ fontSize:16, color:T.muted, fontWeight:300 }}>, {user.age} ans</span>}</h2>
         <p style={{ margin:"0 0 8px", fontSize:12, color:T.muted }}>⛪ {user.paroisse}</p>
         {user.bio && <p style={{ margin:"0 0 12px", fontSize:14, color:T.sub, lineHeight:1.7 }}>{user.bio}</p>}
-        <div style={{ marginBottom:20 }}><Badge type={user.badge} /></div>
+        <div style={{ marginBottom:16 }}><Badge type={user.badge} /></div>
+
+        <div style={{ display:"flex", gap:1, background:T.card, borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, marginBottom:20 }}>
+          {[
+            { l:"Publications", v:uPosts.length },
+            { l:"Abonnés", v:userFollowersCount },
+            { l:"Abonnements", v:userFollowingCount }
+          ].map((s,i) => (
+            <div key={s.l} style={{ flex:1, textAlign:"center", padding:"14px 8px", borderRight:i<2?`1px solid ${T.border}`:"none" }}>
+              <p style={{ margin:"0 0 3px", fontFamily:"'Cormorant Garamond',serif", fontSize:24, fontWeight:400, color:T.gold }}>{s.v}</p>
+              <p style={{ margin:0, fontSize:10, color:T.muted, letterSpacing:.5 }}>{s.l}</p>
+            </div>
+          ))}
+        </div>
+
         <h3 style={{ fontSize:13, fontWeight:600, color:T.muted, letterSpacing:1, marginBottom:12 }}>PUBLICATIONS ({uPosts.length})</h3>
         {uPosts.length===0
           ? <p style={{ color:T.muted, fontSize:13, fontStyle:"italic" }}>Aucune publication.</p>
-          : uPosts.map(p => {
-              const isVideo = p.type === "video" || isVideoUrl(p.img);
-              return (
-                <div key={p.id} style={{ background:T.card, borderRadius:14, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}` }}>
-                  {p.img && (
-                    isVideo
-                      ? <video src={p.img} controls playsInline style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block", background:"#000" }} />
-                      : <img src={p.img} alt="" style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block" }} onError={e => e.target.style.display="none"} />
-                  )}
-                  <div style={{ padding:12 }}><p style={{ margin:"0 0 6px", fontSize:13, color:T.text, lineHeight:1.6 }}>{p.text||p.title}</p><span style={{ fontSize:11, color:T.muted }}>{ago(p.ts)} · ❤ {p.likes.length}</span></div>
-                </div>
-              );
-            })
+          : uPosts.map(p => (
+            <div key={p.id} onClick={() => setDetailPost(p)} style={{ background:T.card, borderRadius:14, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}`, cursor:"pointer" }}>
+              {p.img && <MediaPlayer url={p.img} style={{ maxHeight:200 }} onImageClick={e => { e.stopPropagation(); onImageView(p.img); }} />}
+              <div style={{ padding:12 }}>
+                <p style={{ margin:"0 0 6px", fontSize:13, color:T.text, lineHeight:1.6 }}>{p.text||p.title}</p>
+                <span style={{ fontSize:11, color:T.muted }}>{ago(p.ts)} · ❤ {p.likes.length} · 💬 {p.comments.length}</span>
+              </div>
+            </div>
+          ))
         }
       </div>
     </div>
@@ -1137,7 +1355,7 @@ function MsgsTab({ convs, members, getM, onOpen }) {
           const u = getM(c.uid);
           const last = c.msgs[c.msgs.length-1];
           const unreads = c.msgs.filter(m => m.f!=="me"&&!m.read).length;
-          const prev = !last?"":last.type==="photo"?"📷 Photo":last.type==="video"?"🎥 Vidéo":last.type==="file"?`📎 ${last.fileName}`:last.text||"";
+          const prev = !last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.text||"";
           return (
             <Btn key={c.id} onClick={() => onOpen(c.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderBottom:`1px solid ${T.border}`, width:"100%", textAlign:"left" }}>
               <Av u={u} size={52} online={u?.online} />
@@ -1158,7 +1376,7 @@ function MsgsTab({ convs, members, getM, onOpen }) {
 }
 
 /* ── CHAT SCREEN ── */
-function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
+function ChatScreen({ conv, myProfile, session, members, reload, notify, onImageView }) {
   const user = members.find(m => m.id===conv.uid) || { name:"…", initials:"?", color:"#888" };
   const [inp, setInp] = useState("");
   const [attach, setAttach] = useState(false);
@@ -1167,6 +1385,14 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
   const iRef = useRef();
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [conv.msgs.length]);
+
+  // Marquer comme lu
+  useEffect(() => {
+    const unread = conv.msgs.filter(m => m.f !== "me" && !m.read);
+    if (unread.length > 0) {
+      sb.from("messages").update({ is_read: true }).in("id", unread.map(m => m.id)).then(() => reload());
+    }
+  }, [conv.id]);
 
   const ensureConv = async () => {
     const { data } = await sb.from("conversations").select("id")
@@ -1185,17 +1411,11 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
 
   const sendTxt = () => { if (inp.trim()) sendMsg({ type:"text", text:inp.trim() }); };
 
-  const handleFile = async (e, isMedia) => {
+  const handleFile = async (e, isImg) => {
     const f = e.target.files[0]; if (!f) return;
-    // CORRECTION : détection correcte du type pour les messages
-    const mediaType = getFileMediaType(f);
     const path = `messages/${session.user.id}/${Date.now()}_${f.name}`;
-    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true, contentType: f.type });
-    if (!error) {
-      const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
-      const msgType = isMedia ? mediaType : "file"; // "photo", "video", ou "file"
-      sendMsg({ type:msgType, file_url:publicUrl, file_name:f.name });
-    }
+    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
+    if (!error) { const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path); sendMsg(isImg?{type:"photo",file_url:publicUrl,file_name:f.name}:{type:"file",file_url:publicUrl,file_name:f.name}); }
     e.target.value = "";
   };
 
@@ -1220,19 +1440,21 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
         )}
         {conv.msgs.map(m => {
           const mine = m.f==="me"||m.f===session.user.id;
-          // CORRECTION : détection vidéo dans les messages
-          const isVideo = m.type === "video" || isVideoUrl(m.img);
           return (
             <div key={m.id} style={{ display:"flex", justifyContent:mine?"flex-end":"flex-start", alignItems:"flex-end", gap:7 }}>
               {!mine && <Av u={user} size={28} />}
               <div style={{ maxWidth:"72%" }}>
                 <div style={{ background:mine?T.gradGold:"rgba(255,255,255,0.06)", borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px", padding:"10px 14px", border:mine?"none":`1px solid ${T.border}` }}>
-                  {(m.type==="photo"||m.type==="image"||m.type==="video") && m.img && (
-                    isVideo
-                      ? <video src={m.img} controls playsInline style={{ maxWidth:240, maxHeight:220, borderRadius:10, marginBottom:m.text?6:0, display:"block", background:"#000" }} />
-                      : <img src={m.img} alt="" style={{ maxWidth:240, maxHeight:220, objectFit:"cover", borderRadius:10, marginBottom:m.text?6:0, display:"block" }} onError={e => e.target.style.display="none"} />
+                  {(m.type==="photo"||m.type==="image")&&m.img && (
+                    <MediaPlayer url={m.img} style={{ maxWidth:240, maxHeight:220, borderRadius:10, marginBottom:m.text?6:0 }} onImageClick={onImageView} />
                   )}
-                  {m.type==="file" && <a href={m.img||"#"} download={m.fileName} target="_blank" rel="noreferrer" style={{ display:"flex", alignItems:"center", gap:9, textDecoration:"none" }}><span style={{ fontSize:22 }}>📄</span><span style={{ fontSize:12, fontWeight:600, color:mine?T.bg:T.text }}>{m.fileName}</span></a>}
+                  {m.type==="file" && (
+                    <Btn onClick={() => onImageView ? window.open(m.img,"_blank") : null}
+                      style={{ display:"flex", alignItems:"center", gap:9, background:"none", padding:0 }}>
+                      <span style={{ fontSize:22 }}>📄</span>
+                      <span style={{ fontSize:12, fontWeight:600, color:mine?T.bg:T.text }}>{m.fileName}</span>
+                    </Btn>
+                  )}
                   {m.text && <p style={{ margin:0, fontSize:14, color:mine?T.bg:T.text, lineHeight:1.55, whiteSpace:"pre-wrap" }}>{m.text}</p>}
                 </div>
                 <div style={{ display:"flex", gap:4, alignItems:"center", marginTop:3, justifyContent:mine?"flex-end":"flex-start" }}>
@@ -1274,12 +1496,13 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
 }
 
 /* ── PROFILE TAB ── */
-function ProfileTab({ myProfile, session, posts, onNewPost, notify, onLogout, reload }) {
+function ProfileTab({ myProfile, session, posts, onNewPost, notify, onLogout, reload, myConnections, myFollowers, onImageView }) {
   const [edit, setEdit] = useState(false);
   const [bio, setBio] = useState(myProfile?.bio||"");
   const [ptab, setPtab] = useState("posts");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [detailPost, setDetailPost] = useState(null);
   const avRef = useRef();
 
   const myPosts = posts.filter(p => p.by===session?.user?.id);
@@ -1306,6 +1529,22 @@ function ProfileTab({ myProfile, session, posts, onNewPost, notify, onLogout, re
 
   return (
     <div style={{ flex:1, overflowY:"auto" }}>
+      {detailPost && (
+        <PostDetailModal
+          post={detailPost}
+          myProfile={myProfile}
+          session={session}
+          getM={id => myProfile}
+          onClose={() => setDetailPost(null)}
+          onLike={async pid => {
+            const liked = detailPost.likes.includes(session.user.id);
+            if (liked) await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session.user.id);
+            else await sb.from("likes").insert({ post_id:pid, user_id:session.user.id });
+          }}
+          onComment={reload}
+          notify={notify}
+        />
+      )}
       <input ref={avRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatar} />
       <div style={{ height:140, background:"linear-gradient(160deg,rgba(212,160,80,0.15),rgba(212,160,80,0.03))", position:"relative", overflow:"hidden" }}>
         <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", opacity:.04, fontSize:160, fontFamily:"'Cormorant Garamond',serif" }}>✦</div>
@@ -1332,14 +1571,21 @@ function ProfileTab({ myProfile, session, posts, onNewPost, notify, onLogout, re
           : <p style={{ margin:"0 0 12px", fontSize:14, color:myProfile?.bio?T.sub:T.muted, lineHeight:1.7, fontStyle:myProfile?.bio?"normal":"italic" }}>{myProfile?.bio||"Ajoutez une biographie…"}</p>
         }
         <div style={{ marginBottom:20, display:"flex", gap:8, flexWrap:"wrap" }}>{myProfile?.badge && <Badge type={myProfile.badge} />}</div>
+
+        {/* VRAIES STATS */}
         <div style={{ display:"flex", gap:1, background:T.card, borderRadius:16, overflow:"hidden", border:`1px solid ${T.border}`, marginBottom:20 }}>
-          {[{l:"Publications",v:myPosts.length},{l:"Abonnés",v:"—"},{l:"Abonnements",v:"—"}].map((s,i) => (
+          {[
+            { l:"Publications", v:myPosts.length },
+            { l:"Abonnés", v:myFollowers.length },
+            { l:"Abonnements", v:myConnections.length }
+          ].map((s,i) => (
             <div key={s.l} style={{ flex:1, textAlign:"center", padding:"14px 8px", borderRight:i<2?`1px solid ${T.border}`:"none" }}>
               <p style={{ margin:"0 0 3px", fontFamily:"'Cormorant Garamond',serif", fontSize:24, fontWeight:400, color:T.gold }}>{s.v}</p>
               <p style={{ margin:0, fontSize:10, color:T.muted, letterSpacing:.5 }}>{s.l}</p>
             </div>
           ))}
         </div>
+
         <div style={{ display:"flex", borderBottom:`1px solid ${T.border}`, marginBottom:14 }}>
           {[{id:"posts",l:"📷 Posts"},{id:"saved",l:"🔖 Sauvegardés"},{id:"about",l:"ℹ À propos"}].map(t => (
             <Btn key={t.id} onClick={() => setPtab(t.id)} style={{ flex:1, padding:"10px 4px", color:ptab===t.id?T.gold:T.muted, fontWeight:ptab===t.id?700:400, fontSize:12, borderBottom:ptab===t.id?`2px solid ${T.gold}`:"2px solid transparent", transition:"all .2s" }}>{t.l}</Btn>
@@ -1351,23 +1597,18 @@ function ProfileTab({ myProfile, session, posts, onNewPost, notify, onLogout, re
             {myPosts.length===0
               ? <p style={{ color:T.muted, textAlign:"center", padding:"30px 0", fontStyle:"italic", fontFamily:"'Cormorant Garamond',serif", fontSize:18 }}>Aucune publication encore</p>
               : <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  {myPosts.map(p => {
-                    const isVideo = p.type === "video" || isVideoUrl(p.img);
-                    return (
-                      <div key={p.id} style={{ background:T.card, borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}` }}>
-                        {p.img
-                          ? isVideo
-                            ? <video src={p.img} style={{ width:"100%", height:120, objectFit:"cover", display:"block", background:"#000" }} />
-                            : <img src={p.img} alt="" style={{ width:"100%", height:120, objectFit:"cover", display:"block" }} onError={e => e.target.style.display="none"} />
-                          : <div style={{ height:80, background:`linear-gradient(135deg,${T.goldBg},transparent)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontFamily:"'Cormorant Garamond',serif", color:T.gold }}>✦</div>
-                        }
-                        <div style={{ padding:"8px 10px" }}>
-                          <p style={{ margin:"0 0 4px", fontSize:12, color:T.text, lineHeight:1.4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.text||p.title||"Publication"}</p>
-                          <span style={{ fontSize:10, color:T.muted }}>❤ {p.likes.length} · {ago(p.ts)}</span>
-                        </div>
+                  {myPosts.map(p => (
+                    <div key={p.id} onClick={() => setDetailPost(p)} style={{ background:T.card, borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}`, cursor:"pointer" }}>
+                      {p.img
+                        ? <MediaPlayer url={p.img} style={{ height:120, objectFit:"cover" }} onImageClick={e => { e.stopPropagation(); onImageView(p.img); }} />
+                        : <div style={{ height:80, background:`linear-gradient(135deg,${T.goldBg},transparent)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontFamily:"'Cormorant Garamond',serif", color:T.gold }}>✦</div>
+                      }
+                      <div style={{ padding:"8px 10px" }}>
+                        <p style={{ margin:"0 0 4px", fontSize:12, color:T.text, lineHeight:1.4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.text||p.title||"Publication"}</p>
+                        <span style={{ fontSize:10, color:T.muted }}>❤ {p.likes.length} · 💬 {p.comments.length} · {ago(p.ts)}</span>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
             }
           </>
