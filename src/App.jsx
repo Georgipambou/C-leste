@@ -45,10 +45,23 @@ const normProfile = p => ({
   is_admin: p.is_admin || false,
 });
 
-// ── Détecte si une URL est une vidéo ──
+// ── CORRECTION PRINCIPALE : détection vidéo robuste ──
+// Les URLs Supabase Storage ressemblent à :
+// https://xxx.supabase.co/storage/v1/object/public/celeste-media/posts/uid/1234_video.mp4?token=...
+// La regex doit chercher l'extension AVANT le "?" éventuel
 const isVideoUrl = url => {
   if (!url) return false;
-  return /\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url) || url.includes("video");
+  // On coupe le query string avant de tester l'extension
+  const path = url.split("?")[0].toLowerCase();
+  return /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/.test(path);
+};
+
+// Détecte le type d'un fichier File object
+const getFileMediaType = file => {
+  if (!file) return "unknown";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("image/")) return "photo";
+  return "file";
 };
 
 const GS = `
@@ -104,7 +117,7 @@ function Toast({ msg }) {
   );
 }
 
-// ── BUG CORRIGÉ : MediaPlayer sans code mort après le return ──
+// ── MediaPlayer : utilise isVideoUrl corrigé ──
 function MediaPlayer({ url, style={} }) {
   if (!url) return null;
   if (isVideoUrl(url)) {
@@ -114,7 +127,7 @@ function MediaPlayer({ url, style={} }) {
         controls
         playsInline
         style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000", ...style }}
-        onError={e => e.target.style.display="none"}
+        onError={e => { e.target.style.display="none"; }}
       />
     );
   }
@@ -123,7 +136,7 @@ function MediaPlayer({ url, style={} }) {
       src={url} alt=""
       style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", cursor:"zoom-in", ...style }}
       onClick={() => window.open(url, "_blank")}
-      onError={e => e.target.style.display="none"}
+      onError={e => { e.target.style.display="none"; }}
     />
   );
 }
@@ -284,7 +297,9 @@ export default function App() {
       const mapped = data.map(p => ({
         id: p.id, by: p.author_id,
         author: normProfile(p.author || {}),
-        type: p.type, text: p.text || "",
+        // CORRECTION : on conserve le type exact depuis la base (video, photo, text, event)
+        type: p.type,
+        text: p.text || "",
         img: p.img_url || null,
         title: p.event_title || null,
         eventDate: p.event_date || null,
@@ -467,10 +482,10 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
   const bottomRef = useRef();
 
   useEffect(() => {
-    const obs = new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadMore(); }, { threshold: 0.1 });
+    const obs = new IntersectionObserver(entries => { if (entries[0].isIntersecting && !loadingMore) loadMore(); }, { threshold: 0.1 });
     if (bottomRef.current) obs.observe(bottomRef.current);
     return () => obs.disconnect();
-  }, [loadMore]);
+  }, [loadMore, loadingMore]);
 
   const toggleLike = async pid => {
     const post = posts.find(p => p.id === pid);
@@ -516,6 +531,8 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
               const liked = p.likes.includes(session.user.id);
               const open = cmtOpen === p.id;
               const canDelete = p.by === session.user.id || myProfile?.is_admin;
+              // CORRECTION : détection du type média (video ou photo) depuis p.type ET l'URL
+              const isVideo = p.type === "video" || isVideoUrl(p.img);
               return (
                 <div key={p.id} style={{ background:T.card, marginBottom:1, borderTop:`1px solid ${T.border}`, animation:`fadeUp .4s ease ${Math.min(i,5)*.05}s both` }}>
                   <div style={{ padding:"14px 16px 10px", display:"flex", alignItems:"center", gap:11 }}>
@@ -541,8 +558,15 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
                       </div>
                     : <>
                         {p.text && <p style={{ margin:"0 16px 12px", fontSize:14, color:T.text, lineHeight:1.75, whiteSpace:"pre-line" }}>{p.text}</p>}
-                        {/* BUG CORRIGÉ : on utilise isVideoUrl pour décider du rendu */}
-                        {p.img && <div style={{ overflow:"hidden" }}><MediaPlayer url={p.img} /></div>}
+                        {/* CORRECTION : on force la lecture vidéo si isVideo, sinon image */}
+                        {p.img && (
+                          <div style={{ overflow:"hidden" }}>
+                            {isVideo
+                              ? <video src={p.img} controls playsInline style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", background:"#000" }} />
+                              : <img src={p.img} alt="" style={{ width:"100%", maxHeight:420, objectFit:"cover", display:"block", cursor:"zoom-in" }} onClick={() => window.open(p.img, "_blank")} onError={e => e.target.style.display="none"} />
+                            }
+                          </div>
+                        )}
                       </>
                   }
 
@@ -591,8 +615,14 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
               );
             })
         }
+        {/* Sentinelle de pagination */}
         <div ref={bottomRef} style={{ padding:"20px", textAlign:"center" }}>
-          {loadingMore && <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, color:T.muted, fontSize:13 }}><div style={{ width:20, height:20, border:`2px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />Chargement…</div>}
+          {loadingMore && (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, color:T.muted, fontSize:13 }}>
+              <div style={{ width:20, height:20, border:`2px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />
+              Chargement…
+            </div>
+          )}
           {!hasMore && posts.length > 0 && <p style={{ color:T.muted, fontSize:12, fontStyle:"italic" }}>✦ Vous avez tout vu</p>}
         </div>
       </div>
@@ -601,9 +631,8 @@ function HomeTab({ posts, setPosts, myProfile, session, getM, onNewPost, onUser,
 }
 
 /* ── NEW POST MODAL ── */
-// BUG CORRIGÉ : isVideoFile déclaré avec useState
 function NewPostModal({ myProfile, session, onClose, onPost }) {
-  const [type, setType] = useState("text");
+  const [postTab, setPostTab] = useState("text"); // renommé pour éviter le conflit avec "type" de post
   const [text, setText] = useState("");
   const [preview, setPreview] = useState(null);
   const [imgUrl, setImgUrl] = useState(null);
@@ -612,42 +641,65 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
   const [evDate, setEvDate] = useState("");
   const [evLoc, setEvLoc] = useState("");
   const [busy, setBusy] = useState(false);
-  const [isVideoFile, setIsVideoFile] = useState(false); // ← CORRECTION
+  // CORRECTION : on stocke le type réel du fichier sélectionné ("photo" ou "video")
+  const [fileMediaType, setFileMediaType] = useState("photo");
+  const [uploadError, setUploadError] = useState("");
   const fRef = useRef();
 
   const handlePick = async e => {
     const f = e.target.files[0]; if (!f) return;
-    setIsVideoFile(f.type.startsWith("video/"));
-    const r = new FileReader(); r.onload = ev => setPreview(ev.target.result); r.readAsDataURL(f);
+    setUploadError("");
+    // CORRECTION : on détecte et stocke immédiatement le type réel
+    const mediaType = getFileMediaType(f);
+    setFileMediaType(mediaType);
+
+    const r = new FileReader();
+    r.onload = ev => setPreview(ev.target.result);
+    r.readAsDataURL(f);
+
     setUploading(true);
-    const path = `posts/${session.user.id}/${Date.now()}_${f.name}`;
-    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
+    const ext = f.name.split(".").pop();
+    const path = `posts/${session.user.id}/${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true, contentType: f.type });
     if (!error) {
       const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
       setImgUrl(publicUrl);
+    } else {
+      setUploadError("Échec de l'upload : " + error.message);
     }
     setUploading(false);
   };
 
   const submit = async () => {
-    if (busy) return;
+    if (busy || uploading) return;
     setBusy(true);
-    // BUG CORRIGÉ : on utilise isVideoFile (state) pour déterminer le type réel
-    const postType = type === "photo" ? (isVideoFile ? "video" : "photo") : type;
+    setUploadError("");
+
+    // CORRECTION : le type réel à enregistrer en base
+    let dbType;
+    if (postTab === "text") dbType = "text";
+    else if (postTab === "photo") dbType = fileMediaType; // "photo" ou "video"
+    else dbType = "event";
+
     const { error } = await sb.from("posts").insert({
       author_id: session.user.id,
-      type: postType,
+      type: dbType,
       text: text.trim() || "",
-      img_url: type === "photo" ? imgUrl : null,
-      event_title: type === "event" ? evTitle.trim() : null,
-      event_date: type === "event" ? evDate : null,
-      event_loc: type === "event" ? evLoc : null,
+      img_url: postTab === "photo" ? imgUrl : null,
+      event_title: postTab === "event" ? evTitle.trim() : null,
+      event_date: postTab === "event" ? evDate : null,
+      event_loc: postTab === "event" ? evLoc : null,
     });
     setBusy(false);
     if (!error) onPost();
+    else setUploadError("Erreur publication : " + error.message);
   };
 
-  const ok = type === "text" ? text.trim().length > 0 : type === "photo" ? (imgUrl !== null || preview !== null) && !uploading : evTitle.trim().length > 0;
+  const ok = postTab === "text"
+    ? text.trim().length > 0
+    : postTab === "photo"
+      ? imgUrl !== null && !uploading
+      : evTitle.trim().length > 0;
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => e.target===e.currentTarget && onClose()}>
@@ -665,34 +717,53 @@ function NewPostModal({ myProfile, session, onClose, onPost }) {
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:16, background:"rgba(255,255,255,0.03)", borderRadius:12, padding:4 }}>
           {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Média"},{id:"event",l:"📅 Événement"}].map(t => (
-            <Btn key={t.id} onClick={() => setType(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:type===t.id?T.goldBg:"none", color:type===t.id?T.gold:T.muted, fontSize:12, fontWeight:type===t.id?700:400, border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
+            <Btn key={t.id} onClick={() => setPostTab(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:postTab===t.id?T.goldBg:"none", color:postTab===t.id?T.gold:T.muted, fontSize:12, fontWeight:postTab===t.id?700:400, border:postTab===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
           ))}
         </div>
-        {type==="photo" && (preview
+
+        {/* Zone média */}
+        {postTab==="photo" && (preview
           ? <div style={{ position:"relative", marginBottom:12 }}>
-              {/* BUG CORRIGÉ : prévisualisation correcte selon le type de fichier */}
-              {isVideoFile
+              {/* CORRECTION : on utilise fileMediaType pour la prévisualisation */}
+              {fileMediaType === "video"
                 ? <video src={preview} controls playsInline style={{ width:"100%", maxHeight:280, borderRadius:14, display:"block", background:"#000" }} />
                 : <img src={preview} alt="" style={{ width:"100%", maxHeight:280, objectFit:"cover", borderRadius:14, display:"block" }} />
               }
-              {uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} /></div>}
-              <Btn onClick={() => { setPreview(null); setImgUrl(null); setIsVideoFile(false); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+              {uploading && (
+                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10 }}>
+                  <div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />
+                  <span style={{ color:T.gold, fontSize:12 }}>Upload en cours…</span>
+                </div>
+              )}
+              {!uploading && imgUrl && (
+                <div style={{ position:"absolute", top:8, left:8, background:"rgba(80,192,128,0.9)", borderRadius:8, padding:"3px 8px", fontSize:11, fontWeight:700, color:"#fff" }}>
+                  {fileMediaType === "video" ? "🎥 Vidéo prête" : "📷 Photo prête"}
+                </div>
+              )}
+              <Btn onClick={() => { setPreview(null); setImgUrl(null); setFileMediaType("photo"); setUploadError(""); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
             </div>
-          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}><span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo</Btn>
+          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}>
+              <span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo
+            </Btn>
         )}
-        {type==="event" && (
+
+        {postTab==="event" && (
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:8 }}>
             {[{val:evTitle,set:setEvTitle,ph:"Titre *"},{val:evDate,set:setEvDate,ph:"Date et heure"},{val:evLoc,set:setEvLoc,ph:"Lieu"}].map(({val,set,ph}) => (
               <input key={ph} value={val} onChange={e => set(e.target.value)} placeholder={ph} style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:13, outline:"none" }} />
             ))}
           </div>
         )}
-        <textarea value={text} onChange={e => setText(e.target.value)} placeholder={type==="photo"?"Légende…":type==="event"?"Description…":"Partagez avec la communauté 🌿"} rows={4}
+
+        <textarea value={text} onChange={e => setText(e.target.value)} placeholder={postTab==="photo"?"Légende…":postTab==="event"?"Description…":"Partagez avec la communauté 🌿"} rows={4}
           style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:14, padding:"13px 14px", color:T.text, fontSize:14, outline:"none", resize:"none", lineHeight:1.65, marginBottom:14 }} />
+
+        {uploadError && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:10, padding:"10px 14px", color:T.err, fontSize:12, marginBottom:10 }}>⚠ {uploadError}</div>}
+
         <div style={{ display:"flex", gap:8 }}>
           <Btn onClick={onClose} style={{ flex:1, padding:"13px", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:13, color:T.sub, fontSize:14, fontWeight:600 }}>Annuler</Btn>
           <Btn onClick={submit} disabled={!ok||busy||uploading} style={{ flex:2, padding:"13px", background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.05)", color:ok&&!busy&&!uploading?T.bg:T.muted, borderRadius:13, fontSize:14, fontWeight:700, transition:"all .2s" }}>
-            {busy?"Publication…":uploading?"Upload…":"Publier ✦"}
+            {busy?"Publication…":uploading?"Upload en cours…":"Publier ✦"}
           </Btn>
         </div>
       </div>
@@ -785,38 +856,62 @@ function StatusesTab({ myProfile, session, members, notify }) {
 }
 
 /* ── ADD STATUS MODAL ── */
-// BUG CORRIGÉ : isVideoFile déclaré avec useState
 function AddStatusModal({ session, myStatuses, onClose, onDone }) {
-  const [type, setType] = useState("text");
+  const [statusTab, setStatusTab] = useState("text");
   const [text, setText] = useState("");
   const [mediaUrl, setMediaUrl] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [isVideoFile, setIsVideoFile] = useState(false); // ← CORRECTION
+  // CORRECTION : même approche que NewPostModal
+  const [fileMediaType, setFileMediaType] = useState("photo");
+  const [uploadError, setUploadError] = useState("");
   const fRef = useRef();
   const canAdd = myStatuses.length < 10;
 
   const handlePick = async e => {
     const f = e.target.files[0]; if (!f) return;
-    setIsVideoFile(f.type.startsWith("video/")); // ← CORRECTION : appel valide
-    const r = new FileReader(); r.onload = ev => setPreview(ev.target.result); r.readAsDataURL(f);
+    setUploadError("");
+    // CORRECTION : détection immédiate du type
+    const mediaType = getFileMediaType(f);
+    setFileMediaType(mediaType);
+
+    const r = new FileReader();
+    r.onload = ev => setPreview(ev.target.result);
+    r.readAsDataURL(f);
+
     setUploading(true);
-    const path = `statuses/${session.user.id}/${Date.now()}_${f.name}`;
-    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
-    if (!error) { const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path); setMediaUrl(publicUrl); }
+    const ext = f.name.split(".").pop();
+    const path = `statuses/${session.user.id}/${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true, contentType: f.type });
+    if (!error) {
+      const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
+      setMediaUrl(publicUrl);
+    } else {
+      setUploadError("Échec upload : " + error.message);
+    }
     setUploading(false);
   };
 
   const submit = async () => {
-    if (busy || !canAdd) return;
-    if (type==="text" && !text.trim()) return;
-    if (type!=="text" && !mediaUrl) return;
+    if (busy || !canAdd || uploading) return;
+    if (statusTab === "text" && !text.trim()) return;
+    if (statusTab !== "text" && !mediaUrl) {
+      setUploadError("Attendez la fin de l'upload avant de publier.");
+      return;
+    }
     setBusy(true);
-    // BUG CORRIGÉ : type correct enregistré en base
-    const statusType = type === "photo" ? (isVideoFile ? "video" : "photo") : type;
-    await sb.from("statuses").insert({ user_id:session.user.id, type:statusType, text:text.trim()||null, media_url:mediaUrl||null });
-    setBusy(false); onDone();
+    // CORRECTION : type correct en base
+    const dbType = statusTab === "photo" ? fileMediaType : "text";
+    const { error } = await sb.from("statuses").insert({
+      user_id: session.user.id,
+      type: dbType,
+      text: text.trim() || null,
+      media_url: mediaUrl || null,
+    });
+    setBusy(false);
+    if (!error) onDone();
+    else setUploadError("Erreur : " + error.message);
   };
 
   return (
@@ -830,25 +925,38 @@ function AddStatusModal({ session, myStatuses, onClose, onDone }) {
         {!canAdd && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:12, padding:"10px 14px", color:T.err, fontSize:13, marginBottom:14, textAlign:"center" }}>⚠ Limite de 10 statuts atteinte.</div>}
         <div style={{ display:"flex", gap:8, marginBottom:16, background:"rgba(255,255,255,0.03)", borderRadius:12, padding:4 }}>
           {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Photo/Vidéo"}].map(t => (
-            <Btn key={t.id} onClick={() => setType(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:type===t.id?T.goldBg:"none", color:type===t.id?T.gold:T.muted, fontSize:12, fontWeight:type===t.id?700:400, border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
+            <Btn key={t.id} onClick={() => setStatusTab(t.id)} style={{ flex:1, padding:"8px", borderRadius:9, background:statusTab===t.id?T.goldBg:"none", color:statusTab===t.id?T.gold:T.muted, fontSize:12, fontWeight:statusTab===t.id?700:400, border:statusTab===t.id?`1px solid ${T.gold}44`:"1px solid transparent" }}>{t.l}</Btn>
           ))}
         </div>
-        {type==="photo" && (preview
+        {statusTab==="photo" && (preview
           ? <div style={{ position:"relative", marginBottom:12 }}>
-              {/* BUG CORRIGÉ : prévisualisation correcte dans le modal statut */}
-              {isVideoFile
+              {/* CORRECTION : prévisualisation correcte */}
+              {fileMediaType === "video"
                 ? <video src={preview} controls playsInline style={{ width:"100%", maxHeight:280, borderRadius:14, display:"block", background:"#000" }} />
                 : <img src={preview} alt="" style={{ width:"100%", maxHeight:280, objectFit:"cover", borderRadius:14, display:"block" }} />
               }
-              {uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} /></div>}
-              <Btn onClick={() => { setPreview(null); setMediaUrl(null); setIsVideoFile(false); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
+              {uploading && (
+                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.6)", borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
+                  <div style={{ width:32, height:32, border:`3px solid ${T.border}`, borderTopColor:T.gold, borderRadius:"50%", animation:"spin .8s linear infinite" }} />
+                  <span style={{ color:T.gold, fontSize:12 }}>Upload…</span>
+                </div>
+              )}
+              {!uploading && mediaUrl && (
+                <div style={{ position:"absolute", top:8, left:8, background:"rgba(80,192,128,0.9)", borderRadius:8, padding:"3px 8px", fontSize:11, fontWeight:700, color:"#fff" }}>
+                  {fileMediaType === "video" ? "🎥 Prête" : "📷 Prête"}
+                </div>
+              )}
+              <Btn onClick={() => { setPreview(null); setMediaUrl(null); setFileMediaType("photo"); setUploadError(""); }} style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.7)", borderRadius:"50%", width:30, height:30, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</Btn>
             </div>
-          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}><span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo</Btn>
+          : <Btn onClick={() => fRef.current.click()} style={{ width:"100%", height:140, borderRadius:14, border:`2px dashed ${T.gold}44`, background:T.goldBg, color:T.gold, fontSize:13, fontWeight:600, marginBottom:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8 }}>
+              <span style={{ fontSize:36 }}>📷</span>Photo ou Vidéo
+            </Btn>
         )}
-        {type==="text"
+        {statusTab==="text"
           ? <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4} style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:14, padding:"13px 14px", color:T.text, fontSize:14, outline:"none", resize:"none", lineHeight:1.65, marginBottom:8 }} />
           : <input value={text} onChange={e => setText(e.target.value)} placeholder="Légende (optionnel)" style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:12, padding:"11px 14px", color:T.text, fontSize:13, outline:"none", marginBottom:12 }} />
         }
+        {uploadError && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:10, padding:"10px 14px", color:T.err, fontSize:12, marginBottom:10 }}>⚠ {uploadError}</div>}
         <div style={{ display:"flex", gap:8, marginTop:8 }}>
           <Btn onClick={onClose} style={{ flex:1, padding:"13px", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:13, color:T.sub, fontSize:14, fontWeight:600 }}>Annuler</Btn>
           <Btn onClick={submit} disabled={!canAdd||busy||uploading} style={{ flex:2, padding:"13px", background:canAdd&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.05)", color:canAdd&&!busy&&!uploading?T.bg:T.muted, borderRadius:13, fontSize:14, fontWeight:700 }}>
@@ -865,6 +973,10 @@ function StatusViewer({ statuses, author, isMe, onDelete, onClose }) {
   const [idx, setIdx] = useState(0);
   const current = statuses[idx];
   if (!current) return null;
+
+  // CORRECTION : détection vidéo dans le viewer (type "video" OU URL vidéo)
+  const isVideo = current.type === "video" || isVideoUrl(current.mediaUrl);
+
   return (
     <div style={{ position:"fixed", inset:0, zIndex:600, background:"rgba(0,0,0,0.95)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }} onClick={e => e.target===e.currentTarget && onClose()}>
       <div style={{ position:"absolute", top:16, left:16, right:16, display:"flex", gap:4 }}>
@@ -880,7 +992,11 @@ function StatusViewer({ statuses, author, isMe, onDelete, onClose }) {
         <Btn onClick={onClose} style={{ color:"rgba(255,255,255,0.7)", fontSize:22 }}>✕</Btn>
       </div>
       <div style={{ width:"100%", maxWidth:480, padding:"80px 20px 100px", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
-        {current.mediaUrl && <MediaPlayer url={current.mediaUrl} style={{ borderRadius:16, maxHeight:400 }} />}
+        {current.mediaUrl && (
+          isVideo
+            ? <video src={current.mediaUrl} controls playsInline style={{ width:"100%", maxHeight:400, borderRadius:16, display:"block", background:"#000" }} />
+            : <img src={current.mediaUrl} alt="" style={{ width:"100%", maxHeight:400, objectFit:"cover", borderRadius:16, display:"block" }} onClick={() => window.open(current.mediaUrl, "_blank")} />
+        )}
         {current.text && <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:16, padding:"16px 20px", width:"100%", textAlign:"center" }}><p style={{ margin:0, fontSize:18, color:"#fff", lineHeight:1.6, fontFamily:"'Cormorant Garamond',serif" }}>{current.text}</p></div>}
       </div>
       <div style={{ position:"absolute", bottom:40, left:16, right:16, display:"flex", justifyContent:"space-between" }}>
@@ -988,12 +1104,19 @@ function UserView({ user, myProfile, session, posts, onBack, onChat, notify }) {
         <h3 style={{ fontSize:13, fontWeight:600, color:T.muted, letterSpacing:1, marginBottom:12 }}>PUBLICATIONS ({uPosts.length})</h3>
         {uPosts.length===0
           ? <p style={{ color:T.muted, fontSize:13, fontStyle:"italic" }}>Aucune publication.</p>
-          : uPosts.map(p => (
-            <div key={p.id} style={{ background:T.card, borderRadius:14, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}` }}>
-              {p.img && <MediaPlayer url={p.img} style={{ maxHeight:200 }} />}
-              <div style={{ padding:12 }}><p style={{ margin:"0 0 6px", fontSize:13, color:T.text, lineHeight:1.6 }}>{p.text||p.title}</p><span style={{ fontSize:11, color:T.muted }}>{ago(p.ts)} · ❤ {p.likes.length}</span></div>
-            </div>
-          ))
+          : uPosts.map(p => {
+              const isVideo = p.type === "video" || isVideoUrl(p.img);
+              return (
+                <div key={p.id} style={{ background:T.card, borderRadius:14, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}` }}>
+                  {p.img && (
+                    isVideo
+                      ? <video src={p.img} controls playsInline style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block", background:"#000" }} />
+                      : <img src={p.img} alt="" style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block" }} onError={e => e.target.style.display="none"} />
+                  )}
+                  <div style={{ padding:12 }}><p style={{ margin:"0 0 6px", fontSize:13, color:T.text, lineHeight:1.6 }}>{p.text||p.title}</p><span style={{ fontSize:11, color:T.muted }}>{ago(p.ts)} · ❤ {p.likes.length}</span></div>
+                </div>
+              );
+            })
         }
       </div>
     </div>
@@ -1062,15 +1185,15 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
 
   const sendTxt = () => { if (inp.trim()) sendMsg({ type:"text", text:inp.trim() }); };
 
-  const handleFile = async (e, isImg) => {
+  const handleFile = async (e, isMedia) => {
     const f = e.target.files[0]; if (!f) return;
-    const isVideo = f.type.startsWith("video/");
+    // CORRECTION : détection correcte du type pour les messages
+    const mediaType = getFileMediaType(f);
     const path = `messages/${session.user.id}/${Date.now()}_${f.name}`;
-    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true });
+    const { error } = await sb.storage.from("celeste-media").upload(path, f, { upsert:true, contentType: f.type });
     if (!error) {
       const { data: { publicUrl } } = sb.storage.from("celeste-media").getPublicUrl(path);
-      // BUG CORRIGÉ : type "video" envoyé correctement pour les vidéos dans les messages
-      const msgType = isImg ? (isVideo ? "video" : "photo") : "file";
+      const msgType = isMedia ? mediaType : "file"; // "photo", "video", ou "file"
       sendMsg({ type:msgType, file_url:publicUrl, file_name:f.name });
     }
     e.target.value = "";
@@ -1097,13 +1220,18 @@ function ChatScreen({ conv, myProfile, session, members, reload, notify }) {
         )}
         {conv.msgs.map(m => {
           const mine = m.f==="me"||m.f===session.user.id;
+          // CORRECTION : détection vidéo dans les messages
+          const isVideo = m.type === "video" || isVideoUrl(m.img);
           return (
             <div key={m.id} style={{ display:"flex", justifyContent:mine?"flex-end":"flex-start", alignItems:"flex-end", gap:7 }}>
               {!mine && <Av u={user} size={28} />}
               <div style={{ maxWidth:"72%" }}>
                 <div style={{ background:mine?T.gradGold:"rgba(255,255,255,0.06)", borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px", padding:"10px 14px", border:mine?"none":`1px solid ${T.border}` }}>
-                  {/* BUG CORRIGÉ : on gère aussi le type "video" dans les messages */}
-                  {(m.type==="photo"||m.type==="image"||m.type==="video")&&m.img && <MediaPlayer url={m.img} style={{ maxWidth:240, maxHeight:220, borderRadius:10, marginBottom:m.text?6:0 }} />}
+                  {(m.type==="photo"||m.type==="image"||m.type==="video") && m.img && (
+                    isVideo
+                      ? <video src={m.img} controls playsInline style={{ maxWidth:240, maxHeight:220, borderRadius:10, marginBottom:m.text?6:0, display:"block", background:"#000" }} />
+                      : <img src={m.img} alt="" style={{ maxWidth:240, maxHeight:220, objectFit:"cover", borderRadius:10, marginBottom:m.text?6:0, display:"block" }} onError={e => e.target.style.display="none"} />
+                  )}
                   {m.type==="file" && <a href={m.img||"#"} download={m.fileName} target="_blank" rel="noreferrer" style={{ display:"flex", alignItems:"center", gap:9, textDecoration:"none" }}><span style={{ fontSize:22 }}>📄</span><span style={{ fontSize:12, fontWeight:600, color:mine?T.bg:T.text }}>{m.fileName}</span></a>}
                   {m.text && <p style={{ margin:0, fontSize:14, color:mine?T.bg:T.text, lineHeight:1.55, whiteSpace:"pre-wrap" }}>{m.text}</p>}
                 </div>
@@ -1223,15 +1351,23 @@ function ProfileTab({ myProfile, session, posts, onNewPost, notify, onLogout, re
             {myPosts.length===0
               ? <p style={{ color:T.muted, textAlign:"center", padding:"30px 0", fontStyle:"italic", fontFamily:"'Cormorant Garamond',serif", fontSize:18 }}>Aucune publication encore</p>
               : <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  {myPosts.map(p => (
-                    <div key={p.id} style={{ background:T.card, borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}` }}>
-                      {p.img ? <MediaPlayer url={p.img} style={{ height:120, objectFit:"cover" }} /> : <div style={{ height:80, background:`linear-gradient(135deg,${T.goldBg},transparent)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontFamily:"'Cormorant Garamond',serif", color:T.gold }}>✦</div>}
-                      <div style={{ padding:"8px 10px" }}>
-                        <p style={{ margin:"0 0 4px", fontSize:12, color:T.text, lineHeight:1.4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.text||p.title||"Publication"}</p>
-                        <span style={{ fontSize:10, color:T.muted }}>❤ {p.likes.length} · {ago(p.ts)}</span>
+                  {myPosts.map(p => {
+                    const isVideo = p.type === "video" || isVideoUrl(p.img);
+                    return (
+                      <div key={p.id} style={{ background:T.card, borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}` }}>
+                        {p.img
+                          ? isVideo
+                            ? <video src={p.img} style={{ width:"100%", height:120, objectFit:"cover", display:"block", background:"#000" }} />
+                            : <img src={p.img} alt="" style={{ width:"100%", height:120, objectFit:"cover", display:"block" }} onError={e => e.target.style.display="none"} />
+                          : <div style={{ height:80, background:`linear-gradient(135deg,${T.goldBg},transparent)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontFamily:"'Cormorant Garamond',serif", color:T.gold }}>✦</div>
+                        }
+                        <div style={{ padding:"8px 10px" }}>
+                          <p style={{ margin:"0 0 4px", fontSize:12, color:T.text, lineHeight:1.4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.text||p.title||"Publication"}</p>
+                          <span style={{ fontSize:10, color:T.muted }}>❤ {p.likes.length} · {ago(p.ts)}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
             }
           </>
