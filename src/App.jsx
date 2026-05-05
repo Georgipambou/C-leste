@@ -77,7 +77,7 @@ const sendPushNotif = (title, body, icon="") => {
 const GS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { height: 100%; background: ${T.bg}; }
+  html, body, #root { height: 100%; background: ${T.bg}; overscroll-behavior: none; }
   ::-webkit-scrollbar { width: 3px; }
   ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 2px; }
   input, textarea, select, button { font-family: 'DM Sans', sans-serif; }
@@ -330,8 +330,8 @@ function AuthScreen({ mode, setMode, onSuccess }) {
 
   const reset = () => { setErr(""); setPrenom(""); setNom(""); setParoisse(""); setEmail(""); setPw(""); };
 
-  const submit = async e => {
-    e?.preventDefault(); setErr("");
+  const submit = async () => {
+    setErr("");
     if (mode === "register") {
       if (prenom.trim().length < 2) return setErr("Prénom requis");
       if (nom.trim().length < 2) return setErr("Nom requis");
@@ -356,12 +356,15 @@ function AuthScreen({ mode, setMode, onSuccess }) {
 
   const Field = ({ val, set, placeholder, type="text" }) => (
     <div style={{ position:"relative" }}>
-      <input value={val} onChange={e => { set(e.target.value); setErr(""); }}
-        placeholder={placeholder} type={type === "password" && showPw ? "text" : type}
-        onKeyDown={e => e.key === "Enter" && submit()}
-        style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:14, padding:"14px 16px", color:T.text, fontSize:14, outline:"none" }}
-        onFocus={e => e.target.style.borderColor = T.gold}
-        onBlur={e => e.target.style.borderColor = T.border} />
+      <input
+        value={val}
+        onChange={e => { set(e.target.value); setErr(""); }}
+        placeholder={placeholder}
+        type={type === "password" && showPw ? "text" : type}
+        enterKeyHint="next"
+        autoComplete={type === "email" ? "email" : type === "password" ? "current-password" : "off"}
+        style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:`1px solid ${T.border}`, borderRadius:14, padding:"14px 16px", color:T.text, fontSize:16, outline:"none" }}
+      />
       {type === "password" && (
         <Btn onClick={() => setShowPw(!showPw)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", color:T.muted, fontSize:16 }}>
           {showPw ? "🙈" : "👁"}
@@ -371,15 +374,15 @@ function AuthScreen({ mode, setMode, onSuccess }) {
   );
 
   return (
-    <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"'DM Sans',sans-serif", position:"relative", overflow:"hidden" }}>
+    <div style={{ minHeight:"100svh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:"20px 20px env(safe-area-inset-bottom, 20px)", fontFamily:"'DM Sans',sans-serif", position:"relative", overflow:"hidden" }}>
       <div style={{ position:"absolute", top:"-20%", left:"-10%", width:500, height:500, borderRadius:"50%", background:"radial-gradient(circle, rgba(212,160,80,0.06) 0%, transparent 70%)", pointerEvents:"none" }} />
       <div style={{ position:"absolute", bottom:"-20%", right:"-10%", width:400, height:400, borderRadius:"50%", background:"radial-gradient(circle, rgba(74,122,176,0.06) 0%, transparent 70%)", pointerEvents:"none" }} />
       <div style={{ width:"100%", maxWidth:420, animation:"fadeUp .5s ease" }}>
-        <div style={{ textAlign:"center", marginBottom:40 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
           <div style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", width:72, height:72, borderRadius:"50%", background:"rgba(212,160,80,0.10)", border:`1px solid ${T.gold}44`, marginBottom:20, animation:"glow 3s ease infinite" }}>
             <span style={{ fontSize:32, fontFamily:"'Cormorant Garamond',serif" }}>✦</span>
           </div>
-          <h1 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:48, fontWeight:300, color:T.text, letterSpacing:4, marginBottom:6 }}>Céleste</h1>
+          <h1 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:44, fontWeight:300, color:T.text, letterSpacing:4, marginBottom:6 }}>Céleste</h1>
           <p style={{ color:T.muted, fontSize:13, letterSpacing:1 }}>Des rencontres ancrées dans la foi</p>
         </div>
         <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${T.border}`, borderRadius:24, overflow:"hidden", backdropFilter:"blur(20px)" }}>
@@ -390,7 +393,7 @@ function AuthScreen({ mode, setMode, onSuccess }) {
               </Btn>
             ))}
           </div>
-          <div style={{ padding:"28px 24px 32px", display:"flex", flexDirection:"column", gap:10 }}>
+          <div style={{ padding:"24px 20px 28px", display:"flex", flexDirection:"column", gap:10 }}>
             {mode === "register" && (
               <>
                 <div style={{ display:"flex", gap:10 }}>
@@ -403,7 +406,7 @@ function AuthScreen({ mode, setMode, onSuccess }) {
             <Field val={email} set={setEmail} placeholder="Email *" type="email" />
             <Field val={pw} set={setPw} placeholder="Mot de passe *" type="password" />
             {err && <div style={{ background:"rgba(224,80,80,0.10)", border:`1px solid ${T.err}44`, borderRadius:10, padding:"10px 14px", color:T.err, fontSize:12 }}>⚠ {err}</div>}
-            <Btn type="submit" onClick={submit} disabled={busy} style={{ padding:"15px", background: busy ? T.goldBg : T.gradGold, color:T.bg, borderRadius:14, fontSize:14, fontWeight:700, boxShadow: busy ? "none" : "0 8px 32px rgba(212,160,80,0.3)", opacity: busy ? .6 : 1, transition:"all .2s", marginTop:4 }}>
+            <Btn onClick={submit} disabled={busy} style={{ padding:"15px", background: busy ? T.goldBg : T.gradGold, color:T.bg, borderRadius:14, fontSize:14, fontWeight:700, boxShadow: busy ? "none" : "0 8px 32px rgba(212,160,80,0.3)", opacity: busy ? .6 : 1, transition:"all .2s", marginTop:4 }}>
               {busy ? "⏳ Chargement…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
             </Btn>
             {mode === "register" && (
@@ -693,7 +696,7 @@ export default function App() {
   const openUser = members.find(m => m.id === openUserId);
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:T.bg, color:T.text, overflow:"hidden", fontFamily:"'DM Sans',sans-serif" }}>
+    <div style={{ display:"flex", flexDirection:"column", height:"100dvh", background:T.bg, color:T.text, fontFamily:"'DM Sans',sans-serif" }}>
       <style>{GS}</style>
       {toast && <Toast msg={toast} />}
       {viewImg && <ImageViewer url={viewImg} onClose={() => setViewImg(null)} />}
@@ -729,7 +732,7 @@ export default function App() {
       </div>
 
       {/* CONTENT */}
-      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
         {openUserId && openUser
           ? <UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={() => setOpenUserId(null)}
               onChat={uid => {
