@@ -1,18 +1,9 @@
-supabase functions deploy notify-message
-ndex.ts << 'ENDOFFILE'
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import webpush from "npm:web-push@3.6.7";
 
-const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
-const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
+const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID")!;
+const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-webpush.setVapidDetails(
-  "mailto:celeste@gmail.com",
-  VAPID_PUBLIC_KEY,
-  VAPID_PRIVATE_KEY
-);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -45,6 +36,10 @@ Deno.serve(async (req) => {
 
     if (!subData?.subscription) return new Response("Pas de subscription", { status: 200 });
 
+    const sub = JSON.parse(subData.subscription);
+    const onesignalId = sub.onesignal_id;
+    if (!onesignalId) return new Response("Pas d'ID OneSignal", { status: 200 });
+
     const { data: sender } = await supabase
       .from("profiles")
       .select("prenom, nom")
@@ -61,16 +56,20 @@ Deno.serve(async (req) => {
       : msgType === "file" ? "📎 Fichier"
       : msgText || "…";
 
-    const payload = JSON.stringify({
-      title: `✦ ${senderName}`,
-      body: notifBody,
-      icon: "/icon-192.png",
-      tag: `msg-${convId}`,
-      renotify: true,
-      data: { convId, url: "/" }
+    await fetch("https://onesignal.com/api/v1/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Basic ${ONESIGNAL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        include_subscription_uuids: [onesignalId],
+        headings: { en: `✦ ${senderName}` },
+        contents: { en: notifBody },
+        url: "/",
+      }),
     });
-
-    await webpush.sendNotification(JSON.parse(subData.subscription), payload);
 
     return new Response("OK", { status: 200 });
   } catch (err) {
@@ -78,4 +77,3 @@ Deno.serve(async (req) => {
     return new Response("Erreur interne", { status: 500 });
   }
 });
-ENDOFFILE
