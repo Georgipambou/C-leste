@@ -861,7 +861,7 @@ return(
                   <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
   <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
-  <Btn onClick={()=>delReply(r.id,r.author_id||r.author?.id)} style={{color:T.err,opacity:.5,padding:0}}><Trash2 size={12}/></Btn>
+  
 </div>
                 </div>
               </div>
