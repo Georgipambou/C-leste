@@ -766,12 +766,11 @@ function NotifsScreen({myProfile,session,members}){
   );
 }
 
-// ── COMMENTS SECTION (ENRICHI depuis App 9) ───────────────
+// ── COMMENTS SECTION ─────────────────────────────────────
 function CommentsSection({postId,sessionUserId,members,getM,onCountChange}){
   const [comments,setComments]=useState([]);
   const [text,setText]=useState("");
   const [posting,setPosting]=useState(false);
-  const myProfile=getM("me");
 
   const load=useCallback(async()=>{
     const{data}=await sb.from("comments")
@@ -798,80 +797,23 @@ function CommentsSection({postId,sessionUserId,members,getM,onCountChange}){
     setText(""); setPosting(false);
   };
 
-const [menu,setMenu]=useState(false);
-const longPressTimer=useRef(null);
-
-return(
-  <div style={{display:"flex",gap:9,marginBottom:14,animation:"msgIn .3s ease"}}>
-    <Av u={author} size={32}/>
-    <div style={{flex:1}}>
-      <div
-        onTouchStart={()=>{longPressTimer.current=setTimeout(()=>setMenu(true),500);}}
-        onTouchEnd={()=>clearTimeout(longPressTimer.current)}
-        style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 14px 14px 14px",padding:"10px 13px",border:`1px solid ${T.border}`,position:"relative"}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-          <div style={{flex:1}}>
-            <p style={{margin:"0 0 4px",fontSize:12,fontWeight:700,color:T.goldL}}>{author?.name||"?"}</p>
-            <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>
-          </div>
-        </div>
-        {menu&&(
-          <div style={{position:"absolute",top:0,right:0,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:8,zIndex:10,display:"flex",flexDirection:"column",gap:4,minWidth:140,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
-            <Btn onClick={()=>{navigator.clipboard?.writeText(comment.text);setMenu(false);}} style={{padding:"8px 12px",borderRadius:10,color:T.text,fontSize:13,textAlign:"left"}}>📋 Copier</Btn>
-            {isMine&&<Btn onClick={()=>{del();setMenu(false);}} style={{padding:"8px 12px",borderRadius:10,color:T.err,fontSize:13,textAlign:"left"}}>🗑 Supprimer</Btn>}
-            <Btn onClick={()=>setMenu(false)} style={{padding:"8px 12px",borderRadius:10,color:T.muted,fontSize:13,textAlign:"left"}}>✕ Annuler</Btn>
-          </div>
-        )}
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:14,paddingLeft:4,marginTop:5}}>
-        <span style={{fontSize:10,color:T.muted}}>{ago(comment.created_at)}</span>
-        <Btn onClick={toggleLike} style={{fontSize:11,color:liked?T.gold:T.muted,fontWeight:liked?700:400,display:"flex",alignItems:"center",gap:4,transition:"all .2s"}}>
-          <span style={{fontSize:13,animation:liked?"pulse .3s ease":"none"}}>{liked?"❤️":"🤍"}</span>
-          {likes>0&&<span>{likes}</span>}
-        </Btn>
-        <Btn onClick={()=>setReplying(r=>!r)} style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:4}}>
-          <Reply size={12}/> Répondre
+  return(
+    <div>
+      {comments.map(c=>(
+        <CommentItem key={c.id} comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
+      ))}
+      <div style={{display:"flex",gap:9,marginTop:10}}>
+        <input value={text} onChange={e=>setText(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter")submit();}}
+          placeholder="Ajouter un commentaire…"
+          style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+        <Btn onClick={submit} disabled={posting||!text.trim()} style={{background:T.gradGold,borderRadius:"50%",width:36,height:36,color:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Send size={14}/>
         </Btn>
       </div>
-      {replying&&(
-        <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
-          <input autoFocus value={replyText} onChange={e=>setReplyText(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter")submitReply();}}
-            placeholder="Répondre…"
-            style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:20,padding:"7px 14px",color:T.text,fontSize:12,outline:"none"}}/>
-          <Btn onClick={submitReply} style={{background:T.gradGold,borderRadius:"50%",width:28,height:28,color:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Send size={12}/>
-          </Btn>
-        </div>
-      )}
-      {replies.length>0&&(
-        <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:11,color:T.navy,marginTop:6,paddingLeft:4,display:"flex",alignItems:"center",gap:4}}>
-          <Reply size={11}/>
-          {showReplies?"Masquer":`${replies.length} réponse${replies.length>1?"s":""}`}
-        </Btn>
-      )}
-      {showReplies&&(
-        <div style={{marginTop:8,paddingLeft:12,borderLeft:`2px solid ${T.border}`,display:"flex",flexDirection:"column",gap:8}}>
-          {replies.map(r=>{
-            const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
-            return(
-              <div key={r.id} style={{display:"flex",gap:8,animation:"msgIn .2s ease"}}>
-                <Av u={ra} size={26}/>
-                <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 12px 12px 12px",padding:"8px 11px",border:`1px solid ${T.border}`,flex:1}}>
-                  <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-  <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
-  <Btn onClick={()=>delReply(r.id,r.author_id||r.author?.id)} style={{color:T.err,opacity:.5,padding:0}}><Trash2 size={12}/></Btn>
-</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
-  </div>
-);
+  );
+}
 
 // ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
 function CommentItem({comment,sessionUserId,getM,onChange}){
@@ -914,12 +856,6 @@ setShowReplies(true);
     if(!window.confirm("Supprimer ?"))return;
     await sb.from("comments").delete().eq("id",comment.id);
     onChange?.();
-    const delReply=async(replyId,replyAuthorId)=>{
-  if(replyAuthorId!==sessionUserId)return;
-  if(!window.confirm("Supprimer cette réponse ?"))return;
-  await sb.from("comment_replies").delete().eq("id",replyId);
-  loadMeta();
-};
   };
 
   return(
@@ -974,10 +910,7 @@ setShowReplies(true);
                   <Av u={ra} size={26}/>
                   <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 12px 12px 12px",padding:"8px 11px",border:`1px solid ${T.border}`,flex:1}}>
                     <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-  <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
-  {r.author_id===sessionUserId&&<Btn onClick={()=>delReply(r.id,r.author_id)} style={{color:T.err,opacity:.5,padding:0}}><Trash2 size={12}/></Btn>}
-</div>
+                    <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
                   </div>
                 </div>
               );
@@ -1806,30 +1739,29 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
             :<>
               {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
               {(()=>{
-  const swipeStart=useRef(null);
-const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
-if(allMedia.length===0)return null;
-return(
-  <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
-    onTouchStart={e=>{swipeStart.current=e.touches[0].clientX;}}
-    onTouchEnd={e=>{
-      if(swipeStart.current===null)return;
-      const diff=swipeStart.current-e.changedTouches[0].clientX;
-      if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
-      if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
-      swipeStart.current=null;
-    }}>
-    <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
-    {allMedia.length>1&&(
-      <>
-        <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
-          {allMedia.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setSlideIdx(i);}} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
-        </div>
-        <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
-      </>
-    )}
-  </div>
-);
+  const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
+  if(allMedia.length===0)return null;
+  return(
+    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+      onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
+      onTouchEnd={e=>{
+        if(swipeStartRef.current===null)return;
+        const diff=swipeStartRef.current-e.changedTouches[0].clientX;
+        if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
+        if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
+        swipeStartRef.current=null;
+      }}>
+      <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
+      {allMedia.length>1&&(
+        <>
+          <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+            {allMedia.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setSlideIdx(i);}} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
+          </div>
+          <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
+        </>
+      )}
+    </div>
+  );
 })()}
             </>
           }
@@ -2321,11 +2253,6 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
     sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).single().then(({data})=>{if(data)setBlocked(true);});
   },[user.id,session?.user?.id]);
 
-  useEffect(()=>{
-  sb.from("profiles").select("cover_url").eq("id",user.id).single()
-    .then(({data})=>{if(data?.cover_url)setCoverPhoto(data.cover_url);});
-},[user.id]);
-
   const toggle=async()=>{
     if(conn){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",user.id);notify("Retiré");}
     else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:user.id});notify("Abonné ✦");}
@@ -2479,6 +2406,11 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
   const followersCount=(myFollowers||[]).length;
   const followingCount=(myConnections||[]).length;
   const [detailPost, setDetailPost] = useState(null);
+  const refreshPost=async pid=>{
+  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  if(!data)return null;
+  return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
+};
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
