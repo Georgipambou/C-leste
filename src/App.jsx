@@ -377,9 +377,10 @@ const triggerControls=()=>{
   const openFullscreen=e=>{
   e.stopPropagation();
   const el=ref.current;
-  if(el?.requestFullscreen)el.requestFullscreen();
-  else if(el?.webkitEnterFullscreen)el.webkitEnterFullscreen();
-  else if(el?.webkitRequestFullscreen)el.webkitRequestFullscreen();
+  if(!el)return;
+  if(el.webkitEnterFullscreen){el.webkitEnterFullscreen();return;}
+  if(el.requestFullscreen){el.requestFullscreen();setFullscreen(true);return;}
+  if(el.webkitRequestFullscreen){el.webkitRequestFullscreen();setFullscreen(true);return;}
   setFullscreen(true);
 };
 const closeFullscreen=()=>{
@@ -436,13 +437,40 @@ const closeFullscreen=()=>{
   onTouchEnd={()=>{touchStartX.current=null;}}
 >
       <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop preload="metadata"
-  style={{width:"100%",borderRadius:14,display:"block",background:"#000",height:360,objectFit:"cover",...style}}/>
+  style={{width:"100%",borderRadius:14,display:"block",background:"#000",height:360,objectFit:"cover",...style}}
+  onTimeUpdate={e=>{
+    const el=e.target;
+    if(!el.duration)return;
+    const pct=(el.currentTime/el.duration)*100;
+    const bar=el.parentNode.querySelector(".progress-fill");
+    if(bar)bar.style.width=pct+"%";
+    const timeEl=el.parentNode.querySelector(".progress-time");
+    if(timeEl){
+      const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+      timeEl.textContent=`${fmt(el.currentTime)} / ${fmt(el.duration)}`;
+    }
+  }}/>
 <div style={{position:"absolute",bottom:50,left:10,right:10,zIndex:4,opacity:showControls?1:0,transition:"opacity 0.3s ease",pointerEvents:showControls?"all":"none"}}>
-  <input type="range" min={0} max={100} defaultValue={0}
-    onChange={e=>{if(ref.current)ref.current.currentTime=ref.current.duration*(e.target.value/100);}}
-    onMouseDown={()=>{if(ref.current)ref.current.pause();}}
-    onMouseUp={e=>{if(ref.current){ref.current.currentTime=ref.current.duration*(e.target.value/100);ref.current.play().catch(()=>{});}}}
-    style={{width:"100%",accentColor:T.gold,cursor:"pointer",height:3}}/>
+  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+    <span className="progress-time" style={{color:"#fff",fontSize:11,fontWeight:600,minWidth:70,textAlign:"center",background:"rgba(0,0,0,0.4)",borderRadius:8,padding:"2px 6px"}}>0:00 / 0:00</span>
+  </div>
+  <div style={{position:"relative",height:4,background:"rgba(255,255,255,0.2)",borderRadius:2,cursor:"pointer"}}
+    onClick={e=>{
+      if(!ref.current)return;
+      const rect=e.currentTarget.getBoundingClientRect();
+      const pct=(e.clientX-rect.left)/rect.width;
+      ref.current.currentTime=pct*ref.current.duration;
+    }}
+    onTouchStart={e=>{
+      if(!ref.current)return;
+      const rect=e.currentTarget.getBoundingClientRect();
+      const pct=(e.touches[0].clientX-rect.left)/rect.width;
+      ref.current.currentTime=pct*ref.current.duration;
+    }}>
+    <div className="progress-fill" style={{height:"100%",width:"0%",background:T.gradGold,borderRadius:2,transition:"width 0.1s linear",position:"relative"}}>
+      <div style={{position:"absolute",right:-6,top:"50%",transform:"translateY(-50%)",width:12,height:12,borderRadius:"50%",background:T.gold,boxShadow:"0 0 6px rgba(201,149,42,0.8)"}}/>
+    </div>
+  </div>
 </div>
       {!playing&&(
         <div onClick={togglePlayPause} style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:1,borderRadius:14}}>
