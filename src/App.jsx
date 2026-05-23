@@ -766,12 +766,11 @@ function NotifsScreen({myProfile,session,members}){
   );
 }
 
-// ── COMMENTS SECTION (ENRICHI depuis App 9) ───────────────
+// ── COMMENTS SECTION ─────────────────────────────────────
 function CommentsSection({postId,sessionUserId,members,getM,onCountChange}){
   const [comments,setComments]=useState([]);
   const [text,setText]=useState("");
   const [posting,setPosting]=useState(false);
-  const myProfile=getM("me");
 
   const load=useCallback(async()=>{
     const{data}=await sb.from("comments")
@@ -799,21 +798,18 @@ function CommentsSection({postId,sessionUserId,members,getM,onCountChange}){
   };
 
   return(
-    <div style={{borderTop:`1px solid ${T.border}`,marginTop:10}}>
+    <div>
       {comments.map(c=>(
         <CommentItem key={c.id} comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
       ))}
-      <div style={{display:"flex",gap:8,alignItems:"center",padding:"10px 0"}}>
-        <Av u={myProfile} size={30}/>
-        <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:20,padding:"7px 14px",display:"flex",gap:8,alignItems:"center"}}>
-          <input value={text} onChange={e=>setText(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
-            placeholder="Commenter…"
-            style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
-          <Btn onClick={submit} disabled={posting||!text.trim()} style={{background:text.trim()?T.gradGold:"none",borderRadius:"50%",width:28,height:28,color:text.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all .2s",flexShrink:0}}>
-            <Send size={13}/>
-          </Btn>
-        </div>
+      <div style={{display:"flex",gap:9,marginTop:10}}>
+        <input value={text} onChange={e=>setText(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter")submit();}}
+          placeholder="Ajouter un commentaire…"
+          style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+        <Btn onClick={submit} disabled={posting||!text.trim()} style={{background:T.gradGold,borderRadius:"50%",width:36,height:36,color:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Send size={14}/>
+        </Btn>
       </div>
     </div>
   );
@@ -1743,30 +1739,29 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
             :<>
               {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
               {(()=>{
-  const swipeStart=useRef(null);
-const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
-if(allMedia.length===0)return null;
-return(
-  <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
-    onTouchStart={e=>{swipeStart.current=e.touches[0].clientX;}}
-    onTouchEnd={e=>{
-      if(swipeStart.current===null)return;
-      const diff=swipeStart.current-e.changedTouches[0].clientX;
-      if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
-      if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
-      swipeStart.current=null;
-    }}>
-    <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
-    {allMedia.length>1&&(
-      <>
-        <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
-          {allMedia.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setSlideIdx(i);}} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
-        </div>
-        <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
-      </>
-    )}
-  </div>
-);
+  const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
+  if(allMedia.length===0)return null;
+  return(
+    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+      onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
+      onTouchEnd={e=>{
+        if(swipeStartRef.current===null)return;
+        const diff=swipeStartRef.current-e.changedTouches[0].clientX;
+        if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
+        if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
+        swipeStartRef.current=null;
+      }}>
+      <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
+      {allMedia.length>1&&(
+        <>
+          <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+            {allMedia.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setSlideIdx(i);}} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
+          </div>
+          <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
+        </>
+      )}
+    </div>
+  );
 })()}
             </>
           }
@@ -2411,6 +2406,11 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
   const followersCount=(myFollowers||[]).length;
   const followingCount=(myConnections||[]).length;
   const [detailPost, setDetailPost] = useState(null);
+  const refreshPost=async pid=>{
+  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  if(!data)return null;
+  return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
+};
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
