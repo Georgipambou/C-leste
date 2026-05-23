@@ -861,7 +861,7 @@ return(
                   <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
   <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
-  
+  <Btn onClick={()=>delReply(r.id,r.author_id||r.author?.id)} style={{color:T.err,opacity:.5,padding:0}}><Trash2 size={12}/></Btn>
 </div>
                 </div>
               </div>
@@ -2320,6 +2320,11 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
     sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id).then(({count})=>setFollowersCount(count||0));
     sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).single().then(({data})=>{if(data)setBlocked(true);});
   },[user.id,session?.user?.id]);
+  
+  useEffect(()=>{
+  sb.from("profiles").select("cover_url").eq("id",user.id).single()
+    .then(({data})=>{if(data?.cover_url)setCoverPhoto(data.cover_url);});
+},[user.id]);
 
   const toggle=async()=>{
     if(conn){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",user.id);notify("Retiré");}
