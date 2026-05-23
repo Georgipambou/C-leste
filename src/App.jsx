@@ -1514,7 +1514,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
 }
 
 // ── HOME TAB ──────────────────────────────────────────────
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect}){
   const [detailPost,setDetailPost]=useState(null);
   const bottomRef=useRef();
   const observer=useRef();
@@ -1586,7 +1586,9 @@ function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,
             onImageView={onImageView}
             notify={notify}
             refresh={()=>refreshPost(p.id)}
-            animDelay={i*.03}
+animDelay={i*.03}
+myConnections={myConnections}
+onConnect={onConnect}
           />
         ))}
 
@@ -1603,7 +1605,7 @@ function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,
 }
 
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
-function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,animDelay=0}){
+function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,animDelay=0,myConnections,onConnect}){
   const [saved,setSaved]=useState(false);
   const [showMenu,setShowMenu]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
@@ -1637,7 +1639,12 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
     <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px",animation:`fadeUp .4s ease ${animDelay}s both`,cursor:"pointer"}} onClick={()=>onDetail?.()}>
       <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
         {/* Avatar */}
-        <Av u={post.author} size={42} onClick={e=>{e.stopPropagation();onUser?.(post.by);}}/>
+        <div style={{position:"relative",display:"inline-block"}}>
+  <Av u={post.author} size={42} onClick={e=>{e.stopPropagation();onUser?.(post.by);}}/>
+  {!myConnections?.includes(post.by)&&post.by!==session?.user?.id&&(
+    <Btn onClick={e=>{e.stopPropagation();onConnect?.(post.by);}} style={{position:"absolute",bottom:-2,right:-2,width:18,height:18,borderRadius:"50%",background:T.gradGold,color:"#000",fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",padding:0,boxShadow:"0 2px 8px rgba(201,149,42,0.5)"}}>+</Btn>
+  )}
+</div>
         <div style={{flex:1,minWidth:0}}>
           {/* Header */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
@@ -2129,8 +2136,8 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
           <Av u={user} size={88} ring/>
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
-              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"10px 10px",color:T.text,fontSize:11,fontWeight:600}}>Message</Btn>
-              <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:20,padding:"10px 10px",color:conn?T.goldL:"#000",fontSize:11,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
+              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"10px 5px",color:T.text,fontSize:11,fontWeight:600}}>Message</Btn>
+              <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:20,padding:"10px 5px",color:conn?T.goldL:"#000",fontSize:11,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
             </div>
             <div style={{display:"flex",gap:6}}>
               <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"5px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
@@ -2997,7 +3004,7 @@ function CelesteApp(){
           )}
           {!openUserId&&!openConvId&&(
             <>
-              {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={setOpenUserId} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg}/>}
+              {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={setOpenUserId} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}}/>}
