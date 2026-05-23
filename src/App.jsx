@@ -2320,7 +2320,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
     sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id).then(({count})=>setFollowersCount(count||0));
     sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).single().then(({data})=>{if(data)setBlocked(true);});
   },[user.id,session?.user?.id]);
-  
+
   useEffect(()=>{
   sb.from("profiles").select("cover_url").eq("id",user.id).single()
     .then(({data})=>{if(data?.cover_url)setCoverPhoto(data.cover_url);});
