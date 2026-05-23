@@ -2129,12 +2129,12 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
           <Av u={user} size={88} ring/>
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
-              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:14,padding:"9px 16px",color:T.text,fontSize:13,fontWeight:600}}>Message</Btn>
-              <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:14,padding:"9px 18px",color:conn?T.goldL:"#000",fontSize:13,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
+              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"10px 10px",color:T.text,fontSize:11,fontWeight:600}}>Message</Btn>
+              <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:20,padding:"10px 10px",color:conn?T.goldL:"#000",fontSize:11,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
             </div>
             <div style={{display:"flex",gap:6}}>
-              <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"6px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
-              <Btn onClick={()=>setShowReport(true)} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10,padding:"6px 12px",color:T.muted,fontSize:11,fontWeight:600}}>Signaler</Btn>
+              <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"5px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
+              <Btn onClick={()=>setShowReport(true)} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10,padding:"5px 12px",color:T.muted,fontSize:11,fontWeight:600}}>Signaler</Btn>
             </div>
           </div>
         </div>
@@ -2627,7 +2627,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts}){
     setList(p=>p.filter(m=>m.id!==id));notify("Rejeté");
   };
   const suspend=async(id,status)=>{
-    const ns=status==="suspended"?"actif":"suspended";
+    const ns=status==="suspended"?"active":"suspended";
     const{error}=await sb.from("profiles").update({status:ns}).eq("id",id);
     if(error){notify("Erreur : "+error.message);return;}
     // Recharge la liste depuis Supabase pour refléter l'état réel
