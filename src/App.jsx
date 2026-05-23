@@ -931,7 +931,7 @@ function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,n
               :<>
                 {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
   {(()=>{
-  const allMedia=[...(post.img?[post.img]:[]),...(post.media_urls||[])];
+  const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
   return(
     <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
@@ -1020,8 +1020,8 @@ const path=`posts/${session?.user?.id}/${Date.now()}.${ext}`;
     const{error}=await sb.from("posts").insert({
       author_id:session?.user?.id,type,
       text:text.trim()||"",
-      img_url:(type==="photo"||type==="video")?(mediaUrls[0]||null):null,
-media_urls:(type==="photo"||type==="video")&&mediaUrls.length>1?mediaUrls:null,
+      img_url:mediaUrls.length===1?(mediaUrls[0]||null):null,
+media_urls:mediaUrls.length>1?mediaUrls:null,
       event_title:type==="event"?evTitle.trim():null,
       event_date:type==="event"?evDate:null,
       event_loc:type==="event"?evLoc:null
@@ -1710,7 +1710,7 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
               {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
               {(()=>{
   const swipeStart=useRef(null);
-const allMedia=[...(post.img?[post.img]:[]),...(post.media_urls||[])];
+const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
 if(allMedia.length===0)return null;
 return(
   <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
