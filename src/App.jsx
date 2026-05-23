@@ -374,8 +374,18 @@ const triggerControls=()=>{
     else{el.pause();setPaused(true);setPlaying(false);}
   };
 
-  const openFullscreen=e=>{e.stopPropagation();setFullscreen(true);};
-  const closeFullscreen=()=>{setFullscreen(false);};
+  const openFullscreen=e=>{
+  e.stopPropagation();
+  const el=ref.current;
+  if(el?.requestFullscreen)el.requestFullscreen();
+  else if(el?.webkitEnterFullscreen)el.webkitEnterFullscreen();
+  else if(el?.webkitRequestFullscreen)el.webkitRequestFullscreen();
+  setFullscreen(true);
+};
+const closeFullscreen=()=>{
+  if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+  setFullscreen(false);
+};
 
   // Swipe bas pour fermer le plein écran
   const onTouchStart=e=>{ touchStartY.current=e.touches[0].clientY; };
@@ -405,14 +415,14 @@ const triggerControls=()=>{
   );
 
   if(fullscreen) return(
-    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-      style={{position:"fixed",inset:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{position:"absolute",top:16,left:"50%",transform:"translateX(-50%)",width:40,height:4,borderRadius:2,background:"rgba(255,255,255,0.3)"}}/> {/* indicateur swipe */}
-      <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop
-        style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-      {controls}
-    </div>
-  );
+  <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+    style={{position:"fixed",inset:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop autoPlay
+      style={{width:"100vw",height:"100vh",objectFit:"contain"}}/>
+    <Btn onClick={e=>{e.stopPropagation();closeFullscreen();}} style={{position:"absolute",top:20,right:20,background:"rgba(0,0,0,0.6)",borderRadius:"50%",width:40,height:40,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><Minimize2 size={18}/></Btn>
+    {controls}
+  </div>
+);
 
   return(
    <div style={{position:"relative",width:"100%"}} onClick={triggerControls}
@@ -426,7 +436,7 @@ const triggerControls=()=>{
   onTouchEnd={()=>{touchStartX.current=null;}}
 >
       <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop preload="metadata"
-  style={{width:"100%",borderRadius:14,display:"block",background:"#000",maxHeight:360,...style}}/>
+  style={{width:"100%",borderRadius:14,display:"block",background:"#000",height:360,objectFit:"cover",...style}}/>
 <div style={{position:"absolute",bottom:50,left:10,right:10,zIndex:4,opacity:showControls?1:0,transition:"opacity 0.3s ease",pointerEvents:showControls?"all":"none"}}>
   <input type="range" min={0} max={100} defaultValue={0}
     onChange={e=>{if(ref.current)ref.current.currentTime=ref.current.duration*(e.target.value/100);}}
@@ -887,6 +897,7 @@ function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,n
   const [viewImg,setViewImg]=useState(null);
   const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
   const [slideIdx,setSlideIdx]=useState(0);
+  const swipeStartRef=useRef(null);
   const bottomRef=useRef();
   const auth=post.author||getM(post.by);
   const liked=(post.likes||[]).includes(session?.user?.id);
@@ -919,16 +930,22 @@ function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,n
               </div>
               :<>
                 {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
-                {(()=>{
+  {(()=>{
   const allMedia=[...(post.img?[post.img]:[]),...(post.media_urls||[])];
   if(allMedia.length===0)return null;
   return(
-    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}>
+    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+      onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
+onTouchEnd={e=>{
+  if(swipeStartRef.current===null)return;
+  const diff=swipeStartRef.current-e.changedTouches[0].clientX;
+  if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
+  if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
+  swipeStartRef.current=null;
+}}>
       <MediaPlayer url={allMedia[slideIdx]} onImageClick={setViewImg}/>
       {allMedia.length>1&&(
         <>
-          {slideIdx>0&&<Btn onClick={()=>setSlideIdx(i=>i-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:32,height:32,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronLeft size={16}/></Btn>}
-          {slideIdx<allMedia.length-1&&<Btn onClick={()=>setSlideIdx(i=>i+1)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:32,height:32,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronRight size={16}/></Btn>}
           <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
             {allMedia.map((_,i)=><div key={i} onClick={()=>setSlideIdx(i)} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
           </div>
@@ -977,10 +994,11 @@ function NewPostModal({myProfile,session,onClose,onPost}){
       if(f.type.startsWith("image/"))file=await compressImage(f);
       if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo max 50MB");continue;}
       const r=new FileReader();
-      r.onload=ev=>setPreviews(p=>[...p,{url:ev.target.result,type:f.type.startsWith("video/")?"video":"image"}]);
+      r.onload=ev=>setPreviews(p=>[...p,{url:ev.target.result,type:f.type.startsWith("video/")?"video":"image"}]);setType("photo");
       r.readAsDataURL(file);
       setUploading(true);
-      const path=`posts/${session?.user?.id}/${Date.now()}_${file.name}`;
+      const ext=file.name.split(".").pop().toLowerCase();
+const path=`posts/${session?.user?.id}/${Date.now()}.${ext}`;
       const{error}=await sb.storage.from("celeste-media").upload(path,file,{upsert:true});
       if(!error){
         const{data:{publicUrl}}=sb.storage.from("celeste-media").getPublicUrl(path);
@@ -1002,8 +1020,8 @@ function NewPostModal({myProfile,session,onClose,onPost}){
     const{error}=await sb.from("posts").insert({
       author_id:session?.user?.id,type,
       text:text.trim()||"",
-      img_url:type==="photo"?(mediaUrls[0]||null):null,
-      media_urls:type==="photo"&&mediaUrls.length>1?mediaUrls:null,
+      img_url:(type==="photo"||type==="video")?(mediaUrls[0]||null):null,
+media_urls:(type==="photo"||type==="video")&&mediaUrls.length>1?mediaUrls:null,
       event_title:type==="event"?evTitle.trim():null,
       event_date:type==="event"?evDate:null,
       event_loc:type==="event"?evLoc:null
@@ -1609,6 +1627,7 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
   const [saved,setSaved]=useState(false);
   const [showMenu,setShowMenu]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
+  const swipeStartRef=useRef(null);
   const liked=(post.likes||[]).includes(session?.user?.id);
   const isMine=post.by===session?.user?.id;
   const isAdmin=myProfile?.is_admin;
@@ -1690,23 +1709,30 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
             :<>
               {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
               {(()=>{
-  const allMedia=[...(post.img?[post.img]:[]),...(post.media_urls||[])];
-  if(allMedia.length===0)return null;
-  return(
-    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}} onClick={e=>e.stopPropagation()}>
-      <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
-      {allMedia.length>1&&(
-        <>
-          {slideIdx>0&&<Btn onClick={e=>{e.stopPropagation();setSlideIdx(i=>i-1);}} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:32,height:32,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronLeft size={16}/></Btn>}
-          {slideIdx<allMedia.length-1&&<Btn onClick={e=>{e.stopPropagation();setSlideIdx(i=>i+1);}} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:32,height:32,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronRight size={16}/></Btn>}
-          <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
-            {allMedia.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setSlideIdx(i);}} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
-          </div>
-          <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
-        </>
-      )}
-    </div>
-  );
+  const swipeStart=useRef(null);
+const allMedia=[...(post.img?[post.img]:[]),...(post.media_urls||[])];
+if(allMedia.length===0)return null;
+return(
+  <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+    onTouchStart={e=>{swipeStart.current=e.touches[0].clientX;}}
+    onTouchEnd={e=>{
+      if(swipeStart.current===null)return;
+      const diff=swipeStart.current-e.changedTouches[0].clientX;
+      if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
+      if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
+      swipeStart.current=null;
+    }}>
+    <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
+    {allMedia.length>1&&(
+      <>
+        <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+          {allMedia.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setSlideIdx(i);}} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
+        </div>
+        <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
+      </>
+    )}
+  </div>
+);
 })()}
             </>
           }
