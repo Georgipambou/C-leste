@@ -902,25 +902,31 @@ setShowReplies(true);
         )}
 
         {showReplies&&(
-          <div style={{marginTop:8,paddingLeft:12,borderLeft:`2px solid ${T.border}`,display:"flex",flexDirection:"column",gap:8}}>
-            {replies.map(r=>{
-              const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
-              return(
-                <div key={r.id} style={{display:"flex",gap:8,animation:"msgIn .2s ease"}}>
-                  <Av u={ra} size={26}/>
-                  <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 12px 12px 12px",padding:"8px 11px",border:`1px solid ${T.border}`,flex:1}}>
-                    <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
-                    <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
-                  </div>
-                </div>
-              );
-            })}
+  <div style={{marginTop:8,paddingLeft:12,borderLeft:`2px solid ${T.border}`,display:"flex",flexDirection:"column",gap:8}}>
+    {replies.map(r=>{
+      const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
+      const isMyReply=r.author_id===sessionUserId;
+      return(
+        <div key={r.id} style={{display:"flex",gap:8,animation:"msgIn .2s ease"}}>
+          <Av u={ra} size={26}/>
+          <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 12px 12px 12px",padding:"8px 11px",border:`1px solid ${T.border}`,flex:1}}>
+            <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
+            <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
+          {isMyReply&&(
+            <Btn onClick={async()=>{
+              if(!window.confirm("Supprimer ?"))return;
+              await sb.from("comment_replies").delete().eq("id",r.id);
+              loadMeta();
+            }} style={{color:T.err,opacity:.5,padding:0,display:"flex",alignItems:"center",alignSelf:"center"}}>
+              <Trash2 size={12}/>
+            </Btn>
+          )}
+        </div>
+      );
+    })}
+  </div>
+)}
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify}){
