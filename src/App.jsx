@@ -386,6 +386,12 @@ const triggerControls=()=>{
 const closeFullscreen=()=>{
   if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
   setFullscreen(false);
+  setTimeout(()=>{
+    if(ref.current){
+      ref.current.style.width="100%";
+      ref.current.style.height="360px";
+    }
+  },100);
 };
 
   // Swipe bas pour fermer le plein écran
@@ -1361,7 +1367,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
           {!isMe&&(
             <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
               <div style={{width:48,height:48,borderRadius:"50%",background:liked?"rgba(201,149,42,0.25)":"rgba(255,255,255,0.1)",border:`1px solid ${liked?T.gold:"rgba(255,255,255,0.2)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,transition:"all .2s",boxShadow:liked?T.glowGold:"none"}}>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:liked?T.goldL:"rgba(255,255,255,0.7)",filter:liked?`drop-shadow(0 0 8px ${T.gold})`:"none",transition:"all .2s"}}>✦</span>
+                <span style={{fontSize:22,color:liked?T.goldL:"rgba(255,255,255,0.7)",filter:liked?`drop-shadow(0 0 8px ${T.gold})`:"none",transition:"all .2s"}}>{liked?"❤️":"✦"}</span>
               </div>
               <span style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{currentLikes.length}</span>
             </Btn>
