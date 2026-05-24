@@ -378,7 +378,14 @@ const triggerControls=()=>{
   e.stopPropagation();
   const el=ref.current;
   if(!el)return;
-  if(el.webkitEnterFullscreen){el.webkitEnterFullscreen();return;}
+  if(el.webkitEnterFullscreen){
+    el.addEventListener("webkitendfullscreen",()=>{
+      setFullscreen(false);
+      setTimeout(()=>{if(!paused){el.play().catch(()=>{});setPlaying(true);}},100);
+    },{once:true});
+    el.webkitEnterFullscreen();
+    return;
+  }
   if(el.requestFullscreen){el.requestFullscreen();setFullscreen(true);return;}
   if(el.webkitRequestFullscreen){el.webkitRequestFullscreen();setFullscreen(true);return;}
   setFullscreen(true);
