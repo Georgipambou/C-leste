@@ -1580,12 +1580,13 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
 }
 
 // ── HOME TAB ──────────────────────────────────────────────
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0}){
   const [detailPost,setDetailPost]=useState(null);
 const bottomRef=useRef();
 const observer=useRef();
+useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
 const scrollRef=useRef();
-const savedScroll=useRef(0);
+const savedScroll=useRef(initialScroll);
 
   useEffect(()=>{
     if(!bottomRef.current||!hasMore)return;
@@ -1615,7 +1616,7 @@ const savedScroll=useRef(0);
 
   return(
     <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
-  onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;}}>
+  onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;feedScrollRef.current=e.currentTarget.scrollTop;}}>
       {detailPost&&(
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
@@ -2883,6 +2884,7 @@ function CelesteApp(){
   const [loadingMore,setLoadingMore]=useState(false);
   const [inAppNotifs,setInAppNotifs]=useState([]);
   const [viewImg,setViewImg]=useState(null);
+  const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const prevMsgCount=useRef(0);
 
@@ -3119,15 +3121,13 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           {!openUserId&&openConvId&&openConv&&(
             <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);setOpenUserId(uid);}}/>
           )}
-          {!openUserId&&!openConvId&&(
-            <>
-              {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={setOpenUserId} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
+          <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
+              {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={id=>{setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={0}/>}
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}}/>}
               {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
-            </>
-          )}
+            </div>
         </div>
 
         {/* Bottom nav premium */}
