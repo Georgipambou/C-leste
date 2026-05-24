@@ -1290,7 +1290,15 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   useEffect(()=>{
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
-    if(isMe)sb.from("status_views").select("viewer_id,profiles(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data})=>setViews(v=>({...v,[current.id]:data||[]})));
+    if(isMe){
+  sb.from("status_views")
+    .select("viewer_id, profiles!status_views_viewer_id_fkey(prenom,nom,avatar_url)")
+    .eq("status_id",current.id)
+    .then(({data,error})=>{
+      console.log("VUES:",data,error);
+      setViews(v=>({...v,[current.id]:data||[]}));
+    });
+}
     if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){viewed.current.add(current.id);sb.from("status_views").insert({status_id:current.id,viewer_id:session.user.id});}
     setPaused(false);setProgress(0);
     const duration=current.type==="text"?5000:10000;
