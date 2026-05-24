@@ -1640,7 +1640,13 @@ const feedScrollRef=useRef(initialScroll);
       {detailPost&&(
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
-          onClose={()=>{setDetailPost(null);setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=savedScroll.current;},50);}}
+          onClose={()=>{
+  const pos=savedScroll.current;
+  setDetailPost(null);
+  requestAnimationFrame(()=>{
+    if(scrollRef.current)scrollRef.current.scrollTop=pos;
+  });
+}}
           onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
           onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
           notify={notify}
