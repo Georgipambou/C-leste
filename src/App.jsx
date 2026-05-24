@@ -3329,7 +3329,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   },[session?.user?.id,members]);
 
   const goTab=t=>{
-  if(t==="home"&&tab==="home"){loadPosts(1);scrollRef.current?.scrollTo({top:0,behavior:"smooth"});}
+  if(t==="home"&&tab==="home"){loadPosts(1);feedScrollRef.current=0;}
   setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
 };
   const unread=(convs||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
