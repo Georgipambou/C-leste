@@ -390,6 +390,7 @@ const closeFullscreen=()=>{
     if(ref.current){
       ref.current.style.width="100%";
       ref.current.style.height="360px";
+      if(!paused){ref.current.play().catch(()=>{});setPlaying(true);}
     }
   },100);
 };
@@ -1568,8 +1569,10 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
 // ── HOME TAB ──────────────────────────────────────────────
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect}){
   const [detailPost,setDetailPost]=useState(null);
-  const bottomRef=useRef();
-  const observer=useRef();
+const bottomRef=useRef();
+const observer=useRef();
+const scrollRef=useRef();
+const savedScroll=useRef(0);
 
   useEffect(()=>{
     if(!bottomRef.current||!hasMore)return;
@@ -1598,11 +1601,12 @@ function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,
   };
 
   return(
-    <div style={{flex:1,overflowY:"auto",background:T.bg}}>
+    <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
+  onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;}}>
       {detailPost&&(
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
-          onClose={()=>setDetailPost(null)}
+          onClose={()=>{setDetailPost(null);setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=savedScroll.current;},50);}}
           onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
           onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
           notify={notify}
@@ -1631,7 +1635,7 @@ function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,
 
         {(posts||[]).map((p,i)=>(
           <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-            onDetail={()=>setDetailPost(p)}
+           onDetail={()=>{savedScroll.current=scrollRef.current?.scrollTop||0;setDetailPost(p);}}
             onLike={()=>toggleLike(p.id)}
             onSave={()=>toggleSave(p.id)}
             onUser={onUser}
@@ -2208,12 +2212,12 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
       </div>
 
       <div style={{padding:"0 18px 80px",maxWidth:640,margin:"0 auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16,position:"relative",zIndex:10}}>
           <Av u={{...user,avatar_url:avatarUrl}} size={88} ring/>
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
-              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"10px 5px",color:T.text,fontSize:11,fontWeight:600}}>Message</Btn>
-              <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:20,padding:"10px 5px",color:conn?T.goldL:"#000",fontSize:11,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
+              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:`1px solid rgba(255,255,255,0.2)`,borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)"}}>Message</Btn>
+<Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
             </div>
             <div style={{display:"flex",gap:6}}>
               <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"5px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
@@ -2949,7 +2953,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         const updated=await loadConvs(myId);
         if(updated){
           const totalNew=(updated||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
-          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setOpenConvId(conv?.id);setTab("messages");});}
+          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}
           prevMsgCount.current=totalNew;
         }
       })
