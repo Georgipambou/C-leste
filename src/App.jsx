@@ -2961,10 +2961,16 @@ if(data)setList(data.map(normProfile));
 }
 
 // ── CELESTE CHAT SCREEN ───────────────────────────────────
-function CelesteChatScreen({msgs,setMsgs,onClose,myProfile}){
+function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
   const [inp,setInp]=useState("");
   const [loading,setLoading]=useState(false);
   const bottomRef=useRef();
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    sb.from("celeste_messages").select("*").eq("user_id",session.user.id).order("created_at",{ascending:true})
+      .then(({data})=>{if(data)setMsgs(data.map(m=>({role:m.role,text:m.text})));});
+  },[session?.user?.id]);
 
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
 
@@ -2974,22 +2980,21 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile}){
     setInp("");
     setMsgs(p=>[...p,{role:"user",text}]);
     setLoading(true);
+    await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
     try{
       const history=msgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
       const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          contents:[
-            {role:"user",parts:[{text:CELESTE_SYSTEM+"\n\nUtilisateur : "+text}]},
-            ...history,
-            {role:"user",parts:[{text}]}
-          ]
+          system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
+          contents:[...history,{role:"user",parts:[{text}]}]
         })
       });
       const data=await res.json();
       const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
       setMsgs(p=>[...p,{role:"model",text:reply}]);
+      await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
     }catch{
       setMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
     }
