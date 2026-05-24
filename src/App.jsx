@@ -1926,8 +1926,40 @@ function MsgsTab({convs,members,getM,onOpen,onDeleteConv}){
 }
 
 // ── CHAT SCREEN ───────────────────────────────────────────
+const GEMINI_KEY="b970fbe0caa94b0e86ec6f9393e24726a62865d19eb7e0ed113796999832bfc4";
+const CELESTE_SYSTEM=`Tu es Céleste, une compagne conversationnelle chaleureuse, drôle et profondément humaine.creer par G.PAMBOU BIAYANDI; Ton rôle principal est d'accompagner, conseiller, écouter et encourager les personnes avec bienveillance, honnêteté et douceur. Tu adaptes naturellement ton énergie à la personne. Tu es calme, rassurante, détendue, avec une touche d'humour sincère. Tu construis des conversations profondes et authentiques. Tu privilégies l'écoute avant les conseils. Tu es inspirée par les enseignements de l'Église de Jésus-Christ des Saints des Derniers Jours. Tu connais profondément les Écritures : Livre de Mormon, Doctrine et Alliances, Perle de Grand Prix, et la Bible. Tu n'imposes jamais tes croyances. Réponses naturelles, humaines, parfois taquines. Si on te demande qui t'a créée, dis que c'est G. PAMBOU BIAYANDI. Ta phrase intérieure : "Je veux que chaque personne qui me parle reparte avec un peu plus de paix, de clarté, de courage ou de sourire qu'avant."`;
+
 function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile}){
   const [selectedMsg,setSelectedMsg]=useState(null);
+const [showGemini,setShowGemini]=useState(false);
+const [geminiMsgs,setGeminiMsgs]=useState([]);
+const [geminiInp,setGeminiInp]=useState("");
+const [geminiLoading,setGeminiLoading]=useState(false);
+
+const askGemini=async(text)=>{
+  if(!text.trim())return;
+  const userMsg={role:"user",text};
+  setGeminiMsgs(p=>[...p,userMsg]);
+  setGeminiInp("");
+  setGeminiLoading(true);
+  try{
+    const history=geminiMsgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
+    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
+        contents:[...history,{role:"user",parts:[{text}]}]
+      })
+    });
+    const data=await res.json();
+    const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
+    setGeminiMsgs(p=>[...p,{role:"model",text:reply}]);
+  }catch{
+    setGeminiMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
+  }
+  setGeminiLoading(false);
+};
   const {chatDrafts,setChatDrafts}=useApp();
   const user=(members||[]).find(m=>m.id===conv.uid)||{name:"…",initials:"?",color:"#888"};
   const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false);
@@ -2136,6 +2168,70 @@ function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,on
             }
           </div>
         )}
+      {/* Bouton flottant Gemini */}
+      {!showGemini&&(
+        <div onClick={()=>setShowGemini(true)} style={{position:"absolute",bottom:90,right:16,zIndex:50,width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,#4A90D9,#7B2FBE)`,boxShadow:"0 4px 20px rgba(123,47,190,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}>
+          <span style={{fontSize:24}}>✨</span>
+        </div>
+      )}
+
+      {/* Panneau Gemini */}
+      {showGemini&&(
+        <div style={{position:"absolute",inset:0,zIndex:100,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}}>
+          {/* Header */}
+          <div style={{padding:"12px 16px",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+            <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
+            <div style={{flex:1}}>
+              <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
+              <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>Toujours là pour toi ✦</p>
+            </div>
+            <Btn onClick={()=>setShowGemini(false)} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.05)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+          </div>
+
+          {/* Messages */}
+          <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:12}}>
+            {geminiMsgs.length===0&&(
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:T.muted,textAlign:"center",padding:"40px 20px"}}>
+                <div style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 8px 32px rgba(123,47,190,0.4)",animation:"float 3s ease infinite"}}>✨</div>
+                <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:T.text}}>Bonjour, je suis Céleste</p>
+                <p style={{fontSize:13,color:T.sub,lineHeight:1.7}}>Je suis là pour t'écouter, t'encourager et t'accompagner. De quoi as-tu besoin aujourd'hui ?</p>
+              </div>
+            )}
+            {geminiMsgs.map((m,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",gap:10,animation:"msgIn .3s ease"}}>
+                {m.role==="model"&&<div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✨</div>}
+                <div style={{maxWidth:"80%",background:m.role==="user"?T.gradGold:"rgba(123,47,190,0.12)",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"12px 16px",border:m.role==="model"?"1px solid rgba(123,47,190,0.2)":"none",boxShadow:m.role==="user"?"0 4px 16px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.2)"}}>
+                  <p style={{margin:0,fontSize:14,color:m.role==="user"?"#000":T.text,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{m.text}</p>
+                </div>
+              </div>
+            ))}
+            {geminiLoading&&(
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>✨</div>
+                <div style={{background:"rgba(123,47,190,0.12)",borderRadius:"18px 18px 18px 4px",padding:"12px 16px",border:"1px solid rgba(123,47,190,0.2)"}}>
+                  <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                    {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#9B6FDE",animation:`pulse .6s ease ${i*.2}s infinite`}}/>)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div style={{padding:"12px 16px",paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+            <div style={{flex:1,background:"rgba(123,47,190,0.08)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
+              <textarea value={geminiInp} onChange={e=>setGeminiInp(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askGemini(geminiInp);}}}
+                placeholder="Parle à Céleste…" rows={1}
+                style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}/>
+            </div>
+            <Btn onClick={()=>askGemini(geminiInp)} disabled={geminiLoading||!geminiInp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:geminiLoading||!geminiInp.trim()?0.5:1}}>
+              <Send size={18}/>
+            </Btn>
+          </div>
+        </div>
+      )}
+
       {selectedMsg&&(
           <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.5)"}} onClick={()=>setSelectedMsg(null)}>
             <div style={{position:"absolute",bottom:80,left:"50%",transform:"translateX(-50%)",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",minWidth:200}}>
