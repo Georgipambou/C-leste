@@ -411,7 +411,9 @@ const closeFullscreen=()=>{
   setTimeout(()=>{
     if(ref.current){
       ref.current.style.width="100%";
-      ref.current.style.height="360px";
+      ref.current.style.height="";
+      ref.current.style.maxHeight="";
+      ref.current.style.objectFit="cover";
       if(!paused){ref.current.play().catch(()=>{});setPlaying(true);}
     }
   },100);
