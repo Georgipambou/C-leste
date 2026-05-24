@@ -1635,23 +1635,24 @@ const feedScrollRef=useRef(initialScroll);
   };
 
   return(
-    <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
-  onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;}}>
+    <>
       {detailPost&&(
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
           onClose={()=>{
-  const pos=savedScroll.current;
-  setDetailPost(null);
-  requestAnimationFrame(()=>{
-    if(scrollRef.current)scrollRef.current.scrollTop=pos;
-  });
-}}
+            const pos=savedScroll.current;
+            setDetailPost(null);
+            requestAnimationFrame(()=>{
+              if(scrollRef.current)scrollRef.current.scrollTop=pos;
+            });
+          }}
           onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
           onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
           notify={notify}
         />
       )}
+    <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
+  onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;}}>
 
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1698,9 +1699,9 @@ const feedScrollRef=useRef(initialScroll);
         <div style={{height:80}}/>
       </div>
     </div>
+    </>
   );
 }
-
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
   const [saved,setSaved]=useState(false);
