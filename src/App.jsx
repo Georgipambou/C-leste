@@ -1299,7 +1299,12 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
       setViews(v=>({...v,[current.id]:data||[]}));
     });
 }
-    if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){viewed.current.add(current.id);sb.from("status_views").insert({status_id:current.id,viewer_id:session.user.id});}
+    if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){
+  viewed.current.add(current.id);
+  sb.from("status_views")
+    .insert({status_id:current.id,viewer_id:session.user.id})
+    .then(({error})=>console.log("INSERT VUE:",error));
+}
     setPaused(false);setProgress(0);
     const duration=current.type==="text"?5000:10000;
     const step=100/(duration/50);
