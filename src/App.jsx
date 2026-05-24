@@ -2899,9 +2899,11 @@ function CelesteApp(){
   const loadMembers=useCallback(async()=>{const{data}=await sb.from("profiles").select("*").neq("status","pending");if(data)setMembers(data.map(normProfile));},[]);
 
   const loadBlockedUsers=useCallback(async()=>{
-    if(!session?.user?.id)return;
+    if(!session?.user?.id)return[];
     const{data}=await sb.from("blocks").select("blocked_id").eq("blocker_id",session.user.id);
-    if(data)setBlockedUserIds(data.map(b=>b.blocked_id));
+    const ids=(data||[]).map(b=>b.blocked_id);
+    setBlockedUserIds(ids);
+    return ids;
   },[session?.user?.id]);
 
   const loadPosts=useCallback(async(page=1)=>{
@@ -2940,7 +2942,7 @@ setConvs(filtered);return filtered;
   },[]);
 
   useEffect(()=>{
-    if(session?.user&&myProfile&&!isPending){loadMembers();loadPosts(1);loadConvs(session.user.id);loadConnections(session.user.id);loadUnreadNotifs(session.user.id);loadBlockedUsers();}
+    if(session?.user&&myProfile&&!isPending){loadMembers();loadPosts(1);loadConnections(session.user.id);loadUnreadNotifs(session.user.id);loadBlockedUsers().then(()=>loadConvs(session.user.id));}
   },[session?.user?.id,myProfile?.id,isPending]);
 
   // Realtime
