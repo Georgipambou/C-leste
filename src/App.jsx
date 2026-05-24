@@ -2361,7 +2361,11 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
             {user.badge&&<Badge type={user.badge}/>}
           </div>
           <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>⛪ {user.paroisse}</p>
-          {user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio}</p>}
+          {user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
+  /^https?:\/\//.test(part)
+    ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
+    :part
+)}</p>}
         </div>
 
         <div style={{display:"flex",gap:1,background:"rgba(255,255,255,0.03)",borderRadius:18,overflow:"hidden",border:`1px solid ${T.border}`,marginBottom:24}}>
@@ -2620,7 +2624,11 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
               {myProfile?.badge&&<Badge type={myProfile.badge}/>}
             </div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>⛪ {myProfile?.paroisse}</p>
-            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{myProfile.bio}</p>}
+            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{myProfile.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
+  /^https?:\/\//.test(part)
+    ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
+    :part
+)}</p>}
           </div>
         )}
 
