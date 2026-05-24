@@ -2176,10 +2176,15 @@ const askGemini=async(text)=>{
           <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
             <Btn onClick={()=>setAttach(a=>!a)} style={{color:attach?T.gold:T.muted,padding:"8px",display:"flex",alignItems:"center",flexShrink:0,transition:"color .2s"}}><Plus size={22}/></Btn>
             <div style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${attach?T.gold+"55":T.border}`,borderRadius:20,padding:"9px 14px",transition:"border-color .2s"}}>
-              <textarea value={inp} onChange={e=>{setInp(e.target.value);setChatDrafts(d=>({...d,[conv.id]:e.target.value}));}}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();sendTxt();}}}
-                placeholder="Message…" rows={1}
-                style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}/>
+              <textarea value={inp} onChange={e=>{
+    setInp(e.target.value);
+    setChatDrafts(d=>({...d,[conv.id]:e.target.value}));
+    e.target.style.height="auto";
+    e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
+  }}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();sendTxt();}}}
+  placeholder="Message…" rows={1}
+  style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
             </div>
             {inp.trim()
               ?<Btn onClick={sendTxt} style={{background:T.gradGold,borderRadius:"50%",width:42,height:42,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",animation:"sendBounce .3s ease"}}>
@@ -3085,7 +3090,7 @@ const history=rawHistory.reduce((acc,m)=>{
       <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.96)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
         <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
           <textarea value={inp} onChange={e=>setInp(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
             placeholder="Écris à Céleste…" rows={1}
             style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}/>
         </div>
