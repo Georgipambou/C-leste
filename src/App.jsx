@@ -381,7 +381,13 @@ const triggerControls=()=>{
   if(el.webkitEnterFullscreen){
     el.addEventListener("webkitendfullscreen",()=>{
       setFullscreen(false);
-      setTimeout(()=>{if(!paused){el.play().catch(()=>{});setPlaying(true);}},100);
+      setPaused(false);
+      setPlaying(true);
+      setTimeout(()=>{
+        if(ref.current){
+          ref.current.play().catch(()=>{});
+        }
+      },300);
     },{once:true});
     el.webkitEnterFullscreen();
     return;
