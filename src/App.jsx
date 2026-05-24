@@ -2980,7 +2980,7 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
     setInp("");
     setMsgs(p=>[...p,{role:"user",text}]);
     setLoading(true);
-    await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
+    if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
     try{
       const history=msgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
       const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
@@ -2994,7 +2994,7 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
       const data=await res.json();
       const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
       setMsgs(p=>[...p,{role:"model",text:reply}]);
-      await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
+      if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
     }catch{
       setMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
     }
@@ -3281,7 +3281,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         <NotifBanner notifs={inAppNotifs} onDismiss={dismissNotif} onTap={n=>{n.action?.();dismissNotif(n.id);}}/>
         {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
-{openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile}/>}
+{openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
         {/* Top bar */}
         <div style={{height:56,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
