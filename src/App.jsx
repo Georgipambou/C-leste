@@ -2930,14 +2930,17 @@ function CelesteApp(){
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));return updated;
   },[]);
 
-  const loadConvs=useCallback(async myId=>{
+ const loadConvs=useCallback(async myId=>{
     if(!myId)return;
-    const{data}=await sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false});
+    const[{data},{data:blockedData}]=await Promise.all([
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("blocks").select("blocked_id").eq("blocker_id",myId)
+    ]);
     if(data){
+      const blocked=new Set((blockedData||[]).map(b=>b.blocked_id));
       const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime()}))}));
-      const blockedSet=new Set(blockedUserIds);
-const filtered=mapped.filter(c=>!blockedSet.has(c.uid));
-setConvs(filtered);return filtered;
+      const filtered=mapped.filter(c=>!blocked.has(c.uid));
+      setConvs(filtered);return filtered;
     }return null;
   },[]);
 
