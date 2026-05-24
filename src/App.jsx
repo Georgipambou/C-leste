@@ -145,17 +145,45 @@ const sendPushNotif=(title,body)=>{if(Notification.permission==="granted") new N
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const GS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent;-webkit-touch-callout:none;}
-  html,body,#root{height:100%;background:#000;overscroll-behavior:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;}
-input,textarea{font-size:16px !important;}
-  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
-  ::-webkit-scrollbar{width:0px;display:none;}
-* {-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
-.scroll-smooth{
-  -webkit-overflow-scrolling:touch;
-  scroll-behavior:smooth;
-  will-change:scroll-position;
-}
+  
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* Protège le comportement tactile natif */
+  }
+
+  html, body, #root {
+    /* Remplacer height: 100% par min-height si vous voulez que la page défile naturellement */
+    min-height: 100%; 
+    background: #000;
+    
+    /* On active le défilement à inertie natif (surtout pour iOS, mais aide à stabiliser Android) */
+    -webkit-overflow-scrolling: touch; 
+    
+    /* Suppression de overscroll-behavior: none qui fige le scroll */
+  }
+
+  input, textarea {
+    font-size: 16px !important;
+  }
+
+  body {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  ::-webkit-scrollbar {
+    width: 0px;
+    display: none;
+  }
+
+  /* Version corrigée pour le scroll fluide */
+  .scroll-container {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* On supprime will-change et scroll-behavior: smooth ici */
+  }
   input,textarea,select,button{font-family:'DM Sans',sans-serif;}
   input::placeholder,textarea::placeholder{color:${T.muted};}
   select option{background:#111;color:${T.text};}
