@@ -308,12 +308,20 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
 
 const Badge = memo(function Badge({type}){
   if(!type) return null;
-  const isConfirmed = type==="confirmed";
-  return(
-    <span style={{fontSize:13,color:isConfirmed?"#4A8AC4":"#d0d0d0",
-      filter:isConfirmed?"drop-shadow(0 0 8px rgba(74,138,196,0.9))":"drop-shadow(0 0 6px rgba(255,255,255,0.6))",
-      animation:"glowPulse 3s ease infinite",lineHeight:1}}>✦</span>
+  if(type==="confirmed") return(
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{flexShrink:0,filter:"drop-shadow(0 0 6px rgba(74,138,196,0.8))"}}>
+      <circle cx="12" cy="12" r="12" fill="#4A8AC4"/>
+      <path d="M6.5 12.5L10 16L17.5 8.5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
   );
+  if(type==="friend") return(
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{flexShrink:0,filter:"drop-shadow(0 0 6px rgba(201,149,42,0.8))"}}>
+      <circle cx="12" cy="12" r="12" fill="url(#goldGrad)"/>
+      <defs><linearGradient id="goldGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stopColor="#E8B84B"/><stop offset="100%" stopColor="#C9952A"/></linearGradient></defs>
+      <path d="M6.5 12.5L10 16L17.5 8.5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  return null;
 });
 
 const Btn = ({children,onClick,style={},disabled=false,type="button"})=>(
@@ -2061,7 +2069,7 @@ const askGemini=async(text)=>{
   const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
 
   return(
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",background:T.bg}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",background:T.bg,zIndex:100}}>
       <input ref={fRef} type="file" accept="*/*" style={{display:"none"}} onChange={e=>handleFile(e,false)}/>
       <input ref={iRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={e=>handleFile(e,true)}/>
       <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBgPhoto}/>
@@ -3051,23 +3059,10 @@ const history=rawHistory.reduce((acc,m)=>{
               <div style={{display:"flex",gap:5,alignItems:"center"}}>
                 {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#9B6FDE",animation:`pulse .6s ease ${i*.2}s infinite`}}/>)}
               </div>
-            </div>
+           </div>
           </div>
         )}
         <div ref={bottomRef}/>
-      </div>
-
-      {/* Input */}
-      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.96)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
-        <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
-          <textarea value={inp} onChange={e=>setInp(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder="Écris à Céleste…" rows={1}
-            style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}/>
-        </div>
-        <Btn onClick={send} disabled={loading||!inp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:loading||!inp.trim()?0.5:1}}>
-          <Send size={18}/>
-        </Btn>
       </div>
     </div>
   );
@@ -3343,7 +3338,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
               {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={id=>{setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={0}/>}
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
-              {tab==="messages"&&!openConvId&&!openUserId&&!openCeleste&&<div onClick={()=>setOpenCeleste(true)} style={{position:"fixed",bottom:80,right:16,zIndex:50,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",boxShadow:"0 4px 24px rgba(123,47,190,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}><span style={{fontSize:26}}>✨</span></div>}
+              {tab==="messages"&&!openConvId&&!openUserId&&!openCeleste&&!openUser&&<div onClick={()=>setOpenCeleste(true)} style={{position:"fixed",bottom:80,right:16,zIndex:49,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",boxShadow:"0 4px 24px rgba(123,47,190,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}><span style={{fontSize:26}}>✨</span></div>}
 {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
               {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
             </div>
