@@ -1991,7 +1991,15 @@ const askGemini=async(text)=>{
   },[conv.id]);
 
   useEffect(()=>{
-    const ch=sb.channel(`chat_${conv.id}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload()).on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload()).subscribe();
+    const ch=sb.channel(`chat_${conv.id}`)
+  .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
+    const nm=payload.new;
+    if(nm.sender_id!==session?.user?.id){
+      reload();
+    }
+  })
+  .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
+  .subscribe();
     return()=>sb.removeChannel(ch);
   },[conv.id,reload]);
 
