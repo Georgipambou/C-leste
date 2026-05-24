@@ -2984,13 +2984,21 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
     const tryGemini=async(retries=3)=>{
       for(let i=0;i<retries;i++){
         try{
-          const history=msgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
+          const rawHistory=[...msgs,{role:"user",text}];
+const history=rawHistory.reduce((acc,m)=>{
+  const last=acc[acc.length-1];
+  const role=m.role==="user"?"user":"model";
+  if(last&&last.role===role){last.parts[0].text+="\n"+m.text;}
+  else{acc.push({role,parts:[{text:m.text}]});}
+  return acc;
+},[]);
           const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
             method:"POST",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify({
-              system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
-              contents:[...history,{role:"user",parts:[{text}]}]
+              systemInstruction:{parts:[{text:CELESTE_SYSTEM}]},
+              contents:[...history,{role:"user",parts:[{text}]}],
+              generationConfig:{temperature:0.4,maxOutputTokens:2048}
             })
           });
           if(!res.ok){if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}throw new Error("503");}
