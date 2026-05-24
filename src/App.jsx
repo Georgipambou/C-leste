@@ -860,7 +860,7 @@ setShowReplies(true);
 
   return(
     <div style={{display:"flex",gap:9,marginBottom:14,animation:"msgIn .3s ease"}}>
-      <Av u={author} size={32}/>
+      <Av u={author} size={32} onClick={()=>{const uid=comment.author_id;if(uid&&uid!==sessionUserId){const event=new CustomEvent("celeste_open_user",{detail:{uid}});window.dispatchEvent(event);}}}/>
       <div style={{flex:1}}>
         <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 14px 14px 14px",padding:"10px 13px",border:`1px solid ${T.border}`}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
@@ -905,11 +905,15 @@ setShowReplies(true);
           <div style={{marginTop:8,paddingLeft:12,borderLeft:`2px solid ${T.border}`,display:"flex",flexDirection:"column",gap:8}}>
             {replies.map(r=>{
               const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
+              const isMyReply=r.author_id===sessionUserId;
               return(
                 <div key={r.id} style={{display:"flex",gap:8,animation:"msgIn .2s ease"}}>
                   <Av u={ra} size={26}/>
                   <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 12px 12px 12px",padding:"8px 11px",border:`1px solid ${T.border}`,flex:1}}>
-                    <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+                      <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
+                      {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer cette réponse ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.err,opacity:.6,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={12}/></Btn>}
+                    </div>
                     <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
                   </div>
                 </div>
@@ -1634,9 +1638,10 @@ function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,
             onImageView={onImageView}
             notify={notify}
             refresh={()=>refreshPost(p.id)}
-animDelay={i*.03}
-myConnections={myConnections}
-onConnect={onConnect}
+            setPosts={setPosts}
+            animDelay={i*.03}
+            myConnections={myConnections}
+            onConnect={onConnect}
           />
         ))}
 
@@ -1653,7 +1658,7 @@ onConnect={onConnect}
 }
 
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
-function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,animDelay=0,myConnections,onConnect}){
+function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
   const [saved,setSaved]=useState(false);
   const [showMenu,setShowMenu]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
@@ -1673,10 +1678,11 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
     else{await sb.from("saved_posts").insert({post_id:post.id,user_id:session?.user?.id});setSaved(true);notify("Sauvegardé ✦");}
   };
 
-  const handleDelete=async()=>{
+ const handleDelete=async()=>{
     if(!window.confirm("Supprimer ce post ?"))return;
+    setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
+    notify("Supprimé");
     await sb.from("posts").delete().eq("id",post.id);
-    refresh?.();notify("Supprimé");
   };
 
   const handlePin=async()=>{
@@ -1774,7 +1780,7 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
             </Btn>
             <Btn onClick={()=>onDetail?.()} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
               <MessageCircle size={16}/>
-              {(post.comments||[]).length>0&&<span>{(post.comments||[]).length}</span>}
+              {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
             </Btn>
             <div style={{flex:1}}/>
             <Btn onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.muted,transition:"all .2s"}}>
@@ -2133,6 +2139,16 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   const [blocked,setBlocked]=useState(false);
   const [showReport,setShowReport]=useState(false);
   const [detailPost,setDetailPost]=useState(null);
+  const [coverUrl,setCoverUrl]=useState(user.cover_url||null);
+  const [avatarUrl,setAvatarUrl]=useState(user.avatar_url||null);
+
+  useEffect(()=>{
+    sb.from("profiles").select("cover_url,avatar_url").eq("id",user.id).single()
+      .then(({data})=>{
+        if(data?.cover_url)setCoverUrl(data.cover_url);
+        if(data?.avatar_url)setAvatarUrl(data.avatar_url);
+      });
+  },[user.id]);
 
   useEffect(()=>{
     Promise.all([
@@ -2182,13 +2198,18 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
 
       {/* Cover */}
       <div style={{height:180,background:`linear-gradient(160deg,${user.color}44,${user.color}11,transparent)`,position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(${user.color}22 1px,transparent 1px)`,backgroundSize:"24px 24px"}}/>
-        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.04,fontSize:140,fontFamily:"'Cormorant Garamond',serif",color:user.color}}>✦</div>
+        {coverUrl
+          ?<img src={coverUrl} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          :<>
+            <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(${user.color}22 1px,transparent 1px)`,backgroundSize:"24px 24px"}}/>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.04,fontSize:140,fontFamily:"'Cormorant Garamond',serif",color:user.color}}>✦</div>
+          </>
+        }
       </div>
 
       <div style={{padding:"0 18px 80px",maxWidth:640,margin:"0 auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
-          <Av u={user} size={88} ring/>
+          <Av u={{...user,avatar_url:avatarUrl}} size={88} ring/>
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
               <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"10px 5px",color:T.text,fontSize:11,fontWeight:600}}>Message</Btn>
@@ -2222,15 +2243,22 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
         <p style={{fontSize:10,color:T.muted,letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>Publications ({uPosts.length})</p>
         {uPosts.length===0
           ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune publication encore</p></div>
-          :uPosts.map(p=>(
-            <div key={p.id} onClick={()=>setDetailPost(p)} style={{background:T.card,borderRadius:18,overflow:"hidden",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer",transition:"all .2s"}}>
-              {p.img&&<MediaPlayer url={p.img} style={{maxHeight:200}} onImageClick={()=>onImageView(p.img)}/>}
-              <div style={{padding:14}}>
-                <p style={{margin:"0 0 6px",fontSize:13,color:T.text,lineHeight:1.6}}>{p.text||p.title}</p>
-                <span style={{fontSize:11,color:T.muted}}>{ago(p.ts)} · ❤ {(p.likes||[]).length} · 💬 {(p.comments||[]).length}</span>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
+            {uPosts.map(p=>(
+              <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}} onClick={()=>setDetailPost(p)}>
+                {p.img
+                  ?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
+                    <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
+                  </div>
+                }
+                <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         }
         <div style={{height:80}}/>
       </div>
@@ -2874,11 +2902,11 @@ function CelesteApp(){
 
   const loadPosts=useCallback(async(page=1)=>{
     const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).order("created_at",{ascending:false}).range(from,to);
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id))`).order("created_at",{ascending:false}).range(from,to);
     if(data){
       const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
       const followedIds=new Set((conns||[]).map(c=>c.to_id));
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false}));
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false}));
       const blockedSet=new Set(blockedUserIds);
       const visible=mapped.filter(p=>!blockedSet.has(p.by));
       const sorted=[...visible.filter(p=>p.pinned),...visible.filter(p=>!p.pinned&&p.isFollowed),...visible.filter(p=>!p.pinned&&!p.isFollowed)];
@@ -2913,6 +2941,8 @@ function CelesteApp(){
   useEffect(()=>{
     if(!session?.user)return;
     const myId=session.user.id;
+    const handleOpenUser=e=>setOpenUserId(e.detail.uid);
+window.addEventListener("celeste_open_user",handleOpenUser);
     const ch=sb.channel("celeste_rt")
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},async payload=>{
         const nm=payload.new;if(nm.sender_id===myId){loadConvs(myId);return;}
@@ -2952,7 +2982,10 @@ function CelesteApp(){
         if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
       })
       .subscribe();
-    return()=>sb.removeChannel(ch);
+   return()=>{
+      window.removeEventListener("celeste_open_user",handleOpenUser);
+      sb.removeChannel(ch);
+    };
   },[session?.user?.id,members]);
 
   const goTab=t=>{setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);};
