@@ -3261,7 +3261,15 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
       setConvs(filtered);return filtered;
     }return null;
   },[]);
-
+useEffect(()=>{
+  if(session?.user?.id&&myProfile?.id&&!isPending){
+    loadMembers();
+    loadPosts(1);
+    loadConnections(session.user.id);
+    loadUnreadNotifs(session.user.id);
+    loadBlockedUsers().then(()=>loadConvs(session.user.id));
+  }
+},[session?.user?.id,myProfile?.id,isPending]);
   useEffect(()=>{
   const handleBack=e=>{
     if(openConvId){setOpenConvId(null);window.history.pushState(null,"",window.location.href);return;}
