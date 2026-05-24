@@ -2244,9 +2244,14 @@ const askGemini=async(text)=>{
           {/* Input */}
           <div style={{padding:"12px 16px",paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
             <div style={{flex:1,background:"rgba(123,47,190,0.08)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
-              <textarea value={geminiInp} onChange={e=>setGeminiInp(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askGemini(geminiInp);}}}
-                placeholder="Parle à Céleste…" rows={1}
+              <textarea value={geminiInp} onChange={e=>{
+    setGeminiInp(e.target.value);
+    e.target.style.height="auto";
+    e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
+  }}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
+  placeholder="Écris à Céleste…" rows={1}
+  style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
                 style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}/>
             </div>
             <Btn onClick={()=>askGemini(geminiInp)} disabled={geminiLoading||!geminiInp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:geminiLoading||!geminiInp.trim()?0.5:1}}>
