@@ -3263,8 +3263,19 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   },[]);
 
   useEffect(()=>{
-    if(session?.user&&myProfile&&!isPending){loadMembers();loadPosts(1);loadConnections(session.user.id);loadUnreadNotifs(session.user.id);loadBlockedUsers().then(()=>loadConvs(session.user.id));}
-  },[session?.user?.id,myProfile?.id,isPending]);
+  const handleBack=e=>{
+    if(openConvId){setOpenConvId(null);window.history.pushState(null,"",window.location.href);return;}
+    if(openUserId){setOpenUserId(null);window.history.pushState(null,"",window.location.href);return;}
+    if(showNotifs){setShowNotifs(false);window.history.pushState(null,"",window.location.href);return;}
+    if(showAdmin){setShowAdmin(false);window.history.pushState(null,"",window.location.href);return;}
+    if(showNewPost){setShowNewPost(false);window.history.pushState(null,"",window.location.href);return;}
+    if(openCeleste){setOpenCeleste(false);window.history.pushState(null,"",window.location.href);return;}
+    if(tab!=="home"){setTab("home");window.history.pushState(null,"",window.location.href);return;}
+  };
+  window.addEventListener("popstate",handleBack);
+  window.history.pushState(null,"",window.location.href);
+  return()=>window.removeEventListener("popstate",handleBack);
+},[openConvId,openUserId,showNotifs,showAdmin,showNewPost,openCeleste,tab]);
 
   // Realtime
   useEffect(()=>{
