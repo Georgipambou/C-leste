@@ -2108,13 +2108,12 @@ const askGemini=async(text)=>{
           const mine=m.f==="me"||m.f===session?.user?.id;
           const isSending=!!m.sending;
           return(
-            <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}
+            <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
+              {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
+              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s"}}
   onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
   onTouchStart={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;}}
-  onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}
->
-              {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
-              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s"}}>
+  onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}>
                 <div style={{
                   background:mine?T.gradGold:"rgba(255,255,255,0.07)",
                   borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
