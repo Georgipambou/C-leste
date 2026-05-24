@@ -2933,7 +2933,9 @@ function CelesteApp(){
     const{data}=await sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false});
     if(data){
       const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime()}))}));
-      setConvs(mapped);return mapped;
+      const blockedSet=new Set(blockedUserIds);
+const filtered=mapped.filter(c=>!blockedSet.has(c.uid));
+setConvs(filtered);return filtered;
     }return null;
   },[]);
 
