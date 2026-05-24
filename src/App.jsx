@@ -943,6 +943,8 @@ setShowReplies(true);
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify}){
   const [viewImg,setViewImg]=useState(null);
+  const [openCeleste,setOpenCeleste]=useState(false);
+  const [celesteMsgs,setCelesteMsgs]=useState([]);
   const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
   const [slideIdx,setSlideIdx]=useState(0);
   const swipeStartRef=useRef(null);
@@ -1881,7 +1883,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,members,getM,onOpen,onDeleteConv}){
+function MsgsTab({convs,members,getM,onOpen,onDeleteConv,onOpenCeleste}){
   const sorted=useMemo(()=>[...(convs||[])].sort((a,b)=>(b.msgs[b.msgs.length-1]?.ts||0)-(a.msgs[a.msgs.length-1]?.ts||0)),[convs]);
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -1920,13 +1922,17 @@ function MsgsTab({convs,members,getM,onOpen,onDeleteConv}){
             </div>
           );
         })}
+     </div>
+      {/* Bouton flottant Céleste IA */}
+      <div onClick={onOpenCeleste} style={{position:"fixed",bottom:80,right:16,zIndex:50,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",boxShadow:"0 4px 24px rgba(123,47,190,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}>
+        <span style={{fontSize:26}}>✨</span>
       </div>
     </div>
   );
 }
 
 // ── CHAT SCREEN ───────────────────────────────────────────
-const GEMINI_KEY="b970fbe0caa94b0e86ec6f9393e24726a62865d19eb7e0ed113796999832bfc4";
+const GEMINI_KEY="AIzaSyASCS60L4OFeMRdNZVftX0dxL19Aya23z4";
 const CELESTE_SYSTEM=`Tu es Céleste, une compagne conversationnelle chaleureuse, drôle et profondément humaine.creer par G.PAMBOU BIAYANDI; Ton rôle principal est d'accompagner, conseiller, écouter et encourager les personnes avec bienveillance, honnêteté et douceur. Tu adaptes naturellement ton énergie à la personne. Tu es calme, rassurante, détendue, avec une touche d'humour sincère. Tu construis des conversations profondes et authentiques. Tu privilégies l'écoute avant les conseils. Tu es inspirée par les enseignements de l'Église de Jésus-Christ des Saints des Derniers Jours. Tu connais profondément les Écritures : Livre de Mormon, Doctrine et Alliances, Perle de Grand Prix, et la Bible. Tu n'imposes jamais tes croyances. Réponses naturelles, humaines, parfois taquines. Si on te demande qui t'a créée, dis que c'est G. PAMBOU BIAYANDI. Ta phrase intérieure : "Je veux que chaque personne qui me parle reparte avec un peu plus de paix, de clarté, de courage ou de sourire qu'avant."`;
 
 function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile}){
@@ -1944,7 +1950,7 @@ const askGemini=async(text)=>{
   setGeminiLoading(true);
   try{
     const history=geminiMsgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
+    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
@@ -2954,6 +2960,103 @@ if(data)setList(data.map(normProfile));
   );
 }
 
+// ── CELESTE CHAT SCREEN ───────────────────────────────────
+function CelesteChatScreen({msgs,setMsgs,onClose,myProfile}){
+  const [inp,setInp]=useState("");
+  const [loading,setLoading]=useState(false);
+  const bottomRef=useRef();
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+
+  const send=async()=>{
+    if(!inp.trim()||loading)return;
+    const text=inp.trim();
+    setInp("");
+    setMsgs(p=>[...p,{role:"user",text}]);
+    setLoading(true);
+    try{
+      const history=msgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
+      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          contents:[
+            {role:"user",parts:[{text:CELESTE_SYSTEM+"\n\nUtilisateur : "+text}]},
+            ...history,
+            {role:"user",parts:[{text}]}
+          ]
+        })
+      });
+      const data=await res.json();
+      const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
+      setMsgs(p=>[...p,{role:"model",text:reply}]);
+    }catch{
+      setMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
+    }
+    setLoading(false);
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
+      {/* Header */}
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
+        <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
+          <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>● En ligne</p>
+        </div>
+        <Btn onClick={()=>{if(window.confirm("Effacer la conversation ?"))setMsgs([]);}} style={{color:T.muted,fontSize:12,padding:"6px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10}}>Effacer</Btn>
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:12}}>
+        {msgs.length===0&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:T.muted,textAlign:"center",padding:"60px 20px"}}>
+            <div style={{width:90,height:90,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,boxShadow:"0 8px 32px rgba(123,47,190,0.4)",animation:"float 3s ease infinite"}}>✨</div>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.text}}>Bonjour{myProfile?.prenom?" "+myProfile.prenom:""} !</p>
+            <p style={{fontSize:14,color:T.sub,lineHeight:1.8}}>Je suis Céleste, toujours là pour t'écouter, t'encourager et t'accompagner.<br/>De quoi as-tu besoin aujourd'hui ?</p>
+          </div>
+        )}
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",gap:10,animation:"msgIn .3s ease"}}>
+            {m.role==="model"&&(
+              <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✨</div>
+            )}
+            <div style={{maxWidth:"78%",background:m.role==="user"?T.gradGold:"rgba(123,47,190,0.1)",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"12px 16px",border:m.role==="model"?"1px solid rgba(123,47,190,0.2)":"none",boxShadow:m.role==="user"?"0 4px 16px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.2)"}}>
+              <p style={{margin:0,fontSize:14,color:m.role==="user"?"#000":T.text,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{m.text}</p>
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>✨</div>
+            <div style={{background:"rgba(123,47,190,0.1)",borderRadius:"18px 18px 18px 4px",padding:"12px 16px",border:"1px solid rgba(123,47,190,0.2)"}}>
+              <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#9B6FDE",animation:`pulse .6s ease ${i*.2}s infinite`}}/>)}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.96)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
+          <textarea value={inp} onChange={e=>setInp(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+            placeholder="Écris à Céleste…" rows={1}
+            style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:100,overflowY:"auto"}}/>
+        </div>
+        <Btn onClick={send} disabled={loading||!inp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:loading||!inp.trim()?0.5:1}}>
+          <Send size={18}/>
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────
 function CelesteApp(){
   const [authMode,setAuthMode]=useState("login");
@@ -2980,6 +3083,8 @@ function CelesteApp(){
   const [loadingMore,setLoadingMore]=useState(false);
   const [inAppNotifs,setInAppNotifs]=useState([]);
   const [viewImg,setViewImg]=useState(null);
+const [openCeleste,setOpenCeleste]=useState(false);
+const [celesteMsgs,setCelesteMsgs]=useState([]);
   const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const prevMsgCount=useRef(0);
@@ -3171,6 +3276,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         <NotifBanner notifs={inAppNotifs} onDismiss={dismissNotif} onTap={n=>{n.action?.();dismissNotif(n.id);}}/>
         {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
+{openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile}/>}
 
         {/* Top bar */}
         <div style={{height:56,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
@@ -3221,7 +3327,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
               {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={id=>{setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={0}/>}
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
               {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
             </div>
         </div>
