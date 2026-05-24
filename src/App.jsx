@@ -1018,11 +1018,11 @@ onTouchEnd={e=>{
               </Btn>
               <span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
             </div>
-           <CommentsSection
+            <CommentsSection
               postId={post.id}
               sessionUserId={session?.user?.id}
               getM={getM}
-              onCountChange={count=>{setCmtCount(count);onComment?.();}}
+              onCountChange={setCmtCount}
             />
             <div ref={bottomRef}/>
           </div>
@@ -1290,21 +1290,8 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   useEffect(()=>{
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
-    if(isMe){
-  sb.from("status_views")
-    .select("viewer_id, profiles!status_views_viewer_id_fkey(prenom,nom,avatar_url)")
-    .eq("status_id",current.id)
-    .then(({data,error})=>{
-      console.log("VUES:",data,error);
-      setViews(v=>({...v,[current.id]:data||[]}));
-    });
-}
-    if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){
-  viewed.current.add(current.id);
-  sb.from("status_views")
-    .insert({status_id:current.id,viewer_id:session.user.id})
-    .then(({error})=>console.log("INSERT VUE:",error));
-}
+    if(isMe)sb.from("status_views").select("viewer_id,profiles(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data})=>setViews(v=>({...v,[current.id]:data||[]})));
+    if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){viewed.current.add(current.id);sb.from("status_views").insert({status_id:current.id,viewer_id:session.user.id});}
     setPaused(false);setProgress(0);
     const duration=current.type==="text"?5000:10000;
     const step=100/(duration/50);
@@ -1642,9 +1629,7 @@ const feedScrollRef=useRef(initialScroll);
           onClose={()=>{
             const pos=savedScroll.current;
             setDetailPost(null);
-            requestAnimationFrame(()=>{
-              if(scrollRef.current)scrollRef.current.scrollTop=pos;
-            });
+            setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=pos;},80);
           }}
           onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
           onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
@@ -1652,7 +1637,7 @@ const feedScrollRef=useRef(initialScroll);
         />
       )}
     <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
-  onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;}}>
+      onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;}}>
 
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1698,10 +1683,11 @@ const feedScrollRef=useRef(initialScroll);
         <div ref={bottomRef} style={{height:4}}/>
         <div style={{height:80}}/>
       </div>
-    </div>
+   </div>
     </>
   );
 }
+
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
   const [saved,setSaved]=useState(false);
@@ -3000,7 +2986,7 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
     setInp("");
     setMsgs(p=>[...p,{role:"user",text}]);
     setLoading(true);
-    if(session?.user?.id) await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
+    
     const tryGemini=async(retries=3)=>{
       for(let i=0;i<retries;i++){
         try{
