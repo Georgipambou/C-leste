@@ -3117,7 +3117,14 @@ function SplashScreen(){
   useEffect(()=>{
     const t1=setTimeout(()=>setPhase("warning"),15000);
     const t2=setTimeout(()=>setPhase("closing"),30000);
-    const t3=setTimeout(()=>window.close(),31000);
+    const t3=setTimeout(()=>{
+  document.body.innerHTML=`<div style="min-height:100vh;background:#000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center">
+    <span style="font-size:60px">✦</span>
+    <p style="color:#C9952A;font-size:18px;font-family:serif">Céleste</p>
+    <p style="color:#888;font-size:13px">Impossible de se connecter.<br/>Veuillez réessayer.</p>
+    <button onclick="window.location.reload()" style="margin-top:16px;padding:12px 28px;background:linear-gradient(135deg,#C9952A,#E8B84B);border:none;border-radius:14px;color:#000;font-size:14px;font-weight:700;cursor:pointer">Réessayer</button>
+  </div>`;
+},31000);
     return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);};
   },[]);
 
