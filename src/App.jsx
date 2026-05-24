@@ -444,12 +444,12 @@ const closeFullscreen=()=>{
     </div>
   );
 
-  if(fullscreen) return(
+ if(fullscreen) return(
   <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-    style={{position:"fixed",inset:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",width:"100%",height:"100%",maxHeight:"-webkit-fill-available"}}>
     <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop autoPlay
-      style={{width:"100vw",height:"100vh",objectFit:"contain"}}/>
-    <Btn onClick={e=>{e.stopPropagation();closeFullscreen();}} style={{position:"absolute",top:20,right:20,background:"rgba(0,0,0,0.6)",borderRadius:"50%",width:40,height:40,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><Minimize2 size={18}/></Btn>
+      style={{width:"100%",height:"100%",maxHeight:"-webkit-fill-available",objectFit:"contain"}}/>
+    <Btn onClick={e=>{e.stopPropagation();closeFullscreen();}} style={{position:"absolute",top:"env(safe-area-inset-top,20px)",right:20,background:"rgba(0,0,0,0.6)",borderRadius:"50%",width:40,height:40,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}><Minimize2 size={18}/></Btn>
     {controls}
   </div>
 );
