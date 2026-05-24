@@ -2159,7 +2159,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
       sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id),
       sb.from("connections").select("id",{count:"exact",head:true}).eq("from_id",user.id),
     ]).then(([{count:fc},{count:fg}])=>{setFollowersCount(fc||0);setFollowingCount(fg||0);});
-    sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).single().then(({data})=>{if(data)setBlocked(true);});
+    sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).maybeSingle().then(({data})=>{if(data)setBlocked(true);}); 
   },[user.id,session?.user?.id]);
 
   const toggle=async()=>{
@@ -2282,7 +2282,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 
   useEffect(()=>{
     sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id).then(({count})=>setFollowersCount(count||0));
-    sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).single().then(({data})=>{if(data)setBlocked(true);});
+    sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).maybeSingle().then(({data})=>{if(data)setBlocked(true);});
   },[user.id,session?.user?.id]);
 
   const toggle=async()=>{
