@@ -2981,23 +2981,29 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
     setMsgs(p=>[...p,{role:"user",text}]);
     setLoading(true);
     if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
-    try{
-      const history=msgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
-      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
-          contents:[...history,{role:"user",parts:[{text}]}]
-        })
-      });
-      const data=await res.json();
-      const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
-      setMsgs(p=>[...p,{role:"model",text:reply}]);
-      if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
-    }catch{
-      setMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
-    }
+    const tryGemini=async(retries=3)=>{
+      for(let i=0;i<retries;i++){
+        try{
+          const history=msgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
+          const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+              system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
+              contents:[...history,{role:"user",parts:[{text}]}]
+            })
+          });
+          if(!res.ok){if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}throw new Error("503");}
+          const data=await res.json();
+          const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
+          setMsgs(p=>[...p,{role:"model",text:reply}]);
+          if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
+          return;
+        }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}}
+      }
+      setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
+    };
+    await tryGemini();
     setLoading(false);
   };
 
