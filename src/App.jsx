@@ -131,7 +131,8 @@ const compressImage = file => new Promise(resolve=>{
 const playNotifSound = ()=>{
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator(),gain=ctx.createGain();
+if(ctx.state==='suspended')ctx.resume();
+const osc=ctx.createOscillator(),gain=ctx.createGain();
     osc.connect(gain);gain.connect(ctx.destination);
     osc.frequency.setValueAtTime(1047,ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(784,ctx.currentTime+0.15);
@@ -3220,7 +3221,7 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const prevMsgCount=useRef(0);
 
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
-  const addInAppNotif=useCallback((icon,title,body,action)=>{const id=Date.now()+Math.random();setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);playNotifSound();sendPushNotif(title,body);setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),5000);},[]);
+  const addInAppNotif=useCallback((icon,title,body,action)=>{const id=Date.now()+Math.random();setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);playNotifSound();sendPushNotif(title,body);setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),8000);},[]);
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
 
   const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
@@ -3235,6 +3236,11 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
     if(found){setOpenUser(found);return;}
     sb.from("profiles").select("*").eq("id",openUserId).single().then(({data})=>{if(data)setOpenUser(normProfile(data));});
   },[openUserId,members]);
+  useEffect(()=>{
+  if(session&&Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+},[session]);
 
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);}});
@@ -3357,7 +3363,12 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         loadConnections(myId);
         if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
       })
-      .subscribe();
+      .subscribe((status)=>{
+        if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
+          console.warn('[Céleste] Realtime déconnecté');
+          setTimeout(()=>sb.removeAllChannels(),2000);
+        }
+      });
    return()=>{
       window.removeEventListener("celeste_open_user",handleOpenUser);
       sb.removeChannel(ch);
