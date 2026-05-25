@@ -140,7 +140,20 @@ const playNotifSound = ()=>{
     osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.4);
   }catch(_){}
 };
-const sendPushNotif=(title,body)=>{if(Notification.permission==="granted") new Notification(title,{body});};
+const sendPushNotif=async(title,body)=>{
+  if(Notification.permission==="granted"){
+    if('serviceWorker' in navigator){
+      try{
+        const reg=await navigator.serviceWorker.ready;
+        if(reg&&reg.showNotification){
+          reg.showNotification(title,{body,icon:"/icon-192.png",badge:"/icon-192.png"});
+          return;
+        }
+      }catch(_){}
+    }
+    new Notification(title,{body});
+  }
+};
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const GS = `
@@ -3218,6 +3231,23 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const prevMsgCount=useRef(0);
+  
+  useEffect(()=>{
+  const unlock=()=>{
+    try{
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      if(ctx.state==='suspended')ctx.resume();
+      window.removeEventListener('click',unlock);
+      window.removeEventListener('touchstart',unlock);
+    }catch(_){}
+  };
+  window.addEventListener('click',unlock);
+  window.addEventListener('touchstart',unlock);
+  return()=>{
+    window.removeEventListener('click',unlock);
+    window.removeEventListener('touchstart',unlock);
+  };
+},[]);
 
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
   const addInAppNotif=useCallback((icon,title,body,action)=>{const id=Date.now()+Math.random();setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);playNotifSound();sendPushNotif(title,body);setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),5000);},[]);
