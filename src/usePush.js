@@ -1,15 +1,22 @@
 export async function subscribePush(supabaseClient, userId) {
   try {
-    const OneSignal = window.OneSignal;
-    if (!OneSignal) {
-      console.error("OneSignal non chargé");
-      return null;
-    }
+    await new Promise(r => {
+  if (window.OneSignal) { r(); return; }
+  const t = setInterval(() => {
+    if (window.OneSignal) { clearInterval(t); r(); }
+  }, 200);
+  setTimeout(() => { clearInterval(t); r(); }, 5000);
+});
+const OneSignal = window.OneSignal;
+if (!OneSignal) {
+  console.error("OneSignal non chargé");
+  return null;
+}
 
     await OneSignal.Notifications.requestPermission();
-    
-    // Attendre que l'ID soit disponible
-    await new Promise(r => setTimeout(r, 1000));
+
+// Attendre que l'ID soit disponible
+await new Promise(r => setTimeout(r, 3000));
     
     const onesignalId = OneSignal.User.PushSubscription.id;
     if (!onesignalId) {
