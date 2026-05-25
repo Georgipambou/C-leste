@@ -83,7 +83,8 @@ const getThemePalette=(mode)=>{
   };
 };
 
-let _themeMode=localStorage.getItem("celeste_theme")||"dark";
+let _themeMode="dark";
+try{_themeMode=localStorage.getItem("celeste_theme")||"dark";}catch(_){}
 let T=getThemePalette(_themeMode);
 const setAppTheme=(mode)=>{_themeMode=mode;T=getThemePalette(mode);localStorage.setItem("celeste_theme",mode);};
 
@@ -3225,19 +3226,6 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const id=Date.now()+Math.random();
   setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);
   playNotifSound();
-  try{
-    if(Notification.permission==="granted"&&"serviceWorker" in navigator){
-      navigator.serviceWorker.ready.then(reg=>{
-        reg.showNotification(title,{
-          body,
-          icon:"/icon-192.png",
-          badge:"/icon-192.png",
-          vibrate:[200,100,200],
-          data:{action}
-        });
-      }).catch(()=>{});
-    }
-  }catch(_){}
   setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),8000);
 },[]);
 
