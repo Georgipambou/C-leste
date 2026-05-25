@@ -185,7 +185,8 @@ const GS = `
   }
 
  body {
-    padding: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   ::-webkit-scrollbar {
@@ -456,13 +457,10 @@ const closeFullscreen=()=>{
   fullscreenRef.current=false;setFullscreen(false);
   setTimeout(()=>{
     if(ref.current){
-      ref.current.style.width="100%";
-      ref.current.style.height="";
-      ref.current.style.maxHeight="";
-      ref.current.style.objectFit="cover";
-      if(!paused){ref.current.play().catch(()=>{});setPlaying(true);}
+      ref.current.removeAttribute("style");
+      if(!pausedRef.current){ref.current.play().catch(()=>{});setPlaying(true);}
     }
-  },100);
+  },300);
 };
 
   // Swipe bas pour fermer le plein écran
