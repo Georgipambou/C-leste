@@ -457,7 +457,9 @@ const closeFullscreen=()=>{
   fullscreenRef.current=false;setFullscreen(false);
   setTimeout(()=>{
     if(ref.current){
-      ref.current.removeAttribute("style");
+      ref.current.style.width="100%";
+      ref.current.style.height="360px";
+      ref.current.style.objectFit="cover";
       if(!pausedRef.current){ref.current.play().catch(()=>{});setPlaying(true);}
     }
   },300);
@@ -492,9 +494,9 @@ const closeFullscreen=()=>{
 
  if(fullscreen) return(
   <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-    style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",width:"100%",height:"100%",maxHeight:"-webkit-fill-available"}}>
+    style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",width:"100%",height:"100dvh"}}>
     <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop autoPlay
-      style={{width:"100%",height:"100%",maxHeight:"-webkit-fill-available",objectFit:"contain"}}/>
+      style={{width:"100%",height:"100dvh",objectFit:"contain"}}/>
     <Btn onClick={e=>{e.stopPropagation();closeFullscreen();}} style={{position:"absolute",top:"env(safe-area-inset-top,20px)",right:20,background:"rgba(0,0,0,0.6)",borderRadius:"50%",width:40,height:40,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}><Minimize2 size={18}/></Btn>
     {controls}
   </div>
@@ -504,8 +506,10 @@ const closeFullscreen=()=>{
    <div style={{position:"relative",width:"100%"}} onClick={triggerControls}
   onTouchStart={e=>{touchStartX.current=e.touches[0].clientX;seekDuration.current=ref.current?.duration||0;}}
   onTouchMove={e=>{
-    e.preventDefault();
     if(touchStartX.current===null||!ref.current)return;
+    const dx=Math.abs(e.touches[0].clientX-touchStartX.current);
+    const dy=Math.abs(e.touches[0].clientY-(e.touches[0].clientY));
+    if(dx>dy)e.preventDefault();
     const diff=(e.touches[0].clientX-touchStartX.current)/window.innerWidth*(seekDuration.current*0.5);
     ref.current.currentTime=Math.max(0,Math.min(seekDuration.current,ref.current.currentTime+diff));
     touchStartX.current=e.touches[0].clientX;
