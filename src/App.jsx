@@ -41,7 +41,8 @@ import React from "react";
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+if(!SUPABASE_URL||!SUPABASE_ANON)console.error("Variables Supabase manquantes !");
+const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"");
 
 const PAGE_SIZE = 20;
 
@@ -83,12 +84,13 @@ const getThemePalette=(mode)=>{
   };
 };
 
-let _themeMode=localStorage.getItem("celeste_theme")||"dark";
+let _themeMode="dark";
+try{_themeMode=localStorage.getItem("celeste_theme")||"dark";}catch(_){}
 let T=getThemePalette(_themeMode);
 const setAppTheme=(mode)=>{_themeMode=mode;T=getThemePalette(mode);localStorage.setItem("celeste_theme",mode);};
 
 // ── UTILITAIRES ───────────────────────────────────────────
-const ago = ts => {
+const ago   = ts => {
   const d = Date.now() - new Date(ts).getTime();
   if (d < 60000)    return "maintenant";
   if (d < 3600000)  return `${Math.floor(d/60000)}min`;
@@ -393,6 +395,7 @@ const PostVideoPlayer=memo(function PostVideoPlayer({url,style={}}){
   const [paused,setPaused]=useState(false);
   const [fullscreen,setFullscreen]=useState(false);
   const touchStartY=useRef(null);
+const pausedRef=useRef(false);
 const [showControls,setShowControls]=useState(false);
 const controlsTimer=useRef(null);
 
@@ -403,25 +406,26 @@ const triggerControls=()=>{
 };
   const touchStartX=useRef(null);
   const seekDuration=useRef(0);
-
+const progressBarRef=useRef(null);
+const progressTimeRef=useRef(null);
   // Auto-play/pause selon visibilité (mode inline uniquement)
   useEffect(()=>{
     if(fullscreen)return;
     const el=ref.current; if(!el)return;
     const obs=new IntersectionObserver(([entry])=>{
       if(entry.isIntersecting&&entry.intersectionRatio>=0.5){
-        if(!paused){el.play().catch(()=>{});setPlaying(true);}
+        if(!pausedRef.current){el.play().catch(()=>{});setPlaying(true);}
       }else{el.pause();setPlaying(false);}
     },{threshold:0.5});
     obs.observe(el);
     return()=>obs.disconnect();
-  },[paused,fullscreen]);
+  },[fullscreen]);
 
   const togglePlayPause=e=>{
     e.stopPropagation();
     const el=ref.current;if(!el)return;
-    if(el.paused){el.play().catch(()=>{});setPaused(false);setPlaying(true);}
-    else{el.pause();setPaused(true);setPlaying(false);}
+    if(el.paused){el.play().catch(()=>{});pausedRef.current=false;setPaused(false);setPlaying(true);}
+    else{el.pause();pausedRef.current=true;setPaused(true);setPlaying(false);}
   };
 
   const openFullscreen=e=>{
@@ -514,9 +518,9 @@ const closeFullscreen=()=>{
     const el=e.target;
     if(!el.duration)return;
     const pct=(el.currentTime/el.duration)*100;
-    const bar=el.parentNode.querySelector(".progress-fill");
+    const bar=progressBarRef.current;
     if(bar)bar.style.width=pct+"%";
-    const timeEl=el.parentNode.querySelector(".progress-time");
+    const timeEl=progressTimeRef.current;
     if(timeEl){
       const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
       timeEl.textContent=`${fmt(el.currentTime)} / ${fmt(el.duration)}`;
@@ -524,7 +528,7 @@ const closeFullscreen=()=>{
   }}/>
 <div style={{position:"absolute",bottom:50,left:10,right:10,zIndex:4,opacity:showControls?1:0,transition:"opacity 0.3s ease",pointerEvents:showControls?"all":"none"}}>
   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-    <span className="progress-time" style={{color:"#fff",fontSize:11,fontWeight:600,minWidth:70,textAlign:"center",background:"rgba(0,0,0,0.4)",borderRadius:8,padding:"2px 6px"}}>0:00 / 0:00</span>
+    <span ref={progressTimeRef} style={{color:"#fff",fontSize:11,fontWeight:600,minWidth:70,textAlign:"center",background:"rgba(0,0,0,0.4)",borderRadius:8,padding:"2px 6px"}}>0:00 / 0:00</span>
   </div>
   <div style={{position:"relative",height:4,background:"rgba(255,255,255,0.2)",borderRadius:2,cursor:"pointer"}}
     onClick={e=>{
@@ -539,7 +543,7 @@ const closeFullscreen=()=>{
       const pct=(e.touches[0].clientX-rect.left)/rect.width;
       ref.current.currentTime=pct*ref.current.duration;
     }}>
-    <div className="progress-fill" style={{height:"100%",width:"0%",background:T.gradGold,borderRadius:2,transition:"width 0.1s linear",position:"relative"}}>
+    <div ref={progressBarRef} style={{height:"100%",width:"0%",background:T.gradGold,borderRadius:2,transition:"width 0.1s linear",position:"relative"}}>
       <div style={{position:"absolute",right:-6,top:"50%",transform:"translateY(-50%)",width:12,height:12,borderRadius:"50%",background:T.gold,boxShadow:"0 0 6px rgba(201,149,42,0.8)"}}/>
     </div>
   </div>
@@ -3231,7 +3235,7 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const prevMsgCount=useRef(0);
-  
+
   useEffect(()=>{
   const unlock=()=>{
     try{
