@@ -83,8 +83,7 @@ const getThemePalette=(mode)=>{
   };
 };
 
-let _themeMode="dark";
-try{_themeMode=localStorage.getItem("celeste_theme")||"dark";}catch(_){}
+let _themeMode=localStorage.getItem("celeste_theme")||"dark";
 let T=getThemePalette(_themeMode);
 const setAppTheme=(mode)=>{_themeMode=mode;T=getThemePalette(mode);localStorage.setItem("celeste_theme",mode);};
 
@@ -132,8 +131,7 @@ const compressImage = file => new Promise(resolve=>{
 const playNotifSound = ()=>{
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
-if(ctx.state==='suspended')ctx.resume();
-const osc=ctx.createOscillator(),gain=ctx.createGain();
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
     osc.connect(gain);gain.connect(ctx.destination);
     osc.frequency.setValueAtTime(1047,ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(784,ctx.currentTime+0.15);
@@ -2286,7 +2284,7 @@ const askGemini=async(text)=>{
     e.target.style.height="auto";
     e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
   }}
-  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();askGemini(geminiInp);}}}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
   placeholder="Écris à Céleste…" rows={1}
   style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
             </div>
@@ -3222,13 +3220,7 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const prevMsgCount=useRef(0);
 
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
-  const addInAppNotif=useCallback((icon,title,body,action)=>{
-  const id=Date.now()+Math.random();
-  setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);
-  playNotifSound();
-  setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),8000);
-},[]);
-
+  const addInAppNotif=useCallback((icon,title,body,action)=>{const id=Date.now()+Math.random();setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);playNotifSound();sendPushNotif(title,body);setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),5000);},[]);
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
 
   const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
@@ -3243,11 +3235,6 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
     if(found){setOpenUser(found);return;}
     sb.from("profiles").select("*").eq("id",openUserId).single().then(({data})=>{if(data)setOpenUser(normProfile(data));});
   },[openUserId,members]);
-  useEffect(()=>{
-  if(session&&Notification.permission==='default'){
-    Notification.requestPermission();
-  }
-},[session]);
 
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);}});
@@ -3370,12 +3357,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         loadConnections(myId);
         if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
       })
-      .subscribe((status)=>{
-        if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
-          console.warn('[Céleste] Realtime déconnecté');
-          setTimeout(()=>sb.removeAllChannels(),2000);
-        }
-      });
+      .subscribe();
    return()=>{
       window.removeEventListener("celeste_open_user",handleOpenUser);
       sb.removeChannel(ch);
