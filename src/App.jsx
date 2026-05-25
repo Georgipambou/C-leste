@@ -184,8 +184,8 @@ const GS = `
     font-size: 16px !important;
   }
 
-  body {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+ body {
+    padding: 0;
   }
 
   ::-webkit-scrollbar {
@@ -396,6 +396,7 @@ const PostVideoPlayer=memo(function PostVideoPlayer({url,style={}}){
   const [fullscreen,setFullscreen]=useState(false);
   const touchStartY=useRef(null);
 const pausedRef=useRef(false);
+const fullscreenRef=useRef(false);
 const [showControls,setShowControls]=useState(false);
 const controlsTimer=useRef(null);
 
@@ -410,16 +411,16 @@ const progressBarRef=useRef(null);
 const progressTimeRef=useRef(null);
   // Auto-play/pause selon visibilité (mode inline uniquement)
   useEffect(()=>{
-    if(fullscreen)return;
     const el=ref.current; if(!el)return;
     const obs=new IntersectionObserver(([entry])=>{
+      if(fullscreenRef.current)return;
       if(entry.isIntersecting&&entry.intersectionRatio>=0.5){
         if(!pausedRef.current){el.play().catch(()=>{});setPlaying(true);}
       }else{el.pause();setPlaying(false);}
     },{threshold:0.5});
     obs.observe(el);
-    return()=>obs.disconnect();
-  },[fullscreen]);
+    return()=>{obs.disconnect();clearTimeout(controlsTimer.current);};
+  },[]);
 
   const togglePlayPause=e=>{
     e.stopPropagation();
@@ -434,7 +435,7 @@ const progressTimeRef=useRef(null);
   if(!el)return;
   if(el.webkitEnterFullscreen){
     el.addEventListener("webkitendfullscreen",()=>{
-      setFullscreen(false);
+      fullscreenRef.current=false;setFullscreen(false);
       setPaused(false);
       setPlaying(true);
       setTimeout(()=>{
@@ -446,13 +447,13 @@ const progressTimeRef=useRef(null);
     el.webkitEnterFullscreen();
     return;
   }
-  if(el.requestFullscreen){el.requestFullscreen();setFullscreen(true);return;}
-  if(el.webkitRequestFullscreen){el.webkitRequestFullscreen();setFullscreen(true);return;}
-  setFullscreen(true);
+  if(el.requestFullscreen){el.requestFullscreen();fullscreenRef.current=true;setFullscreen(true);return;}
+  if(el.webkitRequestFullscreen){el.webkitRequestFullscreen();fullscreenRef.current=true;setFullscreen(true);return;}
+  fullscreenRef.current=true;setFullscreen(true);
 };
 const closeFullscreen=()=>{
   if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
-  setFullscreen(false);
+  fullscreenRef.current=false;setFullscreen(false);
   setTimeout(()=>{
     if(ref.current){
       ref.current.style.width="100%";
@@ -505,6 +506,7 @@ const closeFullscreen=()=>{
    <div style={{position:"relative",width:"100%"}} onClick={triggerControls}
   onTouchStart={e=>{touchStartX.current=e.touches[0].clientX;seekDuration.current=ref.current?.duration||0;}}
   onTouchMove={e=>{
+    e.preventDefault();
     if(touchStartX.current===null||!ref.current)return;
     const diff=(e.touches[0].clientX-touchStartX.current)/window.innerWidth*(seekDuration.current*0.5);
     ref.current.currentTime=Math.max(0,Math.min(seekDuration.current,ref.current.currentTime+diff));
@@ -538,6 +540,7 @@ const closeFullscreen=()=>{
       ref.current.currentTime=pct*ref.current.duration;
     }}
     onTouchStart={e=>{
+      e.preventDefault();
       if(!ref.current)return;
       const rect=e.currentTarget.getBoundingClientRect();
       const pct=(e.touches[0].clientX-rect.left)/rect.width;
