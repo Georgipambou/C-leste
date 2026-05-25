@@ -2285,7 +2285,7 @@ const askGemini=async(text)=>{
     e.target.style.height="auto";
     e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
   }}
-  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();askGemini(geminiInp);}}}
   placeholder="Écris à Céleste…" rows={1}
   style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
             </div>
@@ -3221,7 +3221,26 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const prevMsgCount=useRef(0);
 
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
-  const addInAppNotif=useCallback((icon,title,body,action)=>{const id=Date.now()+Math.random();setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);playNotifSound();sendPushNotif(title,body);setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),8000);},[]);
+  const addInAppNotif=useCallback((icon,title,body,action)=>{
+  const id=Date.now()+Math.random();
+  setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);
+  playNotifSound();
+  try{
+    if(Notification.permission==="granted"&&"serviceWorker" in navigator){
+      navigator.serviceWorker.ready.then(reg=>{
+        reg.showNotification(title,{
+          body,
+          icon:"/icon-192.png",
+          badge:"/icon-192.png",
+          vibrate:[200,100,200],
+          data:{action}
+        });
+      }).catch(()=>{});
+    }
+  }catch(_){}
+  setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),8000);
+},[]);
+
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
 
   const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
