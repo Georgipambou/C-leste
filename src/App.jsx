@@ -184,9 +184,8 @@ const GS = `
     font-size: 16px !important;
   }
 
- body {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+  body {
+    padding: calc(env(safe-area-inset-top) + 8px) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
   ::-webkit-scrollbar {
@@ -389,174 +388,192 @@ const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,
 });
 
 // ── MEDIA PLAYER ─────────────────────────────────────────
-const PostVideoPlayer=memo(function PostVideoPlayer({url,style={}}){
-  const ref=useRef(null);
-  const [muted,setMuted]=useState(true);
-  const [playing,setPlaying]=useState(false);
-  const [paused,setPaused]=useState(false);
-  const [fullscreen,setFullscreen]=useState(false);
-  const touchStartY=useRef(null);
-const pausedRef=useRef(false);
-const fullscreenRef=useRef(false);
-const [showControls,setShowControls]=useState(false);
-const controlsTimer=useRef(null);
+const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {} }) {
+  const ref = useRef(null);
+  const [muted, setMuted] = useState(true);
+  const [playing, setPlaying] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const controlsTimer = useRef(null);
+  const touchStartY = useRef(null);
+  const touchStartX = useRef(null);
+  const seekDuration = useRef(0);
+  const progressBarRef = useRef(null);
+  const progressTimeRef = useRef(null);
+  const pausedRef = useRef(false);
+  const fullscreenRef = useRef(false);
 
-const triggerControls=()=>{
-  setShowControls(true);
-  clearTimeout(controlsTimer.current);
-  controlsTimer.current=setTimeout(()=>setShowControls(false),2000);
-};
-  const touchStartX=useRef(null);
-  const seekDuration=useRef(0);
-const progressBarRef=useRef(null);
-const progressTimeRef=useRef(null);
-  // Auto-play/pause selon visibilité (mode inline uniquement)
-  useEffect(()=>{
-    const el=ref.current; if(!el)return;
-    const obs=new IntersectionObserver(([entry])=>{
-      if(fullscreenRef.current)return;
-      if(entry.isIntersecting&&entry.intersectionRatio>=0.5){
-        if(!pausedRef.current){el.play().catch(()=>{});setPlaying(true);}
-      }else{el.pause();setPlaying(false);}
-    },{threshold:0.5});
+  const triggerControls = () => {
+    setShowControls(true);
+    clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => setShowControls(false), 2000);
+  };
+
+  // Auto-play/pause selon visibilité
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (fullscreenRef.current) return;
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+        if (!pausedRef.current) { el.play().catch(() => {}); setPlaying(true); }
+      } else { el.pause(); setPlaying(false); }
+    }, { threshold: 0.5 });
     obs.observe(el);
-    return()=>{obs.disconnect();clearTimeout(controlsTimer.current);};
-  },[]);
+    return () => obs.disconnect();
+  }, []);
 
-  const togglePlayPause=e=>{
+  // ✅ closeFullscreen déclarée au niveau du composant
+  const closeFullscreen = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    fullscreenRef.current = false;
+    setFullscreen(false);
+    // Pas de manipulation des styles React — on laisse React re-render proprement
+    setTimeout(() => {
+      if (ref.current && !pausedRef.current) {
+        ref.current.play().catch(() => {});
+        setPlaying(true);
+      }
+    }, 150);
+  }, []);
+
+  const togglePlayPause = (e) => {
     e.stopPropagation();
-    const el=ref.current;if(!el)return;
-    if(el.paused){el.play().catch(()=>{});pausedRef.current=false;setPaused(false);setPlaying(true);}
-    else{el.pause();pausedRef.current=true;setPaused(true);setPlaying(false);}
+    const el = ref.current; if (!el) return;
+    if (el.paused) { el.play().catch(() => {}); pausedRef.current = false; setPaused(false); setPlaying(true); }
+    else { el.pause(); pausedRef.current = true; setPaused(true); setPlaying(false); }
   };
 
-  const openFullscreen=e=>{
-  e.stopPropagation();
-  const el=ref.current;
-  if(!el)return;
-  if(el.webkitEnterFullscreen){
-    el.addEventListener("webkitendfullscreen",()=>{
-      fullscreenRef.current=false;setFullscreen(false);
-      setPaused(false);
-      setPlaying(true);
-      setTimeout(()=>{
-        if(ref.current){
-          ref.current.play().catch(()=>{});
-        }
-      },300);
-    },{once:true});
-    el.webkitEnterFullscreen();
-    return;
-  }
-  if(el.requestFullscreen){el.requestFullscreen();fullscreenRef.current=true;setFullscreen(true);return;}
-  if(el.webkitRequestFullscreen){el.webkitRequestFullscreen();fullscreenRef.current=true;setFullscreen(true);return;}
-  fullscreenRef.current=true;setFullscreen(true);
-};
-const closeFullscreen=()=>{
-  if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
-  fullscreenRef.current=false;setFullscreen(false);
-  setTimeout(()=>{
-    if(ref.current){
-      ref.current.style.width="100%";
-      ref.current.style.height="360px";
-      ref.current.style.objectFit="cover";
-      if(!pausedRef.current){ref.current.play().catch(()=>{});setPlaying(true);}
+  // ✅ openFullscreen correctement fermée
+  const openFullscreen = (e) => {
+    e.stopPropagation();
+    const el = ref.current; if (!el) return;
+
+    // iOS : webkitEnterFullscreen natif
+    if (el.webkitEnterFullscreen) {
+      el.addEventListener("webkitendfullscreen", () => {
+        fullscreenRef.current = false;
+        setFullscreen(false);
+        setPaused(false);
+        setPlaying(true);
+        setTimeout(() => { if (ref.current) ref.current.play().catch(() => {}); }, 300);
+      }, { once: true });
+      el.webkitEnterFullscreen();
+      return;
     }
-  },300);
-};
 
-  // Swipe bas pour fermer le plein écran
-  const onTouchStart=e=>{ touchStartY.current=e.touches[0].clientY; };
-  const onTouchEnd=e=>{
-    if(touchStartY.current===null)return;
-    const diff=e.changedTouches[0].clientY-touchStartY.current;
-    if(diff>80)closeFullscreen();
-    touchStartY.current=null;
+    // Android : Fullscreen API standard
+    fullscreenRef.current = true;
+    setFullscreen(true);
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    }
+
+    // Écoute la sortie native (bouton retour Android)
+    const onFsChange = () => {
+      if (!document.fullscreenElement) {
+        closeFullscreen();
+        document.removeEventListener("fullscreenchange", onFsChange);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
   };
 
-  const controls=(
-    <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",alignItems:"center",gap:8,zIndex:3}}>
-      <Btn onClick={togglePlayPause} style={{background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:34,height:34,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-        {playing&&!paused?<Pause size={15}/>:<Play size={15} style={{marginLeft:2}}/>}
+  const onTouchStart = (e) => { touchStartY.current = e.touches[0].clientY; };
+  const onTouchEnd = (e) => {
+    if (touchStartY.current === null) return;
+    const diff = e.changedTouches[0].clientY - touchStartY.current;
+    if (diff > 80) closeFullscreen();
+    touchStartY.current = null;
+  };
+
+  const controls = (
+    <div style={{ position: "absolute", bottom: 10, left: 10, right: 10, display: "flex", alignItems: "center", gap: 8, zIndex: 3 }}>
+      <Btn onClick={togglePlayPause} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+        {playing && !paused ? <Pause size={15} /> : <Play size={15} style={{ marginLeft: 2 }} />}
       </Btn>
-      <div style={{flex:1}}/>
-      <Btn onClick={e=>{e.stopPropagation();setMuted(m=>!m);}} style={{background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:34,height:34,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-        {muted?<VolumeX size={15}/>:<Volume2 size={15}/>}
+      <div style={{ flex: 1 }} />
+      <Btn onClick={e => { e.stopPropagation(); setMuted(m => !m); }} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+        {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
       </Btn>
-      {!fullscreen&&<Btn onClick={openFullscreen} style={{background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:34,height:34,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-        <Maximize2 size={15}/>
-      </Btn>}
-      {fullscreen&&<Btn onClick={e=>{e.stopPropagation();closeFullscreen();}} style={{background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:34,height:34,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-        <Minimize2 size={15}/>
-      </Btn>}
+      {!fullscreen && (
+        <Btn onClick={openFullscreen} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+          <Maximize2 size={15} />
+        </Btn>
+      )}
+      {fullscreen && (
+        <Btn onClick={e => { e.stopPropagation(); closeFullscreen(); }} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+          <Minimize2 size={15} />
+        </Btn>
+      )}
     </div>
   );
 
- if(fullscreen) return(
-  <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-    style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:999,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",width:"100%",height:"100dvh"}}>
-    <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop autoPlay
-      style={{width:"100%",height:"100dvh",objectFit:"contain"}}/>
-    <Btn onClick={e=>{e.stopPropagation();closeFullscreen();}} style={{position:"absolute",top:"env(safe-area-inset-top,20px)",right:20,background:"rgba(0,0,0,0.6)",borderRadius:"50%",width:40,height:40,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}><Minimize2 size={18}/></Btn>
-    {controls}
-  </div>
-);
-
-  return(
-   <div style={{position:"relative",width:"100%"}} onClick={triggerControls}
-  onTouchStart={e=>{touchStartX.current=e.touches[0].clientX;seekDuration.current=ref.current?.duration||0;}}
-  onTouchMove={e=>{
-    if(touchStartX.current===null||!ref.current)return;
-    const dx=Math.abs(e.touches[0].clientX-touchStartX.current);
-    const dy=Math.abs(e.touches[0].clientY-(e.touches[0].clientY));
-    if(dx>dy)e.preventDefault();
-    const diff=(e.touches[0].clientX-touchStartX.current)/window.innerWidth*(seekDuration.current*0.5);
-    ref.current.currentTime=Math.max(0,Math.min(seekDuration.current,ref.current.currentTime+diff));
-    touchStartX.current=e.touches[0].clientX;
-  }}
-  onTouchEnd={()=>{touchStartX.current=null;}}
->
-      <video ref={ref} src={url} playsInline webkit-playsinline="true" muted={muted} loop preload="metadata"
-  style={{width:"100%",borderRadius:14,display:"block",background:"#000",height:360,objectFit:"cover",...style}}
-  onTimeUpdate={e=>{
-    const el=e.target;
-    if(!el.duration)return;
-    const pct=(el.currentTime/el.duration)*100;
-    const bar=progressBarRef.current;
-    if(bar)bar.style.width=pct+"%";
-    const timeEl=progressTimeRef.current;
-    if(timeEl){
-      const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
-      timeEl.textContent=`${fmt(el.currentTime)} / ${fmt(el.duration)}`;
-    }
-  }}/>
-<div style={{position:"absolute",bottom:50,left:10,right:10,zIndex:4,opacity:showControls?1:0,transition:"opacity 0.3s ease",pointerEvents:showControls?"all":"none"}}>
-  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-    <span ref={progressTimeRef} style={{color:"#fff",fontSize:11,fontWeight:600,minWidth:70,textAlign:"center",background:"rgba(0,0,0,0.4)",borderRadius:8,padding:"2px 6px"}}>0:00 / 0:00</span>
-  </div>
-  <div style={{position:"relative",height:4,background:"rgba(255,255,255,0.2)",borderRadius:2,cursor:"pointer"}}
-    onClick={e=>{
-      if(!ref.current)return;
-      const rect=e.currentTarget.getBoundingClientRect();
-      const pct=(e.clientX-rect.left)/rect.width;
-      ref.current.currentTime=pct*ref.current.duration;
-    }}
-    onTouchStart={e=>{
-      e.preventDefault();
-      if(!ref.current)return;
-      const rect=e.currentTarget.getBoundingClientRect();
-      const pct=(e.touches[0].clientX-rect.left)/rect.width;
-      ref.current.currentTime=pct*ref.current.duration;
-    }}>
-    <div ref={progressBarRef} style={{height:"100%",width:"0%",background:T.gradGold,borderRadius:2,transition:"width 0.1s linear",position:"relative"}}>
-      <div style={{position:"absolute",right:-6,top:"50%",transform:"translateY(-50%)",width:12,height:12,borderRadius:"50%",background:T.gold,boxShadow:"0 0 6px rgba(201,149,42,0.8)"}}/>
+  // ✅ Mode fullscreen : rendu distinct et propre, aucun style inline sur la vidéo inline
+  if (fullscreen) return (
+    <div
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+      style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <video
+        ref={ref} src={url} playsInline webkit-playsinline="true"
+        muted={muted} loop autoPlay
+        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+      />
+      <Btn onClick={e => { e.stopPropagation(); closeFullscreen(); }} style={{ position: "absolute", top: "env(safe-area-inset-top,20px)", right: 20, background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: 40, height: 40, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+        <Minimize2 size={18} />
+      </Btn>
+      {controls}
     </div>
-  </div>
-</div>
-      {!playing&&(
-        <div onClick={togglePlayPause} style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:1,borderRadius:14}}>
-          <div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Play size={20} color="#fff" style={{marginLeft:3}}/>
+  );
+
+  // ✅ Mode inline : balise <video> unique, jamais de styles forcés en sortie de fullscreen
+  return (
+    <div
+      style={{ position: "relative", width: "100%" }}
+      onClick={triggerControls}
+      onTouchStart={e => { touchStartX.current = e.touches[0].clientX; seekDuration.current = ref.current?.duration || 0; }}
+      onTouchMove={e => {
+        if (touchStartX.current === null || !ref.current) return;
+        const diff = (e.touches[0].clientX - touchStartX.current) / window.innerWidth * (seekDuration.current * 0.5);
+        ref.current.currentTime = Math.max(0, Math.min(seekDuration.current, ref.current.currentTime + diff));
+        touchStartX.current = e.touches[0].clientX;
+      }}
+      onTouchEnd={() => { touchStartX.current = null; }}
+    >
+      <video
+        ref={ref} src={url} playsInline webkit-playsinline="true"
+        muted={muted} loop preload="metadata"
+        style={{ width: "100%", borderRadius: 14, display: "block", background: "#000", height: 360, objectFit: "cover", ...style }}
+        onTimeUpdate={e => {
+          const el = e.target; if (!el.duration) return;
+          const pct = (el.currentTime / el.duration) * 100;
+          if (progressBarRef.current) progressBarRef.current.style.width = pct + "%";
+          if (progressTimeRef.current) {
+            const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+            progressTimeRef.current.textContent = `${fmt(el.currentTime)} / ${fmt(el.duration)}`;
+          }
+        }}
+      />
+      {/* Barre de progression */}
+      <div style={{ position: "absolute", bottom: 50, left: 10, right: 10, zIndex: 4, opacity: showControls ? 1 : 0, transition: "opacity 0.3s ease", pointerEvents: showControls ? "all" : "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <span ref={progressTimeRef} style={{ color: "#fff", fontSize: 11, fontWeight: 600, minWidth: 70, textAlign: "center", background: "rgba(0,0,0,0.4)", borderRadius: 8, padding: "2px 6px" }}>0:00 / 0:00</span>
+        </div>
+        <div
+          style={{ position: "relative", height: 4, background: "rgba(255,255,255,0.2)", borderRadius: 2, cursor: "pointer" }}
+          onClick={e => { if (!ref.current) return; const rect = e.currentTarget.getBoundingClientRect(); ref.current.currentTime = ((e.clientX - rect.left) / rect.width) * ref.current.duration; }}
+          onTouchStart={e => { if (!ref.current) return; const rect = e.currentTarget.getBoundingClientRect(); ref.current.currentTime = ((e.touches[0].clientX - rect.left) / rect.width) * ref.current.duration; }}>
+          <div ref={progressBarRef} style={{ height: "100%", width: "0%", background: T.gradGold, borderRadius: 2, transition: "width 0.1s linear", position: "relative" }}>
+            <div style={{ position: "absolute", right: -6, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%", background: T.gold, boxShadow: "0 0 6px rgba(201,149,42,0.8)" }} />
+          </div>
+        </div>
+      </div>
+      {!playing && (
+        <div onClick={togglePlayPause} style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 1, borderRadius: 14 }}>
+          <div style={{ background: "rgba(0,0,0,0.5)", borderRadius: "50%", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Play size={20} color="#fff" style={{ marginLeft: 3 }} />
           </div>
         </div>
       )}
@@ -1482,6 +1499,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
 
 // ── STATUSES TAB ──────────────────────────────────────────
 function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify,blockedUserIds=[]}){
+  const {setHideNav}=useApp();
   const [groups,setGroups]=useState([]);
   const [myStatuses,setMyStatuses]=useState([]);
   const [viewing,setViewing]=useState(null);
@@ -1522,13 +1540,13 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
           author={viewing.author}
           isMe={viewing.author?.id===session?.user?.id}
           onDelete={delStatus}
-          onClose={()=>{setViewing(null);load();}}
+          onClose={()=>{setViewing(null);load();setHideNav(false);}}
           session={session}
         />
       )}
       {creating&&(
         <StatusCreatorModal myProfile={myProfile} session={session} myStatuses={myStatuses}
-          onClose={()=>setCreating(false)} onDone={()=>{setCreating(false);load();notify("Statut publié ✦");}}/>
+          onClose={()=>{setCreating(false);setHideNav(false);}} onDone={()=>{setCreating(false);load();notify("Statut publié ✦");setHideNav(false);}}/>
       )}
       <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Statuts</h2>
@@ -1548,7 +1566,7 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
               <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{myMapped.length>0?"Voir mon statut":"Ajouter un statut"}</p>
               <p style={{margin:0,fontSize:11,color:T.muted}}>{myMapped.length>0?ago(myMapped[0].ts):"Partagez votre moment"}</p>
             </div>
-            <Btn onClick={()=>setCreating(true)} style={{marginLeft:"auto",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:12,padding:"8px 14px",color:T.goldL,fontSize:12,fontWeight:600}}>+ Ajouter</Btn>
+            <Btn onClick={()=>{setCreating(true);setHideNav(true);}}onClick={()=>{setCreating(true);setHideNav(true);}} style={{marginLeft:"auto",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:12,padding:"8px 14px",color:T.goldL,fontSize:12,fontWeight:600}}>+ Ajouter</Btn>
           </div>
         </div>
 
@@ -1559,7 +1577,7 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {groups.map((g,i)=>(
                 <div key={g.author?.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,borderRadius:18,border:`1px solid ${T.border}`,cursor:"pointer",animation:`fadeUp .3s ease ${i*.04}s both`,transition:"all .2s"}}
-                  onClick={()=>setViewing(g)}>
+                  onClick={()=>{setViewing(g);setHideNav(true);}}>
                   <Av u={g.author} size={52} ring/>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
@@ -3239,6 +3257,7 @@ const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
   const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
+  const [hideNav,setHideNav]=useState(false);
   const prevMsgCount=useRef(0);
 
   useEffect(()=>{
@@ -3419,6 +3438,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
     setTab,members,posts,
     notify,
     chatDrafts,setChatDrafts,
+    hideNav,setHideNav,
   };
 
   // Splash screen
@@ -3518,7 +3538,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         </div>
 
         {/* Bottom nav premium */}
-        {!openConvId&&!openUserId&&(
+        {!openConvId&&!openUserId&&!hideNav&&(
           <div style={{height:72,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -20px 60px rgba(0,0,0,0.4)",position:"relative",margin:"0 12px 8px",borderRadius:24,border:`1px solid rgba(255,255,255,0.08)`}}>
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
