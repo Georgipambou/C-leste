@@ -170,18 +170,21 @@ const GS = `
   }
 
   html, body, #root {
-    /* Remplacer height: 100% par min-height si vous voulez que la page défile naturellement */
-    min-height: 100%; 
+    min-height: 100%;
     background: #000;
-    
-    /* On active le défilement à inertie natif (surtout pour iOS, mais aide à stabiliser Android) */
-    -webkit-overflow-scrolling: touch; 
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+  }
     
     /* Suppression de overscroll-behavior: none qui fige le scroll */
   }
 
   input, textarea {
     font-size: 16px !important;
+  }
+
+  .keyboard-open-hide {
+    display: none !important;
   }
 
   body {
@@ -859,10 +862,17 @@ function NotifsScreen({myProfile,session,members}){
 }
 
 // ── COMMENTS SECTION ─────────────────────────────────────
-function CommentsSection({postId,sessionUserId,members,getM,onCountChange}){
+function CommentsSection({postId,sessionUserId,getM,onCountChange}){
+  const {setHideNav}=useApp();
   const [comments,setComments]=useState([]);
   const [text,setText]=useState("");
   const [posting,setPosting]=useState(false);
+  const textareaRef=useRef(null);
+
+  useEffect(()=>{
+    const ta=textareaRef.current;
+    if(ta){ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,140)+"px";}
+  },[text]);
 
   const load=useCallback(async()=>{
     const{data}=await sb.from("comments")
@@ -883,24 +893,32 @@ function CommentsSection({postId,sessionUserId,members,getM,onCountChange}){
   },[postId,load]);
 
   const submit=async()=>{
-    if(!text.trim())return;
+    if(!text.trim()||posting)return;
     setPosting(true);
     await sb.from("comments").insert({post_id:postId,author_id:sessionUserId,text:text.trim()});
-    setText(""); setPosting(false);
+    setText("");setPosting(false);
   };
 
   return(
-    <div>
-      {comments.map(c=>(
-        <CommentItem key={c.id} comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
-      ))}
-      <div style={{display:"flex",gap:9,marginTop:10}}>
-        <input value={text} onChange={e=>setText(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter")submit();}}
-          placeholder="Ajouter un commentaire…"
-          style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",color:T.text,fontSize:13,outline:"none"}}/>
-        <Btn onClick={submit} disabled={posting||!text.trim()} style={{background:T.gradGold,borderRadius:"50%",width:36,height:36,color:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <Send size={14}/>
+    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:320,overflowY:"auto",paddingRight:4}}>
+        {comments.map(c=>(
+          <CommentItem key={c.id} comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
+        ))}
+      </div>
+      <div style={{display:"flex",alignItems:"flex-end",gap:10,padding:"8px 12px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)"}}>
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          value={text}
+          onChange={e=>setText(e.target.value)}
+          onFocus={()=>setHideNav(true)}
+          onBlur={()=>setHideNav(false)}
+          placeholder="Ajouter un commentaire..."
+          style={{flex:1,background:"transparent",border:"none",borderRadius:0,padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block"}}
+        />
+        <Btn onClick={submit} disabled={posting||!text.trim()} style={{background:text.trim()?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:text.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",transform:text.trim()?"scale(1.05)":"scale(1)",flexShrink:0,marginBottom:2}}>
+          <Send size={13} style={{transform:"translateX(0.5px)"}}/>
         </Btn>
       </div>
     </div>
@@ -924,7 +942,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
       sb.from("comment_likes").select("id").eq("comment_id",comment.id).eq("user_id",sessionUserId).maybeSingle(),
       sb.from("comment_replies").select("*, author:profiles(*)").eq("parent_comment_id",comment.id).order("created_at"),
     ]);
-    setLikes(lc||0); setLiked(!!ml); setReplies(rep||[]);
+    setLikes(lc||0);setLiked(!!ml);setReplies(rep||[]);
   },[comment.id,sessionUserId]);
 
   useEffect(()=>{loadMeta();},[loadMeta]);
@@ -937,11 +955,9 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
   const submitReply=async()=>{
     if(!replyText.trim())return;
     const text=replyText.trim();
-    setReplyText(""); setReplying(false);
-    const{error}=await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text});
-    if(error){console.error("submitReply error:",error);setReplyText(text);setReplying(true);return;}
-    loadMeta();
-setShowReplies(true);
+    setReplyText("");setReplying(false);
+    await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text});
+    loadMeta();setShowReplies(true);
   };
 
   const del=async()=>{
@@ -951,62 +967,79 @@ setShowReplies(true);
   };
 
   return(
-    <div style={{display:"flex",gap:9,marginBottom:14,animation:"msgIn .3s ease"}}>
-      <Av u={author} size={32} onClick={()=>{const uid=comment.author_id;if(uid&&uid!==sessionUserId){const event=new CustomEvent("celeste_open_user",{detail:{uid}});window.dispatchEvent(event);}}}/>
-      <div style={{flex:1}}>
-        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 14px 14px 14px",padding:"10px 13px",border:`1px solid ${T.border}`}}>
-          <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1}}>
-              <p style={{margin:"0 0 4px",fontSize:12,fontWeight:700,color:T.goldL}}>{author?.name||"?"}</p>
-              <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>
-            </div>
-            {isMine&&<Btn onClick={del} style={{color:T.err,opacity:.5,flexShrink:0,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={14}/></Btn>}
+    <div style={{display:"flex",gap:10,paddingBottom:4}}>
+      {/* Colonne gauche : avatar + ligne verticale */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+        <Av u={author} size={36}/>
+        {(replies.length>0||replying)&&(
+          <div style={{width:2,flex:1,minHeight:16,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:4}}/>
+        )}
+      </div>
+
+      {/* Colonne droite : contenu */}
+      <div style={{flex:1,minWidth:0}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{author?.name||"?"}</span>
+            <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
           </div>
+          {isMine&&(
+            <Btn onClick={del} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
+          )}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:14,paddingLeft:4,marginTop:5}}>
-          <span style={{fontSize:10,color:T.muted}}>{ago(comment.created_at)}</span>
-          <Btn onClick={toggleLike} style={{fontSize:11,color:liked?T.gold:T.muted,fontWeight:liked?700:400,display:"flex",alignItems:"center",gap:4,transition:"all .2s"}}>
-            <span style={{fontSize:13,animation:liked?"pulse .3s ease":"none"}}>{liked?"❤️":"🤍"}</span>
+
+        {/* Texte */}
+        <p style={{margin:"0 0 8px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>
+
+        {/* Actions style Threads */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
+          <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             {likes>0&&<span>{likes}</span>}
           </Btn>
-          <Btn onClick={()=>setReplying(r=>!r)} style={{fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:4}}>
-            <Reply size={12}/> Répondre
+          <Btn onClick={()=>setReplying(r=>!r)} style={{display:"flex",alignItems:"center",gap:5,color:T.muted,fontSize:12}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            {replies.length>0&&<span>{replies.length}</span>}
           </Btn>
         </div>
 
+        {/* Champ réponse */}
         {replying&&(
-          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
-            <input autoFocus value={replyText} onChange={e=>setReplyText(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter")submitReply();}}
-              placeholder="Répondre…"
-              style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:20,padding:"7px 14px",color:T.text,fontSize:12,outline:"none"}}/>
-            <Btn onClick={submitReply} style={{background:T.gradGold,borderRadius:"50%",width:28,height:28,color:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <Send size={12}/>
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
+            <textarea autoFocus rows={1} value={replyText}
+              onChange={e=>{setReplyText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,100)+"px";}}
+              placeholder={`Répondre à ${author?.name||""}…`}
+              style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:16,padding:"8px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.4,maxHeight:100,fontFamily:"inherit"}}/>
+            <Btn onClick={submitReply} disabled={!replyText.trim()} style={{background:replyText.trim()?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:32,height:32,color:replyText.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Send size={13}/>
             </Btn>
           </div>
         )}
 
+        {/* Réponses */}
         {replies.length>0&&(
-          <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:11,color:T.navy,marginTop:6,paddingLeft:4,display:"flex",alignItems:"center",gap:4}}>
-            <Reply size={11}/>
-            {showReplies?"Masquer":`${replies.length} réponse${replies.length>1?"s":""}`}
+          <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:12,color:T.muted,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:16,height:1,background:T.muted,borderRadius:1}}/>
+            {showReplies?`Masquer les réponses`:`Voir ${replies.length} réponse${replies.length>1?"s":""}`}
           </Btn>
         )}
 
         {showReplies&&(
-          <div style={{marginTop:8,paddingLeft:12,borderLeft:`2px solid ${T.border}`,display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:8}}>
             {replies.map(r=>{
               const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
               const isMyReply=r.author_id===sessionUserId;
               return(
-                <div key={r.id} style={{display:"flex",gap:8,animation:"msgIn .2s ease"}}>
-                  <Av u={ra} size={26}/>
-                  <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"0 12px 12px 12px",padding:"8px 11px",border:`1px solid ${T.border}`,flex:1}}>
-                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
-                      <p style={{margin:"0 0 3px",fontSize:11,fontWeight:700,color:T.goldL}}>{ra.name}</p>
-                      {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer cette réponse ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.err,opacity:.6,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={12}/></Btn>}
+                <div key={r.id} style={{display:"flex",gap:10}}>
+                  <Av u={ra} size={28}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                      <span style={{fontSize:12,fontWeight:700,color:T.text}}>{ra.name}</span>
+                      <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
+                      {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
                     </div>
-                    <p style={{margin:0,fontSize:12,color:T.text}}>{r.text}</p>
+                    <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6}}>{r.text}</p>
                   </div>
                 </div>
               );
@@ -1566,7 +1599,7 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
               <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{myMapped.length>0?"Voir mon statut":"Ajouter un statut"}</p>
               <p style={{margin:0,fontSize:11,color:T.muted}}>{myMapped.length>0?ago(myMapped[0].ts):"Partagez votre moment"}</p>
             </div>
-            <Btn onClick={()=>{setCreating(true);setHideNav(true);}}onClick={()=>{setCreating(true);setHideNav(true);}} style={{marginLeft:"auto",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:12,padding:"8px 14px",color:T.goldL,fontSize:12,fontWeight:600}}>+ Ajouter</Btn>
+            <Btn onClick={()=>{setCreating(true);setHideNav(true);}} style={{marginLeft:"auto",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:12,padding:"8px 14px",color:T.goldL,fontSize:12,fontWeight:600}}>+ Ajouter</Btn>
           </div>
         </div>
 
@@ -3258,6 +3291,18 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [hideNav,setHideNav]=useState(false);
+const [hideChrome,setHideChrome]=useState(false);
+
+useEffect(()=>{
+  const onFocus=()=>setHideChrome(true);
+  const onBlur=()=>setHideChrome(false);
+  window.addEventListener("focusin",onFocus);
+  window.addEventListener("focusout",onBlur);
+  return()=>{
+    window.removeEventListener("focusin",onFocus);
+    window.removeEventListener("focusout",onBlur);
+  };
+},[]);
   const prevMsgCount=useRef(0);
 
   useEffect(()=>{
@@ -3483,8 +3528,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
-        {/* Top bar */}
-        <div style={{height:56,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
+        <div style={{height:56,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:hideNav?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -3538,7 +3582,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         </div>
 
         {/* Bottom nav premium */}
-        {!openConvId&&!openUserId&&!hideNav&&(
+        {!openConvId&&!openUserId&&!hideNav&&!hideChrome&&(
           <div style={{height:72,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -20px 60px rgba(0,0,0,0.4)",position:"relative",margin:"0 12px 8px",borderRadius:24,border:`1px solid rgba(255,255,255,0.08)`}}>
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
