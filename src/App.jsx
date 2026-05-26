@@ -3104,7 +3104,7 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
   const bottomRef=useRef();
 
   useEffect(()=>{
-    if(!session?.user?.id)return;
+    if(!session?.user?.id||msgs.length>0)return;
     sb.from("celeste_messages").select("*").eq("user_id",session.user.id).order("created_at",{ascending:true})
       .then(({data})=>{if(data)setMsgs(data.map(m=>({role:m.role,text:m.text})));});
   },[session?.user?.id]);
