@@ -170,9 +170,8 @@ const GS = `
   }
 
   html, body, #root {
-    min-height: 100%;
+    height: 100%;
     background: #000;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior: none;
   }
     
@@ -188,7 +187,7 @@ const GS = `
   }
 
   body {
-    padding: calc(env(safe-area-inset-top) + 8px) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
   ::-webkit-scrollbar {
@@ -784,7 +783,7 @@ function AuthScreen({mode,setMode,onSuccess}){
 
 // ── NOTIFICATIONS SCREEN (NOUVEAU depuis App 9) ───────────
 function NotifsScreen({myProfile,session,members}){
-  const {setTab}=useApp();
+  const {setTab,setHideNav}=useApp();
   const [notifs,setNotifs]=useState([]);
   const [loading,setLoading]=useState(true);
 
@@ -3117,6 +3116,7 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
     const text=inp.trim();
     setInp("");
     setMsgs(p=>[...p,{role:"user",text}]);
+    if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
     setLoading(true);
     
     const tryGemini=async(retries=3)=>{
