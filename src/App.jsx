@@ -2667,10 +2667,13 @@ const askGemini=async(text)=>{
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
     <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4}}>
-      <div style={{width:32,height:32,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&<img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
-        {m.reply_metadata?.type==="video"&&<span style={{fontSize:14}}>🎬</span>}
-        {!m.reply_metadata?.mediaUrl&&<span style={{fontSize:14}}>📝</span>}
+      <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type==="image"&&(
+          <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
+            onError={e=>{e.target.style.display="none";e.target.parentNode.innerHTML='<span style="font-size:14px">📷</span>';}}/>
+        )}
+        {m.reply_metadata?.type==="video"&&<span style={{fontSize:18}}>🎬</span>}
+        {!m.reply_metadata?.mediaUrl&&<span style={{fontSize:18}}>📝</span>}
       </div>
       <div style={{flex:1,minWidth:0}}>
         <p style={{margin:0,fontSize:10,fontWeight:600,color:mine?"rgba(0,0,0,0.5)":T.goldL}}>Statut</p>
