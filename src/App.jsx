@@ -353,8 +353,9 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
       )}
       {u?.avatar_url
         ? <img src={u.avatar_url} loading="lazy"
-            style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${ring?T.gold:T.border}`}}
-            alt=""/>
+            style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${ring?T.gold:T.border}`,cursor:"pointer"}}
+            alt=""
+            onClick={e=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:u.avatar_url}}));}}/>
         : <div style={{width:size,height:size,borderRadius:"50%",
             background:`radial-gradient(circle at 35% 35%, ${u?.color||"#666"}cc, ${u?.color||"#444"}44)`,
             border:`1.5px solid ${ring?T.gold:u?.color||"#888"}44`,
@@ -1231,7 +1232,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
        {/* Texte */}
         {comment.text&&<p style={{margin:"0 0 8px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>}
 {comment.media_url&&(
-  <img src={comment.media_url} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:8,cursor:"pointer"}}
+  <img src={comment.media_url} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:10,marginBottom:8,cursor:"pointer",border:`1px solid ${T.border}`}}
     onClick={()=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:comment.media_url}}))}/>
 )}
         {comment.media_url&&(
@@ -2164,7 +2165,10 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
     sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle()
       .then(({data})=>setSaved(!!data));
     // Enregistrer la vue
-    sb.from("post_views").upsert({post_id:post.id,viewer_id:session?.user?.id},{onConflict:"post_id,viewer_id",ignoreDuplicates:true});
+    sb.auth.getUser().then(({data})=>{
+  if(data?.user?.id)sb.from("post_views").upsert({post_id:post.id,viewer_id:data.user.id},{onConflict:"post_id,viewer_id",ignoreDuplicates:true})
+    .then(()=>sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id).then(({count})=>setViews(count||0)));
+});
     // Charger le nombre de vues
     sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
       .then(({count})=>setViews(count||0));
@@ -3353,14 +3357,15 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
               <div style={{overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
                 {followerProfiles.length===0?<p style={{textAlign:"center",color:T.muted,padding:"24px 0"}}>Aucun abonné pour l'instant</p>
                   :followerProfiles.map(u=>(
-                    <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`}}>
-                      <Av u={u} size={42} ring/>
-                      <div style={{flex:1}}>
-                        <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{u.name}</p>
-                        <p style={{margin:0,fontSize:12,color:T.muted}}>{u.paroisse}</p>
-                      </div>
-                      {u.badge&&<Badge type={u.badge}/>}
-                    </div>
+                    <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`,cursor:"pointer"}}
+  onClick={()=>{setShowFollowers(false);window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:u.id}}));}}>
+  <Av u={u} size={42} ring/>
+  <div style={{flex:1}}>
+    <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{u.name}</p>
+    <p style={{margin:0,fontSize:12,color:T.muted}}>{u.paroisse}</p>
+  </div>
+  {u.badge&&<Badge type={u.badge}/>}
+</div>
                   ))
                 }
                 <div style={{height:20}}/>
@@ -3380,14 +3385,15 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
               <div style={{overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
                 {followingProfiles.length===0?<p style={{textAlign:"center",color:T.muted,padding:"24px 0"}}>Vous ne suivez personne</p>
                   :followingProfiles.map(u=>(
-                    <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`}}>
-                      <Av u={u} size={42} ring/>
-                      <div style={{flex:1}}>
-                        <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{u.name}</p>
-                        <p style={{margin:0,fontSize:12,color:T.muted}}>{u.paroisse}</p>
-                      </div>
-                      {u.badge&&<Badge type={u.badge}/>}
-                    </div>
+                    <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`,cursor:"pointer"}}
+  onClick={()=>{setShowFollowing(false);window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:u.id}}));}}>
+  <Av u={u} size={42} ring/>
+  <div style={{flex:1}}>
+    <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{u.name}</p>
+    <p style={{margin:0,fontSize:12,color:T.muted}}>{u.paroisse}</p>
+  </div>
+  {u.badge&&<Badge type={u.badge}/>}
+</div>
                   ))
                 }
                 <div style={{height:20}}/>
