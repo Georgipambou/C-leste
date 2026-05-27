@@ -784,9 +784,10 @@ function AuthScreen({mode,setMode,onSuccess}){
 
 // ── NOTIFICATIONS SCREEN (NOUVEAU depuis App 9) ───────────
 function NotifsScreen({myProfile,session,members}){
-  const {setTab,setHideNav}=useApp();
+  const {setTab}=useApp();
   const [notifs,setNotifs]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [filter,setFilter]=useState("tous");
 
   const load=useCallback(async()=>{
     setLoading(true);
@@ -810,16 +811,45 @@ function NotifsScreen({myProfile,session,members}){
   },[session?.user?.id,load]);
 
   const label=n=>({
-    like:"a aimé votre publication",
-    comment:"a commenté votre publication",
-    reply:"a répondu à votre commentaire",
-    comment_like:"a aimé votre commentaire",
-    follow:"s'est connecté à vous",
-    status_like:"a aimé votre statut",
-    status_view:"a vu votre statut",
+    like:"a aimé ta publication",
+    comment:"a commenté ta publication",
+    reply:"a répondu à ton commentaire",
+    comment_like:"a aimé ton commentaire",
+    follow:"a commencé à te suivre",
+    mention:"t'a mentionné",
+    status_like:"a aimé ton statut",
+    status_view:"a vu ton statut",
   }[n.type]||n.type);
 
-  if(loading) return(
+  const icon=n=>({
+    like:"❤️",
+    comment:"💬",
+    reply:"↩️",
+    comment_like:"💛",
+    follow:"✦",
+    mention:"@",
+    status_like:"❤️",
+    status_view:"👁",
+  }[n.type]||"🔔");
+
+  const filtered=notifs.filter(n=>{
+    if(filter==="tous")return true;
+    if(filter==="mentions")return n.type==="mention";
+    if(filter==="likes")return n.type==="like"||n.type==="comment_like"||n.type==="status_like";
+    if(filter==="commentaires")return n.type==="comment"||n.type==="reply";
+    if(filter==="abonnements")return n.type==="follow";
+    return true;
+  });
+
+  const tabs=[
+    {id:"tous",l:"Tous"},
+    {id:"mentions",l:"Mentions"},
+    {id:"likes",l:"Likes"},
+    {id:"commentaires",l:"Commentaires"},
+    {id:"abonnements",l:"Abonnements"},
+  ];
+
+  if(loading)return(
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:32,height:32,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
     </div>
@@ -827,43 +857,151 @@ function NotifsScreen({myProfile,session,members}){
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
-        <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text,flex:1}}>Activité</h2>
-        {notifs.some(n=>!n.read)&&<span style={{background:T.gradGold,color:"#000",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>{notifs.filter(n=>!n.read).length} nouvelles</span>}
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Activité</h2>
+          {notifs.some(n=>!n.read)&&(
+            <span style={{background:T.gradGold,color:"#000",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>
+              {notifs.filter(n=>!n.read).length} nouvelles
+            </span>
+          )}
+        </div>
+        {/* Onglets */}
+        <div style={{display:"flex",gap:0,overflowX:"auto",padding:"8px 16px 0"}}>
+          {tabs.map(t=>(
+            <Btn key={t.id} onClick={()=>setFilter(t.id)} style={{padding:"8px 14px",fontSize:12,fontWeight:filter===t.id?700:400,color:filter===t.id?T.text:T.muted,whiteSpace:"nowrap",flexShrink:0,borderBottom:filter===t.id?`2px solid ${T.gold}`:"2px solid transparent",borderRadius:0,transition:"all .2s"}}>
+              {t.l}
+            </Btn>
+          ))}
+        </div>
       </div>
-      {notifs.length===0?(
+
+      {/* Liste */}
+      {filtered.length===0?(
         <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
           <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>🔔</div>
-          <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune notification</p>
+          <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucune notification</p>
         </div>
       ):(
         <div style={{maxWidth:640,margin:"0 auto"}}>
-          {notifs.map(n=>{
+          {filtered.map(n=>{
             const from=n.from?normProfile(n.from):null;
             return(
-              <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:n.read?"transparent":"rgba(201,149,42,0.03)",cursor:"pointer",transition:"background .2s"}}
-                onClick={()=>{if(n.post_id){}else if(n.from_id){}}}>
-                <Av u={from||{initials:"?",color:"#888"}} size={44}/>
+              <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:n.read?"transparent":"rgba(201,149,42,0.03)",cursor:"pointer",transition:"background .2s",animation:"fadeUp .3s ease"}}
+                onClick={()=>{}}>
+                {/* Avatar + icône */}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <Av u={from||{initials:"?",color:"#888"}} size={46}/>
+                  <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:T.bg3,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>
+                    {icon(n)}
+                  </div>
+                </div>
+                {/* Texte */}
                 <div style={{flex:1,minWidth:0}}>
-                  <p style={{margin:"0 0 2px",fontSize:13,color:T.text}}>
-                    <strong style={{color:T.goldL}}>{from?.name||"Quelqu'un"}</strong>
-                    {" "}{label(n)}
+                  <p style={{margin:"0 0 2px",fontSize:13,color:T.text,lineHeight:1.5}}>
+                    <strong style={{color:T.text}}>{from?.name||"Quelqu'un"}</strong>
+                    {" "}<span style={{color:T.sub}}>{label(n)}</span>
                   </p>
                   <p style={{margin:0,fontSize:11,color:T.muted}}>{ago(n.created_at)}</p>
                 </div>
-                {!n.read&&<div style={{width:8,height:8,borderRadius:"50%",background:T.gold,flexShrink:0,boxShadow:T.glowGold}}/>}
+                {/* Point non lu */}
+                {!n.read&&(
+                  <div style={{width:8,height:8,borderRadius:"50%",background:T.gold,flexShrink:0,boxShadow:T.glowGold}}/>
+                )}
               </div>
             );
           })}
         </div>
       )}
+      <div style={{height:80}}/>
     </div>
   );
 }
+function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,members=[]}){
+  const [showSuggestions,setShowSuggestions]=useState(false);
+  const [suggestions,setSuggestions]=useState([]);
+  const [mentionQuery,setMentionQuery]=useState("");
+  const [cursorPos,setCursorPos]=useState(0);
+  const ref=useRef();
 
+  const handleChange=e=>{
+    const val=e.target.value;
+    const cursor=e.target.selectionStart;
+    onChange(val);
+    setCursorPos(cursor);
+
+    // Détecter @
+    const textBeforeCursor=val.slice(0,cursor);
+    const match=textBeforeCursor.match(/@(\w*)$/);
+    if(match){
+      const query=match[1].toLowerCase();
+      setMentionQuery(query);
+      const filtered=(members||[]).filter(m=>
+        m.name?.toLowerCase().includes(query)||
+        m.prenom?.toLowerCase().includes(query)||
+        m.fullName?.toLowerCase().includes(query)
+      ).slice(0,8);
+      setSuggestions(filtered);
+      setShowSuggestions(filtered.length>0);
+    }else{
+      setShowSuggestions(false);
+    }
+
+    // Auto-resize
+    if(ref.current){
+      ref.current.style.height="auto";
+      ref.current.style.height=Math.min(ref.current.scrollHeight,140)+"px";
+    }
+  };
+
+  const insertMention=member=>{
+    const textBeforeCursor=value.slice(0,cursorPos);
+    const textAfterCursor=value.slice(cursorPos);
+    const newText=textBeforeCursor.replace(/@\w*$/,"@"+member.prenom+" ")+textAfterCursor;
+    onChange(newText);
+    setShowSuggestions(false);
+    ref.current?.focus();
+  };
+
+  return(
+    <div style={{position:"relative",flex:1}}>
+      <textarea
+        ref={ref}
+        rows={rows}
+        value={value}
+        onChange={handleChange}
+        placeholder={placeholder}
+        style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}
+      />
+      {showSuggestions&&(
+        <div style={{position:"absolute",bottom:"110%",left:0,right:0,background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
+          {/* Barre de recherche */}
+          <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
+            <Search size={13} color={T.muted}/>
+            <span style={{fontSize:12,color:T.muted}}>Mentionner · <strong style={{color:T.goldL}}>@{mentionQuery}</strong></span>
+          </div>
+          {suggestions.map(m=>(
+            <div key={m.id} onMouseDown={e=>{e.preventDefault();insertMention(m);}}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,transition:"background .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(201,149,42,0.06)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <Av u={m} size={32}/>
+              <div>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{m.fullName||m.name}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse}</p>
+              </div>
+              {m.badge&&<Badge type={m.badge}/>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 // ── COMMENTS SECTION ─────────────────────────────────────
 function CommentsSection({postId,sessionUserId,getM,onCountChange}){
-  const {setHideNav}=useApp();
+ const {setHideNav,members}=useApp();
   const [comments,setComments]=useState([]);
   const [text,setText]=useState("");
   const [posting,setPosting]=useState(false);
@@ -895,8 +1033,29 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
   const submit=async()=>{
     if(!text.trim()||posting)return;
     setPosting(true);
-    await sb.from("comments").insert({post_id:postId,author_id:sessionUserId,text:text.trim()});
-    setText("");setPosting(false);
+    const trimmed=text.trim();
+    const{error}=await sb.from("comments").insert({post_id:postId,author_id:sessionUserId,text:trimmed});
+    if(!error){
+      setText("");
+      loadComments();
+      if(onCountChange)onCountChange(c=>c+1);
+      // Détecter les mentions et envoyer des notifications
+      const mentions=trimmed.match(/@(\w+)/g)||[];
+      for(const mention of mentions){
+        const prenom=mention.slice(1).toLowerCase();
+        const mentioned=(members||[]).find(m=>m.prenom?.toLowerCase()===prenom||m.name?.toLowerCase().startsWith(prenom));
+        if(mentioned&&mentioned.id!==sessionUserId){
+          await sb.from("notifications").insert({
+            user_id:mentioned.id,
+            from_id:sessionUserId,
+            type:"mention",
+            post_id:postId,
+            read:false
+          });
+        }
+      }
+    }
+    setPosting(false);
   };
 
   return(
@@ -907,15 +1066,13 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
         ))}
       </div>
       <div style={{display:"flex",alignItems:"flex-end",gap:10,padding:"8px 12px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)"}}>
-        <textarea
-          ref={textareaRef}
-          rows={1}
+        <MentionInput
           value={text}
-          onChange={e=>setText(e.target.value)}
+          onChange={setText}
+          placeholder="Ajouter un commentaire... (@nom pour mentionner)"
+          members={members||[]}
           onFocus={()=>setHideNav(true)}
           onBlur={()=>setHideNav(false)}
-          placeholder="Ajouter un commentaire..."
-          style={{flex:1,background:"transparent",border:"none",borderRadius:0,padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block"}}
         />
         <Btn onClick={submit} disabled={posting||!text.trim()} style={{background:text.trim()?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:text.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",transform:text.trim()?"scale(1.05)":"scale(1)",flexShrink:0,marginBottom:2}}>
           <Send size={13} style={{transform:"translateX(0.5px)"}}/>
