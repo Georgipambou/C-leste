@@ -379,20 +379,20 @@ const Badge = memo(function Badge({type}){
   if(!type) return null;
   const isConfirmed = type==="confirmed";
   return isConfirmed ? (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
       background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
       boxShadow:"0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4)",
       flexShrink:0,position:"relative",animation:"badgePulse 2s ease infinite"}}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </span>
   ) : (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
       background:"linear-gradient(135deg,#FFD700,#FF8C00)",
       boxShadow:"0 0 0 2px rgba(255,165,0,0.3), 0 0 10px rgba(255,180,0,0.9), 0 0 22px rgba(255,140,0,0.5)",
       flexShrink:0,animation:"badgePulse 2s ease infinite"}}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
   <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
 </svg>
     </span>
@@ -2025,24 +2025,25 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
           {active.map((u,i)=>{
             const conn=(myConnections||[]).includes(u.id);
             return(
-              <div key={u.id} style={{background:T.card,borderRadius:20,overflow:"hidden",border:`1px solid ${T.border}`,animation:`fadeUp .4s ease ${i*.05}s both`,boxShadow:T.shadowCard,transition:"all .25s"}}>
-                <div style={{height:72,background:`linear-gradient(135deg,${u.color}33,${u.color}11)`,position:"relative"}}>
-                  <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.08,fontSize:44,fontFamily:"'Cormorant Garamond',serif",color:u.color}}>✦</div>
-                </div>
-                <div style={{padding:"0 12px 14px",marginTop:-30}}>
-                  <Btn onClick={()=>onUser(u.id)} style={{padding:0,display:"block"}}><Av u={u} size={58}/></Btn>
-                  <div style={{marginTop:8}}>
-                    <Btn onClick={()=>onUser(u.id)} style={{padding:0,fontSize:13,fontWeight:600,color:T.text,textAlign:"left",display:"block"}}>{u.name}</Btn>
-                    <p style={{margin:"2px 0 6px",fontSize:11,color:T.muted}}>📍 {u.paroisse}</p>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <Badge type={u.badge}/>
-                      <Btn onClick={()=>toggle(u.id)} style={{width:34,height:34,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?13:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",transition:"all .25s",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.3)"}}>
-                        {conn?"✦":"+"}
-                      </Btn>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <div key={u.id} style={{background:T.card,borderRadius:20,overflow:"hidden",border:`1px solid ${T.border}`,animation:`fadeUp .4s ease ${i*.05}s both`,boxShadow:T.shadowCard,transition:"all .25s",cursor:"pointer"}}
+  onClick={()=>onUser(u.id)}>
+  <div style={{height:72,background:`linear-gradient(135deg,${u.color}33,${u.color}11)`,position:"relative"}}>
+    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.08,fontSize:44,fontFamily:"'Cormorant Garamond',serif",color:u.color}}>✦</div>
+  </div>
+  <div style={{padding:"0 12px 14px",marginTop:-30}}>
+    <Av u={u} size={58}/>
+    <div style={{marginTop:8}}>
+      <p style={{margin:0,padding:0,fontSize:13,fontWeight:600,color:T.text,textAlign:"left"}}>{u.name}</p>
+      <p style={{margin:"2px 0 6px",fontSize:11,color:T.muted}}>📍 {u.paroisse}</p>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <Badge type={u.badge}/>
+        <Btn onClick={e=>{e.stopPropagation();toggle(u.id);}} style={{width:34,height:34,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?13:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",transition:"all .25s",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.3)"}}>
+          {conn?"✦":"+"}
+        </Btn>
+      </div>
+    </div>
+  </div>
+</div>
             );
           })}
         </div>
