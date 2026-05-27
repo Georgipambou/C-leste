@@ -1656,7 +1656,9 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   useEffect(()=>{
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
-    if(isMe){
+   
+console.log("isMe:",isMe,"current.id:",current?.id,"session:",session?.user?.id);
+if(isMe){
   sb.from("status_views").select("viewer_id").eq("status_id",current.id).then(async({data})=>{
     if(!data||data.length===0){setViews(v=>({...v,[current.id]:[]}));return;}
     const ids=data.map(d=>d.viewer_id);
@@ -2304,8 +2306,7 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
               <MessageCircle size={16}/>
               {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
             </Btn>
-           {(post.author?.badge==="confirmed"||post.author?.badge==="friend")&&
- (getM(session?.user?.id)?.badge==="confirmed"||getM(session?.user?.id)?.badge==="friend")&&(
+           {(getM(session?.user?.id)?.badge==="confirmed"||getM(session?.user?.id)?.badge==="friend")&&(
   <div style={{display:"flex",alignItems:"center",gap:4,padding:"7px 12px",color:T.muted,fontSize:13}}>
     <Eye size={16}/>
     <span>{views||0}</span>
@@ -2557,10 +2558,15 @@ const askGemini=async(text)=>{
     sb.from("messages").update({is_read:true}).in("id",ids).then(()=>reload());
   },[conv.id,conv.msgs?.length]);
 
-  const ensureConv=async()=>{
-    const{data:targetProfile}=await sb.from("profiles").select("no_messages").eq("id",conv.uid).single();
+ const ensureConv=async()=>{
+    const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge").eq("id",conv.uid).single();
     if(targetProfile?.no_messages){
-      notify("🔕 Cette personne ne souhaite pas recevoir de messages");
+      const myBadge=myProfile?.badge;
+      if(myBadge==="confirmed"||myBadge==="friend"){
+        notify("🔕 Cette personne ne souhaite pas recevoir de messages");
+      } else {
+        notify("🔒 Cette fonctionnalité est réservée aux membres certifiés. Obtenez votre badge pour y accéder ✦");
+      }
       return null;
     }
     const{data}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${conv.uid}),and(user1_id.eq.${conv.uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
@@ -2896,7 +2902,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
 
       <div style={{padding:"0 18px 80px",maxWidth:640,margin:"0 auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16,position:"relative",zIndex:10}}>
-          <Av u={{...user,avatar_url:avatarUrl}} size={88} ring/>
+          <Av u={{...user,avatar_url:avatarUrl}} size={88} ring onClick={()=>{if(avatarUrl)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:avatarUrl}}));}}/>
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
               <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:`1px solid rgba(255,255,255,0.2)`,borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)"}}>Message</Btn>
@@ -3305,8 +3311,8 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
       <div style={{padding:"0 18px",maxWidth:640,margin:"0 auto"}}>
         {/* Avatar + actions */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
-          <div style={{position:"relative",cursor:"pointer"}} onClick={()=>avRef.current.click()}>
-            <Av u={myProfile} size={88} ring/>
+          <div style={{position:"relative",cursor:"pointer"}}>
+  <Av u={myProfile} size={88} ring onClick={()=>{if(myProfile?.avatar_url)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:myProfile.avatar_url}}));else avRef.current.click();}}/>
             <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:8,background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",boxShadow:"0 2px 8px rgba(201,149,42,0.4)"}}>
               <Camera size={12}/>
             </div>
