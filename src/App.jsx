@@ -1065,7 +1065,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
     const{error}=await sb.from("comments").insert({post_id:postId,author_id:sessionUserId,text:trimmed});
     if(!error){
       setText("");
-      loadComments();
+      load();
       if(onCountChange)onCountChange(c=>c+1);
       // Détecter les mentions et envoyer des notifications
       const mentions=trimmed.match(/@(\w+)/g)||[];
@@ -4029,8 +4029,8 @@ function VerificationInfoModal(){
         </div>
 
         {/* Bottom nav premium */}
-       {!openConvId&&!openUserId&&!hideNav&&!hideChrome&&(
-          <div style={{height:72,background:"rgba(10,10,10,0.95)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06)",position:"relative",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+       {!openConvId&&!openUserId&&!hideNav&&(
+          <div style={{height:72,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -20px 60px rgba(0,0,0,0.4)",position:"relative",margin:"0 12px 8px",borderRadius:24,border:`1px solid rgba(255,255,255,0.08)`}}>
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
               {id:"statuses",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>,lb:"Statuts"},
