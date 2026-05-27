@@ -920,7 +920,7 @@ function NotifsScreen({myProfile,session,members}){
                 }}>
                 {/* Avatar + icône */}
                 <div style={{position:"relative",flexShrink:0}}>
-                  <Av u={from||{initials:"?",color:"#888"}} size={46} onClick={e=>{e.stopPropagation();setTab("discover");}}/>
+                 <Av u={from||{initials:"?",color:"#888"}} size={46} onClick={e=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:from?.id}}));}}/>
                   <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:T.bg3,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>
                     {icon(n)}
                   </div>
@@ -1155,7 +1155,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
     <div style={{display:"flex",gap:10,paddingBottom:4}}>
       {/* Colonne gauche : avatar + ligne verticale */}
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
-        <Av u={author} size={36}/>
+        <Av u={author} size={36} onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:author?.id}}))}/>
         {(replies.length>0||replying)&&(
           <div style={{width:2,flex:1,minHeight:16,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:4}}/>
         )}
@@ -1674,9 +1674,8 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
         )}
       </div>
 
-      <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))"}}>
-        {!isMe&&<StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} onClose={onClose}/>}
-        <div style={{display:"flex",justifyContent:"center",gap:28}}>
+  <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",justifyContent:"center",gap:28}}>    
           {!isMe&&(
             <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
               <div style={{width:48,height:48,borderRadius:"50%",background:liked?"rgba(201,149,42,0.25)":"rgba(255,255,255,0.1)",border:`1px solid ${liked?T.gold:"rgba(255,255,255,0.2)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,transition:"all .2s",boxShadow:liked?T.glowGold:"none"}}>
@@ -1697,7 +1696,8 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
               </Btn>
             </>
           )}
-        </div>
+       </div>
+       {!isMe&&<StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} current={current} onClose={onClose} session={session}/>}
       </div>
 
       {isMe&&showInfo&&(
@@ -1715,16 +1715,26 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
     </div>
   );
 }
-function StatusReplyInput({ statusOwnerId, statusId, onClose }) {
+function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }) {
   const [replyText, setReplyText] = useState("");
 
   const sendStatusReply = async () => {
     if (!replyText.trim()) return;
-    const { error } = await sb.from("messages").insert([{
-      receiver_id: statusOwnerId,
-      text: `Réponse au statut : "${replyText}"`,
-      metadata: { is_status_reply: true, status_id: statusId }
-    }]);
+    const convRes = await sb.from("conversations")
+      .select("id")
+      .or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${statusOwnerId}),and(user1_id.eq.${statusOwnerId},user2_id.eq.${session?.user?.id})`)
+      .maybeSingle();
+    let convId = convRes?.data?.id;
+    if (!convId) {
+      const { data: newConv } = await sb.from("conversations").insert({ user1_id: session?.user?.id, user2_id: statusOwnerId }).select().single();
+      convId = newConv?.id;
+    }
+    const { error } = await sb.from("messages").insert({
+      conv_id: convId,
+      sender_id: session?.user?.id,
+      type: "text",
+      text: `💬 A répondu à ton statut${current?.text ? ` "${current.text.slice(0,40)}${current.text.length>40?"…":""}"` : current?.mediaUrl ? " (photo/vidéo)" : ""} : "${replyText}"`
+    });
     if (!error) {
       setReplyText("");
       onClose();
@@ -4019,8 +4029,8 @@ function VerificationInfoModal(){
         </div>
 
         {/* Bottom nav premium */}
-        {!openConvId&&!openUserId&&!hideNav&&!hideChrome&&(
-          <div style={{height:72,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -20px 60px rgba(0,0,0,0.4)",position:"relative",margin:"0 12px 8px",borderRadius:24,border:`1px solid rgba(255,255,255,0.08)`}}>
+       {!openConvId&&!openUserId&&!hideNav&&!hideChrome&&(
+          <div style={{height:72,background:"rgba(10,10,10,0.95)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06)",position:"relative",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
               {id:"statuses",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>,lb:"Statuts"},
