@@ -914,9 +914,36 @@ function NotifsScreen({myProfile,session,members}){
             const from=n.from?normProfile(n.from):null;
             return(
               <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:n.read?"transparent":"rgba(201,149,42,0.03)",cursor:"pointer",transition:"background .2s",animation:"fadeUp .3s ease"}}
-                onClick={()=>{
-                  if(n.type==="follow"){setTab("discover");return;}
-                  if(n.post_id){setTab("home");}
+                onClick={async()=>{
+                  // Follow → profil de l'expéditeur
+                  if(n.type==="follow"){
+                    if(from?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:from.id}}));
+                    return;
+                  }
+                  // Like/comment statut → vérifier si statut existe encore
+                  if(n.type==="status_like"||n.type==="status_view"){
+                    if(!n.status_id){alert("Ce statut n'existe plus.");return;}
+                    const{data}=await sb.from("statuses").select("id").eq("id",n.status_id).maybeSingle();
+                    if(!data){alert("Ce statut n'existe plus.");return;}
+                    setTab("statuses");
+                    return;
+                  }
+                  // Like/comment/mention/reply → vérifier si post existe encore
+                  if(n.post_id){
+                    const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
+                    if(!data){alert("Cette publication n'existe plus.");return;}
+                    // Si c'est mon post → aller dans mon profil
+                    if(data.author_id===session?.user?.id){
+                      setTab("profile");
+                    } else {
+                      setTab("home");
+                    }
+                    // Déclencher ouverture du post
+                    setTimeout(()=>{
+                      window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:n.post_id}}));
+                    },300);
+                    return;
+                  }
                 }}>
                 {/* Avatar + icône */}
                 <div style={{position:"relative",flexShrink:0}}>
@@ -1717,9 +1744,12 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
 }
 function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }) {
   const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const isVideo = current?.mediaUrl && (/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(current.mediaUrl) || current.mediaUrl.includes("video"));
 
   const sendStatusReply = async () => {
-    if (!replyText.trim()) return;
+    if (!replyText.trim() || sending) return;
+    setSending(true);
     const convRes = await sb.from("conversations")
       .select("id")
       .or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${statusOwnerId}),and(user1_id.eq.${statusOwnerId},user2_id.eq.${session?.user?.id})`)
@@ -1729,12 +1759,20 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
       const { data: newConv } = await sb.from("conversations").insert({ user1_id: session?.user?.id, user2_id: statusOwnerId }).select().single();
       convId = newConv?.id;
     }
+
+    // Construire le texte de contexte
+    let contextText = "";
+    if (current?.text) contextText = `📝 "${current.text.slice(0,60)}${current.text.length>60?"…":""}"`;
+    else if (isVideo) contextText = `🎬 Vidéo`;
+    else if (current?.mediaUrl) contextText = `📷 Photo`;
+
     const { error } = await sb.from("messages").insert({
       conv_id: convId,
       sender_id: session?.user?.id,
       type: "text",
-      text: `💬 A répondu à ton statut${current?.text ? ` "${current.text.slice(0,40)}${current.text.length>40?"…":""}"` : current?.mediaUrl ? " (photo/vidéo)" : ""} : "${replyText}"`
+      text: `💬 *Réponse au statut* ${contextText}\n→ "${replyText}"`
     });
+    setSending(false);
     if (!error) {
       setReplyText("");
       onClose();
@@ -1742,17 +1780,55 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
   };
 
   return (
-    <div style={{position:"absolute",bottom:80,left:16,right:16,display:"flex",gap:10,zIndex:100}}>
-      <input
-        type="text"
-        value={replyText}
-        onChange={e=>setReplyText(e.target.value)}
-        placeholder="Répondre en privé..."
-        style={{flex:1,padding:"12px 16px",background:"rgba(0,0,0,0.6)",border:`1px solid ${T.border}`,borderRadius:24,color:"#fff",outline:"none",fontSize:14}}
-      />
-      <Btn onClick={sendStatusReply} style={{background:T.gradGold,borderRadius:"50%",width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <Send size={18} color="#000"/>
-      </Btn>
+    <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:8}}>
+      {/* Aperçu du statut */}
+      <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.06)",borderRadius:14,padding:"8px 12px",border:"1px solid rgba(255,255,255,0.1)"}}>
+        {/* Miniature */}
+        <div style={{width:44,height:44,borderRadius:10,overflow:"hidden",flexShrink:0,background:"rgba(255,255,255,0.05)",position:"relative",border:"1px solid rgba(255,255,255,0.15)"}}>
+          {current?.mediaUrl && !isVideo && (
+            <img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          )}
+          {current?.mediaUrl && isVideo && (
+            <>
+              <video src={current.mediaUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} muted playsInline preload="metadata"/>
+              {/* Icône play par dessus */}
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.4)"}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Play size={10} color="#000" style={{marginLeft:1}}/>
+                </div>
+              </div>
+            </>
+          )}
+          {!current?.mediaUrl && current?.text && (
+            <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📝</div>
+          )}
+        </div>
+        {/* Texte contexte */}
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)",marginBottom:2}}>Répondre à ce statut</p>
+          <p style={{margin:0,fontSize:12,color:"rgba(255,255,255,0.8)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {current?.text
+              ? `"${current.text.slice(0,50)}${current.text.length>50?"…":""}"`
+              : isVideo ? "🎬 Vidéo" : current?.mediaUrl ? "📷 Photo" : "Statut"
+            }
+          </p>
+        </div>
+      </div>
+
+      {/* Champ de saisie */}
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <input
+          type="text"
+          value={replyText}
+          onChange={e=>setReplyText(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&replyText.trim())sendStatusReply();}}
+          placeholder="Répondre en privé..."
+          style={{flex:1,padding:"11px 16px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:24,color:"#fff",outline:"none",fontSize:14}}
+        />
+        <Btn onClick={sendStatusReply} disabled={!replyText.trim()||sending} style={{background:replyText.trim()&&!sending?T.gradGold:"rgba(255,255,255,0.1)",borderRadius:"50%",width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:!replyText.trim()||sending?0.5:1,transition:"all .2s"}}>
+          <Send size={18} color={replyText.trim()&&!sending?"#000":"#fff"}/>
+        </Btn>
+      </div>
     </div>
   );
 }
@@ -1930,6 +2006,16 @@ const scrollRef=useRef();
 const savedScroll=useRef(initialScroll);
 const feedScrollRef=useRef(initialScroll);
 
+useEffect(()=>{
+    const handler=e=>{
+      const{postId}=e.detail;
+      const post=(posts||[]).find(p=>p.id===postId);
+      if(post)setDetailPost(post);
+    };
+    window.addEventListener("celeste_open_post",handler);
+    return()=>window.removeEventListener("celeste_open_post",handler);
+  },[posts]);
+  
   useEffect(()=>{
     if(!bottomRef.current||!hasMore)return;
     observer.current=new IntersectionObserver(entries=>{if(entries[0].isIntersecting)loadMore();},{threshold:.5});
