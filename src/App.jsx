@@ -2665,6 +2665,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 
 function ParametresModal({myProfile,session,onLogout,notify}){
   const [open,setOpen]=useState(false);
+  const [showAbout,setShowAbout]=useState(false);
   const [dnd,setDnd]=useState(false);
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 
@@ -2675,8 +2676,7 @@ function ParametresModal({myProfile,session,onLogout,notify}){
   },[session?.user?.id]);
 
   const toggleDnd=async()=>{
-    const next=!dnd;
-    setDnd(next);
+    const next=!dnd;setDnd(next);
     await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
     notify(next?"Messages bloqués — seul l'admin peut vous écrire":"Messages activés ✦");
   };
@@ -2695,11 +2695,12 @@ function ParametresModal({myProfile,session,onLogout,notify}){
         <ChevronRight size={16} color={T.muted}/>
       </Btn>
 
-      {showAbout&&(
-        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowAbout(false)}>
+      {/* Modal Paramètres */}
+      {open&&(
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
           <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"28px 20px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",display:"flex",flexDirection:"column",gap:10}} onClick={e=>e.stopPropagation()}>
             
-            <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,marginBottom:8}}>À propos</h3>
+            <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,marginBottom:8}}>Paramètres</h3>
 
             {/* Thème */}
             <Btn onClick={toggleTheme} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
@@ -2741,93 +2742,81 @@ function ParametresModal({myProfile,session,onLogout,notify}){
             </div>
 
             {/* À propos */}
-            {showAbout&&(
-  <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowAbout(false)}>
-    <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
-      
-      <div style={{textAlign:"center",marginBottom:28}}>
-        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:56,color:T.gold,lineHeight:1,marginBottom:12}}>✦</div>
-        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
-        <p style={{color:T.gold,fontSize:12,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
-      </div>
-
-      <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:28}}>
-
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-          <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🌟 Notre mission</p>
-          <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Céleste est le réseau social privé et sécurisé des jeunes. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment.</p>
-        </div>
-
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-          <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📋 Conditions d'utilisation</p>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[
-              "En t'inscrivant sur Céleste, tu certifies que toutes les informations fournies sont exactes et véridiques.",
-              "Céleste est une plateforme réservée aux jeunes. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.",
-              "Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illégal.",
-              "Le harcèlement, la violence verbale et toute forme d'intimidation sont strictement prohibés et entraînent une suspension immédiate.",
-              "Toute usurpation d'identité est un délit punissable par la loi.",
-              "Céleste se réserve le droit de supprimer tout compte sans préavis en cas de violation des présentes conditions.",
-            ].map((t,i)=>(
-              <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
-                <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
+            <Btn onClick={()=>setShowAbout(true)} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:20}}>✦</span>
+              <div style={{flex:1,textAlign:"left"}}>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>À propos de Céleste</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>Conditions · Confidentialité · Contact</p>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-          <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🔒 Confidentialité</p>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[
-              "Tes données personnelles ne sont jamais vendues ni partagées avec des tiers.",
-              "Ton numéro de téléphone est utilisé uniquement pour la vérification de ton identité et ne sera jamais divulgué.",
-              "Les conversations privées sont confidentielles et ne sont accessibles qu'aux participants.",
-              "Céleste utilise un chiffrement sécurisé pour protéger toutes tes données.",
-            ].map((t,i)=>(
-              <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
-                <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-          <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>⚖️ Responsabilités légales</p>
-          <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Toute personne ayant menti sur son identité ou son âge et dont l'âge réel dépasse les limites acceptées sera poursuivie conformément aux lois en vigueur dans son pays de résidence. Céleste coopère avec les autorités compétentes en cas de signalement.</p>
-        </div>
-
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-          <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🏢 Organisation</p>
-          <p style={{margin:"0 0 6px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ETOILES ✦</p>
-          <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>Créé par Georgi PAMBOU</p>
-          <p style={{margin:0,fontSize:11,color:T.muted}}>© 2025 Céleste. Tous droits réservés.</p>
-        </div>
-
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-          <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📞 Contact</p>
-          <a href="mailto:mrdesetoiles@gmail.com" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none",marginBottom:8}}>
-            <span>✉️</span> mrdesetoiles@gmail.com
-          </a>
-          <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none"}}>
-            <span>💬</span> WhatsApp : +242 067 131 327
-          </a>
-        </div>
-
-      </div>
-
-      <Btn onClick={()=>setShowAbout(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai lu et j'accepte ✦</Btn>
-    </div>
-  </div>
-)}
+              <ChevronRight size={16} color={T.muted}/>
+            </Btn>
 
             {/* Déconnexion */}
             <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}} style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               <LogOut size={18}/>Se déconnecter
             </Btn>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal À propos */}
+      {showAbout&&(
+        <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowAbout(false)}>
+          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:28}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:56,color:T.gold,lineHeight:1,marginBottom:12}}>✦</div>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
+              <p style={{color:T.gold,fontSize:12,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:28}}>
+              {[
+                {title:"🌟 Notre mission",text:"Céleste est le réseau social privé et sécurisé des jeunes. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment."},
+              ].map((s,i)=>(
+                <div key={i} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
+                  <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>{s.title}</p>
+                  <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>{s.text}</p>
+                </div>
+              ))}
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
+                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📋 Conditions d'utilisation</p>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {["En t'inscrivant sur Céleste, tu certifies que toutes les informations fournies sont exactes et véridiques.","Céleste est une plateforme réservée aux jeunes. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.","Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illégal.","Le harcèlement, la violence verbale et toute forme d'intimidation sont strictement prohibés et entraînent une suspension immédiate.","Toute usurpation d'identité est un délit punissable par la loi.","Céleste se réserve le droit de supprimer tout compte sans préavis en cas de violation des présentes conditions."].map((t,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
+                      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
+                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🔒 Confidentialité</p>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {["Tes données personnelles ne sont jamais vendues ni partagées avec des tiers.","Ton numéro de téléphone est utilisé uniquement pour la vérification et ne sera jamais divulgué.","Les conversations privées sont confidentielles et accessibles uniquement aux participants.","Céleste utilise un chiffrement sécurisé pour protéger toutes tes données."].map((t,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
+                      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
+                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>⚖️ Responsabilités légales</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Toute personne ayant menti sur son identité ou son âge sera poursuivie conformément aux lois en vigueur. Céleste coopère avec les autorités compétentes en cas de signalement.</p>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
+                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🏢 Organisation</p>
+                <p style={{margin:"0 0 4px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ETOILES ✦</p>
+                <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>Créé par Georgi PAMBOU</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>© 2025 Céleste. Tous droits réservés.</p>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
+                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📞 Contact</p>
+                <a href="mailto:mrdesetoiles@gmail.com" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none",marginBottom:8}}><span>✉️</span> mrdesetoiles@gmail.com</a>
+                <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none"}}><span>💬</span> WhatsApp : +242 067 131 327</a>
+              </div>
+            </div>
+            <Btn onClick={()=>setShowAbout(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai lu et j'accepte ✦</Btn>
           </div>
         </div>
       )}
