@@ -1660,7 +1660,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   useEffect(()=>{
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
-    if(isMe)sb.from("status_views").select("viewer_id,profiles(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data})=>setViews(v=>({...v,[current.id]:data||[]})));
+    if(isMe)sb.from("status_views").select("viewer_id,profiles:viewer_id(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data,error})=>{console.log("status_views data:",data,"error:",error);setViews(v=>({...v,[current.id]:data||[]}));});if(isMe)sb.from("status_views").select("viewer_id,profiles:viewer_id(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data,error})=>{console.log("status_views data:",data,"error:",error);setViews(v=>({...v,[current.id]:data||[]}));});
     if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){viewed.current.add(current.id);sb.from("status_views").insert({status_id:current.id,viewer_id:session.user.id});}
     setPaused(false);setProgress(0);
     const duration=current.type==="text"?5000:10000;
@@ -2345,7 +2345,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
-
+const [detailPost, setDetailPost] = useState(null);
   if(loading) return(
     <div style={{display:"flex",justifyContent:"center",padding:40}}>
       <div style={{width:32,height:32,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
@@ -2358,10 +2358,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
       <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun post sauvegardé</p>
     </div>
   );
-
-  const [detailPost, setDetailPost] = useState(null);
-
-  return(
+return(
     <div>
       {detailPost&&(
         <PostDetailModal post={detailPost} myProfile={myProfile} session={session}
