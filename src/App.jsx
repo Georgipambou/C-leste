@@ -958,7 +958,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   const insertMention=member=>{
     const textBeforeCursor=value.slice(0,cursorPos);
     const textAfterCursor=value.slice(cursorPos);
-    const newText=textBeforeCursor.replace(/@\w*$/,"@"+member.prenom+" ")+textAfterCursor;
+   const newText=textBeforeCursor.replace(/@\w*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
     onChange(newText);
     setShowSuggestions(false);
     ref.current?.focus();
