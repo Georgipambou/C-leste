@@ -1098,9 +1098,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
       if(!upErr){const{data}=sb.storage.from("celeste-media").getPublicUrl(path);mediaUrl=data.publicUrl;}
     }
    const uid=(await sb.auth.getUser())?.data?.user?.id;
-console.log("UID insert comment:", uid, "sessionUserId:", sessionUserId);
 const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
-console.log("Comment insert error:", error);
     if(!error){
       setText("");
       setMediaFile(null);
@@ -1232,6 +1230,10 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
 
        {/* Texte */}
         {comment.text&&<p style={{margin:"0 0 8px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>}
+{comment.media_url&&(
+  <img src={comment.media_url} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:8,cursor:"pointer"}}
+    onClick={()=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:comment.media_url}}))}/>
+)}
         {comment.media_url&&(
           <img src={comment.media_url} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:8,cursor:"pointer"}}
             onClick={()=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:comment.media_url}}))}/>
@@ -2278,10 +2280,13 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
               <MessageCircle size={16}/>
               {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
             </Btn>
-            <div style={{display:"flex",alignItems:"center",gap:4,padding:"7px 12px",color:T.muted,fontSize:13}}>
-              <Eye size={16}/>
-              <span>{views>0?views:""}</span>
-            </div>
+           {(post.author?.badge==="confirmed"||post.author?.badge==="friend")&&
+ (getM(session?.user?.id)?.badge==="confirmed"||getM(session?.user?.id)?.badge==="friend")&&(
+  <div style={{display:"flex",alignItems:"center",gap:4,padding:"7px 12px",color:T.muted,fontSize:13}}>
+    <Eye size={16}/>
+    <span>{views||0}</span>
+  </div>
+)}
             <div style={{flex:1}}/>
             <Btn onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.muted,transition:"all .2s"}}>
               <Bookmark size={16} fill={saved?"currentColor":"none"}/>
