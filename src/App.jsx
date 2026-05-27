@@ -1857,10 +1857,7 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
           {!current?.mediaUrl && <span style={{fontSize:18}}>📝</span>}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <p style={{margin:0,fontSize:11,fontWeight:600,color:T.goldL,marginBottom:2}}>Répondre au statut</p>
-          <p style={{margin:0,fontSize:12,color:"rgba(255,255,255,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:current?.text?"normal":"italic"}}>
-            {current?.text ? current.text : isVideo ? "📹 Vidéo" : current?.mediaUrl ? "📷 Photo" : "Statut"}
-          </p>
+          <p style={{margin:0,fontSize:11,fontWeight:600,color:T.goldL}}>Répondre au statut</p>
         </div>
       </div>
       {/* Champ saisie */}
