@@ -3898,6 +3898,11 @@ useEffect(()=>{
   };
 },[]);
   const prevMsgCount=useRef(0);
+useEffect(()=>{
+  const handler=e=>setViewImg(e.detail?.url);
+  window.addEventListener("celeste_view_img",handler);
+  return()=>window.removeEventListener("celeste_view_img",handler);
+},[]);
 
   useEffect(()=>{
   const unlock=()=>{
