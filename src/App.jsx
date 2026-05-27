@@ -236,6 +236,10 @@ const GS = `
   @keyframes notifIn{from{opacity:0;transform:translateY(-24px) scale(0.94);}to{opacity:1;transform:none;}}
   @keyframes ripple{0%{transform:scale(0);opacity:0.4;}100%{transform:scale(2.5);opacity:0;}}
   @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+ @keyframes badgePulse {
+  0%,100% { box-shadow: 0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4); }
+  50% { box-shadow: 0 0 0 3px rgba(29,161,242,0.5), 0 0 16px rgba(29,161,242,1), 0 0 32px rgba(29,161,242,0.6); }
+}
   @keyframes gradMove{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
   @keyframes borderGlow{0%,100%{border-color:rgba(201,149,42,0.2);}50%{border-color:rgba(201,149,42,0.6);}}
   @keyframes sendBounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
@@ -375,12 +379,22 @@ const Badge = memo(function Badge({type}){
   if(!type) return null;
   const isConfirmed = type==="confirmed";
   return isConfirmed ? (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"linear-gradient(135deg,#1DA1F2,#0077B5)",boxShadow:"0 0 6px rgba(29,161,242,0.7)",flexShrink:0}}>
-      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",
+      background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
+      boxShadow:"0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4)",
+      flexShrink:0,position:"relative",animation:"badgePulse 2s ease infinite"}}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+        <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
     </span>
   ) : (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"linear-gradient(135deg,#FFD700,#FFA500)",boxShadow:"0 0 6px rgba(255,165,0,0.7)",flexShrink:0}}>
-      <svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:"50%",
+      background:"linear-gradient(135deg,#FFD700,#FF8C00)",
+      boxShadow:"0 0 0 2px rgba(255,165,0,0.3), 0 0 10px rgba(255,180,0,0.9), 0 0 22px rgba(255,140,0,0.5)",
+      flexShrink:0,animation:"badgePulse 2s ease infinite"}}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+  <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+</svg>
     </span>
   );
 });
@@ -1232,8 +1246,9 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
        {/* Texte */}
         {comment.text&&<p style={{margin:"0 0 8px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>}
 {comment.media_url&&(
-  <img src={comment.media_url} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:10,marginBottom:8,cursor:"pointer",border:`1px solid ${T.border}`}}
-    onClick={()=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:comment.media_url}}))}/>
+  <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
+    <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
+  </div>
 )}
         {comment.media_url&&(
           <img src={comment.media_url} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:8,cursor:"pointer"}}
