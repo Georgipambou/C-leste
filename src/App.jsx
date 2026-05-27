@@ -1667,7 +1667,11 @@ if(isMe){
     setViews(v=>({...v,[current.id]:merged}));
   });
 }
-    if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){viewed.current.add(current.id);sb.from("status_views").insert({status_id:current.id,viewer_id:session.user.id});}
+    if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){
+  viewed.current.add(current.id);
+  sb.from("status_views").upsert({status_id:current.id,viewer_id:session.user.id},{onConflict:"status_id,viewer_id",ignoreDuplicates:true})
+    .then(({error})=>console.log("insert view error:",error));
+}
     setPaused(false);setProgress(0);
     const duration=current.type==="text"?5000:10000;
     const step=100/(duration/50);
