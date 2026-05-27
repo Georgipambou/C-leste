@@ -1250,10 +1250,6 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
     <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
   </div>
 )}
-        {comment.media_url&&(
-          <img src={comment.media_url} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:8,cursor:"pointer"}}
-            onClick={()=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:comment.media_url}}))}/>
-        )}
 
         {/* Actions style Threads */}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
@@ -1660,7 +1656,15 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   useEffect(()=>{
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
-    if(isMe)sb.from("status_views").select("viewer_id,profiles:viewer_id(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data,error})=>{console.log("status_views data:",data,"error:",error);setViews(v=>({...v,[current.id]:data||[]}));});if(isMe)sb.from("status_views").select("viewer_id,profiles:viewer_id(prenom,nom,avatar_url)").eq("status_id",current.id).then(({data,error})=>{console.log("status_views data:",data,"error:",error);setViews(v=>({...v,[current.id]:data||[]}));});
+    if(isMe){
+  sb.from("status_views").select("viewer_id").eq("status_id",current.id).then(async({data})=>{
+    if(!data||data.length===0){setViews(v=>({...v,[current.id]:[]}));return;}
+    const ids=data.map(d=>d.viewer_id);
+    const{data:profiles}=await sb.from("profiles").select("id,prenom,nom,avatar_url").in("id",ids);
+    const merged=data.map(d=>({viewer_id:d.viewer_id,profiles:(profiles||[]).find(p=>p.id===d.viewer_id)||null}));
+    setViews(v=>({...v,[current.id]:merged}));
+  });
+}
     if(!isMe&&session?.user?.id&&!viewed.current.has(current.id)){viewed.current.add(current.id);sb.from("status_views").insert({status_id:current.id,viewer_id:session.user.id});}
     setPaused(false);setProgress(0);
     const duration=current.type==="text"?5000:10000;
