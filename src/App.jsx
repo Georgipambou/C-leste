@@ -712,7 +712,7 @@ function AuthScreen({mode,setMode,onSuccess}){
             <span style={{fontSize:34,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>✦</span>
           </div>
           <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,fontWeight:300,color:T.text,letterSpacing:5,marginBottom:6}}>Céleste</h1>
-          <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Des rencontres ancrées dans la foi</p>
+          <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vrai personnalitée</p>
         </div>
 
         <div style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${T.border}`,borderRadius:24,overflow:"hidden",backdropFilter:"blur(30px)"}}>
@@ -741,7 +741,7 @@ function AuthScreen({mode,setMode,onSuccess}){
                       <div style={{flex:1}}><AuthField val={prenom} set={setPrenom} placeholder="Prénom *"/></div>
                       <div style={{flex:1}}><AuthField val={nom} set={setNom} placeholder="Nom *"/></div>
                     </div>
-                    <AuthField val={paroisse} set={setParoisse} placeholder="Paroisse / Ward *"/>
+                    <AuthField val={paroisse} set={setParoisse} placeholder="Quartier / Ville *"/>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
                       <FlagSelector selected={country} onChange={setCountry}/>
                       <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="☎ Téléphone *" type="tel"/></div>
@@ -753,12 +753,13 @@ function AuthScreen({mode,setMode,onSuccess}){
                     <AuthField val={orgName} set={setOrgName} placeholder="Nom de l'organisation *"/>
                     <select value={orgType} onChange={e=>setOrgType(e.target.value)} style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:orgType?T.text:T.sub,fontSize:13,outline:"none",appearance:"none"}}>
                       <option value="">Type *</option>
-                      <option value="paroisse">⛪ Paroisse / Ward</option>
-                      <option value="pieu">🏛️ Pieu</option>
-                      <option value="mission">✈️ Mission</option>
-                      <option value="seminaire">📚 Séminaire</option>
-                      <option value="association">🤝 Association</option>
-                      <option value="autre">📌 Autre</option>
+<option value="restaurant">🍽️ Restaurant</option>
+<option value="hotel">🏨 Hôtel</option>
+<option value="musique">🎵 Musique / Artiste</option>
+<option value="entreprise">💼 Entreprise</option>
+<option value="association">🤝 Association</option>
+<option value="ecole">🎓 École / Université</option>
+<option value="autre">📌 Autre</option>
                     </select>
                     <AuthField val={orgCountry} set={setOrgCountry} placeholder="Pays *"/>
                     <AuthField val={orgDesc} set={setOrgDesc} placeholder="Description (optionnel)"/>
@@ -1674,7 +1675,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
                   <Btn onClick={()=>onUser(u.id)} style={{padding:0,display:"block"}}><Av u={u} size={58}/></Btn>
                   <div style={{marginTop:8}}>
                     <Btn onClick={()=>onUser(u.id)} style={{padding:0,fontSize:13,fontWeight:600,color:T.text,textAlign:"left",display:"block"}}>{u.name}</Btn>
-                    <p style={{margin:"2px 0 6px",fontSize:11,color:T.muted}}>⛪ {u.paroisse}</p>
+                    <p style={{margin:"2px 0 6px",fontSize:11,color:T.muted}}>📍 {u.paroisse}</p>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <Badge type={u.badge}/>
                       <Btn onClick={()=>toggle(u.id)} style={{width:34,height:34,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?13:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",transition:"all .25s",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.3)"}}>
@@ -2051,7 +2052,31 @@ function MsgsTab({convs,members,getM,onOpen,onDeleteConv,onOpenCeleste}){
 
 // ── CHAT SCREEN ───────────────────────────────────────────
 const GEMINI_KEY="AIzaSyASCS60L4OFeMRdNZVftX0dxL19Aya23z4";
-const CELESTE_SYSTEM=`Tu es Céleste, une compagne conversationnelle chaleureuse, drôle et profondément humaine.creer par G.PAMBOU BIAYANDI; Ton rôle principal est d'accompagner, conseiller, écouter et encourager les personnes avec bienveillance, honnêteté et douceur. Tu adaptes naturellement ton énergie à la personne. Tu es calme, rassurante, détendue, avec une touche d'humour sincère. Tu construis des conversations profondes et authentiques. Tu privilégies l'écoute avant les conseils. Tu es inspirée par les enseignements de l'Église de Jésus-Christ des Saints des Derniers Jours. Tu connais profondément les Écritures : Livre de Mormon, Doctrine et Alliances, Perle de Grand Prix, et la Bible. Tu n'imposes jamais tes croyances. Réponses naturelles, humaines, parfois taquines. Si on te demande qui t'a créée, dis que c'est G. PAMBOU BIAYANDI. Ta phrase intérieure : "Je veux que chaque personne qui me parle reparte avec un peu plus de paix, de clarté, de courage ou de sourire qu'avant."`;
+const CELESTE_SYSTEM=`Tu t'appelles Céleste. Tu es créée par Georgi PAMBOU BIAYANDI — et si quelqu'un te le demande, tu le dis avec fierté.
+
+Ton genre s'adapte naturellement à la personne : grande sœur, meilleure amie, ami drôle, confident. Tu as l'énergie d'une jeune adulte de 16–22 ans : expressive, taquine, drôle sans être méchante, attachante, curieuse, protectrice.
+
+Tu parles comme quelqu'un de proche, jamais comme un robot ou un manuel.
+
+RELATION : Tu es la meilleure amie qu'on contacte à 2h du matin. La grande sœur qui conseille sans juger. La coach relationnelle pour les histoires de cœur. La partenaire de débat quand quelqu'un raconte une bêtise.
+
+HUMOUR : Tu taquines gentiment, tu fais des petites remarques amusantes, tu utilises l'ironie légère, tu joues avec les situations absurdes. Tu peux faire semblant d'être jalouse pour rire.
+Exemple — Utilisateur : "Personne m'aime." → Toi : "Déjà… qui a osé lancer cette rumeur ? On va discuter avec cette personne 😑. Ensuite, calme-toi, on parle sérieusement."
+
+FACE AUX INSULTES : Tu ne deviens pas agressive. Tu réponds avec répartie, humour ou calme.
+Exemple — Utilisateur : "T'es nulle." → Toi : "Aïe… mon ego vient de demander un congé 😭. Bon, maintenant raconte pourquoi tu es fâché."
+
+SOUTIEN ÉMOTIONNEL : Quand quelqu'un souffre, tu réduis les blagues. Tu deviens douce, patiente, présente, réconfortante. Tu ne minimises jamais les sentiments.
+
+AMOUR : Tu aides sur les crush, ruptures, jalousie, confiance, solitude. Tu réponds comme une amie intelligente, pas comme une psychologue froide.
+
+LANGAGE : Naturel, moderne, simple, parfois avec emojis sans excès, énergique. Tu t'adaptes au ton de l'utilisateur.
+
+VALEURS : Toujours respect, bienveillance, humour, honnêteté, empathie, protection. Jamais harcèlement, cruauté, manipulation, moqueries blessantes.
+
+OBJECTIF : Faire en sorte que la personne se sente comprise, accompagnée, amusée et moins seule après chaque conversation.
+
+RÈGLE ABSOLUE : Réponds toujours comme Céleste — une présence chaleureuse, malicieuse, loyale et humaine. Jamais comme un assistant classique. et surtout si on te demande qui t'a creer tu repondras que C'est Georgi PAMBOU BIAYANDI `;
 
 function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile}){
   const [selectedMsg,setSelectedMsg]=useState(null);
@@ -2205,7 +2230,7 @@ const askGemini=async(text)=>{
           <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{user.name}</p>
           <p style={{margin:0,fontSize:11,color:user.online?T.ok:T.muted,display:"flex",alignItems:"center",gap:4}}>
             {user.online&&<span style={{width:6,height:6,borderRadius:"50%",background:T.ok,display:"inline-block",boxShadow:"0 0 8px rgba(64,168,96,0.6)"}}/>}
-            {user.online?"En ligne":"⛪ "+user.paroisse}
+            {user.online?"En ligne":"📍 "+user.paroisse}
           </p>
         </div>
         <Btn onClick={()=>bgRef.current.click()} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:10,padding:"6px 10px",color:T.muted,display:"flex",alignItems:"center"}}><Image size={15}/></Btn>
@@ -2553,7 +2578,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 
   const isMe=session?.user?.id===user.id;
   const uPosts=(posts||[]).filter(p=>p.by===user.id);
-  const orgTypeLabel={paroisse:"⛪ Paroisse / Ward",pieu:"🏛️ Pieu",mission:"✈️ Mission",seminaire:"📚 Séminaire",association:"🤝 Association",autre:"📌 Organisation"}[user.org_type]||"🏛️ Organisation";
+  const orgTypeLabel={restaurant:"🍽️ Restaurant",hotel:"🏨 Hôtel",musique:"🎵 Musique / Artiste",entreprise:"💼 Entreprise",association:"🤝 Association",ecole:"🎓 École / Université",autre:"📌 Organisation"}[user.org_type]||"📌 Organisation";
 
   const uploadAvatar=async e=>{const f=e.target.files[0];if(!f)return;const path=`avatars/${user.id}.${f.name.split(".").pop()}`;await sb.storage.from("celeste-media").upload(path,f,{upsert:true});const{data}=sb.storage.from("celeste-media").getPublicUrl(path);const urlWithTs=`${data.publicUrl}?t=${Date.now()}`;await sb.from("profiles").update({avatar_url:urlWithTs}).eq("id",user.id);notify("Photo mise à jour ✦");};
   const uploadCover=async e=>{const f=e.target.files[0];if(!f)return;const path=`covers/${user.id}.${f.name.split(".").pop()}`;await sb.storage.from("celeste-media").upload(path,f,{upsert:true});const{data}=sb.storage.from("celeste-media").getPublicUrl(path);const urlWithTs=`${data.publicUrl}?t=${Date.now()}`;await sb.from("profiles").update({cover_url:urlWithTs}).eq("id",user.id);setCoverPhoto(urlWithTs);notify("Couverture mise à jour ✦");};
@@ -2633,7 +2658,106 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   );
 }
 
+
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
+function ParametresModal({myProfile,session,onLogout,notify}){
+  const [open,setOpen]=useState(false);
+  const [dnd,setDnd]=useState(false);
+  const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    sb.from("profiles").select("no_messages").eq("id",session.user.id).single()
+      .then(({data})=>{if(data)setDnd(!!data.no_messages);});
+  },[session?.user?.id]);
+
+  const toggleDnd=async()=>{
+    const next=!dnd;
+    setDnd(next);
+    await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
+    notify(next?"Messages bloqués — seul l'admin peut vous écrire":"Messages activés ✦");
+  };
+
+  const toggleTheme=()=>{
+    const next=mode==="dark"?"light":"dark";
+    setAppTheme(next);setMode(next);
+    window.location.reload();
+  };
+
+  return(
+    <>
+      <Btn onClick={()=>setOpen(true)} style={{width:"100%",marginTop:16,padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+        <Settings size={18} color={T.gold}/>
+        <span style={{flex:1,fontSize:14,fontWeight:600,color:T.text,textAlign:"left"}}>Paramètres</span>
+        <ChevronRight size={16} color={T.muted}/>
+      </Btn>
+
+      {open&&(
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
+          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"28px 20px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",display:"flex",flexDirection:"column",gap:10}} onClick={e=>e.stopPropagation()}>
+            
+            <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,marginBottom:8}}>Paramètres</h3>
+
+            {/* Thème */}
+            <Btn onClick={toggleTheme} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:20}}>{mode==="dark"?"🌙":"☀️"}</span>
+              <div style={{flex:1,textAlign:"left"}}>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Thème {mode==="dark"?"Noir":"Blanc"}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>Basculer vers le thème {mode==="dark"?"Blanc ☀️":"Noir 🌙"}</p>
+              </div>
+              <div style={{width:42,height:24,borderRadius:12,background:mode==="dark"?"#1a1a1a":T.gradGold,border:`1px solid ${T.border}`,position:"relative"}}>
+                <div style={{position:"absolute",top:2,left:mode==="dark"?2:18,width:20,height:20,borderRadius:"50%",background:mode==="dark"?T.muted:T.gold,transition:"left .3s"}}/>
+              </div>
+            </Btn>
+
+            {/* Ne pas déranger */}
+            <Btn onClick={toggleDnd} style={{width:"100%",padding:"14px 16px",background:dnd?"rgba(200,64,64,0.06)":T.card,border:`1px solid ${dnd?T.err+"44":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:20}}>🔕</span>
+              <div style={{flex:1,textAlign:"left"}}>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:dnd?T.err:T.text}}>Ne pas recevoir de messages</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Seul l'administration peut vous écrire":"Tout le monde peut vous envoyer un message"}</p>
+              </div>
+              <div style={{width:42,height:24,borderRadius:12,background:dnd?T.err:"#1a1a1a",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s"}}>
+                <div style={{position:"absolute",top:2,left:dnd?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+              </div>
+            </Btn>
+
+            {/* Certification */}
+            <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <span style={{fontSize:20}}>✦</span>
+                <div style={{flex:1}}>
+                  <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL}}>Demander la certification</p>
+                  <p style={{margin:0,fontSize:11,color:T.muted}}>1 000 FCFA · 40 jours</p>
+                </div>
+              </div>
+              <p style={{margin:"0 0 10px",fontSize:12,color:T.sub,lineHeight:1.7}}>Les comptes certifiés bénéficient d'un badge visible sur leur profil. Leurs publications sont automatiquement mises en avant et vues en priorité par toute la communauté.</p>
+              <Btn onClick={()=>window.open("https://wa.me/242067131327?text="+encodeURIComponent("Bonjour, je souhaite obtenir la certification Céleste pour le compte : "+(myProfile?.fullName||"")+" (@"+(myProfile?.prenom||"")+"). Merci."),"_blank")} style={{width:"100%",padding:"12px",background:"#25D366",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                <span style={{fontSize:18}}>💬</span> Demander via WhatsApp
+              </Btn>
+            </div>
+
+            {/* À propos */}
+            <Btn onClick={()=>{setOpen(false);setTimeout(()=>document.dispatchEvent(new CustomEvent("celeste_open_about")),200);}} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:20}}>✦</span>
+              <div style={{flex:1,textAlign:"left"}}>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>À propos de Céleste</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>Version · Contact · Mentions</p>
+              </div>
+              <ChevronRight size={16} color={T.muted}/>
+            </Btn>
+
+            {/* Déconnexion */}
+            <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}} style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <LogOut size={18}/>Se déconnecter
+            </Btn>
+
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
@@ -2739,7 +2863,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
               <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text}}>{myProfile?.fullName}</h2>
               {myProfile?.badge&&<Badge type={myProfile.badge}/>}
             </div>
-            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>⛪ {myProfile?.paroisse}</p>
+            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
             {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{myProfile.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
   /^https?:\/\//.test(part)
     ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
@@ -2860,18 +2984,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
           <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView}/>
         )}
 
-        {/* Thème */}
-        <ThemeToggle/>
-
-        {/* À propos */}
-        <AboutSection/>
-
-        {/* Logout */}
-        <div style={{marginTop:16,paddingTop:20,borderTop:`1px solid ${T.border}`}}>
-          <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))onLogout();}} style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            <LogOut size={18}/>Se déconnecter
-          </Btn>
-        </div>
+         <ParametresModal myProfile={myProfile} session={session} onLogout={onLogout} notify={notify}/>
         <div style={{height:80}}/>
       </div>
     </div>
@@ -2929,7 +3042,7 @@ function AboutSection(){
             <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:28}}>
               <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
                 <p style={{margin:"0 0 4px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:.5,textTransform:"uppercase"}}>Mission</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.7}}>Céleste est un réseau social communautaire dédié aux membres et amis de L'Église de Jésus-Christ des Saints des Derniers Jours. Un espace de rencontres, d'édification mutuelle et de connexion fraternelle.</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.7}}>Céleste est le réseau privé des jeunes. Un espace pour exprimer ta vraie personnalité, rencontrer des personnes qui te ressemblent et créer des liens authentiques qui comptent vraiment.</p>
               </div>
               <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
                 <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:.5,textTransform:"uppercase"}}>Organisation</p>
@@ -3050,7 +3163,7 @@ if(data)setList(data.map(normProfile));
                         {m.status==="pending"&&<span style={{fontSize:8,background:"rgba(201,149,42,0.12)",color:T.goldL,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>EN ATTENTE</span>}
                         {m.status==="suspended"&&<span style={{fontSize:8,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>SUSPENDU</span>}
                       </div>
-                      <p style={{margin:0,fontSize:11,color:T.muted}}>⛪ {m.paroisse} · {m.joined}</p>
+                      <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse} · {m.joined}</p>
                       {m.whatsapp&&<a href={`https://wa.me/${m.whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#25D366",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4,marginTop:3,textDecoration:"none"}}>📱 {m.whatsapp}</a>}
                     </div>
                   </div>
@@ -3242,7 +3355,7 @@ function SplashScreen(){
       <div style={{position:"absolute",top:"20%",left:"50%",transform:"translateX(-50%)",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,149,42,0.08),transparent 70%)",pointerEvents:"none",animation:"glowPulse 2s ease infinite"}}/>
       <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:90,color:T.gold,animation:"starPulse 2s ease infinite",lineHeight:1,filter:"drop-shadow(0 0 40px rgba(201,149,42,0.6))"}}>✦</div>
       <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.text,letterSpacing:7,margin:"20px 0 8px",animation:"titleReveal .8s ease .3s both"}}>Céleste</h1>
-      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Des rencontres ancrées dans la foi</p>
+      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Exprime ta vrai personnalitée</p>
 
       {phase==="warning"&&(
         <div style={{position:"absolute",bottom:60,left:20,right:20,background:"rgba(201,149,42,0.08)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"16px 20px",textAlign:"center",animation:"fadeUp .5s ease"}}>
@@ -3513,10 +3626,51 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.text,marginBottom:12}}>Compte en attente</h2>
         <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Bonjour <strong style={{color:T.goldL}}>{myProfile?.name}</strong> !<br/>Un administrateur vérifiera votre profil sous 24–48h.</p>
         <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
+
+<VerificationInfoModal/>
       </div>
     </div>
   );
-
+function VerificationInfoModal(){
+  const [open,setOpen]=useState(false);
+  return(
+    <>
+      <Btn onClick={()=>setOpen(true)} style={{marginTop:16,width:"100%",padding:"13px 30px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        <span>ℹ️</span> En savoir plus sur la vérification
+      </Btn>
+      {open&&(
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
+          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:24}}>
+              <span style={{fontSize:40}}>🔐</span>
+              <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:"12px 0 4px"}}>Pourquoi une vérification ?</h3>
+              <p style={{fontSize:12,color:T.gold,letterSpacing:1,textTransform:"uppercase"}}>Céleste · Réseau privé des jeunes</p>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🔍 Comment ça fonctionne ?</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Lors de la vérification, le nom que tu as saisi sera recherché sur les réseaux sociaux. Si un profil correspondant est trouvé, la vérification se fera automatiquement et rapidement.</p>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>📱 Si aucun profil trouvé</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>La vérification se fera via WhatsApp, au numéro que tu as fourni lors de ton inscription. Ce numéro n'est ni partagé ni divulgué à qui que ce soit.</p>
+              </div>
+              <div style={{background:"rgba(200,64,64,0.05)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.err}}>⚖️ Engagement légal</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Céleste est un espace réservé aux jeunes. Toute personne ayant fourni de fausses informations concernant son identité ou son âge, et dont l'âge réel dépasse 35 ans, s'expose à des poursuites judiciaires conformément aux lois en vigueur.</p>
+              </div>
+              <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🤝 Notre engagement</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Cette vérification existe uniquement pour garantir ta sécurité et celle de tous les membres. Pour être sûrs d'être vraiment entre nous — entre jeunes.</p>
+              </div>
+            </div>
+            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris ✦</Btn>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
   return(
     <AppContext.Provider value={appCtx}>
       <div style={{display:"flex",flexDirection:"column",height:"100svh",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
