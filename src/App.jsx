@@ -1097,7 +1097,10 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
       const{error:upErr}=await sb.storage.from("celeste-media").upload(path,mediaFile,{upsert:true,contentType:"image/jpeg"});
       if(!upErr){const{data}=sb.storage.from("celeste-media").getPublicUrl(path);mediaUrl=data.publicUrl;}
     }
-    const{error}=await sb.from("comments").insert({post_id:postId,author_id:sessionUserId,text:trimmed,media_url:mediaUrl});
+   const uid=(await sb.auth.getUser())?.data?.user?.id;
+console.log("UID insert comment:", uid, "sessionUserId:", sessionUserId);
+const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
+console.log("Comment insert error:", error);
     if(!error){
       setText("");
       setMediaFile(null);
