@@ -2663,9 +2663,6 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   );
 }
 
-
-// ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
-const [showAbout,setShowAbout]=useState(false);
 function ParametresModal({myProfile,session,onLogout,notify}){
   const [open,setOpen]=useState(false);
   const [dnd,setDnd]=useState(false);
@@ -2837,6 +2834,7 @@ function ParametresModal({myProfile,session,onLogout,notify}){
     </>
   );
 }
+// ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
