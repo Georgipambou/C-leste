@@ -2668,7 +2668,7 @@ const askGemini=async(text)=>{
   <div style={{marginBottom:6}}>
     <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4}}>
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type==="image"&&(
+        {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
             onError={e=>{e.target.style.display="none";e.target.parentNode.innerHTML='<span style="font-size:14px">📷</span>';}}/>
         )}
@@ -4004,7 +4004,7 @@ useEffect(()=>{
     ]);
     if(data){
       const blocked=new Set((blockedData||[]).map(b=>b.blocked_id));
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime()}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);return filtered;
     }return null;
