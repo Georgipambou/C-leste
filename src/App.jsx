@@ -1785,7 +1785,11 @@ if(isMe){
             </>
           )}
        </div>
-       {!isMe&&<StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} current={current} onClose={onClose} session={session}/>}
+      {!isMe&&(
+  <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,padding:"8px 16px",paddingBottom:"calc(8px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)"}}>
+    <StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} current={current} onClose={onClose} session={session}/>
+  </div>
+)}
       </div>
 
       {isMe&&showInfo&&(
