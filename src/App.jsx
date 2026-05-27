@@ -101,7 +101,25 @@ const hm = ts => new Date(ts).toLocaleTimeString("fr",{hour:"2-digit",minute:"2-
 const initials = (p="",n="") => ((p[0]||"")+(n[0]||"")).toUpperCase()||"?";
 const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#50A0A0","#A06090"];
 const colorFor = id => PALETTE[(id?.charCodeAt(0)||0)%PALETTE.length];
-
+const renderTextWithMentions = (text, onMentionClick) => {
+  if (!text) return "";
+  const parts = text.split(/(@[a-zA-Z0-9_]+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const username = part.substring(1);
+      return (
+        <span
+          key={i}
+          onClick={(e) => { e.stopPropagation(); onMentionClick(username); }}
+          style={{ color: T.goldL, fontWeight: "600", cursor: "pointer" }}
+        >
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+};
 const normProfile = p => ({
   id:p.id, name:`${p.prenom||""} ${(p.nom||"")[0]||""}.`.trim(),
   fullName:`${p.prenom||""} ${p.nom||""}`.trim(),
@@ -169,13 +187,10 @@ const GS = `
     touch-action: manipulation; /* Protège le comportement tactile natif */
   }
 
-  html, body, #root {
+ html, body, #root {
     height: 100%;
     background: #000;
-    overscroll-behavior: none;
-  }
-    
-    /* Suppression de overscroll-behavior: none qui fige le scroll */
+    overscroll-behavior: contain;
   }
 
   input, textarea {
@@ -230,11 +245,11 @@ const GS = `
   @keyframes statusRing{0%{stroke-dashoffset:251;}100%{stroke-dashoffset:0;}}
 
   /* ── UTILS ── */
-  .premium-card{
+ .premium-card{
     background:${T.card};
     border:1px solid ${T.border};
-    backdrop-filter:blur(20px);
-    -webkit-backdrop-filter:blur(20px);
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
     transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
   }
   .premium-card:active{transform:scale(0.98);}
@@ -414,15 +429,25 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {} }) {
 
   // Auto-play/pause selon visibilité
   useEffect(() => {
-    const el = ref.current; if (!el) return;
+    const el = ref.current;
+    if (!el) return;
+
+    let isMounted = true;
+
     const obs = new IntersectionObserver(([entry]) => {
-      if (fullscreenRef.current) return;
+      if (!isMounted || fullscreenRef.current) return;
       if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
         if (!pausedRef.current) { el.play().catch(() => {}); setPlaying(true); }
       } else { el.pause(); setPlaying(false); }
     }, { threshold: 0.5 });
+
     obs.observe(el);
-    return () => obs.disconnect();
+
+    return () => {
+      isMounted = false;
+      obs.unobserve(el);
+      obs.disconnect();
+    };
   }, []);
 
   // ✅ closeFullscreen déclarée au niveau du composant
@@ -889,10 +914,13 @@ function NotifsScreen({myProfile,session,members}){
             const from=n.from?normProfile(n.from):null;
             return(
               <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:n.read?"transparent":"rgba(201,149,42,0.03)",cursor:"pointer",transition:"background .2s",animation:"fadeUp .3s ease"}}
-                onClick={()=>{}}>
+                onClick={()=>{
+                  if(n.type==="follow"){setTab("discover");return;}
+                  if(n.post_id){setTab("home");}
+                }}>
                 {/* Avatar + icône */}
                 <div style={{position:"relative",flexShrink:0}}>
-                  <Av u={from||{initials:"?",color:"#888"}} size={46}/>
+                  <Av u={from||{initials:"?",color:"#888"}} size={46} onClick={e=>{e.stopPropagation();setTab("discover");}}/>
                   <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:T.bg3,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>
                     {icon(n)}
                   </div>
@@ -1247,7 +1275,7 @@ function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,n
                 {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub}}>📍 {post.eventLoc}</p>}
               </div>
               :<>
-                {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
+                {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username => {})}</p>}
   {(()=>{
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
@@ -1647,6 +1675,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
       </div>
 
       <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))"}}>
+        {!isMe&&<StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} onClose={onClose}/>}
         <div style={{display:"flex",justifyContent:"center",gap:28}}>
           {!isMe&&(
             <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
@@ -1683,6 +1712,37 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
           );})}
         </div>
       )}
+    </div>
+  );
+}
+function StatusReplyInput({ statusOwnerId, statusId, onClose }) {
+  const [replyText, setReplyText] = useState("");
+
+  const sendStatusReply = async () => {
+    if (!replyText.trim()) return;
+    const { error } = await sb.from("messages").insert([{
+      receiver_id: statusOwnerId,
+      text: `Réponse au statut : "${replyText}"`,
+      metadata: { is_status_reply: true, status_id: statusId }
+    }]);
+    if (!error) {
+      setReplyText("");
+      onClose();
+    }
+  };
+
+  return (
+    <div style={{position:"absolute",bottom:80,left:16,right:16,display:"flex",gap:10,zIndex:100}}>
+      <input
+        type="text"
+        value={replyText}
+        onChange={e=>setReplyText(e.target.value)}
+        placeholder="Répondre en privé..."
+        style={{flex:1,padding:"12px 16px",background:"rgba(0,0,0,0.6)",border:`1px solid ${T.border}`,borderRadius:24,color:"#fff",outline:"none",fontSize:14}}
+      />
+      <Btn onClick={sendStatusReply} style={{background:T.gradGold,borderRadius:"50%",width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <Send size={18} color="#000"/>
+      </Btn>
     </div>
   );
 }
@@ -2039,7 +2099,7 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
               {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted}}>📍 {post.eventLoc}</p>}
             </div>
             :<>
-              {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{post.text}</p>}
+              {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username => {})}</p>}
               {(()=>{
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
