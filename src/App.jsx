@@ -1657,7 +1657,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
    
-console.log("isMe:",isMe,"current.id:",current?.id,"session:",session?.user?.id);
+
 if(isMe){
   sb.from("status_views").select("viewer_id").eq("status_id",current.id).then(async({data})=>{
     if(!data||data.length===0){setViews(v=>({...v,[current.id]:[]}));return;}
@@ -1811,86 +1811,62 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
   const sendStatusReply = async () => {
     if (!replyText.trim() || sending) return;
     setSending(true);
-    const convRes = await sb.from("conversations")
-      .select("id")
-      .or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${statusOwnerId}),and(user1_id.eq.${statusOwnerId},user2_id.eq.${session?.user?.id})`)
-      .maybeSingle();
-    let convId = convRes?.data?.id;
-    if (!convId) {
-      const { data: newConv } = await sb.from("conversations").insert({ user1_id: session?.user?.id, user2_id: statusOwnerId }).select().single();
-      convId = newConv?.id;
-    }
-
-    // Construire le texte de contexte
-    let contextText = "";
-    if (current?.text) contextText = `📝 "${current.text.slice(0,60)}${current.text.length>60?"…":""}"`;
-    else if (isVideo) contextText = `🎬 Vidéo`;
-    else if (current?.mediaUrl) contextText = `📷 Photo`;
-
-    const { error } = await sb.from("messages").insert({
-      conv_id: convId,
-      sender_id: session?.user?.id,
-      type: "text",
-      text: `💬 *Réponse au statut* ${contextText}\n→ "${replyText}"`
-    });
-    setSending(false);
-    if (!error) {
-      setReplyText("");
-      onClose();
-    }
+    try {
+      const convRes = await sb.from("conversations")
+        .select("id")
+        .or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${statusOwnerId}),and(user1_id.eq.${statusOwnerId},user2_id.eq.${session?.user?.id})`)
+        .maybeSingle();
+      let convId = convRes?.data?.id;
+      if (!convId) {
+        const { data: newConv } = await sb.from("conversations").insert({ user1_id: session?.user?.id, user2_id: statusOwnerId }).select().single();
+        convId = newConv?.id;
+      }
+      const replyContext = {
+        isReplyToStatus: true,
+        statusId,
+        mediaUrl: current?.mediaUrl || null,
+        type: isVideo ? "video" : current?.mediaUrl ? "image" : "text",
+        previewText: current?.text ? current.text.slice(0, 60) : ""
+      };
+      const { error } = await sb.from("messages").insert({
+        conv_id: convId,
+        sender_id: session?.user?.id,
+        type: "status_reply",
+        text: replyText.trim(),
+        reply_metadata: replyContext
+      });
+      if (!error) { setReplyText(""); onClose(); }
+    } catch(err) { console.error(err); }
+    finally { setSending(false); }
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:8}}>
-      {/* Aperçu du statut */}
-      <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.06)",borderRadius:14,padding:"8px 12px",border:"1px solid rgba(255,255,255,0.1)"}}>
-        {/* Miniature */}
-        <div style={{width:44,height:44,borderRadius:10,overflow:"hidden",flexShrink:0,background:"rgba(255,255,255,0.05)",position:"relative",border:"1px solid rgba(255,255,255,0.15)"}}>
-          {current?.mediaUrl && !isVideo && (
-            <img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-          )}
-          {current?.mediaUrl && isVideo && (
-            <div style={{width:"100%",height:"100%",background:"linear-gradient(135deg,#1a1a2e,#16213e)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-              <span style={{fontSize:20}}>🎬</span>
-              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.3)"}}>
-                <div style={{width:18,height:18,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Play size={10} color="#000" style={{marginLeft:1}}/>
-                </div>
-              </div>
-            </div>
-          )}
+    <div style={{display:"flex",flexDirection:"column",gap:10,padding:"10px 12px",background:"rgba(16,20,24,0.85)",backdropFilter:"blur(20px)",borderRadius:20,border:"1px solid rgba(255,255,255,0.08)"}}>
+      {/* Aperçu style WhatsApp */}
+      <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"6px 10px 6px 6px",borderLeft:`3px solid ${T.goldL}`}}>
+        <div style={{width:44,height:44,borderRadius:8,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>
           {current?.mediaUrl && !isVideo && (
             <img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
-              onError={e=>{e.target.style.display="none";e.target.parentNode.innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px">📷</div>';}}
-            />
+              onError={e=>{e.target.style.display="none";}}/>
           )}
-          {!current?.mediaUrl && current?.text && (
-            <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📝</div>
-          )}
+          {current?.mediaUrl && isVideo && <span style={{fontSize:18}}>🎬</span>}
+          {!current?.mediaUrl && <span style={{fontSize:18}}>📝</span>}
         </div>
-        {/* Texte contexte */}
         <div style={{flex:1,minWidth:0}}>
-          <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)",marginBottom:2}}>Répondre à ce statut</p>
-          <p style={{margin:0,fontSize:12,color:"rgba(255,255,255,0.8)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-            {current?.text
-              ? `"${current.text.slice(0,50)}${current.text.length>50?"…":""}"`
-              : isVideo ? "🎬 Vidéo" : current?.mediaUrl ? "📷 Photo" : "Statut"
-            }
+          <p style={{margin:0,fontSize:11,fontWeight:600,color:T.goldL,marginBottom:2}}>Répondre au statut</p>
+          <p style={{margin:0,fontSize:12,color:"rgba(255,255,255,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:current?.text?"normal":"italic"}}>
+            {current?.text ? current.text : isVideo ? "📹 Vidéo" : current?.mediaUrl ? "📷 Photo" : "Statut"}
           </p>
         </div>
       </div>
-
-      {/* Champ de saisie */}
+      {/* Champ saisie */}
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        <input
-          type="text"
-          value={replyText}
-          onChange={e=>setReplyText(e.target.value)}
+        <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)}
           onKeyDown={e=>{if(e.key==="Enter"&&replyText.trim())sendStatusReply();}}
-          placeholder="Répondre en privé..."
-          style={{flex:1,padding:"11px 16px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:24,color:"#fff",outline:"none",fontSize:14}}
-        />
-        <Btn onClick={sendStatusReply} disabled={!replyText.trim()||sending} style={{background:replyText.trim()&&!sending?T.gradGold:"rgba(255,255,255,0.1)",borderRadius:"50%",width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:!replyText.trim()||sending?0.5:1,transition:"all .2s"}}>
+          placeholder="Répondre en privé..." disabled={sending}
+          style={{flex:1,padding:"11px 16px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:24,color:"#fff",outline:"none",fontSize:14}}/>
+        <Btn onClick={sendStatusReply} disabled={!replyText.trim()||sending}
+          style={{background:replyText.trim()&&!sending?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:!replyText.trim()||sending?0.4:1,transition:"all .2s"}}>
           <Send size={18} color={replyText.trim()&&!sending?"#000":"#fff"}/>
         </Btn>
       </div>
@@ -2684,6 +2660,23 @@ const askGemini=async(text)=>{
                   border:mine?"none":`1px solid ${T.border}`,
                   boxShadow:mine?"0 4px 20px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.3)"
                 }}>
+                  {m.type==="status_reply"&&(
+  <div style={{marginBottom:6}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4}}>
+      <div style={{width:32,height:32,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&<img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+        {m.reply_metadata?.type==="video"&&<span style={{fontSize:14}}>🎬</span>}
+        {!m.reply_metadata?.mediaUrl&&<span style={{fontSize:14}}>📝</span>}
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <p style={{margin:0,fontSize:10,fontWeight:600,color:mine?"rgba(0,0,0,0.5)":T.goldL}}>Statut</p>
+        <p style={{margin:0,fontSize:11,color:mine?"rgba(0,0,0,0.6)":"rgba(255,255,255,0.5)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:m.reply_metadata?.previewText?"normal":"italic"}}>
+          {m.reply_metadata?.previewText||"Photo/Vidéo"}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{fontSize:22,flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?"📄":(m.fileName||"").match(/\.(doc|docx)$/i)?"📝":"📎"}</span>
@@ -3999,7 +3992,7 @@ useEffect(()=>{
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId)
     ]);
     if(data){
