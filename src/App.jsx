@@ -3050,7 +3050,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
             {user.badge&&<Badge type={user.badge}/>}
           </div>
           <p style={{margin:"0 0 4px",fontSize:13,color:T.goldL,fontWeight:600}}>{orgTypeLabel}</p>
-          <p style={{margin:"0 0 8px",fontSize:12,color:T.muted}}>🌍 {user.org_country||user.paroisse}</p>
+          <p style={{margin:"0 0 8px",fontSize:12,color:T.muted}}>🌍{user.org_country||user.paroisse}</p>
           {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio}</p>}
           {user.org_desc&&<p style={{margin:"0 0 12px",fontSize:13,color:T.muted,lineHeight:1.6,fontStyle:"italic"}}>{user.org_desc}</p>}
         </div>
@@ -3154,19 +3154,65 @@ function ParametresModal({myProfile,session,onLogout,notify}){
 )}
 
             {/* Certification */}
-            <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                <span style={{fontSize:20}}>✦</span>
-                <div style={{flex:1}}>
-                  <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL}}>Demander la certification</p>
-                  <p style={{margin:0,fontSize:11,color:T.muted}}>1 000 FCFA · 40 jours</p>
-                </div>
-              </div>
-              <p style={{margin:"0 0 10px",fontSize:12,color:T.sub,lineHeight:1.7}}>Les comptes certifiés bénéficient d'un badge visible sur leur profil. Leurs publications sont automatiquement mises en avant et vues en priorité par toute la communauté.</p>
-              <Btn onClick={()=>window.open("https://wa.me/242067131327?text="+encodeURIComponent("Bonjour, je souhaite obtenir la certification Céleste pour le compte : "+(myProfile?.fullName||"")+" (@"+(myProfile?.prenom||"")+"). Merci."),"_blank")} style={{width:"100%",padding:"12px",background:"#25D366",borderRadius:12,color:"#fff",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                <span style={{fontSize:18}}>💬</span> Demander via WhatsApp
-              </Btn>
-            </div>
+<div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
+  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+    <span style={{fontSize:20}}>✦</span>
+    <div style={{flex:1}}>
+      <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL}}>
+        {myProfile?.badge?"Badge actif ✦":"Obtenir le badge certifié"}
+      </p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>
+        {myProfile?.badge_expires_at
+          ? `Expire le ${new Date(myProfile.badge_expires_at).toLocaleDateString("fr-FR")}`
+          : "1 000 FCFA · 40 jours"}
+      </p>
+    </div>
+  </div>
+  <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+  {[
+    {icon:"✦",text:"Badge bleu visible sur ton profil et tes publications"},
+    {icon:"👁",text:"Vois combien de personnes ont vu tes posts"},
+    {icon:"📈",text:"Tes publications sont prioritaires dans le feed"},
+    {icon:"🔕",text:"Active le mode \"Ne pas recevoir de messages\""},
+    {icon:"📷",text:"Envoie des photos dans les commentaires"},
+    {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
+  ].map((f,i)=>(
+    <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontSize:13,color:T.gold}}>{f.icon}</span>
+      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.6}}>{f.text}</p>
+    </div>
+  ))}
+</div>
+  {!myProfile?.badge&&(
+    <Btn onClick={async()=>{
+      const ref="CELESTE_"+session?.user?.id+"_"+Date.now();
+      const res=await fetch("https://api.notchpay.co/payments/initialize",{
+        method:"POST",
+        headers:{"Authorization":"pk_test.mokSC6T8pBenwfNmDRdQ9bCUqksvuoheAW2Bds3lVz4oFYT5NwrZ80zTs5bSM2q4Qec73Oce09Y87T1TbtFpm0bMUz9bF9dSUWbMfKc5hNfq0J0IglVs0hko1kOQT","Content-Type":"application/json"},
+        body:JSON.stringify({
+          amount:1000,
+          currency:"XAF",
+          email:session?.user?.email||"user@celeste.app",
+          reference:ref,
+          callback:"https://celeste-green.vercel.app/payment-success",
+          description:"Badge certifié Céleste — 40 jours"
+        })
+      });
+      const data=await res.json();
+      console.log("NotchPay response:",data);
+      if(data?.authorization_url){
+        await sb.from("profiles").update({badge_payment_ref:ref}).eq("id",session?.user?.id);
+        window.open(data.authorization_url,"_blank");
+        notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
+      } else {
+        notify("Erreur de paiement — réessaie");
+        console.error("NotchPay error:",data);
+      }
+    }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+      <span style={{fontSize:18}}>✦</span> Obtenir le badge — 1 000 FCFA
+    </Btn>
+  )}
+</div>
 
             {/* À propos */}
             <Btn onClick={()=>setShowAbout(true)} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
