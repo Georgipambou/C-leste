@@ -1078,7 +1078,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
   const [posting,setPosting]=useState(false);
   const [mediaFile,setMediaFile]=useState(null);
   const [mediaPreview,setMediaPreview]=useState(null);
-const [mentionedIds,setMentionedIds]=useState([]);
+const mentionedIdsRef=useRef([]);
   const textareaRef=useRef(null);
   const imgRef=useRef(null);
 
@@ -1133,20 +1133,18 @@ if(postData?.author_id&&postData.author_id!==uid){
     read:false
   });
 }
-      const mentions=trimmed.match(/@(\w+)/g)||[];
-      for(const mention of mentions){
-        const prenom=mention.slice(1).toLowerCase();
-        const mentioned=(members||[]).find(m=>m.name?.toLowerCase().replace(/\s+/g,"").startsWith(prenom)||m.fullName?.toLowerCase().replace(/\s+/g,"").startsWith(prenom)||(m.name||"").toLowerCase().split(" ")[0]===prenom);
-        if(mentioned&&mentioned.id!==uid){
-          await sb.from("notifications").insert({
-            user_id:mentioned.id,
-            from_id:uid,
-            type:"mention",
-            post_id:postId,
-            read:false
-          });
-        }
-      }
+      
+      const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
+for(const mentionedId of uniqueIds){
+  await sb.from("notifications").insert({
+    user_id:mentionedId,
+    from_id:uid,
+    type:"mention",
+    post_id:postId,
+    read:false
+  });
+}
+mentionedIdsRef.current=[];
     }
     setPosting(false);
   };
@@ -1177,7 +1175,7 @@ if(postData?.author_id&&postData.author_id!==uid){
         </Btn>
         <MentionInput
           value={text}
-          onChange={setText}
+          onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
           placeholder="Ajouter un commentaire..."
           members={members||[]}
           onFocus={()=>setHideNav(true)}
@@ -1239,6 +1237,17 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
     const text=replyText.trim();
     setReplyText("");setReplying(false);
     await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text});
+    // Notifier l'auteur du commentaire
+    if(comment.author_id&&comment.author_id!==sessionUserId){
+      await sb.from("notifications").insert({
+        user_id:comment.author_id,
+        from_id:sessionUserId,
+        type:"reply",
+        post_id:comment.post_id||null,
+        comment_id:comment.id,
+        read:false
+      });
+    }
     loadMeta();setShowReplies(true);
   };
 
