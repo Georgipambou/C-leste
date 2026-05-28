@@ -949,17 +949,18 @@ function NotifsScreen({myProfile,session,members}){
   }
                   // Like/comment/mention/reply → vérifier si post existe encore
                   if(n.post_id){
-                    const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
-                    if(!data){alert("Cette publication n'existe plus.");return;}
-                    // Si c'est mon post → aller dans mon profil
-                    setTab("home");
-                    // Déclencher ouverture du post
-                    window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
-                    setTimeout(()=>{
-                      window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:n.post_id}}));
-                    },350);
-                    return;
-                  }
+  const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
+  if(!data){alert("Cette publication n'existe plus.");return;}
+  setTab("home");
+  window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+  setTimeout(()=>{
+    window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{
+      postId:n.post_id,
+      commentId:n.comment_id||null
+    }}));
+  },350);
+  return;
+}
                 }}>
                 {/* Avatar + icône */}
                 <div style={{position:"relative",flexShrink:0}}>
@@ -1071,7 +1072,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   );
 }
 // ── COMMENTS SECTION ─────────────────────────────────────
-function CommentsSection({postId,sessionUserId,getM,onCountChange}){
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
   const [text,setText]=useState("");
@@ -1097,6 +1098,14 @@ const mentionedIdsRef=useRef([]);
   },[postId,onCountChange]);
 
   useEffect(()=>{load();},[load]);
+  const targetRef=useRef(null);
+useEffect(()=>{
+  if(targetRef.current){
+    setTimeout(()=>{
+      targetRef.current?.scrollIntoView({behavior:"smooth",block:"center"});
+    },400);
+  }
+},[comments]);
 
   useEffect(()=>{
     const ch=sb.channel(`comments-${postId}`)
@@ -1153,8 +1162,13 @@ mentionedIdsRef.current=[];
     <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
       <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:320,overflowY:"auto",paddingRight:4}}>
         {comments.map(c=>(
-          <CommentItem key={c.id} comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
-        ))}
+  <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
+    style={{borderRadius:12,transition:"background .5s",
+      background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
+  </div>
+))}
+    
       </div>
      {mediaPreview&&(
         <div style={{position:"relative",marginBottom:6}}>
@@ -1422,11 +1436,12 @@ onTouchEnd={e=>{
               <span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
             </div>
             <CommentsSection
-              postId={post.id}
-              sessionUserId={session?.user?.id}
-              getM={getM}
-              onCountChange={setCmtCount}
-            />
+  postId={post.id}
+  sessionUserId={session?.user?.id}
+  getM={getM}
+  onCountChange={setCmtCount}
+  targetCommentId={post._targetCommentId||null}
+/>
             <div ref={bottomRef}/>
           </div>
         </div>
@@ -2109,12 +2124,11 @@ const feedScrollRef=useRef(initialScroll);
 
 useEffect(()=>{
     const handler=async e=>{
-      const{postId}=e.detail;
+      const{postId,commentId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
-      if(post){setDetailPost(post);return;}
-      // Si le post n'est pas en mémoire, on le charge depuis Supabase
+      if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
       const{data}=await sb.from("posts").select("*,author:profiles!posts_author_id_fkey(*),likes(user_id),comments(id)").eq("id",postId).single();
-      if(data)setDetailPost(data);
+      if(data)setDetailPost({...data,_targetCommentId:commentId||null});
     };
     window.addEventListener("celeste_open_post",handler);
     return()=>window.removeEventListener("celeste_open_post",handler);
@@ -4010,17 +4024,28 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [hideNav,setHideNav]=useState(false);
 const [hideChrome,setHideChrome]=useState(false);
+const [isAppBlurred,setIsAppBlurred]=useState(false);
 
 useEffect(()=>{
   const onFocus=()=>setHideChrome(true);
   const onBlur=()=>setHideChrome(false);
   window.addEventListener("focusin",onFocus);
   window.addEventListener("focusout",onBlur);
+
+  const handleVisibility=()=>{
+    if(document.hidden)setIsAppBlurred(true);
+    else setIsAppBlurred(false);
+  };
+
+  document.addEventListener("visibilitychange",handleVisibility);
+
   return()=>{
     window.removeEventListener("focusin",onFocus);
     window.removeEventListener("focusout",onBlur);
+    document.removeEventListener("visibilitychange",handleVisibility);
   };
 },[]);
+
   const prevMsgCount=useRef(0);
 useEffect(()=>{
   const handler=e=>setViewImg(e.detail?.url);
@@ -4377,7 +4402,25 @@ function VerificationInfoModal(){
             ))}
           </div>
         )}
-      </div>
+     </div>
+
+      {/* RIDEAU ANTI-CAPTURE */}
+      {isAppBlurred&&(
+        <div style={{
+          position:"fixed",top:0,left:0,width:"100vw",height:"100vh",
+          backgroundColor:"rgba(0,0,0,0.85)",
+          backdropFilter:"blur(30px)",
+          WebkitBackdropFilter:"blur(30px)",
+          zIndex:999999,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          flexDirection:"column",gap:12,
+          pointerEvents:"none"
+        }}>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,color:T.gold,filter:`drop-shadow(0 0 20px ${T.gold})`}}>✦</span>
+          <p style={{fontSize:16,fontWeight:700,color:T.text,margin:0}}>Contenu Protégé</p>
+          <p style={{fontSize:12,color:T.muted,margin:0}}>Céleste est masqué par mesure de sécurité</p>
+        </div>
+      )}
     </AppContext.Provider>
   );
 }
