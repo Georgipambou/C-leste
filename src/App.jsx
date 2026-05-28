@@ -953,9 +953,10 @@ function NotifsScreen({myProfile,session,members}){
                       setTab("home");
                     }
                     // Déclencher ouverture du post
+                    window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
                     setTimeout(()=>{
                       window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:n.post_id}}));
-                    },300);
+                    },350);
                     return;
                   }
                 }}>
@@ -2052,10 +2053,13 @@ const savedScroll=useRef(initialScroll);
 const feedScrollRef=useRef(initialScroll);
 
 useEffect(()=>{
-    const handler=e=>{
+    const handler=async e=>{
       const{postId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
-      if(post)setDetailPost(post);
+      if(post){setDetailPost(post);return;}
+      // Si le post n'est pas en mémoire, on le charge depuis Supabase
+      const{data}=await sb.from("posts").select("*,author:profiles!posts_author_id_fkey(*),likes(user_id),comments(id)").eq("id",postId).single();
+      if(data)setDetailPost(data);
     };
     window.addEventListener("celeste_open_post",handler);
     return()=>window.removeEventListener("celeste_open_post",handler);
@@ -3967,6 +3971,11 @@ useEffect(()=>{
   const handler=e=>setViewImg(e.detail?.url);
   window.addEventListener("celeste_view_img",handler);
   return()=>window.removeEventListener("celeste_view_img",handler);
+},[]);
+useEffect(()=>{
+  const handler=()=>setShowNotifs(false);
+  window.addEventListener("celeste_close_notifs",handler);
+  return()=>window.removeEventListener("celeste_close_notifs",handler);
 },[]);
 
   useEffect(()=>{
