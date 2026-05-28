@@ -382,7 +382,7 @@ const Badge = memo(function Badge({type}){
     <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
       background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
       boxShadow:"0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4)",
-      flexShrink:0,position:"relative",animation:"badgePulse 2s ease infinite"}}>
+      flexShrink:0,position:"relative",}}>
       <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
@@ -391,7 +391,7 @@ const Badge = memo(function Badge({type}){
     <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
       background:"linear-gradient(135deg,#FFD700,#FF8C00)",
       boxShadow:"0 0 0 2px rgba(255,165,0,0.3), 0 0 10px rgba(255,180,0,0.9), 0 0 22px rgba(255,140,0,0.5)",
-      flexShrink:0,animation:"badgePulse 2s ease infinite"}}>
+      flexShrink:0,}}>
       <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
   <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
 </svg>
@@ -1786,7 +1786,9 @@ if(isMe){
           )}
        </div>
       {!isMe&&(
-  <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,padding:"8px 16px",paddingBottom:"calc(8px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)"}}>
+  <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,padding:"8px 16px",paddingBottom:"calc(8px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)"}}
+    onFocus={()=>{if(!paused)togglePause();}}
+    onBlur={()=>{if(paused)togglePause();}}>
     <StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} current={current} onClose={onClose} session={session}/>
   </div>
 )}
@@ -3129,17 +3131,27 @@ function ParametresModal({myProfile,session,onLogout,notify}){
               </div>
             </Btn>
 
-            {/* Ne pas déranger */}
-            <Btn onClick={toggleDnd} style={{width:"100%",padding:"14px 16px",background:dnd?"rgba(200,64,64,0.06)":T.card,border:`1px solid ${dnd?T.err+"44":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-              <span style={{fontSize:20}}>🔕</span>
-              <div style={{flex:1,textAlign:"left"}}>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:dnd?T.err:T.text}}>Ne pas recevoir de messages</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Seul l'administration peut vous écrire":"Tout le monde peut vous envoyer un message"}</p>
-              </div>
-              <div style={{width:42,height:24,borderRadius:12,background:dnd?T.err:"#1a1a1a",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s"}}>
-                <div style={{position:"absolute",top:2,left:dnd?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
-              </div>
-            </Btn>
+            {/* Ne pas déranger — certifiés uniquement */}
+{(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")?(
+  <Btn onClick={toggleDnd} style={{width:"100%",padding:"14px 16px",background:dnd?"rgba(200,64,64,0.06)":T.card,border:`1px solid ${dnd?T.err+"44":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+    <span style={{fontSize:20}}>🔕</span>
+    <div style={{flex:1,textAlign:"left"}}>
+      <p style={{margin:0,fontSize:13,fontWeight:600,color:dnd?T.err:T.text}}>Ne pas recevoir de messages</p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Seul l'administration peut vous écrire":"Tout le monde peut vous envoyer un message"}</p>
+    </div>
+    <div style={{width:42,height:24,borderRadius:12,background:dnd?T.err:"#1a1a1a",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s"}}>
+      <div style={{position:"absolute",top:2,left:dnd?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+    </div>
+  </Btn>
+):(
+  <div style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.6}}>
+    <span style={{fontSize:20}}>🔕</span>
+    <div style={{flex:1,textAlign:"left"}}>
+      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Ne pas recevoir de messages</p>
+      <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
+    </div>
+  </div>
+)}
 
             {/* Certification */}
             <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
