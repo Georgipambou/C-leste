@@ -1430,10 +1430,15 @@ onTouchEnd={e=>{
             }
             <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 0",borderTop:`1px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,margin:"10px 0"}}>
               <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:6,color:liked?T.gold:T.sub,fontSize:13,fontWeight:600,transition:"all .2s"}}>
-                <span style={{fontSize:18,animation:liked?"pulse .3s ease":""}}>{liked?"❤️":"🤍"}</span>
-                {(post.likes||[]).length}
-              </Btn>
-              <span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
+  <span style={{fontSize:18,animation:liked?"pulse .3s ease":""}}>{liked?"❤️":"🤍"}</span>
+  {(post.likes||[]).length}
+</Btn>
+<span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
+{(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
+  <span style={{color:T.sub,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
+    <Eye size={14}/>{views}
+  </span>
+)}
             </div>
             <CommentsSection
   postId={post.id}
@@ -2182,7 +2187,7 @@ useEffect(()=>{
       <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Bienvenue, <span style={{color:T.goldL}}>{myProfile?.prenom||"Ami"}</span></span>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
         </div>
         <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
           <Plus size={16}/>Publier
@@ -2551,19 +2556,24 @@ const [geminiInp,setGeminiInp]=useState("");
 const [geminiLoading,setGeminiLoading]=useState(false);
 
 const askGemini=async(text)=>{
-  if(!text.trim())return;
-  const userMsg={role:"user",text};
-  setGeminiMsgs(p=>[...p,userMsg]);
+  const trimmed=text.trim();
+  if(!trimmed||geminiLoading)return;
   setGeminiInp("");
   setGeminiLoading(true);
+  const userMsg={role:"user",text:trimmed};
+  const updatedMsgs=[...geminiMsgs,userMsg];
+  setGeminiMsgs(updatedMsgs);
   try{
-    const history=geminiMsgs.map(m=>({role:m.role==="user"?"user":"model",parts:[{text:m.text}]}));
+    const formattedContents=updatedMsgs.map(m=>({
+      role:m.role==="user"?"user":"model",
+      parts:[{text:m.text}]
+    }));
     const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
-        contents:[...history,{role:"user",parts:[{text}]}]
+        contents:formattedContents
       })
     });
     const data=await res.json();
@@ -2571,8 +2581,9 @@ const askGemini=async(text)=>{
     setGeminiMsgs(p=>[...p,{role:"model",text:reply}]);
   }catch{
     setGeminiMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
+  }finally{
+    setGeminiLoading(false);
   }
-  setGeminiLoading(false);
 };
   const {chatDrafts,setChatDrafts}=useApp();
   const user=(members||[]).find(m=>m.id===conv.uid)||{name:"…",initials:"?",color:"#888"};
@@ -3588,7 +3599,11 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
           <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
         </div>
       </div>
-      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 7px",color:T.err,fontSize:11}}>🗑</Btn>
+      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
+  <Trash2 size={13}/>
+</Btn><Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
+  <Trash2 size={13}/>
+</Btn>
     </div>
   ))}
 </div>
@@ -4017,9 +4032,24 @@ function CelesteApp(){
   const [hasMorePosts,setHasMorePosts]=useState(true);
   const [loadingMore,setLoadingMore]=useState(false);
   const [inAppNotifs,setInAppNotifs]=useState([]);
-  const [viewImg,setViewImg]=useState(null);
+ const [viewImg,setViewImg]=useState(null);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
+const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
+const [views,setViews]=useState(0);
+
+useEffect(()=>{
+  if(!post?.id||!session?.user?.id)return;
+  // Enregistrer la vue
+  sb.from("post_views").upsert(
+    {post_id:post.id,viewer_id:session.user.id},
+    {onConflict:"post_id,viewer_id",ignoreDuplicates:true}
+  ).then(()=>{
+    // Charger le total des vues
+    sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+      .then(({count})=>setViews(count||0));
+  });
+},[post?.id,session?.user?.id]);
   const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [hideNav,setHideNav]=useState(false);
@@ -4339,7 +4369,7 @@ function VerificationInfoModal(){
             :<>
               <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
                 <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:4,color:T.text}}>Céleste ✦</span>
+                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:4,color:T.text}}>Céleste</span>
               </div>
               {/* Notification bell avec compteur */}
               <Btn onClick={()=>setShowNotifs(s=>!s)} style={{position:"relative",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:showNotifs?T.goldBg:"rgba(255,255,255,0.04)",border:`1px solid ${showNotifs?T.gold+"55":T.border}`,borderRadius:"50%",color:showNotifs?T.goldL:T.muted,transition:"all .2s"}}>
