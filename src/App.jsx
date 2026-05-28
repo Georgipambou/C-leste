@@ -1125,16 +1125,25 @@ const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text
       setMediaFile(null);
       setMediaPreview(null);
       load();
-      if(onCountChange)onCountChange(c=>c+1);
-      // Détecter les mentions et envoyer des notifications
+      // Notifier l'auteur du post
+const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
+if(postData?.author_id&&postData.author_id!==uid){
+  await sb.from("notifications").insert({
+    user_id:postData.author_id,
+    from_id:uid,
+    type:"comment",
+    post_id:postId,
+    read:false
+  });
+}
       const mentions=trimmed.match(/@(\w+)/g)||[];
       for(const mention of mentions){
         const prenom=mention.slice(1).toLowerCase();
         const mentioned=(members||[]).find(m=>m.prenom?.toLowerCase()===prenom||m.name?.toLowerCase().startsWith(prenom));
-        if(mentioned&&mentioned.id!==sessionUserId){
+        if(mentioned&&mentioned.id!==uid){
           await sb.from("notifications").insert({
             user_id:mentioned.id,
-            from_id:sessionUserId,
+            from_id:uid,
             type:"mention",
             post_id:postId,
             read:false
@@ -4167,7 +4176,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comment_likes"},async payload=>{
         // Notification pour likes de commentaires
         const cl=payload.new;if(!cl||cl.user_id===myId)return;
-        addInAppNotif("💛","Commentaire aimé","Quelqu'un a aimé votre commentaire",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});
+        addInAppNotif("💛","Commentaire aimé","Quelqu'un a aimé votre commentaire",()=>{setTab("home");});
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${myId}`},()=>{
         loadUnreadNotifs(myId);
