@@ -3871,47 +3871,51 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
 
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
 
-  const send=async()=>{
-    if(!inp.trim()||loading)return;
-    const text=inp.trim();
-    setInp("");
-    setMsgs(p=>[...p,{role:"user",text}]);
-    if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
-    setLoading(true);
-    
-    const tryGemini=async(retries=3)=>{
-      for(let i=0;i<retries;i++){
-        try{
-          const rawHistory=[...msgs,{role:"user",text}];
-const history=rawHistory.reduce((acc,m)=>{
-  const last=acc[acc.length-1];
-  const role=m.role==="user"?"user":"model";
-  if(last&&last.role===role){last.parts[0].text+="\n"+m.text;}
-  else{acc.push({role,parts:[{text:m.text}]});}
-  return acc;
-},[]);
-          const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({
-              systemInstruction:{parts:[{text:CELESTE_SYSTEM}]},
-              contents:[...history,{role:"user",parts:[{text}]}],
-              generationConfig:{temperature:0.4,maxOutputTokens:2048}
-            })
-          });
-          if(!res.ok){if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}throw new Error("503");}
-          const data=await res.json();
-          const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
-          setMsgs(p=>[...p,{role:"model",text:reply}]);
-          if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
-          return;
-        }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}}
-      }
-      setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
-    };
-    await tryGemini();
-    setLoading(false);
+  const sendingRef=useRef(false);
+
+const send=async()=>{
+  if(!inp.trim()||loading||sendingRef.current)return;
+  sendingRef.current=true;
+  const text=inp.trim();
+  setInp("");
+  setLoading(true);
+  const updatedMsgs=[...msgs,{role:"user",text}];
+  setMsgs(updatedMsgs);
+  if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
+
+  const tryGemini=async(retries=3)=>{
+    for(let i=0;i<retries;i++){
+      try{
+        const history=updatedMsgs.reduce((acc,m)=>{
+          const last=acc[acc.length-1];
+          const role=m.role==="user"?"user":"model";
+          if(last&&last.role===role){last.parts[0].text+="\n"+m.text;}
+          else{acc.push({role,parts:[{text:m.text}]});}
+          return acc;
+        },[]);
+        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            systemInstruction:{parts:[{text:CELESTE_SYSTEM}]},
+            contents:history,
+            generationConfig:{temperature:0.4,maxOutputTokens:2048}
+          })
+        });
+        if(!res.ok){if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}throw new Error("503");}
+        const data=await res.json();
+        const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
+        setMsgs(p=>[...p,{role:"model",text:reply}]);
+        if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
+        return;
+      }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}}
+    }
+    setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
   };
+  await tryGemini();
+  setLoading(false);
+  sendingRef.current=false;
+};
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
