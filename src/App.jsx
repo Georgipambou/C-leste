@@ -952,11 +952,7 @@ function NotifsScreen({myProfile,session,members}){
                     const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
                     if(!data){alert("Cette publication n'existe plus.");return;}
                     // Si c'est mon post → aller dans mon profil
-                    if(data.author_id===session?.user?.id){
-                      setTab("profile");
-                    } else {
-                      setTab("home");
-                    }
+                    setTab("home");
                     // Déclencher ouverture du post
                     window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
                     setTimeout(()=>{
@@ -1033,8 +1029,8 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   const insertMention=member=>{
     const textBeforeCursor=value.slice(0,cursorPos);
     const textAfterCursor=value.slice(cursorPos);
-   const newText=textBeforeCursor.replace(/@\w*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
-    onChange(newText);
+    const newText=textBeforeCursor.replace(/@\w*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
+    onChange(newText,member.id);
     setShowSuggestions(false);
     ref.current?.focus();
   };
@@ -1082,6 +1078,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange}){
   const [posting,setPosting]=useState(false);
   const [mediaFile,setMediaFile]=useState(null);
   const [mediaPreview,setMediaPreview]=useState(null);
+const [mentionedIds,setMentionedIds]=useState([]);
   const textareaRef=useRef(null);
   const imgRef=useRef(null);
 
@@ -1139,7 +1136,7 @@ if(postData?.author_id&&postData.author_id!==uid){
       const mentions=trimmed.match(/@(\w+)/g)||[];
       for(const mention of mentions){
         const prenom=mention.slice(1).toLowerCase();
-        const mentioned=(members||[]).find(m=>m.prenom?.toLowerCase()===prenom||m.name?.toLowerCase().startsWith(prenom));
+        const mentioned=(members||[]).find(m=>m.name?.toLowerCase().replace(/\s+/g,"").startsWith(prenom)||m.fullName?.toLowerCase().replace(/\s+/g,"").startsWith(prenom)||(m.name||"").toLowerCase().split(" ")[0]===prenom);
         if(mentioned&&mentioned.id!==uid){
           await sb.from("notifications").insert({
             user_id:mentioned.id,
