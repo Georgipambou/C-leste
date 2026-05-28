@@ -930,18 +930,23 @@ function NotifsScreen({myProfile,session,members}){
               <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:n.read?"transparent":"rgba(201,149,42,0.03)",cursor:"pointer",transition:"background .2s",animation:"fadeUp .3s ease"}}
                 onClick={async()=>{
                   // Follow → profil de l'expéditeur
-                  if(n.type==="follow"){
-                    if(from?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:from.id}}));
-                    return;
-                  }
+                 if(n.type==="follow"){
+    window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+    setTimeout(()=>{
+      if(from?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:from.id}}));
+    },350);
+    return;
+  }
                   // Like/comment statut → vérifier si statut existe encore
                   if(n.type==="status_like"||n.type==="status_view"){
-                    if(!n.status_id){alert("Ce statut n'existe plus.");return;}
-                    const{data}=await sb.from("statuses").select("id").eq("id",n.status_id).maybeSingle();
-                    if(!data){alert("Ce statut n'existe plus.");return;}
-                    setTab("statuses");
-                    return;
-                  }
+    if(!n.status_id){alert("Ce statut n'existe plus.");return;}
+    const{data}=await sb.from("statuses").select("id").eq("id",n.status_id).maybeSingle();
+    if(!data){alert("Ce statut n'existe plus.");return;}
+    window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+    setTab("statuses");
+    setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:n.status_id}})),400);
+    return;
+  }
                   // Like/comment/mention/reply → vérifier si post existe encore
                   if(n.post_id){
                     const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
@@ -1203,8 +1208,24 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
   useEffect(()=>{loadMeta();},[loadMeta]);
 
   const toggleLike=async()=>{
-    if(liked){await sb.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",sessionUserId);setLiked(false);setLikes(l=>l-1);}
-    else{await sb.from("comment_likes").insert({comment_id:comment.id,user_id:sessionUserId});setLiked(true);setLikes(l=>l+1);}
+    if(liked){
+      await sb.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",sessionUserId);
+      setLiked(false);setLikes(l=>l-1);
+    } else {
+      await sb.from("comment_likes").insert({comment_id:comment.id,user_id:sessionUserId});
+      setLiked(true);setLikes(l=>l+1);
+      // Notifier l'auteur du commentaire
+      if(comment.author_id&&comment.author_id!==sessionUserId){
+        await sb.from("notifications").insert({
+          user_id:comment.author_id,
+          from_id:sessionUserId,
+          type:"comment_like",
+          post_id:comment.post_id||null,
+          comment_id:comment.id,
+          read:false
+        });
+      }
+    }
   };
 
   const submitReply=async()=>{
@@ -1905,6 +1926,25 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
   },[session?.user?.id]);
 
   useEffect(()=>{load();},[load]);
+
+useEffect(()=>{
+  const handler=async e=>{
+    const{statusId}=e.detail;
+    await load();
+    setGroups(prev=>{
+      for(const g of prev){
+        const found=g.statuses.find(s=>s.id===statusId);
+        if(found){
+          setTimeout(()=>{setViewing(g);setHideNav(true);},100);
+          break;
+        }
+      }
+      return prev;
+    });
+  };
+  window.addEventListener("celeste_open_status",handler);
+  return()=>window.removeEventListener("celeste_open_status",handler);
+},[load]);
 
   const delStatus=async id=>{
     await sb.from("statuses").delete().eq("id",id);
@@ -4116,18 +4156,18 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"likes"},async payload=>{
         const pid=payload.new?.post_id;if(!pid)return;
         const updated=await refreshPost(pid);
-        if(updated&&updated.by===myId&&payload.new?.user_id!==myId){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>setTab("home"));}
+        if(updated&&updated.by===myId&&payload.new?.user_id!==myId){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"likes"},payload=>{if(payload.old?.post_id)refreshPost(payload.old.post_id);})
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments"},async payload=>{
         const cmt=payload.new;if(!cmt?.post_id)return;
         const updated=await refreshPost(cmt.post_id);
-        if(updated&&updated.by===myId&&cmt.author_id!==myId){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("💬",`${commenter?.name||"Quelqu'un"} a commenté`,cmt.text||"…",()=>setTab("home"));}
+        if(updated&&updated.by===myId&&cmt.author_id!==myId){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("💬",`${commenter?.name||"Quelqu'un"} a commenté`,cmt.text||"…",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:cmt.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comment_likes"},async payload=>{
         // Notification pour likes de commentaires
         const cl=payload.new;if(!cl||cl.user_id===myId)return;
-        addInAppNotif("💛","Commentaire aimé","Quelqu'un a aimé votre commentaire",()=>setTab("home"));
+        addInAppNotif("💛","Commentaire aimé","Quelqu'un a aimé votre commentaire",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${myId}`},()=>{
         loadUnreadNotifs(myId);
