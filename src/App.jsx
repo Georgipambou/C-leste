@@ -1363,11 +1363,24 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify}){
-  const [viewImg,setViewImg]=useState(null);
-  const [openCeleste,setOpenCeleste]=useState(false);
-  const [celesteMsgs,setCelesteMsgs]=useState([]);
-  const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
-  const [slideIdx,setSlideIdx]=useState(0);
+const [viewImg,setViewImg]=useState(null);
+const [openCeleste,setOpenCeleste]=useState(false);
+const [celesteMsgs,setCelesteMsgs]=useState([]);
+const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
+const [views,setViews]=useState(0);
+const [slideIdx,setSlideIdx]=useState(0);
+
+useEffect(()=>{
+  if(!post?.id||!session?.user?.id)return;
+  sb.from("post_views").upsert(
+    {post_id:post.id,viewer_id:session.user.id},
+    {onConflict:"post_id,viewer_id",ignoreDuplicates:true}
+  ).then(()=>{
+    sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+      .then(({count})=>setViews(count||0));
+  });
+},[post?.id,session?.user?.id]);
+
   const swipeStartRef=useRef(null);
   const bottomRef=useRef();
   const auth=post.author||getM(post.by);
@@ -4007,6 +4020,46 @@ function SplashScreen(){
     </div>
   );
 }
+function VerificationInfoModal(){
+  const [open,setOpen]=useState(false);
+  return(
+    <>
+      <Btn onClick={()=>setOpen(true)} style={{marginTop:16,width:"100%",padding:"13px 30px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        <span>ℹ️</span> En savoir plus sur la vérification
+      </Btn>
+      {open&&(
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
+          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:24}}>
+              <span style={{fontSize:40}}>🔐</span>
+              <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:"12px 0 4px"}}>Pourquoi une vérification ?</h3>
+              <p style={{fontSize:12,color:T.gold,letterSpacing:1,textTransform:"uppercase"}}>Céleste · Réseau privé des jeunes</p>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🔍 Comment ça fonctionne ?</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Lors de la vérification, le nom que tu as saisi sera recherché sur les réseaux sociaux. Si un profil correspondant est trouvé, la vérification se fera automatiquement et rapidement.</p>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>📱 Si aucun profil trouvé</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>La vérification se fera via WhatsApp, au numéro que tu as fourni lors de ton inscription. Ce numéro n'est ni partagé ni divulgué à qui que ce soit.</p>
+              </div>
+              <div style={{background:"rgba(200,64,64,0.05)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.err}}>⚖️ Engagement légal</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Céleste est un espace réservé aux jeunes. Toute personne ayant fourni de fausses informations concernant son identité ou son âge, et dont l'âge réel dépasse 35 ans, s'expose à des poursuites judiciaires conformément aux lois en vigueur.</p>
+              </div>
+              <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:16,padding:"16px"}}>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🤝 Notre engagement</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Cette vérification existe uniquement pour garantir ta sécurité et celle de tous les membres. Pour être sûrs d'être vraiment entre nous — entre jeunes.</p>
+              </div>
+            </div>
+            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris ✦</Btn>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 function CelesteApp(){
   const [authMode,setAuthMode]=useState("login");
@@ -4035,22 +4088,7 @@ function CelesteApp(){
  const [viewImg,setViewImg]=useState(null);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
-const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
-const [views,setViews]=useState(0);
-
-useEffect(()=>{
-  if(!post?.id||!session?.user?.id)return;
-  // Enregistrer la vue
-  sb.from("post_views").upsert(
-    {post_id:post.id,viewer_id:session.user.id},
-    {onConflict:"post_id,viewer_id",ignoreDuplicates:true}
-  ).then(()=>{
-    // Charger le total des vues
-    sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
-      .then(({count})=>setViews(count||0));
-  });
-},[post?.id,session?.user?.id]);
-  const feedScrollRef=useRef(0);
+const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [hideNav,setHideNav]=useState(false);
 const [hideChrome,setHideChrome]=useState(false);
@@ -4309,46 +4347,6 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       </div>
     </div>
   );
-function VerificationInfoModal(){
-  const [open,setOpen]=useState(false);
-  return(
-    <>
-      <Btn onClick={()=>setOpen(true)} style={{marginTop:16,width:"100%",padding:"13px 30px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-        <span>ℹ️</span> En savoir plus sur la vérification
-      </Btn>
-      {open&&(
-        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
-          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
-            <div style={{textAlign:"center",marginBottom:24}}>
-              <span style={{fontSize:40}}>🔐</span>
-              <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:"12px 0 4px"}}>Pourquoi une vérification ?</h3>
-              <p style={{fontSize:12,color:T.gold,letterSpacing:1,textTransform:"uppercase"}}>Céleste · Réseau privé des jeunes</p>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🔍 Comment ça fonctionne ?</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Lors de la vérification, le nom que tu as saisi sera recherché sur les réseaux sociaux. Si un profil correspondant est trouvé, la vérification se fera automatiquement et rapidement.</p>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>📱 Si aucun profil trouvé</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>La vérification se fera via WhatsApp, au numéro que tu as fourni lors de ton inscription. Ce numéro n'est ni partagé ni divulgué à qui que ce soit.</p>
-              </div>
-              <div style={{background:"rgba(200,64,64,0.05)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.err}}>⚖️ Engagement légal</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Céleste est un espace réservé aux jeunes. Toute personne ayant fourni de fausses informations concernant son identité ou son âge, et dont l'âge réel dépasse 35 ans, s'expose à des poursuites judiciaires conformément aux lois en vigueur.</p>
-              </div>
-              <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🤝 Notre engagement</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Cette vérification existe uniquement pour garantir ta sécurité et celle de tous les membres. Pour être sûrs d'être vraiment entre nous — entre jeunes.</p>
-              </div>
-            </div>
-            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris ✦</Btn>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
   return(
     <AppContext.Provider value={appCtx}>
       <div style={{display:"flex",flexDirection:"column",height:"100svh",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
