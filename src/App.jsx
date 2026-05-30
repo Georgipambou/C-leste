@@ -201,18 +201,27 @@ const compressImage = file => new Promise(resolve=>{
   }; img.src=url;
 });
 
-const playNotifSound = ()=>{
+const playNotifSound=async()=>{
   try{
-    const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator(),gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)return;
+    const ctx=new AudioContextClass();
+    if(ctx.state==='suspended'){await ctx.resume();}
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
     osc.frequency.setValueAtTime(1047,ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(784,ctx.currentTime+0.15);
     gain.gain.setValueAtTime(0.18,ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
-    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.4);
-  }catch(_){}
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime+0.4);
+  }catch(err){
+    console.warn("Audio bloqué par les restrictions iOS:",err);
+  }
 };
+
 const sendPushNotif=async(title,body)=>{
   if(Notification.permission==="granted"){
     if('serviceWorker' in navigator){
@@ -540,41 +549,28 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {} }) {
   };
 
   // ✅ openFullscreen correctement fermée
-  const openFullscreen = (e) => {
-    e.stopPropagation();
-    const el = ref.current; if (!el) return;
-
-    // iOS : webkitEnterFullscreen natif
-    if (el.webkitEnterFullscreen) {
-      el.addEventListener("webkitendfullscreen", () => {
-        fullscreenRef.current = false;
-        setFullscreen(false);
-        setPaused(false);
-        setPlaying(true);
-        setTimeout(() => { if (ref.current) ref.current.play().catch(() => {}); }, 300);
-      }, { once: true });
-      el.webkitEnterFullscreen();
-      return;
-    }
-
-    // Android : Fullscreen API standard
-    fullscreenRef.current = true;
-    setFullscreen(true);
-    if (el.requestFullscreen) {
-      el.requestFullscreen().catch(() => {});
-    } else if (el.webkitRequestFullscreen) {
-      el.webkitRequestFullscreen();
-    }
-
-    // Écoute la sortie native (bouton retour Android)
-    const onFsChange = () => {
-      if (!document.fullscreenElement) {
-        closeFullscreen();
-        document.removeEventListener("fullscreenchange", onFsChange);
-      }
-    };
-    document.addEventListener("fullscreenchange", onFsChange);
-  };
+  const openFullscreen=(e)=>{
+  e.stopPropagation();
+  const el=ref.current;
+  if(!el)return;
+  if(el.webkitEnterFullscreen){
+    el.addEventListener("webkitendfullscreen",()=>{
+      fullscreenRef.current=false;
+      setFullscreen(false);
+      setPaused(false);
+      setPlaying(true);
+      setTimeout(()=>{if(ref.current)ref.current.play().catch(()=>{});},300);
+    },{once:true});
+    el.webkitEnterFullscreen();
+    return;
+  }
+  fullscreenRef.current=true;
+  setFullscreen(true);
+  if(el.requestFullscreen){el.requestFullscreen().catch(()=>{});}
+  else if(el.webkitRequestFullscreen){el.webkitRequestFullscreen();}
+  const onFsChange=()=>{if(!document.fullscreenElement){closeFullscreen();document.removeEventListener("fullscreenchange",onFsChange);}};
+  document.addEventListener("fullscreenchange",onFsChange);
+};
 
   const onTouchStart = (e) => { touchStartY.current = e.touches[0].clientY; };
   const onTouchEnd = (e) => {
