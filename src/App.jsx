@@ -691,7 +691,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
     const image=new window.Image();
     image.src=imageSrc;
     await new Promise(r=>{image.onload=r;});
-    
+
     const canvas=document.createElement("canvas");
     const ctx=canvas.getContext("2d");
     canvas.width=croppedAreaPixels.width;
@@ -4586,18 +4586,30 @@ useEffect(()=>{
     const blockedSet=new Set(blockedUserIds);
     const visible=mapped.filter(p=>!blockedSet.has(p.by));
     
-    // ── NOUVEL ALGORITHME MIX PREMIUM ──
-    const pinned=visible.filter(p=>p.pinned);
-    const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge);
-    const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
-    // Shuffle
-    const shuffle=arr=>[...arr].sort(()=>Math.random()-0.5);
-    const mixed=[...pinned,...shuffle(withBadge),...shuffle(noBadge)];
+  // ── ALGORITHME MIX PREMIUM SANS FILE INDIENNE ──
+const pinned=visible.filter(p=>p.pinned);
+const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge);
+const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
 
-    if(page===1)setPosts(mixed);
-    else setPosts(prev=>{const ids=new Set((prev||[]).map(p=>p.id));return[...(prev||[]),...mixed.filter(p=>!ids.has(p.id))];});
-    setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
-  }
+const shuffle=arr=>[...arr].sort(()=>Math.random()-0.5);
+const badgeShuffled=shuffle(withBadge);
+const noBadgeShuffled=shuffle(noBadge);
+
+// Mix : 2 avec badge, 1 sans badge, en alternance
+const mixed=[...pinned];
+let bi=0,ni=0;
+while(bi<badgeShuffled.length||ni<noBadgeShuffled.length){
+  // 2 avec badge
+  if(bi<badgeShuffled.length){mixed.push(badgeShuffled[bi++]);}
+  if(bi<badgeShuffled.length){mixed.push(badgeShuffled[bi++]);}
+  // 1 sans badge
+  if(ni<noBadgeShuffled.length){mixed.push(noBadgeShuffled[ni++]);}
+}
+
+if(page===1)setPosts(mixed);
+else setPosts(prev=>{const ids=new Set((prev||[]).map(p=>p.id));return[...(prev||[]),...mixed.filter(p=>!ids.has(p.id))];});
+setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);}
+
 },[session?.user?.id,blockedUserIds]);
 
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
