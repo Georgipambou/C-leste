@@ -1522,7 +1522,9 @@ function NewPostModal({myProfile,session,onClose,onPost}){
   const [carouselIdx,setCarouselIdx]=useState(0);
   const [uploading,setUploading]=useState(false);
   const [evTitle,setEvTitle]=useState(""); const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
-  const [busy,setBusy]=useState(false); const fRef=useRef();
+ const [busy,setBusy]=useState(false);
+const [textBg,setTextBg]=useState(null);
+const fRef=useRef();
 
   const handlePick=async e=>{
     const files=Array.from(e.target.files).slice(0,10-previews.length);
@@ -1563,14 +1565,15 @@ try {
       return;
     }
     setBusy(true);
-    const{error}=await sb.from("posts").insert({
+   const{error}=await sb.from("posts").insert({
       author_id:session?.user?.id,type,
       text:text.trim()||"",
       img_url:mediaUrls.length===1?(mediaUrls[0]||null):null,
-media_urls:mediaUrls.length>1?mediaUrls:null,
+      media_urls:mediaUrls.length>1?mediaUrls:null,
       event_title:type==="event"?evTitle.trim():null,
       event_date:type==="event"?evDate:null,
-      event_loc:type==="event"?evLoc:null
+      event_loc:type==="event"?evLoc:null,
+      text_background:textBg||null
     });
     setBusy(false); if(!error)onPost();
   };
@@ -1679,12 +1682,29 @@ media_urls:mediaUrls.length>1?mediaUrls:null,
           </div>
         )}
 
-        {/* Texte */}
-        <textarea value={text} onChange={e=>setText(e.target.value)}
-          placeholder={type==="event"?"Description de l'événement…":"Partagez quelque chose…"}
-          rows={type==="photo"?2:4}
-          style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.7,marginBottom:12}}/>
-
+        {/* Sélecteur couleur fond — texte uniquement */}
+{type==="text"&&(
+  <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+    <span style={{fontSize:11,color:T.muted}}>Fond :</span>
+    {[
+      {id:null,bg:"transparent",border:T.border,label:"Aucun"},
+      {id:"bg_noir",bg:"#000000",label:"⬛"},
+      {id:"bg_bleu",bg:"#1565C0",label:"🟦"},
+      {id:"bg_vert",bg:"#1B5E20",label:"🟩"},
+      {id:"bg_rouge",bg:"#B71C1C",label:"🟥"},
+      {id:"bg_or",bg:"#7B5A00",label:"🟨"},
+      {id:"bg_violet",bg:"#4A148C",label:"🟪"},
+    ].map(c=>(
+      <div key={c.id||"none"} onClick={()=>setTextBg(c.id)}
+        style={{width:28,height:28,borderRadius:"50%",background:c.bg,border:`2px solid ${textBg===c.id?T.goldL:T.border}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,transition:"border .2s"}}/>
+    ))}
+  </div>
+)}
+{/* Texte */}
+<textarea value={text} onChange={e=>setText(e.target.value)}
+  placeholder={type==="photo"?"Description de l'événement…":"Partagez quelque chose…"}
+  rows={type==="photo"?2:4}
+  style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?20:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:12,transition:"all .3s"}}/>
         {/* Boutons */}
         <div style={{display:"flex",gap:8}}>
           <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
@@ -1702,7 +1722,8 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
   const [type,setType]=useState("text"); const [text,setText]=useState("");
   const [preview,setPreview]=useState(null); const [mediaUrl,setMediaUrl]=useState(null);
   const [uploading,setUploading]=useState(false); const [busy,setBusy]=useState(false);
-  const fRef=useRef();
+const [textBg,setTextBg]=useState(null);
+const fRef=useRef();
   const canAdd=(myStatuses||[]).length<10;
 
   const handlePick=async e=>{
@@ -1725,7 +1746,7 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
     if(type==="text"&&!text.trim())return;
     if(type!=="text"&&!mediaUrl)return;
     setBusy(true);
-    await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null});
+    await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null});
     setBusy(false);onDone();
   };
 
@@ -1754,8 +1775,26 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
             <Camera size={32}/><span>Photo ou Vidéo</span>
           </Btn>
         )}
-        {type==="text"
-          ?<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.7,marginBottom:8}}/>
+       {type==="text"&&(
+  <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+    <span style={{fontSize:11,color:T.muted}}>Fond :</span>
+    {[
+      {id:null,bg:"transparent",border:T.border},
+      {id:"bg_noir",bg:"#000000"},
+      {id:"bg_bleu",bg:"#1565C0"},
+      {id:"bg_vert",bg:"#1B5E20"},
+      {id:"bg_rouge",bg:"#B71C1C"},
+      {id:"bg_or",bg:"#7B5A00"},
+      {id:"bg_violet",bg:"#4A148C"},
+    ].map(c=>(
+      <div key={c.id||"none"} onClick={()=>setTextBg(c.id)}
+        style={{width:28,height:28,borderRadius:"50%",background:c.bg,border:`2px solid ${textBg===c.id?T.goldL:T.border}`,cursor:"pointer",transition:"border .2s"}}/>
+    ))}
+  </div>
+)}
+{type==="text"
+  ?<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4}
+    style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:8,transition:"all .3s"}}/>
           :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>
         }
         <div style={{display:"flex",gap:8,marginTop:8}}>
@@ -1875,20 +1914,30 @@ if(isMe){
         }}>
         {current.mediaUrl
           ?<div style={{width:"100%",height:"100%",position:"absolute",inset:0}}>
-            {isVideo
-              ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-              :<img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-            }
+           {isVideo
+  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{width:"100%",height:"100%",objectFit:"contain",paddingTop:"env(safe-area-inset-top,60px)"}}/>
+  :<img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"contain",paddingTop:"env(safe-area-inset-top,60px)"}}/>
+}
             <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 60%,rgba(0,0,0,0.6))"}}/>
           </div>
           :<div style={{width:"100%",height:"100%",position:"absolute",inset:0,background:`radial-gradient(circle at 30% 40%,${author?.color||T.goldD}22,transparent 60%),radial-gradient(circle at 70% 60%,${T.navy}22,transparent 60%)`}}/>
         }
         {paused&&<div style={{position:"absolute",zIndex:3,width:60,height:60,borderRadius:"50%",background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid rgba(255,255,255,0.2)"}}><span style={{fontSize:24}}>⏸</span></div>}
         {current.text&&(
-          <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(20px)",borderRadius:20,padding:"20px 24px",maxWidth:"80%",textAlign:"center",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
-            <p style={{margin:0,fontSize:20,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400}}>{current.text}</p>
-          </div>
-        )}
+  current.text_background?(
+    <div style={{
+      position:"absolute",inset:0,zIndex:1,
+      background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[current.text_background]||"#000",
+      display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 32px"
+    }}>
+      <p style={{margin:0,fontSize:28,fontWeight:800,color:"#fff",lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center"}}>{current.text}</p>
+    </div>
+  ):(
+    <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(20px)",borderRadius:20,padding:"20px 24px",maxWidth:"80%",textAlign:"center",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+      <p style={{margin:0,fontSize:20,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400}}>{current.text}</p>
+    </div>
+  )
+)}
       </div>
 
   <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12}}>
@@ -2026,7 +2075,7 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
     (data||[]).filter(s=>s.user_id!==session?.user?.id&&!blockedSet.has(s.user_id)).forEach(s=>{
       const key=s.user_id;
       if(!map.has(key))map.set(key,{author:s.author?normProfile(s.author):null,statuses:[]});
-      const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime()};
+     const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null};
       map.get(key).statuses.push(mapped);
     });
     setGroups(Array.from(map.values()));
@@ -2417,7 +2466,19 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
               {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted}}>📍 {post.eventLoc}</p>}
             </div>
             :<>
-              {post.text&&<p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
+              {post.text&&(
+  post.text_background?(
+    <div style={{
+      background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[post.text_background]||T.card,
+      borderRadius:16,padding:"32px 20px",marginBottom:10,minHeight:160,
+      display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"
+    }}>
+      <p style={{margin:0,fontSize:22,fontWeight:700,color:"#fff",lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
+    </div>
+  ):(
+    <p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>
+  )
+)}
               {(()=>{
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
@@ -4388,7 +4449,7 @@ useEffect(()=>{
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-    const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false}));
+   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,text_background:p.text_background||null}));
     const blockedSet=new Set(blockedUserIds);
     const visible=mapped.filter(p=>!blockedSet.has(p.by));
     
