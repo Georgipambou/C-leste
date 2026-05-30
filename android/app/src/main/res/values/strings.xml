@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Céleste</string>
+    <string name="title_activity_main">Céleste</string>
+    <string name="package_name">social.celesteapp</string>
+    <string name="custom_url_scheme">social.celesteapp</string>
+</resources>
