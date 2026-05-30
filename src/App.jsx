@@ -38,6 +38,7 @@ import { createClient } from "@supabase/supabase-js";
 import { subscribePush } from "./usePush";
 import React from "react";
 import { uploadToR2 } from "./uploadMedia";
+import Cropper from "react-easy-crop";
 
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -678,6 +679,73 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick}){
       style={{width:"100%",borderRadius:14,display:"block",objectFit:"cover",maxHeight:500,cursor:onImageClick?"pointer":"default",...style}}/>
   );
 });
+
+// ── IMAGE CROP MODAL ──────────────────────────────────────
+function ImageCropModal({imageSrc,onClose,onDone}){
+  const [crop,setCrop]=useState({x:0,y:0});
+  const [zoom,setZoom]=useState(1);
+  const [croppedAreaPixels,setCroppedAreaPixels]=useState(null);
+  const [aspect,setAspect]=useState(1);
+
+  const getCroppedImg=async()=>{
+    const image=new Image();
+    image.src=imageSrc;
+    await new Promise(r=>{image.onload=r;});
+    const canvas=document.createElement("canvas");
+    const ctx=canvas.getContext("2d");
+    canvas.width=croppedAreaPixels.width;
+    canvas.height=croppedAreaPixels.height;
+    ctx.drawImage(image,croppedAreaPixels.x,croppedAreaPixels.y,croppedAreaPixels.width,croppedAreaPixels.height,0,0,croppedAreaPixels.width,croppedAreaPixels.height);
+    return new Promise(resolve=>{
+      canvas.toBlob(blob=>{
+        resolve(new File([blob],"cropped.jpg",{type:"image/jpeg"}));
+      },"image/jpeg",0.92);
+    });
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.9)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <Btn onClick={onClose} style={{color:T.muted,display:"flex",alignItems:"center",gap:6}}><X size={20}/>Annuler</Btn>
+        <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>Recadrer</p>
+        <Btn onClick={async()=>{const file=await getCroppedImg();onDone(file);}} style={{color:T.goldL,fontWeight:700,fontSize:14}}>Valider ✦</Btn>
+      </div>
+
+      {/* Formats */}
+      <div style={{display:"flex",gap:8,padding:"10px 16px",background:"rgba(0,0,0,0.8)",flexShrink:0,justifyContent:"center"}}>
+        {[{label:"1:1",v:1},{label:"4:5",v:4/5},{label:"9:16",v:9/16},{label:"16:9",v:16/9},{label:"Libre",v:null}].map(a=>(
+          <Btn key={a.label} onClick={()=>setAspect(a.v)}
+            style={{padding:"6px 14px",borderRadius:20,background:aspect===a.v?T.goldBg:"rgba(255,255,255,0.06)",border:`1px solid ${aspect===a.v?T.gold:T.border}`,color:aspect===a.v?T.goldL:T.muted,fontSize:12,fontWeight:600}}>
+            {a.label}
+          </Btn>
+        ))}
+      </div>
+
+      {/* Zone crop */}
+      <div style={{flex:1,position:"relative"}}>
+        <Cropper
+          image={imageSrc}
+          crop={crop}
+          zoom={zoom}
+          aspect={aspect||undefined}
+          onCropChange={setCrop}
+          onZoomChange={setZoom}
+          onCropComplete={(_,pixels)=>setCroppedAreaPixels(pixels)}
+          style={{containerStyle:{background:"#000"}}}
+        />
+      </div>
+
+      {/* Zoom */}
+      <div style={{padding:"12px 24px",paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.9)",flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:12,color:T.muted}}>−</span>
+        <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={e=>setZoom(Number(e.target.value))}
+          style={{flex:1,accentColor:T.gold}}/>
+        <span style={{fontSize:12,color:T.muted}}>+</span>
+      </div>
+    </div>
+  );
+}
 
 // ── IMAGE VIEWER ─────────────────────────────────────────
 function ImageViewer({url,onClose}){
@@ -1517,21 +1585,35 @@ onTouchEnd={e=>{
 }
 
 function NewPostModal({myProfile,session,onClose,onPost}){
-  const [type,setType]=useState("text"); const [text,setText]=useState("");
-  const [previews,setPreviews]=useState([]); const [mediaUrls,setMediaUrls]=useState([]);
-  const [carouselIdx,setCarouselIdx]=useState(0);
-  const [uploading,setUploading]=useState(false);
-  const [evTitle,setEvTitle]=useState(""); const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
- const [busy,setBusy]=useState(false);
+const [type,setType]=useState("text"); const [text,setText]=useState("");
+const [previews,setPreviews]=useState([]); const [mediaUrls,setMediaUrls]=useState([]);
+const [carouselIdx,setCarouselIdx]=useState(0);
+const [uploading,setUploading]=useState(false);
+const [cropSrc,setCropSrc]=useState(null);
+const [cropResolve,setCropResolve]=useState(null);
+const [evTitle,setEvTitle]=useState("");
+const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
+const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
 const fRef=useRef();
 
-  const handlePick=async e=>{
+  const cropImage=src=>new Promise(resolve=>{
+    setCropSrc(src);
+    setCropResolve(()=>resolve);
+  });
+
+const handlePick=async e=>{
     const files=Array.from(e.target.files).slice(0,10-previews.length);
     if(!files.length)return;
     for(const f of files){
       let file=f;
-      if(f.type.startsWith("image/"))file=await compressImage(f);
+      if(f.type.startsWith("image/")){
+        // Proposer le crop
+        const reader=new FileReader();
+        const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
+        const croppedFile=await cropImage(src);
+        file=croppedFile||await compressImage(f);
+      }
       if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo max 50MB");continue;}
       const r=new FileReader();
       r.onload=ev=>setPreviews(p=>[...p,{url:ev.target.result,type:f.type.startsWith("video/")?"video":"image"}]);setType("photo");
@@ -1581,6 +1663,14 @@ try {
   const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:evTitle.trim().length>0;
 
   return(
+    <>
+{cropSrc&&(
+  <ImageCropModal
+    imageSrc={cropSrc}
+    onClose={()=>{setCropSrc(null);cropResolve?.(null);setCropResolve(null);}}
+    onDone={file=>{setCropSrc(null);cropResolve?.(file);setCropResolve(null);}}
+  />
+)}
     <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,padding:"22px 20px 44px",maxHeight:"92vh",overflowY:"auto",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
@@ -1714,6 +1804,7 @@ try {
         </div>
       </div>
     </div>
+  </>
   );
 }
 
@@ -1723,12 +1814,24 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
   const [preview,setPreview]=useState(null); const [mediaUrl,setMediaUrl]=useState(null);
   const [uploading,setUploading]=useState(false); const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
+const [cropSrc,setCropSrc]=useState(null);
+const [cropResolve,setCropResolve]=useState(null);
 const fRef=useRef();
   const canAdd=(myStatuses||[]).length<10;
 
-  const handlePick=async e=>{
+  const cropImage=src=>new Promise(resolve=>{
+    setCropSrc(src);
+    setCropResolve(()=>resolve);
+  });
+
+const handlePick=async e=>{
     let f=e.target.files[0]; if(!f)return;
-    if(f.type.startsWith("image/"))f=await compressImage(f);
+    if(f.type.startsWith("image/")){
+      const reader=new FileReader();
+      const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
+      const croppedFile=await cropImage(src);
+      f=croppedFile||await compressImage(f);
+    }
     if(f.type.startsWith("video/")&&f.size>25*1024*1024){alert("Vidéo max 25MB");return;}
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
     setUploading(true);
@@ -1751,6 +1854,14 @@ const fRef=useRef();
   };
 
   return(
+    <>
+{cropSrc&&(
+  <ImageCropModal
+    imageSrc={cropSrc}
+    onClose={()=>{setCropSrc(null);cropResolve?.(null);setCropResolve(null);}}
+    onDone={file=>{setCropSrc(null);cropResolve?.(file);setCropResolve(null);}}
+  />
+)}
     <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,padding:"22px 20px 44px",maxHeight:"92vh",overflowY:"auto",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
@@ -1805,6 +1916,7 @@ const fRef=useRef();
         </div>
       </div>
     </div>
+  </>
   );
 }
 
@@ -2699,8 +2811,10 @@ OBJECTIF : Faire en sorte que la personne se sente comprise, accompagnée, amus�
 RÈGLE ABSOLUE : Réponds toujours comme Céleste — une présence chaleureuse, malicieuse, loyale et humaine. Jamais comme un assistant classique. et surtout si on te demande qui t'a creer tu repondras que C'est Georgi PAMBOU BIAYANDI `;
 
 function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile}){
-  const [selectedMsg,setSelectedMsg]=useState(null);
+const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
+const [cropSrc,setCropSrc]=useState(null);
+const [cropResolve,setCropResolve]=useState(null);
 const [geminiMsgs,setGeminiMsgs]=useState([]);
 const [geminiInp,setGeminiInp]=useState("");
 const [geminiLoading,setGeminiLoading]=useState(false);
@@ -2807,10 +2921,21 @@ const askGemini=async(text)=>{
 
   const sendTxt=()=>{if(inp.trim())sendMsg({type:"text",text:inp.trim()});};
 
+const cropImage=src=>new Promise(resolve=>{
+    setCropSrc(src);
+    setCropResolve(()=>resolve);
+  });
+
 const handleFile=async(e,isImg)=>{
-    const f=e.target.files[0]; if(!f)return;
+    let f=e.target.files[0]; if(!f)return;
     const input=e.target;
     if(f.size>50*1024*1024){notify("Fichier trop lourd (max 50MB)");return;}
+    if(isImg&&f.type.startsWith("image/")){
+      const reader=new FileReader();
+      const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
+      const croppedFile=await cropImage(src);
+      if(croppedFile)f=croppedFile;
+    }
     const tempId="tmp_file_"+Date.now();
     setSendingMsgs(p=>[...p,{id:tempId,type:isImg?"photo":"file",fileName:f.name,f:"me",ts:Date.now(),sending:true}]);
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
@@ -2864,6 +2989,13 @@ try {
 
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",background:T.bg}}>
+      {cropSrc&&(
+        <ImageCropModal
+          imageSrc={cropSrc}
+          onClose={()=>{setCropSrc(null);cropResolve?.(null);setCropResolve(null);}}
+          onDone={file=>{setCropSrc(null);cropResolve?.(file);setCropResolve(null);}}
+        />
+      )}
       <input ref={fRef} type="file" accept="*/*" style={{display:"none"}} onChange={e=>handleFile(e,false)}/>
       <input ref={iRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={e=>handleFile(e,true)}/>
       <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBgPhoto}/>
