@@ -2107,7 +2107,7 @@ useEffect(()=>{
     load();notify("Statut supprimé");
   };
 
-  const myMapped=myStatuses.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime()}));
+ const myMapped=myStatuses.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
