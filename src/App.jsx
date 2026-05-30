@@ -4545,6 +4545,7 @@ useEffect(()=>{
 },[]);
 
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
+  const myId=session?.user?.id;
   const addInAppNotif=useCallback((icon,title,body,action)=>{
   const id=Date.now()+Math.random();
   setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);
