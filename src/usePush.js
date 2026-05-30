@@ -1,39 +1,24 @@
+import OneSignal from '@onesignal/capacitor-plugin';
+
 export async function subscribePush(supabaseClient, userId) {
   try {
-    await new Promise(r => {
-  if (window.OneSignal) { r(); return; }
-  const t = setInterval(() => {
-    if (window.OneSignal) { clearInterval(t); r(); }
-  }, 200);
-  setTimeout(() => { clearInterval(t); r(); }, 5000);
-});
-const OneSignal = window.OneSignal;
-if (!OneSignal) {
-  console.error("OneSignal non chargé");
-  return null;
-}
-
-    await OneSignal.Notifications.requestPermission();
-
-// Attendre que l'ID soit disponible
-await new Promise(r => setTimeout(r, 3000));
-    
-    const onesignalId = OneSignal.User.PushSubscription.id;
-    if (!onesignalId) {
-      console.error("Pas d'ID OneSignal après permission");
-      return null;
-    }
-
-    await supabaseClient.from('push_subscriptions').upsert({
-      user_id: userId,
-      subscription: JSON.stringify({ onesignal_id: onesignalId }),
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'user_id' });
-
-    console.log("✦ OneSignal ID enregistré:", onesignalId);
+    await OneSignal.initialize({ appId: '641fff4e-e02d-4fb5-b0d4-c1a479996b20' });
+    await OneSignal.Notifications.requestPermission(true);
+    await OneSignal.login(userId);
+    console.log("✦ OneSignal initialisé pour", userId);
     return true;
   } catch(err) {
     console.error('Erreur OneSignal:', err);
     return null;
+  }
+}
+
+export async function sendPushToUser(supabaseClient, targetUserId, title, body) {
+  try {
+    await supabaseClient.functions.invoke('send-push', {
+      body: { targetUserId, title, body }
+    });
+  } catch(err) {
+    console.error('Erreur envoi push:', err);
   }
 }

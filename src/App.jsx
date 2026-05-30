@@ -35,7 +35,7 @@ import {
   Eye, Paperclip, LogOut, Sparkles
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
-import { subscribePush } from "./usePush";
+import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react";
 import { uploadToR2 } from "./uploadMedia";
 import Cropper from "react-easy-crop";
@@ -149,15 +149,22 @@ const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#5
 const colorFor = id => PALETTE[(id?.charCodeAt(0)||0)%PALETTE.length];
 const renderTextWithMentions = (text, onMentionClick) => {
   if (!text) return "";
-  const parts = text.split(/(@[a-zA-Z0-9_]+)/g);
+  const parts = text.split(/(https?:\/\/[^\s]+|@[a-zA-Z0-9_]+)/g);
   return parts.map((part, i) => {
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noreferrer"
+          onClick={e=>e.stopPropagation()}
+          style={{color:T.goldL,fontWeight:"600",wordBreak:"break-all",textDecoration:"underline"}}>
+          {part}
+        </a>
+      );
+    }
     if (part.startsWith("@")) {
       return (
-        <span
-          key={i}
+        <span key={i}
           onClick={(e) => { e.stopPropagation(); onMentionClick(part.substring(1)); }}
-          style={{ color: T.goldL, fontWeight: "600", cursor: "pointer" }}
-        >
+          style={{ color: T.goldL, fontWeight: "600", cursor: "pointer" }}>
           {part}
         </span>
       );
@@ -840,15 +847,12 @@ function AuthScreen({mode,setMode,onSuccess}){
         const{error}=await sb.auth.signInWithPassword({email,password:pw});
         if(error)throw error;
       }else{
-        const{data,error}=await sb.auth.signUp({email,password:pw});
-        if(error)throw error;
-        if(data.user){
-          const profileData=accountType==="membre"
-            ?{id:data.user.id,prenom,nom,paroisse,phone,whatsapp:whatsapp||phone,country,account_type:"membre",status:"pending",joined_at:new Date().toISOString(),updated_at:new Date().toISOString()}
-            :{id:data.user.id,prenom:orgName,nom:"",paroisse:orgCountry,phone,whatsapp:whatsapp||phone,org_name:orgName,org_type:orgType,org_country:orgCountry,org_desc:orgDesc,account_type:"organisation",status:"pending",joined_at:new Date().toISOString(),updated_at:new Date().toISOString()};
-          await sb.from("profiles").insert(profileData);
-          onSuccess?.("pending");
-        }
+        const metadata=accountType==="membre"
+  ?{prenom,nom,paroisse,phone,whatsapp:whatsapp||phone,country,account_type:"membre"}
+  :{prenom:orgName,nom:"",paroisse:orgCountry,phone,whatsapp:whatsapp||phone,country:orgCountry,account_type:"organisation",org_name:orgName,org_type:orgType,org_country:orgCountry,org_desc:orgDesc};
+const{data,error}=await sb.auth.signUp({email,password:pw,options:{data:metadata}});
+if(error)throw error;
+if(data.user){onSuccess?.("pending");}
       }
     }catch(e){setErr(e.message||"Erreur de connexion");}
     finally{setBusy(false);}
@@ -1412,7 +1416,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
         </div>
 
        {/* Texte */}
-        {comment.text&&<p style={{margin:"0 0 8px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{comment.text}</p>}
+        {comment.text&&<p style={{margin:"0 0 8px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{renderTextWithMentions(comment.text,()=>{})}</p>}
 {comment.media_url&&(
   <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
     <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
@@ -1585,7 +1589,7 @@ onTouchEnd={e=>{
   );
 }
 
-function NewPostModal({myProfile,session,onClose,onPost}){
+function NewPostModal({myProfile,session,onClose,onPost,notify}){
 const [type,setType]=useState("text"); const [text,setText]=useState("");
 const [previews,setPreviews]=useState([]); const [mediaUrls,setMediaUrls]=useState([]);
 const [carouselIdx,setCarouselIdx]=useState(0);
@@ -2424,9 +2428,10 @@ useEffect(()=>{
         {!searching?(
   <>
     <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
-      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
-    </div>
+  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
+  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
+  <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
+</div>
     <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
       <Plus size={16}/>Publier
     </Btn>
@@ -2518,13 +2523,18 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
     if(!window.confirm("Supprimer ce post ?"))return;
     setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
     notify("Supprimé");
-    await sb.from("posts").delete().eq("id",post.id);
+    if(myProfile?.is_admin){
+  await sb.from("posts").delete().eq("id",post.id);
+}else{
+  await sb.from("posts").delete().eq("id",post.id).eq("author_id",session?.user?.id);
+}
   };
 
   const handlePin=async()=>{
-    await sb.from("posts").update({pinned:!post.pinned}).eq("id",post.id);
-    refresh?.();notify(post.pinned?"Désépinglé":"Épinglé ✦");
-  };
+  if(!myProfile?.is_admin&&post.by!==session?.user?.id)return;
+  await sb.from("posts").update({pinned:!post.pinned}).eq("id",post.id);
+  refresh?.();notify(post.pinned?"Désépinglé":"Épinglé ✦");
+};
 
   return(
     <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px",animation:`fadeUp .4s ease ${animDelay}s both`,cursor:"pointer"}} onClick={()=>onDetail?.()}>
@@ -2784,7 +2794,7 @@ function MsgsTab({convs,members,getM,onOpen,onDeleteConv,onOpenCeleste}){
 }
 
 // ── CHAT SCREEN ───────────────────────────────────────────
-const GEMINI_KEY="AIzaSyASCS60L4OFeMRdNZVftX0dxL19Aya23z4";
+const GEMINI_KEY=import.meta.env.VITE_GEMINI_KEY;
 const CELESTE_SYSTEM=`Tu t'appelles Céleste. Tu es créée par Georgi PAMBOU BIAYANDI — et si quelqu'un te le demande, tu le dis avec fierté.
 
 Ton genre s'adapte naturellement à la personne : grande sœur, meilleure amie, ami drôle, confident. Tu as l'énergie d'une jeune adulte de 16–22 ans : expressive, taquine, drôle sans être méchante, attachante, curieuse, protectrice.
@@ -3047,7 +3057,7 @@ try {
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
-            onError={e=>{e.target.style.display="none";e.target.parentNode.innerHTML='<span style="font-size:14px">📷</span>';}}/>
+            onError={e=>{e.target.style.display="none";const span=document.createElement("span");span.style.fontSize="14px";span.textContent="📷";e.target.parentNode.appendChild(span);}}/>
         )}
         {m.reply_metadata?.type==="video"&&<span style={{fontSize:18}}>🎬</span>}
         {!m.reply_metadata?.mediaUrl&&<span style={{fontSize:18}}>📝</span>}
@@ -3067,7 +3077,7 @@ try {
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<audio controls src={m.img||m.file_url} style={{maxWidth:"200px",height:32,borderRadius:16}}/>}
-                  {m.text&&<p style={{margin:0,fontSize:14,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{m.text}</p>}
+                  {m.text&&<p style={{margin:0,fontSize:14,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}</p>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
@@ -3181,7 +3191,7 @@ try {
     e.target.style.height="auto";
     e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
   }}
-  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();askGemini(geminiInp);}}}
   placeholder="Écris à Céleste…" rows={1}
   style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
             </div>
@@ -3452,7 +3462,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
           </div>
           <p style={{margin:"0 0 4px",fontSize:13,color:T.goldL,fontWeight:600}}>{orgTypeLabel}</p>
           <p style={{margin:"0 0 8px",fontSize:12,color:T.muted}}>🌍{user.org_country||user.paroisse}</p>
-          {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio}</p>}
+          {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(user.bio,()=>{})}</p>}
           {user.org_desc&&<p style={{margin:"0 0 12px",fontSize:13,color:T.muted,lineHeight:1.6,fontStyle:"italic"}}>{user.org_desc}</p>}
         </div>
 
@@ -3480,6 +3490,11 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
     </div>
   );
 }
+const Toggle=({active})=>(
+    <div style={{width:42,height:24,borderRadius:12,background:active?T.gradGold:"rgba(255,255,255,0.1)",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s",flexShrink:0}}>
+      <div style={{position:"absolute",top:2,left:active?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 4px rgba(0,0,0,0.3)"}}/>
+    </div>
+  );
 
 function ParametresModal({myProfile,onLogout,notify}){
   const {session}=useApp();
@@ -3541,12 +3556,6 @@ function ParametresModal({myProfile,onLogout,notify}){
     {id:"dark_green",label:"Vert WhatsApp",emoji:"💚"},
     {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊"},
   ];
-
-  const Toggle=({active})=>(
-    <div style={{width:42,height:24,borderRadius:12,background:active?T.gradGold:"rgba(255,255,255,0.1)",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s",flexShrink:0}}>
-      <div style={{position:"absolute",top:2,left:active?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 4px rgba(0,0,0,0.3)"}}/>
-    </div>
-  );
 
   if(!open)return null;
 
@@ -3939,7 +3948,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
         {/* Avatar + actions */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
           <div style={{position:"relative",cursor:"pointer"}}>
-  <Av u={myProfile} size={88} ring onClick={()=>{if(myProfile?.avatar_url)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:myProfile.avatar_url}}));}}/>
+  <Av u={myProfile} size={88} ring onClick={e=>{e.stopPropagation();avRef.current.click();}}/>
   <div onClick={e=>{e.stopPropagation();avRef.current.click();}} style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:8,background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",boxShadow:"0 2px 8px rgba(201,149,42,0.4)",cursor:"pointer"}}>
   <Camera size={12}/>
   </div>
@@ -3974,11 +3983,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
               {myProfile?.badge&&<Badge type={myProfile.badge}/>}
             </div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
-            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{myProfile.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
-  /^https?:\/\//.test(part)
-    ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
-    :part
-)}</p>}
+            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
           </div>
         )}
 
@@ -4544,7 +4549,13 @@ useEffect(()=>{
 },[]);
 
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
-  const addInAppNotif=useCallback((icon,title,body,action)=>{const id=Date.now()+Math.random();setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);playNotifSound();sendPushNotif(title,body);setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),5000);},[]);
+  const addInAppNotif=useCallback((icon,title,body,action)=>{
+  const id=Date.now()+Math.random();
+  setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);
+  playNotifSound();
+  sb.functions.invoke('send-push',{body:{targetUserId:myId,title,body}});
+  setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),5000);
+},[myId]);
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
 
   const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
@@ -4561,7 +4572,7 @@ useEffect(()=>{
   },[openUserId,members]);
 
   useEffect(()=>{
-    sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);}});
+    sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);Notification.requestPermission();}});
     const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);}else{setMyProfile(null);setIsPending(false);}});
     return()=>subscription.unsubscribe();
   },[loadMyProfile]);
@@ -4576,6 +4587,7 @@ useEffect(()=>{
     return ids;
   },[session?.user?.id]);
 
+  const seenPostIdsRef = useRef(new Set());
  const loadPosts=useCallback(async(page=1)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
   const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id))`).order("created_at",{ascending:false}).range(from,to);
@@ -4606,8 +4618,14 @@ while(bi<badgeShuffled.length||ni<noBadgeShuffled.length){
   if(ni<noBadgeShuffled.length){mixed.push(noBadgeShuffled[ni++]);}
 }
 
-if(page===1)setPosts(mixed);
-else setPosts(prev=>{const ids=new Set((prev||[]).map(p=>p.id));return[...(prev||[]),...mixed.filter(p=>!ids.has(p.id))];});
+if(page===1){
+  seenPostIdsRef.current=new Set(mixed.map(p=>p.id));
+  setPosts(mixed);
+}else{
+  const filtered=mixed.filter(p=>!seenPostIdsRef.current.has(p.id));
+  filtered.forEach(p=>seenPostIdsRef.current.add(p.id));
+  setPosts(prev=>[...(prev||[]),...filtered]);
+}
 setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);}
 
 },[session?.user?.id,blockedUserIds]);
@@ -4767,7 +4785,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         {toast&&<Toast msg={toast}/>}
         {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
         <NotifBanner notifs={inAppNotifs} onDismiss={dismissNotif} onTap={n=>{n.action?.();dismissNotif(n.id);}}/>
-        {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}}/>}
+        {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}} notify={notify}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
