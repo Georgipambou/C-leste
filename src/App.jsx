@@ -37,6 +37,7 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush } from "./usePush";
 import React from "react";
+import { uploadToR2 } from "./uploadMedia";
 
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -52,42 +53,86 @@ const useApp = () => useContext(AppContext);
 
 // ── PALETTE PREMIUM ───────────────────────────────────────
 const getThemePalette=(mode)=>{
-  const isDark=mode==="dark";
-  return{
-    bg:       isDark?"#000000":"#FBF9F4",
-    bg2:      isDark?"#080808":"#F4F0E6",
-    bg3:      isDark?"#0F0F0F":"#EFECE0",
-    card:     isDark?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.02)",
-    cardSolid:isDark?"#0A0A0A":"#F0ECE0",
-    glass:    isDark?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.03)",
-    glassMid: isDark?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.05)",
-    border:   isDark?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.08)",
-    borderHi: isDark?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.14)",
-    text:     isDark?"#F0EDE8":"#1C1A17",
-    sub:      isDark?"#888880":"#6E6A5F",
-    muted:    isDark?"#3A3A38":"#B0AB9F",
-    gold:     "#C9952A",
-    goldL:    "#E8B84B",
-    goldD:    "#8A6218",
-    goldBg:   "rgba(201,149,42,0.08)",
-    goldBg2:  "rgba(201,149,42,0.15)",
-    navy:     "#3A6A9A",
-    navyBg:   "rgba(58,106,154,0.12)",
-    err:      "#C84040",
-    ok:       "#40A860",
-    gradGold: "linear-gradient(135deg,#C9952A 0%,#E8B84B 45%,#A07020 100%)",
+  if(mode==="light"){return{
+    bg:"#FBF9F4",bg2:"#F4F0E6",bg3:"#EFECE0",
+    card:"rgba(0,0,0,0.02)",cardSolid:"#F0ECE0",
+    glass:"rgba(0,0,0,0.03)",glassMid:"rgba(0,0,0,0.05)",
+    border:"rgba(0,0,0,0.08)",borderHi:"rgba(0,0,0,0.14)",
+    text:"#1C1A17",sub:"#6E6A5F",muted:"#B0AB9F",
+    gold:"#C9952A",goldL:"#A07020",goldD:"#8A6218",
+    goldBg:"rgba(201,149,42,0.08)",goldBg2:"rgba(201,149,42,0.15)",
+    navy:"#3A6A9A",navyBg:"rgba(58,106,154,0.12)",
+    err:"#C84040",ok:"#40A860",
+    gradGold:"linear-gradient(135deg,#C9952A 0%,#E8B84B 45%,#A07020 100%)",
     gradGoldV:"linear-gradient(180deg,#C9952A 0%,#E8B84B 100%)",
-    gradDark: isDark?"linear-gradient(160deg,#0A0805 0%,#000000 100%)":"linear-gradient(160deg,#F4F0E6 0%,#FBF9F4 100%)",
-    glow:     "0 0 40px rgba(201,149,42,0.15), 0 0 80px rgba(201,149,42,0.05)",
-    glowGold: "0 0 20px rgba(201,149,42,0.4)",
-    shadowCard:isDark?"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)":"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
+    gradDark:"linear-gradient(160deg,#F4F0E6 0%,#FBF9F4 100%)",
+    glow:"0 0 40px rgba(201,149,42,0.15), 0 0 80px rgba(201,149,42,0.05)",
+    glowGold:"0 0 20px rgba(201,149,42,0.4)",
+    shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
+  };}
+  if(mode==="dark_green"){return{
+    bg:"#0B141A",bg2:"#111B21",bg3:"#1A2530",
+    card:"rgba(255,255,255,0.03)",cardSolid:"#111B21",
+    glass:"rgba(255,255,255,0.03)",glassMid:"rgba(255,255,255,0.06)",
+    border:"rgba(255,255,255,0.07)",borderHi:"rgba(255,255,255,0.12)",
+    text:"#E9EDEF",sub:"#8696A0",muted:"#3A4A54",
+    gold:"#00A884",goldL:"#25D366",goldD:"#007A5E",
+    goldBg:"rgba(0,168,132,0.08)",goldBg2:"rgba(0,168,132,0.15)",
+    navy:"#53BDEB",navyBg:"rgba(83,189,235,0.12)",
+    err:"#F15C6D",ok:"#25D366",
+    gradGold:"linear-gradient(135deg,#00A884 0%,#25D366 45%,#007A5E 100%)",
+    gradGoldV:"linear-gradient(180deg,#00A884 0%,#25D366 100%)",
+    gradDark:"linear-gradient(160deg,#111B21 0%,#0B141A 100%)",
+    glow:"0 0 40px rgba(0,168,132,0.15), 0 0 80px rgba(0,168,132,0.05)",
+    glowGold:"0 0 20px rgba(0,168,132,0.4)",
+    shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
+  };}
+  if(mode==="dark_blue"){return{
+    bg:"#010A15",bg2:"#0A192F",bg3:"#0D2137",
+    card:"rgba(255,255,255,0.03)",cardSolid:"#0A192F",
+    glass:"rgba(255,255,255,0.03)",glassMid:"rgba(255,255,255,0.06)",
+    border:"rgba(255,255,255,0.08)",borderHi:"rgba(255,255,255,0.14)",
+    text:"#F0F5FF",sub:"#8892B0",muted:"#3A4A6A",
+    gold:"#1DA1F2",goldL:"#64FFDA",goldD:"#0A85D9",
+    goldBg:"rgba(29,161,242,0.08)",goldBg2:"rgba(29,161,242,0.15)",
+    navy:"#64FFDA",navyBg:"rgba(100,255,218,0.12)",
+    err:"#F15C6D",ok:"#64FFDA",
+    gradGold:"linear-gradient(135deg,#1DA1F2 0%,#64FFDA 45%,#0A85D9 100%)",
+    gradGoldV:"linear-gradient(180deg,#1DA1F2 0%,#64FFDA 100%)",
+    gradDark:"linear-gradient(160deg,#0A192F 0%,#010A15 100%)",
+    glow:"0 0 40px rgba(29,161,242,0.15), 0 0 80px rgba(29,161,242,0.05)",
+    glowGold:"0 0 20px rgba(29,161,242,0.4)",
+    shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
+  };}
+  // dark par défaut
+  return{
+    bg:"#000000",bg2:"#080808",bg3:"#0F0F0F",
+    card:"rgba(255,255,255,0.03)",cardSolid:"#0A0A0A",
+    glass:"rgba(255,255,255,0.04)",glassMid:"rgba(255,255,255,0.07)",
+    border:"rgba(255,255,255,0.06)",borderHi:"rgba(255,255,255,0.12)",
+    text:"#F0EDE8",sub:"#888880",muted:"#3A3A38",
+    gold:"#C9952A",goldL:"#E8B84B",goldD:"#8A6218",
+    goldBg:"rgba(201,149,42,0.08)",goldBg2:"rgba(201,149,42,0.15)",
+    navy:"#3A6A9A",navyBg:"rgba(58,106,154,0.12)",
+    err:"#C84040",ok:"#40A860",
+    gradGold:"linear-gradient(135deg,#C9952A 0%,#E8B84B 45%,#A07020 100%)",
+    gradGoldV:"linear-gradient(180deg,#C9952A 0%,#E8B84B 100%)",
+    gradDark:"linear-gradient(160deg,#0A0805 0%,#000000 100%)",
+    glow:"0 0 40px rgba(201,149,42,0.15), 0 0 80px rgba(201,149,42,0.05)",
+    glowGold:"0 0 20px rgba(201,149,42,0.4)",
+    shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
   };
 };
 
 let _themeMode="dark";
 try{_themeMode=localStorage.getItem("celeste_theme")||"dark";}catch(_){}
 let T=getThemePalette(_themeMode);
-const setAppTheme=(mode)=>{_themeMode=mode;T=getThemePalette(mode);localStorage.setItem("celeste_theme",mode);};
+const setAppTheme=(mode)=>{
+  _themeMode=mode;
+  T=getThemePalette(mode);
+  localStorage.setItem("celeste_theme",mode);
+  window.location.reload();
+};
 
 // ── UTILITAIRES ───────────────────────────────────────────
 const ago   = ts => {
@@ -128,6 +173,7 @@ const normProfile = p => ({
   joined:p.joined_at?.slice(0,10)||"", bio:p.bio||"",
   avatar_url:p.avatar_url||null, cover_url:p.cover_url||null,
   is_admin:p.is_admin||false,
+  is_discoverable:p.is_discoverable!==false,
   whatsapp:p.whatsapp||p.raw_user_meta_data?.whatsapp||null,
   account_type:p.account_type||"membre",
   org_name:p.org_name||null, org_type:p.org_type||null,
@@ -1120,9 +1166,11 @@ useEffect(()=>{
     const trimmed=text.trim();
     let mediaUrl=null;
     if(mediaFile){
-      const path=`comments/${sessionUserId}/${Date.now()}.jpg`;
-      const{error:upErr}=await sb.storage.from("celeste-media").upload(path,mediaFile,{upsert:true,contentType:"image/jpeg"});
-      if(!upErr){const{data}=sb.storage.from("celeste-media").getPublicUrl(path);mediaUrl=data.publicUrl;}
+     try {
+  mediaUrl = await uploadToR2(mediaFile, "comments");
+} catch(e) {
+  console.error("Erreur upload commentaire:", e);
+}
     }
    const uid=(await sb.auth.getUser())?.data?.user?.id;
 const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
@@ -1486,15 +1534,15 @@ function NewPostModal({myProfile,session,onClose,onPost}){
       const r=new FileReader();
       r.onload=ev=>setPreviews(p=>[...p,{url:ev.target.result,type:f.type.startsWith("video/")?"video":"image"}]);setType("photo");
       r.readAsDataURL(file);
-      setUploading(true);
-      const ext=file.name.split(".").pop().toLowerCase();
-const path=`posts/${session?.user?.id}/${Date.now()}.${ext}`;
-      const{error}=await sb.storage.from("celeste-media").upload(path,file,{upsert:true});
-      if(!error){
-        const{data:{publicUrl}}=sb.storage.from("celeste-media").getPublicUrl(path);
-        setMediaUrls(p=>[...p,publicUrl]);
-      }
-      setUploading(false);
+     setUploading(true);
+try {
+  const publicUrl = await uploadToR2(file, "posts");
+  setMediaUrls(p=>[...p,publicUrl]);
+} catch(e) {
+  console.error("Erreur upload post:", e);
+} finally {
+  setUploading(false);
+}
     }
     e.target.value="";
   };
@@ -1506,7 +1554,15 @@ const path=`posts/${session?.user?.id}/${Date.now()}.${ext}`;
   };
 
   const submit=async()=>{
-    if(busy)return;setBusy(true);
+    if(busy)return;
+    // ── LIMITE FREEMIUM ──
+    const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session?.user?.id);
+    const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
+    if(!hasBadge&&count>=50){
+      notify("🔒 Limite de 50 posts atteinte — Obtenez le badge certifié pour publier en illimité ✦ ou supprimer vos anciens posts pour libérer de l'espace");
+      return;
+    }
+    setBusy(true);
     const{error}=await sb.from("posts").insert({
       author_id:session?.user?.id,type,
       text:text.trim()||"",
@@ -1655,9 +1711,12 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
     if(f.type.startsWith("video/")&&f.size>25*1024*1024){alert("Vidéo max 25MB");return;}
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
     setUploading(true);
-    const path=`statuses/${session?.user?.id}/${Date.now()}_${f.name}`;
-    const{error}=await sb.storage.from("celeste-media").upload(path,f,{upsert:true});
-    if(!error){const{data:{publicUrl}}=sb.storage.from("celeste-media").getPublicUrl(path);setMediaUrl(publicUrl);}
+    try {
+  const publicUrl = await uploadToR2(f, "statuses");
+  setMediaUrl(publicUrl);
+} catch(e) {
+  console.error("Erreur upload statut:", e);
+}
     setUploading(false);
   };
 
@@ -2080,7 +2139,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
     onConnectionChange();
   };
 
-  const active=(members||[]).filter(m=>m.id!==session?.user?.id&&(m.name.toLowerCase().includes(q.toLowerCase())||(m.paroisse||"").toLowerCase().includes(q.toLowerCase())));
+ const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(m.name.toLowerCase().includes(q.toLowerCase())||(m.paroisse||"").toLowerCase().includes(q.toLowerCase())));
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -2132,7 +2191,9 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
 
 // ── HOME TAB ──────────────────────────────────────────────
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0,onScrollChange}){
-  const [detailPost,setDetailPost]=useState(null);
+const [detailPost,setDetailPost]=useState(null);
+const [searching,setSearching]=useState(false);
+const [searchQuery,setSearchQuery]=useState("");
 const bottomRef=useRef();
 const observer=useRef();
 useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
@@ -2198,13 +2259,28 @@ useEffect(()=>{
 
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
-        </div>
-        <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
-          <Plus size={16}/>Publier
-        </Btn>
+        {!searching?(
+  <>
+    <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
+      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
+      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
+    </div>
+    <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
+      <Plus size={16}/>Publier
+    </Btn>
+  </>
+):(
+  <div style={{display:"flex",alignItems:"center",gap:8,flex:1,animation:"fadeIn .3s ease"}}>
+    <div style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"8px 14px",display:"flex",gap:8,alignItems:"center"}}>
+      <Search size={14} color={T.gold}/>
+      <input autoFocus value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+        placeholder="Rechercher un post, un mot clé…"
+        style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+      {searchQuery&&<Btn onClick={()=>setSearchQuery("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
+    </div>
+    <Btn onClick={()=>{setSearching(false);setSearchQuery("");}} style={{color:T.muted,display:"flex",alignItems:"center"}}><X size={18}/></Btn>
+  </div>
+)}
       </div>
 
       <div style={{maxWidth:640,margin:"0 auto"}}>
@@ -2216,7 +2292,7 @@ useEffect(()=>{
           </div>
         )}
 
-        {(posts||[]).map((p,i)=>(
+        {(posts||[]).filter(p=>!searchQuery||p.text?.toLowerCase().includes(searchQuery.toLowerCase())||p.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((p,i)=>(
           <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
            onDetail={()=>{savedScroll.current=scrollRef.current?.scrollTop||0;setDetailPost(p);}}
             onLike={()=>toggleLike(p.id)}
@@ -2641,14 +2717,17 @@ const askGemini=async(text)=>{
  const ensureConv=async()=>{
     const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge").eq("id",conv.uid).single();
     if(targetProfile?.no_messages){
-      const myBadge=myProfile?.badge;
-      if(myBadge==="confirmed"||myBadge==="friend"){
-        notify("🔕 Cette personne ne souhaite pas recevoir de messages");
-      } else {
-        notify("🔒 Cette fonctionnalité est réservée aux membres certifiés. Obtenez votre badge pour y accéder ✦");
-      }
-      return null;
+  const{data:myData}=await sb.from("profiles").select("is_admin").eq("id",session?.user?.id).single();
+  if(!myData?.is_admin){
+    const myBadge=myProfile?.badge;
+    if(myBadge==="confirmed"||myBadge==="friend"){
+      notify("🔕 Cette personne ne souhaite pas recevoir de messages");
+    } else {
+      notify("🔒 Cette fonctionnalité est réservée aux membres certifiés ✦");
     }
+    return null;
+  }
+}
     const{data}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${conv.uid}),and(user1_id.eq.${conv.uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
     if(data)return data.id;
     const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:conv.uid}).select().single();
@@ -2667,18 +2746,23 @@ const askGemini=async(text)=>{
 
   const sendTxt=()=>{if(inp.trim())sendMsg({type:"text",text:inp.trim()});};
 
-  const handleFile=async(e,isImg)=>{
+const handleFile=async(e,isImg)=>{
     const f=e.target.files[0]; if(!f)return;
+    const input=e.target;
     if(f.size>50*1024*1024){notify("Fichier trop lourd (max 50MB)");return;}
     const tempId="tmp_file_"+Date.now();
     setSendingMsgs(p=>[...p,{id:tempId,type:isImg?"photo":"file",fileName:f.name,f:"me",ts:Date.now(),sending:true}]);
-    const path=`messages/${session?.user?.id}/${Date.now()}_${f.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
-    const{error}=await sb.storage.from("celeste-media").upload(path,f,{upsert:true,contentType:f.type});
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-    if(error){notify("Erreur upload: "+error.message);e.target.value="";return;}
-    const{data:{publicUrl}}=sb.storage.from("celeste-media").getPublicUrl(path);
+    let publicUrl;
+    try {
+      publicUrl = await uploadToR2(f, "messages");
+    } catch(err) {
+      notify("Erreur upload: "+err.message);
+      input.value="";
+      return;
+    }
     await sendMsg({type:isImg?"photo":"file",file_url:publicUrl,file_name:f.name,text:""});
-    e.target.value="";
+    input.value="";
   };
 
   const handleBgPhoto=e=>{
@@ -2698,11 +2782,14 @@ const askGemini=async(text)=>{
         const blob=new Blob(chunks,{type:mimeType});
         const tempId="tmp_voice_"+Date.now();
         setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true}]);
-        const path=`messages/${session?.user?.id}/voice_${Date.now()}.${ext}`;
-        const{error}=await sb.storage.from("celeste-media").upload(path,blob,{upsert:true,contentType:mimeType});
         setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-        if(error){notify("Erreur upload vocal");return;}
-        const{data:{publicUrl}}=sb.storage.from("celeste-media").getPublicUrl(path);
+let publicUrl;
+try {
+  publicUrl = await uploadToR2(blob, "messages");
+} catch(e) {
+  notify("Erreur upload vocal");
+  return;
+}
         await sendMsg({type:"voice",file_url:publicUrl,text:""});
       };
       rec.start(250); mediaRecRef.current=rec;
@@ -3099,8 +3186,31 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const uPosts=(posts||[]).filter(p=>p.by===user.id);
   const orgTypeLabel={restaurant:"🍽️ Restaurant",hotel:"🏨 Hôtel",musique:"🎵 Musique / Artiste",entreprise:"💼 Entreprise",association:"🤝 Association",ecole:"🎓 École / Université",autre:"📌 Organisation"}[user.org_type]||"📌 Organisation";
 
-  const uploadAvatar=async e=>{const f=e.target.files[0];if(!f)return;const path=`avatars/${user.id}.${f.name.split(".").pop()}`;await sb.storage.from("celeste-media").upload(path,f,{upsert:true});const{data}=sb.storage.from("celeste-media").getPublicUrl(path);const urlWithTs=`${data.publicUrl}?t=${Date.now()}`;await sb.from("profiles").update({avatar_url:urlWithTs}).eq("id",user.id);notify("Photo mise à jour ✦");};
-  const uploadCover=async e=>{const f=e.target.files[0];if(!f)return;const path=`covers/${user.id}.${f.name.split(".").pop()}`;await sb.storage.from("celeste-media").upload(path,f,{upsert:true});const{data}=sb.storage.from("celeste-media").getPublicUrl(path);const urlWithTs=`${data.publicUrl}?t=${Date.now()}`;await sb.from("profiles").update({cover_url:urlWithTs}).eq("id",user.id);setCoverPhoto(urlWithTs);notify("Couverture mise à jour ✦");};
+  const uploadAvatar=async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  try {
+    const url = await uploadToR2(f, "avatars");
+    const urlWithTs=`${url}?t=${Date.now()}`;
+    await sb.from("profiles").update({avatar_url:urlWithTs}).eq("id",user.id);
+    notify("Photo mise à jour ✦");
+  } catch(_e) {
+  notify("Erreur upload avatar");
+}
+};
+  const uploadCover=async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  try {
+    const url = await uploadToR2(f, "covers");
+    const urlWithTs=`${url}?t=${Date.now()}`;
+    await sb.from("profiles").update({cover_url:urlWithTs}).eq("id",user.id);
+    setCoverPhoto(urlWithTs);
+    notify("Couverture mise à jour ✦");
+  } catch(_e) {
+  notify("Erreur upload couverture");
+}
+};
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -3177,222 +3287,364 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   );
 }
 
-function ParametresModal({myProfile,session,onLogout,notify}){
+function ParametresModal({myProfile,onLogout,notify}){
+  const {session}=useApp();
   const [open,setOpen]=useState(false);
-  const [showAbout,setShowAbout]=useState(false);
+  const [section,setSection]=useState(null);
   const [dnd,setDnd]=useState(false);
+  const [discoverable,setDiscoverable]=useState(true);
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 
   useEffect(()=>{
-    if(!session?.user?.id)return;
-    sb.from("profiles").select("no_messages").eq("id",session.user.id).single()
-      .then(({data})=>{if(data)setDnd(!!data.no_messages);});
-  },[session?.user?.id]);
+    const handler=()=>{setOpen(true);setSection(null);};
+    window.addEventListener("celeste_open_params",handler);
+    return()=>window.removeEventListener("celeste_open_params",handler);
+  },[]);
+
+  useEffect(()=>{
+    if(!open||!session?.user?.id)return;
+    sb.from("profiles").select("no_messages,is_discoverable").eq("id",session.user.id).single()
+      .then(({data})=>{if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);}});
+  },[open,session?.user?.id]);
 
   const toggleDnd=async()=>{
-    const next=!dnd;setDnd(next);
+    const next=!dnd;
+    setDnd(next);
     await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
-    notify(next?"Messages bloqués — seul l'admin peut vous écrire":"Messages activés ✦");
+    notify(next?"🔕 Messages bloqués":"✅ Messages activés");
   };
 
-  const toggleTheme=()=>{
-    const next=mode==="dark"?"light":"dark";
-    setAppTheme(next);setMode(next);
-    window.location.reload();
+  const toggleDiscoverable=async()=>{
+    const next=!discoverable;
+    setDiscoverable(next);
+    await sb.from("profiles").update({is_discoverable:next}).eq("id",session.user.id);
+    notify(next?"👁 Profil visible":"🔒 Profil masqué");
   };
+
+  const THEMES=[
+    {id:"dark",label:"Noir Doré",emoji:"🌙"},
+    {id:"light",label:"Blanc Doré",emoji:"☀️"},
+    {id:"dark_green",label:"Vert WhatsApp",emoji:"💚"},
+    {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊"},
+  ];
+
+  const Toggle=({active})=>(
+    <div style={{width:42,height:24,borderRadius:12,background:active?T.gradGold:"rgba(255,255,255,0.1)",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s",flexShrink:0}}>
+      <div style={{position:"absolute",top:2,left:active?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 4px rgba(0,0,0,0.3)"}}/>
+    </div>
+  );
+
+  if(!open)return null;
 
   return(
-    <>
-      <Btn onClick={()=>setOpen(true)} style={{width:"100%",marginTop:16,padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-        <Settings size={18} color={T.gold}/>
-        <span style={{flex:1,fontSize:14,fontWeight:600,color:T.text,textAlign:"left"}}>Paramètres</span>
-        <ChevronRight size={16} color={T.muted}/>
-      </Btn>
+    <div
+      style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+      onClick={()=>{setOpen(false);setSection(null);}}>
+      <div
+        style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",padding:"28px 20px 48px",animation:"slideUp .35s ease"}}
+        onClick={e=>e.stopPropagation()}>
 
-      {/* Modal Paramètres */}
-      {open&&(
-        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
-          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"28px 20px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",display:"flex",flexDirection:"column",gap:10}} onClick={e=>e.stopPropagation()}>
-            
-            <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,marginBottom:8}}>Paramètres</h3>
-
-            {/* Thème */}
-            <Btn onClick={toggleTheme} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-              <span style={{fontSize:20}}>{mode==="dark"?"🌙":"☀️"}</span>
-              <div style={{flex:1,textAlign:"left"}}>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Thème {mode==="dark"?"Noir":"Blanc"}</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>Basculer vers le thème {mode==="dark"?"Blanc ☀️":"Noir 🌙"}</p>
-              </div>
-              <div style={{width:42,height:24,borderRadius:12,background:mode==="dark"?"#1a1a1a":T.gradGold,border:`1px solid ${T.border}`,position:"relative"}}>
-                <div style={{position:"absolute",top:2,left:mode==="dark"?2:18,width:20,height:20,borderRadius:"50%",background:mode==="dark"?T.muted:T.gold,transition:"left .3s"}}/>
-              </div>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+          {section&&(
+            <Btn onClick={()=>setSection(null)} style={{color:T.gold,display:"flex"}}>
+              <ChevronLeft size={22}/>
             </Btn>
+          )}
+          <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:0}}>
+            {!section&&"Paramètres"}
+            {section==="privacy"&&"🔒 Confidentialité"}
+            {section==="compte"&&"👤 Compte"}
+            {section==="apparence"&&"🎨 Apparence"}
+            {section==="about"&&"✦ À propos"}
+          </h3>
+        </div>
 
-            {/* Ne pas déranger — certifiés uniquement */}
-{(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")?(
-  <Btn onClick={toggleDnd} style={{width:"100%",padding:"14px 16px",background:dnd?"rgba(200,64,64,0.06)":T.card,border:`1px solid ${dnd?T.err+"44":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-    <span style={{fontSize:20}}>🔕</span>
-    <div style={{flex:1,textAlign:"left"}}>
-      <p style={{margin:0,fontSize:13,fontWeight:600,color:dnd?T.err:T.text}}>Ne pas recevoir de messages</p>
-      <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Seul l'administration peut vous écrire":"Tout le monde peut vous envoyer un message"}</p>
+        {/* Menu principal */}
+        {!section&&(
+          <>
+            {[
+              {id:"privacy",emoji:"🔒",title:"Confidentialité",sub:"Messages, visibilité"},
+              {id:"compte",emoji:"👤",title:"Compte",sub:"Badge, identifiant, suppression"},
+              {id:"apparence",emoji:"🎨",title:"Apparence",sub:`Thème : ${THEMES.find(t=>t.id===mode)?.label||mode}`},
+              {id:"about",emoji:"✦",title:"À propos",sub:"Version · Contact · Mentions"},
+            ].map(item=>(
+              <Btn key={item.id} onClick={()=>setSection(item.id)}
+                style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                <span style={{fontSize:20}}>{item.emoji}</span>
+                <div style={{flex:1,textAlign:"left"}}>
+                  <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{item.title}</p>
+                  <p style={{margin:0,fontSize:11,color:T.muted}}>{item.sub}</p>
+                </div>
+                <ChevronRight size={16} color={T.muted}/>
+              </Btn>
+            ))}
+            <div style={{height:1,background:T.border,margin:"16px 0"}}/>
+            <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}}
+              style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <LogOut size={18}/>Se déconnecter
+            </Btn>
+          </>
+        )}
+
+        {/* Confidentialité */}
+        {section==="privacy"&&(
+  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+
+    {/* Visible dans Découvrir — badge uniquement */}
+    {myProfile?.badge?(
+      <Btn onClick={toggleDiscoverable}
+        style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:20}}>👁</span>
+        <div style={{flex:1,textAlign:"left"}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans Découvrir</p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>{discoverable?"Votre profil est visible":"Votre profil est masqué"}</p>
+        </div>
+        <Toggle active={discoverable}/>
+      </Btn>
+    ):(
+      <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
+        <span style={{fontSize:20}}>👁</span>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans Découvrir</p>
+          <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
+        </div>
+        <Toggle active={true}/>
+      </div>
+    )}
+
+    {/* Bloquer les messages — badge uniquement */}
+    {myProfile?.badge?(
+      <Btn onClick={toggleDnd}
+        style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:20}}>🔕</span>
+        <div style={{flex:1,textAlign:"left"}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Bloquer les messages</p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Personne ne peut vous écrire":"Tout le monde peut vous écrire"}</p>
+        </div>
+        <Toggle active={dnd}/>
+      </Btn>
+    ):(
+      <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
+        <span style={{fontSize:20}}>🔕</span>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Bloquer les messages</p>
+          <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
+        </div>
+        <Toggle active={false}/>
+      </div>
+    )}
+
+    {/* Message d'info pour ceux sans badge */}
+    {!myProfile?.badge&&(
+      <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>✦</span>
+        <p style={{margin:0,fontSize:12,color:T.goldL,lineHeight:1.6}}>
+          Obtiens le badge certifié pour accéder aux fonctionnalités de confidentialité avancées.
+        </p>
+      </div>
+    )}
+
+  </div>
+)}
+
+        {section==="compte"&&(
+  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+  <p style={{margin:"0 0 6px",fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:1}}>Identifiant Céleste</p>
+  {(()=>{
+    const prenom=(myProfile?.fullName?.split(" ")[0]||"").toLowerCase();
+    const nom=(myProfile?.fullName?.split(" ")[1]||"").toLowerCase();
+    const num=(session?.user?.id||"").replace(/\D/g,"").slice(0,4)||"0000";
+    const prefix=myProfile?.badge==="confirmed"?"CEL✅":myProfile?.badge==="friend"?"CEL🔵":"CEL#";
+    const celesteId=`${prefix}${prenom}.${nom}.${num}`;
+    return(
+      <>
+        <p style={{margin:"0 0 8px",fontSize:15,fontWeight:700,color:T.goldL,letterSpacing:.5}}>{celesteId}</p>
+        <Btn onClick={()=>{navigator.clipboard.writeText(celesteId);notify("Identifiant copié ✦");}}
+          style={{padding:"7px 14px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:10,color:T.goldL,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+          📋 Copier l'identifiant
+        </Btn>
+      </>
+    );
+  })()}
+</div>
     </div>
-    <div style={{width:42,height:24,borderRadius:12,background:dnd?T.err:"#1a1a1a",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s"}}>
-      <div style={{position:"absolute",top:2,left:dnd?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+      <p style={{margin:"0 0 4px",fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:1}}>Email</p>
+      <p style={{margin:0,fontSize:13,color:T.text}}>{session?.user?.email}</p>
     </div>
-  </Btn>
-):(
-  <div style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.6}}>
-    <span style={{fontSize:20}}>🔕</span>
-    <div style={{flex:1,textAlign:"left"}}>
-      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Ne pas recevoir de messages</p>
-      <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
+
+    {/* Badge */}
+    <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <span style={{fontSize:20}}>✦</span>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL}}>
+            {myProfile?.badge?"Badge actif ✦":"Obtenir le badge certifié"}
+          </p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>
+            {myProfile?.badge_expires_at
+              ?`Expire le ${new Date(myProfile.badge_expires_at).toLocaleDateString("fr-FR")}`
+              :"1 000 FCFA · 40 jours"}
+          </p>
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {[
+          {icon:"✦",text:"Badge visible sur ton profil et tes publications"},
+          {icon:"👁",text:"Vois combien de personnes ont vu tes posts"},
+          {icon:"📈",text:"Tes publications sont prioritaires dans le feed"},
+          {icon:"🔕",text:"Active le mode Ne pas recevoir de messages"},
+          {icon:"📷",text:"Envoie des photos dans les commentaires"},
+          {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
+        ].map((f,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:13,color:T.gold}}>{f.icon}</span>
+            <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.6}}>{f.text}</p>
+          </div>
+        ))}
+      </div>
+      {!myProfile?.badge&&(
+        <Btn onClick={async()=>{
+          const ref="CELESTE_"+session?.user?.id+"_"+Date.now();
+          const res=await fetch("https://api.notchpay.co/payments/initialize",{
+            method:"POST",
+            headers:{"Authorization":"pk.hmyQyUpyfQSnzzoe2ArDlvWueLaND9S7qkFwO46UgHhHlFkF1Z1ad4h6OABv1LOhLEJUm5Vclc42nCOErK3KhgQJUXg2GnpedYxTc1jmT6NL0tuSwWtUDzPxCMZsY","Content-Type":"application/json"},
+            body:JSON.stringify({
+              amount:1000,
+              currency:"XAF",
+              email:session?.user?.email||"user@celeste.app",
+              reference:ref,
+              callback:"https://celeste-green.vercel.app/payment-success",
+              description:"Badge certifié Céleste — 40 jours"
+            })
+          });
+          const data=await res.json();
+          if(data?.authorization_url){
+            await sb.from("profiles").update({badge_payment_ref:ref}).eq("id",session?.user?.id);
+            window.open(data.authorization_url,"_blank");
+            notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
+          }else{
+            notify("Erreur de paiement — réessaie");
+          }
+        }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <span style={{fontSize:18}}>✦</span> Obtenir le badge — 1 000 FCFA
+        </Btn>
+      )}
+    </div>
+
+    <div style={{height:1,background:T.border,margin:"4px 0"}}/>
+    <Btn onClick={async()=>{if(!window.confirm("Désactiver votre compte ? Cette action est irréversible."))return;await sb.from("profiles").update({status:"suspended"}).eq("id",session?.user?.id);onLogout();}}
+      style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+      🗑 Désactiver mon compte
+    </Btn>
+  </div>
+)}
+
+        {/* Apparence */}
+        {section==="apparence"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {THEMES.map(t=>{
+              const locked=(t.id==="dark_green"||t.id==="dark_blue")&&!(myProfile?.badge==="confirmed"||myProfile?.badge==="friend");
+              return(
+                <Btn key={t.id} onClick={()=>{if(locked){notify("🔒 Thème réservé aux membres certifiés");return;}setAppTheme(t.id);}}
+                  style={{width:"100%",padding:"14px 16px",background:mode===t.id?T.goldBg:T.card,border:`1px solid ${mode===t.id?T.gold+"55":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:locked?0.6:1}}>
+                  <span style={{fontSize:22}}>{t.emoji}</span>
+                  <div style={{flex:1,textAlign:"left"}}>
+                    <p style={{margin:0,fontSize:13,fontWeight:600,color:mode===t.id?T.goldL:T.text}}>{t.label}</p>
+                    {locked&&<p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Certifiés uniquement</p>}
+                  </div>
+                  {mode===t.id&&<span style={{color:T.goldL,fontSize:16}}>✓</span>}
+                </Btn>
+              );
+            })}
+          </div>
+        )}
+
+        {/* À propos */}
+        {section==="about"&&(
+  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{textAlign:"center",padding:"16px 0 8px"}}>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,color:T.gold,lineHeight:1,marginBottom:10}}>✦</div>
+      <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
+      <p style={{color:T.gold,fontSize:11,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
+    </div>
+
+    {[
+      {title:"🌟 Notre mission",text:"Céleste est le réseau social privé et sécurisé des jeunes. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment."},
+    ].map((s,i)=>(
+      <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+        <p style={{margin:"0 0 6px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>{s.title}</p>
+        <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>{s.text}</p>
+      </div>
+    ))}
+
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📋 Conditions d'utilisation</p>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {[
+          "En t'inscrivant sur Céleste, tu certifies que toutes les informations fournies sont exactes et véridiques.",
+          "Céleste est réservé aux jeunes. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.",
+          "Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illégal.",
+          "Le harcèlement, la violence verbale et toute forme d'intimidation sont prohibés et entraînent une suspension immédiate.",
+          "Toute usurpation d'identité est un délit punissable par la loi.",
+          "Céleste se réserve le droit de supprimer tout compte sans préavis en cas de violation.",
+        ].map((t,i)=>(
+          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
+            <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🔒 Confidentialité</p>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {[
+          "Tes données personnelles ne sont jamais vendues ni partagées avec des tiers.",
+          "Ton numéro de téléphone est utilisé uniquement pour la vérification et ne sera jamais divulgué.",
+          "Les conversations privées sont confidentielles et accessibles uniquement aux participants.",
+          "Céleste utilise un chiffrement sécurisé pour protéger toutes tes données.",
+        ].map((t,i)=>(
+          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
+            <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div style={{background:"rgba(200,64,64,0.05)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:14,padding:"14px 16px"}}>
+      <p style={{margin:"0 0 6px",fontSize:11,fontWeight:700,color:T.err,letterSpacing:1,textTransform:"uppercase"}}>⚖️ Responsabilités légales</p>
+      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.8}}>Toute personne ayant menti sur son identité ou son âge sera poursuivie conformément aux lois en vigueur. Céleste coopère avec les autorités compétentes en cas de signalement.</p>
+    </div>
+
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
+      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📞 Contact & Support</p>
+      <a href="mailto:mrdesetoiles@gmail.com" style={{display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textDecoration:"none",marginBottom:10}}>
+        <span style={{fontSize:18}}>✉️</span> mrdesetoiles@gmail.com
+      </a>
+      <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textDecoration:"none"}}>
+        <span style={{fontSize:18}}>💬</span> WhatsApp : +242 067 131 327
+      </a>
+    </div>
+
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",textAlign:"center"}}>
+      <p style={{margin:"0 0 4px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ÉTOILES ✦</p>
+      <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>Créé par Georgi PAMBOU BIAYANDI</p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>© 2025 · Tous droits réservés</p>
     </div>
   </div>
 )}
 
-            {/* Certification */}
-<div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
-  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-    <span style={{fontSize:20}}>✦</span>
-    <div style={{flex:1}}>
-      <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL}}>
-        {myProfile?.badge?"Badge actif ✦":"Obtenir le badge certifié"}
-      </p>
-      <p style={{margin:0,fontSize:11,color:T.muted}}>
-        {myProfile?.badge_expires_at
-          ? `Expire le ${new Date(myProfile.badge_expires_at).toLocaleDateString("fr-FR")}`
-          : "1 000 FCFA · 40 jours"}
-      </p>
+      </div>
     </div>
-  </div>
-  <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
-  {[
-    {icon:"✦",text:"Badge bleu visible sur ton profil et tes publications"},
-    {icon:"👁",text:"Vois combien de personnes ont vu tes posts"},
-    {icon:"📈",text:"Tes publications sont prioritaires dans le feed"},
-    {icon:"🔕",text:"Active le mode \"Ne pas recevoir de messages\""},
-    {icon:"📷",text:"Envoie des photos dans les commentaires"},
-    {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
-  ].map((f,i)=>(
-    <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
-      <span style={{fontSize:13,color:T.gold}}>{f.icon}</span>
-      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.6}}>{f.text}</p>
-    </div>
-  ))}
-</div>
-  {!myProfile?.badge&&(
-    <Btn onClick={async()=>{
-      const ref="CELESTE_"+session?.user?.id+"_"+Date.now();
-      const res=await fetch("https://api.notchpay.co/payments/initialize",{
-        method:"POST",
-        headers:{"Authorization":"pk_test.mokSC6T8pBenwfNmDRdQ9bCUqksvuoheAW2Bds3lVz4oFYT5NwrZ80zTs5bSM2q4Qec73Oce09Y87T1TbtFpm0bMUz9bF9dSUWbMfKc5hNfq0J0IglVs0hko1kOQT","Content-Type":"application/json"},
-        body:JSON.stringify({
-          amount:1000,
-          currency:"XAF",
-          email:session?.user?.email||"user@celeste.app",
-          reference:ref,
-          callback:"https://celeste-green.vercel.app/payment-success",
-          description:"Badge certifié Céleste — 40 jours"
-        })
-      });
-      const data=await res.json();
-      console.log("NotchPay response:",data);
-      if(data?.authorization_url){
-        await sb.from("profiles").update({badge_payment_ref:ref}).eq("id",session?.user?.id);
-        window.open(data.authorization_url,"_blank");
-        notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
-      } else {
-        notify("Erreur de paiement — réessaie");
-        console.error("NotchPay error:",data);
-      }
-    }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-      <span style={{fontSize:18}}>✦</span> Obtenir le badge — 1 000 FCFA
-    </Btn>
-  )}
-</div>
-
-            {/* À propos */}
-            <Btn onClick={()=>setShowAbout(true)} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-              <span style={{fontSize:20}}>✦</span>
-              <div style={{flex:1,textAlign:"left"}}>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>À propos de Céleste</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>Conditions · Confidentialité · Contact</p>
-              </div>
-              <ChevronRight size={16} color={T.muted}/>
-            </Btn>
-
-            {/* Déconnexion */}
-            <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}} style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              <LogOut size={18}/>Se déconnecter
-            </Btn>
-
-          </div>
-        </div>
-      )}
-
-      {/* Modal À propos */}
-      {showAbout&&(
-        <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowAbout(false)}>
-          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
-            <div style={{textAlign:"center",marginBottom:28}}>
-              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:56,color:T.gold,lineHeight:1,marginBottom:12}}>✦</div>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
-              <p style={{color:T.gold,fontSize:12,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:28}}>
-              {[
-                {title:"🌟 Notre mission",text:"Céleste est le réseau social privé et sécurisé des jeunes. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment."},
-              ].map((s,i)=>(
-                <div key={i} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-                  <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>{s.title}</p>
-                  <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>{s.text}</p>
-                </div>
-              ))}
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📋 Conditions d'utilisation</p>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {["En t'inscrivant sur Céleste, tu certifies que toutes les informations fournies sont exactes et véridiques.","Céleste est une plateforme réservée aux jeunes. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.","Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illégal.","Le harcèlement, la violence verbale et toute forme d'intimidation sont strictement prohibés et entraînent une suspension immédiate.","Toute usurpation d'identité est un délit punissable par la loi.","Céleste se réserve le droit de supprimer tout compte sans préavis en cas de violation des présentes conditions."].map((t,i)=>(
-                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                      <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
-                      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🔒 Confidentialité</p>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {["Tes données personnelles ne sont jamais vendues ni partagées avec des tiers.","Ton numéro de téléphone est utilisé uniquement pour la vérification et ne sera jamais divulgué.","Les conversations privées sont confidentielles et accessibles uniquement aux participants.","Céleste utilise un chiffrement sécurisé pour protéger toutes tes données."].map((t,i)=>(
-                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                      <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
-                      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>⚖️ Responsabilités légales</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Toute personne ayant menti sur son identité ou son âge sera poursuivie conformément aux lois en vigueur. Céleste coopère avec les autorités compétentes en cas de signalement.</p>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🏢 Organisation</p>
-                <p style={{margin:"0 0 4px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ETOILES ✦</p>
-                <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>Créé par Georgi PAMBOU</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>© 2025 Céleste. Tous droits réservés.</p>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"16px"}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📞 Contact</p>
-                <a href="mailto:mrdesetoiles@gmail.com" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none",marginBottom:8}}><span>✉️</span> mrdesetoiles@gmail.com</a>
-                <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none"}}><span>💬</span> WhatsApp : +242 067 131 327</a>
-              </div>
-            </div>
-            <Btn onClick={()=>setShowAbout(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai lu et j'accepte ✦</Btn>
-          </div>
-        </div>
-      )}
-    </>
   );
 }
+
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView}){
   const [tab,setTab]=useState("posts");
@@ -3437,9 +3689,12 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
   const ext=f.name.split(".").pop()||"jpg";
   const path=`${field}/${session?.user?.id}.${ext}`;
     const contentType=field==="cover_url"?f.type:"image/jpeg";
-    await sb.storage.from("celeste-media").upload(path,compressed,{upsert:true,contentType});
-    const{data}=sb.storage.from("celeste-media").getPublicUrl(path);
-    await sb.from("profiles").update({[field]:data.publicUrl}).eq("id",session?.user?.id);
+    try {
+  const url = await uploadToR2(compressed, field === "cover_url" ? "covers" : "avatars");
+  await sb.from("profiles").update({[field]:url}).eq("id",session?.user?.id);
+} catch(e) {
+  notify("Erreur upload");
+}
     reload();notify("Photo mise à jour ✦");
   };
 
@@ -3468,16 +3723,19 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
         {/* Avatar + actions */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
           <div style={{position:"relative",cursor:"pointer"}}>
-  <Av u={myProfile} size={88} ring onClick={()=>{if(myProfile?.avatar_url)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:myProfile.avatar_url}}));else avRef.current.click();}}/>
-            <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:8,background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",boxShadow:"0 2px 8px rgba(201,149,42,0.4)"}}>
-              <Camera size={12}/>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600}}>
-              <Edit2 size={14}/> {editing?"Annuler":"Modifier"}
-            </Btn>
-          </div>
+  <Av u={myProfile} size={88} ring onClick={()=>{if(myProfile?.avatar_url)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:myProfile.avatar_url}}));}}/>
+  <div onClick={e=>{e.stopPropagation();avRef.current.click();}} style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:8,background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",boxShadow:"0 2px 8px rgba(201,149,42,0.4)",cursor:"pointer"}}>
+  <Camera size={12}/>
+  </div>
+</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+  <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+    <Edit2 size={14}/>{editing?"Annuler":"Modifier"}
+  </Btn>
+  <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
+    <Settings size={18} color={T.gold}/>
+  </Btn>
+</div>
         </div>
 
         {/* Info */}
@@ -3614,8 +3872,6 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
       </div>
       <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
   <Trash2 size={13}/>
-</Btn><Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
-  <Trash2 size={13}/>
 </Btn>
     </div>
   ))}
@@ -3625,88 +3881,12 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
         {tab==="saved"&&(
           <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView}/>
         )}
-
-         <ParametresModal myProfile={myProfile} session={session} onLogout={onLogout} notify={notify}/>
         <div style={{height:80}}/>
       </div>
     </div>
   );
 }
 
-// ── THEME TOGGLE ──────────────────────────────────────────
-function ThemeToggle(){
-  const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
-  const toggle=()=>{
-    const next=mode==="dark"?"light":"dark";
-    setAppTheme(next);setMode(next);
-    // Force re-render of the whole app by reloading
-    window.location.reload();
-  };
-  return(
-    <div style={{marginTop:12}}>
-      <Btn onClick={toggle} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
-        <span style={{fontSize:20}}>{mode==="dark"?"🌙":"☀️"}</span>
-        <div style={{flex:1}}>
-          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Thème {mode==="dark"?"Noir-Doré":"Blanc-Doré"}</p>
-          <p style={{margin:0,fontSize:11,color:T.muted}}>Basculer vers le thème {mode==="dark"?"Blanc-Doré ☀️":"Noir-Doré 🌙"}</p>
-        </div>
-        <div style={{width:42,height:24,borderRadius:12,background:mode==="dark"?"#1a1a1a":T.gradGold,border:`1px solid ${T.border}`,position:"relative",transition:"background .3s"}}>
-          <div style={{position:"absolute",top:2,left:mode==="dark"?2:18,width:20,height:20,borderRadius:"50%",background:mode==="dark"?T.muted:T.gold,transition:"left .3s",boxShadow:"0 1px 4px rgba(0,0,0,0.3)"}}/>
-        </div>
-      </Btn>
-    </div>
-  );
-}
-
-// ── ABOUT SECTION ─────────────────────────────────────────
-function AboutSection(){
-  const [open,setOpen]=useState(false);
-  return(
-    <>
-      <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${T.border}`}}>
-        <Btn onClick={()=>setOpen(true)} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
-          <span style={{fontSize:20}}>✦</span>
-          <div style={{flex:1}}>
-            <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>À propos de Céleste</p>
-            <p style={{margin:0,fontSize:11,color:T.muted}}>Version · Contact · Mentions</p>
-          </div>
-          <ChevronRight size={16} style={{color:T.muted}}/>
-        </Btn>
-      </div>
-      {open&&(
-        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
-          <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 28px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
-            <div style={{textAlign:"center",marginBottom:28}}>
-              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:56,color:T.gold,filter:"drop-shadow(0 0 20px rgba(201,149,42,0.5))",lineHeight:1,marginBottom:12}}>✦</div>
-              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
-              <p style={{color:T.gold,fontSize:12,letterSpacing:2,textTransform:"uppercase",margin:0}}>Premium v4.0</p>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:28}}>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-                <p style={{margin:"0 0 4px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:.5,textTransform:"uppercase"}}>Mission</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.7}}>Céleste est le réseau privé des jeunes. Un espace pour exprimer ta vraie personnalité, rencontrer des personnes qui te ressemblent et créer des liens authentiques qui comptent vraiment.</p>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:.5,textTransform:"uppercase"}}>Organisation</p>
-                <p style={{margin:"0 0 2px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ETOILES. ✦</p>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:T.goldL,letterSpacing:.5,textTransform:"uppercase"}}>Contact</p>
-                <a href="mailto:mrdesetoiles@gmail.com" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none",marginBottom:6}}>
-                  <span style={{fontSize:16}}>✉️</span> mrdesetoiles@gmail.com
-                </a>
-                <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,color:T.sub,fontSize:13,textDecoration:"none"}}>
-                  <span style={{fontSize:16}}>💬</span> WhatsApp : +242 067 131 327
-                </a>
-              </div>
-            </div>
-            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>Fermer</Btn>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
 // ── ADMIN PANEL ───────────────────────────────────────────
 function AdminPanel({onClose,notify,reload,reloadPosts}){
@@ -4180,28 +4360,29 @@ useEffect(()=>{
     return ids;
   },[session?.user?.id]);
 
-  const loadPosts=useCallback(async(page=1)=>{
-    const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id))`).order("created_at",{ascending:false}).range(from,to);
-    if(data){
-      const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
-      const followedIds=new Set((conns||[]).map(c=>c.to_id));
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false}));
-      const blockedSet=new Set(blockedUserIds);
-      const visible=mapped.filter(p=>!blockedSet.has(p.by));
-      const sorted=[
-        ...visible.filter(p=>p.pinned),
-        ...visible.filter(p=>!p.pinned&&p.author?.badge==="confirmed"&&p.isFollowed),
-        ...visible.filter(p=>!p.pinned&&p.author?.badge==="friend"&&p.isFollowed),
-        ...visible.filter(p=>!p.pinned&&!p.author?.badge&&p.isFollowed),
-        ...visible.filter(p=>!p.pinned&&p.author?.badge==="confirmed"&&!p.isFollowed),
-        ...visible.filter(p=>!p.pinned&&p.author?.badge==="friend"&&!p.isFollowed),
-        ...visible.filter(p=>!p.pinned&&!p.author?.badge&&!p.isFollowed),
-      ];
-      if(page===1)setPosts(sorted);else setPosts(prev=>{const ids=new Set((prev||[]).map(p=>p.id));return[...(prev||[]),...sorted.filter(p=>!ids.has(p.id))];});
-      setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
-    }
-  },[session?.user?.id]);
+ const loadPosts=useCallback(async(page=1)=>{
+  const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
+  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id))`).order("created_at",{ascending:false}).range(from,to);
+  if(data){
+    const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
+    const followedIds=new Set((conns||[]).map(c=>c.to_id));
+    const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false}));
+    const blockedSet=new Set(blockedUserIds);
+    const visible=mapped.filter(p=>!blockedSet.has(p.by));
+    
+    // ── NOUVEL ALGORITHME MIX PREMIUM ──
+    const pinned=visible.filter(p=>p.pinned);
+    const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge);
+    const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
+    // Shuffle
+    const shuffle=arr=>[...arr].sort(()=>Math.random()-0.5);
+    const mixed=[...pinned,...shuffle(withBadge),...shuffle(noBadge)];
+
+    if(page===1)setPosts(mixed);
+    else setPosts(prev=>{const ids=new Set((prev||[]).map(p=>p.id));return[...(prev||[]),...mixed.filter(p=>!ids.has(p.id))];});
+    setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
+  }
+},[session?.user?.id,blockedUserIds]);
 
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
@@ -4373,8 +4554,8 @@ window.addEventListener("celeste_open_user",handleOpenUser);
                 <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
                 <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:4,color:T.text}}>Céleste</span>
               </div>
-              {/* Notification bell avec compteur */}
-              <Btn onClick={()=>setShowNotifs(s=>!s)} style={{position:"relative",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:showNotifs?T.goldBg:"rgba(255,255,255,0.04)",border:`1px solid ${showNotifs?T.gold+"55":T.border}`,borderRadius:"50%",color:showNotifs?T.goldL:T.muted,transition:"all .2s"}}>
+    
+             <Btn onClick={()=>setShowNotifs(s=>!s)} style={{position:"relative",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:showNotifs?T.goldBg:"rgba(255,255,255,0.04)",border:`1px solid ${showNotifs?T.gold+"55":T.border}`,borderRadius:"50%",color:showNotifs?T.goldL:T.muted,transition:"all .2s"}}>
                 <Bell size={18}/>
                 {unreadNotifs>0&&<span style={{position:"absolute",top:4,right:4,minWidth:16,height:16,borderRadius:8,background:T.err,color:"#fff",fontSize:9,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",boxShadow:"0 2px 8px rgba(200,64,64,0.6)"}}>{unreadNotifs>99?"99+":unreadNotifs}</span>}
               </Btn>
@@ -4411,7 +4592,8 @@ window.addEventListener("celeste_open_user",handleOpenUser);
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
-              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
+             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
+<ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
             </div>
         </div>
 

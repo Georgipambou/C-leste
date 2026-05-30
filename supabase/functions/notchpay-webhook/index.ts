@@ -1,46 +1,63 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Setup type definitions for built-in Supabase Runtime APIs
-import "@supabase/functions-js/edge-runtime.d.ts";
-import { withSupabase } from "@supabase/server";
+serve(async (req) => {
+  try {
+    const body = await req.json();
+    console.log("NotchPay webhook received:", JSON.stringify(body));
 
-console.log("Hello from Functions!");
+    const status = body?.event;
+    const reference = body?.payment?.reference || body?.reference;
+    const paymentStatus = body?.payment?.status || body?.status;
 
-// This endpoint uses 'publishable' | 'secret' access, apiKey is required.
-// Use publishable for Client-facing, key-validated endpoints
-// Use secret for Server-to-server, internal calls
-export default {
-  fetch: withSupabase({ auth: ["publishable", "secret"] }, async (req, ctx) => {
-    // Called by another service with a secret key
-    // ctx.supabaseAdmin bypasses RLS — use for privileged operations
-    /*
-    if (ctx.authMode === "secret") {
-      const { user_id } = await req.json();
-      const { data } = await ctx.supabaseAdmin.auth.admin.getUserById(user_id);
-
-      return Response.json({
-        email: data?.user?.email,
-      });
+    if (!reference) {
+      return new Response(JSON.stringify({ error: "No reference" }), { status: 400 });
     }
-    */
 
-    const { name } = await req.json();
+    if (paymentStatus !== "complete" && paymentStatus !== "successful" && status !== "payment.complete") {
+      return new Response(JSON.stringify({ message: "Payment not complete yet" }), { status: 200 });
+    }
 
-    return Response.json({
-      message: `Hello ${name}!`,
-    });
-  }),
-};
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-/* To invoke locally:
+    // Trouver le profil avec cette référence de paiement
+    const { data: profile, error: findError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("badge_payment_ref", reference)
+      .maybeSingle();
 
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
+    if (findError || !profile) {
+      console.error("Profile not found for reference:", reference);
+      return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404 });
+    }
 
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/notchpay-webhook' \
-    --header 'apiKey: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH' \
-    --data '{"name":"Functions"}'
+    // Activer le badge pour 40 jours
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 40);
 
-*/
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({
+        badge: "confirmed",
+        badge_expires_at: expiresAt.toISOString(),
+        badge_payment_ref: null
+      })
+      .eq("id", profile.id);
+
+    if (updateError) {
+      console.error("Update error:", updateError);
+      return new Response(JSON.stringify({ error: "Update failed" }), { status: 500 });
+    }
+
+    console.log("Badge activated for profile:", profile.id);
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+
+  } catch (err) {
+    console.error("Webhook error:", err);
+    return new Response(JSON.stringify({ error: "Internal error" }), { status: 500 });
+  }
+});
