@@ -1599,7 +1599,7 @@ const fRef=useRef();
 
   const cropImage=src=>new Promise(resolve=>{
     setCropSrc(src);
-    setCropResolve(()=>resolve);
+    setCropResolve({fn:resolve});
   });
 
 const handlePick=async e=>{
@@ -1667,8 +1667,8 @@ try {
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
-    onClose={()=>{setCropSrc(null);cropResolve?.(null);setCropResolve(null);}}
-    onDone={file=>{setCropSrc(null);cropResolve?.(file);setCropResolve(null);}}
+    onClose={()=>{setCropSrc(null);cropResolve?.fn(null);setCropResolve(null);}}
+    onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
     <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
@@ -1821,7 +1821,7 @@ const fRef=useRef();
 
   const cropImage=src=>new Promise(resolve=>{
     setCropSrc(src);
-    setCropResolve(()=>resolve);
+    setCropResolve({fn:resolve});
   });
 
 const handlePick=async e=>{
@@ -1858,8 +1858,8 @@ const handlePick=async e=>{
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
-    onClose={()=>{setCropSrc(null);cropResolve?.(null);setCropResolve(null);}}
-    onDone={file=>{setCropSrc(null);cropResolve?.(file);setCropResolve(null);}}
+    onClose={()=>{setCropSrc(null);cropResolve?.fn(null);setCropResolve(null);}}
+    onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
     <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
@@ -2923,7 +2923,7 @@ const askGemini=async(text)=>{
 
 const cropImage=src=>new Promise(resolve=>{
     setCropSrc(src);
-    setCropResolve(()=>resolve);
+    setCropResolve({fn:resolve});
   });
 
 const handleFile=async(e,isImg)=>{
@@ -2992,8 +2992,8 @@ try {
       {cropSrc&&(
         <ImageCropModal
           imageSrc={cropSrc}
-          onClose={()=>{setCropSrc(null);cropResolve?.(null);setCropResolve(null);}}
-          onDone={file=>{setCropSrc(null);cropResolve?.(file);setCropResolve(null);}}
+          onClose={()=>{setCropSrc(null);cropResolve?.fn(null);setCropResolve(null);}}
+          onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
         />
       )}
       <input ref={fRef} type="file" accept="*/*" style={{display:"none"}} onChange={e=>handleFile(e,false)}/>
