@@ -3303,9 +3303,29 @@ function ParametresModal({myProfile,onLogout,notify}){
 
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
-    sb.from("profiles").select("no_messages,is_discoverable").eq("id",session.user.id).single()
-      .then(({data})=>{if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);}});
-  },[open,session?.user?.id]);
+    sb.from("profiles").select("no_messages,is_discoverable,badge_payment_ref,badge,badge_expires_at").eq("id",session.user.id).single()
+      .then(async({data})=>{
+        if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);}
+        if(data?.badge_payment_ref&&!data?.badge){
+          try{
+            const res=await fetch(`https://api.notchpay.co/payments/${data.badge_payment_ref}`,{
+              headers:{"Authorization":"pk.hmyQyUpyfQSnzzoe2ArDlvWueLaND9S7qkFwO46UgHhHlFkF1Z1ad4h6OABv1LOhLEJUm5Vclc42nCOErK3KhgQJUXg2GnpedYxTc1jmT6NL0tuSwWtUDzPxCMZsY"}
+            });
+            const payment=await res.json();
+            if(payment?.payment?.status==="complete"||payment?.status==="complete"){
+              const expiresAt=new Date();
+              expiresAt.setDate(expiresAt.getDate()+40);
+              await sb.from("profiles").update({
+                badge:"confirmed",
+                badge_expires_at:expiresAt.toISOString(),
+                badge_payment_ref:null
+              }).eq("id",session.user.id);
+              notify("🎉 Badge certifié activé ! ✦");
+            }
+          }catch(e){console.error("Payment check error:",e);}
+        }
+      });
+  },[open,session?.user?.id,notify]);
 
   const toggleDnd=async()=>{
     const next=!dnd;
@@ -3507,9 +3527,10 @@ function ParametresModal({myProfile,onLogout,notify}){
         ))}
       </div>
       {!myProfile?.badge&&(
-        <Btn onClick={async()=>{
+        <Btn onClick={()=>{
           const ref="CELESTE_"+session?.user?.id+"_"+Date.now();
-          const res=await fetch("https://api.notchpay.co/payments/initialize",{
+          const win=window.open("","_blank");
+          fetch("https://api.notchpay.co/payments/initialize",{
             method:"POST",
             headers:{"Authorization":"pk.hmyQyUpyfQSnzzoe2ArDlvWueLaND9S7qkFwO46UgHhHlFkF1Z1ad4h6OABv1LOhLEJUm5Vclc42nCOErK3KhgQJUXg2GnpedYxTc1jmT6NL0tuSwWtUDzPxCMZsY","Content-Type":"application/json"},
             body:JSON.stringify({
@@ -3520,15 +3541,16 @@ function ParametresModal({myProfile,onLogout,notify}){
               callback:"https://celeste-green.vercel.app/payment-success",
               description:"Badge certifié Céleste — 40 jours"
             })
-          });
-          const data=await res.json();
-          if(data?.authorization_url){
-            await sb.from("profiles").update({badge_payment_ref:ref}).eq("id",session?.user?.id);
-            window.open(data.authorization_url,"_blank");
-            notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
-          }else{
-            notify("Erreur de paiement — réessaie");
-          }
+          }).then(r=>r.json()).then(async data=>{
+            if(data?.authorization_url){
+              await sb.from("profiles").update({badge_payment_ref:ref}).eq("id",session?.user?.id);
+              win.location.href=data.authorization_url;
+              notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
+            }else{
+              win.close();
+              notify("Erreur de paiement — réessaie");
+            }
+          }).catch(()=>{win.close();notify("Erreur de paiement — réessaie");});
         }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <span style={{fontSize:18}}>✦</span> Obtenir le badge — 1 000 FCFA
         </Btn>
