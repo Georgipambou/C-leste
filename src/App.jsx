@@ -688,9 +688,10 @@ function ImageCropModal({imageSrc,onClose,onDone}){
   const [aspect,setAspect]=useState(1);
 
   const getCroppedImg=async()=>{
-    const image=new Image();
+    const image=new window.Image();
     image.src=imageSrc;
     await new Promise(r=>{image.onload=r;});
+    
     const canvas=document.createElement("canvas");
     const ctx=canvas.getContext("2d");
     canvas.width=croppedAreaPixels.width;
