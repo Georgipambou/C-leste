@@ -157,35 +157,35 @@ const getThemePalette = (mode) => {
   // ─── SNAPCHAT — Jaune incandescent ─────────────────────────────────────────
   // Jaune vif mais calibré · Noir pur · Contraste maximum
   if (mode === "snapchat") { return {
-    bg:         "#FFFC00",
-    bg2:        "#FFF500",
-    bg3:        "#F5EB00",
-    card:       "rgba(0,0,0,0.04)",
-    cardSolid:  "#FFF500",
-    glass:      "rgba(0,0,0,0.04)",
-    glassMid:   "rgba(0,0,0,0.08)",
-    border:     "rgba(0,0,0,0.12)",
-    borderHi:   "rgba(0,0,0,0.20)",
-    text:       "#000000",
-    sub:        "#2E2E2E",
-    muted:      "#707070",
-    gold:       "#000000",
-    goldL:      "#1A1A1A",
-    goldD:      "#000000",
-    goldBg:     "rgba(0,0,0,0.07)",
-    goldBg2:    "rgba(0,0,0,0.14)",
-    navy:       "#000000",
-    navyBg:     "rgba(0,0,0,0.10)",
-    err:        "#E03030",
-    ok:         "#1A8C40",
-    warn:       "#E07800",
-    gradGold:   "linear-gradient(135deg,#000000 0%,#2E2E2E 50%,#000000 100%)",
-    gradGoldV:  "linear-gradient(180deg,#000000 0%,#2E2E2E 100%)",
-    gradDark:   "linear-gradient(160deg,#FFF500 0%,#FFFC00 100%)",
-    glow:       "0 0 40px rgba(0,0,0,0.12)",
-    glowGold:   "0 0 16px rgba(0,0,0,0.30)",
-    shadowCard: "0 4px 16px rgba(0,0,0,0.12), 0 1px 0 rgba(255,255,255,0.4)",
-  }; }
+  bg:         "#000000",
+  bg2:        "#0A0A0A",
+  bg3:        "#1C1C1C",
+  card:       "rgba(255,255,255,0.04)",
+  cardSolid:  "#111111",
+  glass:      "rgba(255,255,255,0.04)",
+  glassMid:   "rgba(255,255,255,0.08)",
+  border:     "rgba(255,255,255,0.08)",
+  borderHi:   "rgba(255,252,0,0.30)",
+  text:       "#F0F0F0",
+  sub:        "#888888",
+  muted:      "#3A3A3A",
+  gold:       "#FFFC00",
+  goldL:      "#FFFF55",
+  goldD:      "#FFE500",
+  goldBg:     "rgba(255,252,0,0.09)",
+  goldBg2:    "rgba(255,252,0,0.18)",
+  navy:       "#FFFC00",
+  navyBg:     "rgba(255,252,0,0.10)",
+  err:        "#E53935",
+  ok:         "#2ECC71",
+  warn:       "#FF9800",
+  gradGold:   "linear-gradient(135deg,#FFFC00 0%,#FFFF55 50%,#FFE500 100%)",
+  gradGoldV:  "linear-gradient(180deg,#FFFC00 0%,#FFE500 100%)",
+  gradDark:   "linear-gradient(160deg,#0A0A0A 0%,#000000 100%)",
+  glow:       "0 0 40px rgba(255,252,0,0.15)",
+  glowGold:   "0 0 20px rgba(255,252,0,0.45)",
+  shadowCard: "0 8px 40px rgba(0,0,0,0.80), 0 1px 0 rgba(255,255,255,0.03)",
+}; }
  
   // ─── TIKTOK — Néon duel ────────────────────────────────────────────────────
   // Noir absolu · Rouge vif + Cyan · Énergie maximale · Identité forte
@@ -3884,16 +3884,16 @@ function ParametresModal({myProfile,onLogout,notify}){
   };
 
  const THEMES=[
-  {id:"dark",label:"Noir Doré",emoji:"🌙"},
-  {id:"light",label:"Blanc Doré",emoji:"☀️"},
-  {id:"dark_green",label:"Vert WhatsApp",emoji:"💚"},
-  {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊"},
-  {id:"facebook",label:"Facebook",emoji:"🔵"},
-  {id:"youtube",label:"YouTube",emoji:"🔴"},
-  {id:"whatsapp",label:"WhatsApp",emoji:"🟢"},
-  {id:"snapchat",label:"Snapchat",emoji:"🟡"},
-  {id:"tiktok",label:"TikTok",emoji:"🖤"},
-  {id:"google",label:"Google",emoji:"🌈"},
+  {id:"dark",label:"Noir Doré",emoji:"🌙",premium:false},
+  {id:"light",label:"Blanc Doré",emoji:"☀️",premium:false},
+  {id:"dark_green",label:"Vert WhatsApp",emoji:"💚",premium:true},
+  {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊",premium:true},
+  {id:"facebook",label:"Facebook",emoji:"🔵",premium:true},
+  {id:"youtube",label:"YouTube",emoji:"🔴",premium:true},
+  {id:"whatsapp",label:"WhatsApp",emoji:"🟢",premium:true},
+  {id:"snapchat",label:"Snapchat",emoji:"🟡",premium:true},
+  {id:"tiktok",label:"TikTok",emoji:"🖤",premium:true},
+  {id:"google",label:"Google",emoji:"🌈",premium:true},
 ];
   if(!open)return null;
 
@@ -5128,7 +5128,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
-        <div style={{height:56,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:hideNav?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
+        <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:hideNav?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
