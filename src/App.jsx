@@ -4462,9 +4462,9 @@ function AdminPanel({onClose,notify,reload,reloadPosts}){
   },[]);
 
   const approve=async(id)=>{
-  const{error}=await sb.from("profiles").update({status:"actif"}).eq("id",id);
+  const{error}=await sb.from("profiles").update({status:"active"}).eq("id",id);
   if(error){notify("Erreur : "+error.message);console.error(error);return;}
-  setList(p=>p.map(m=>m.id===id?{...m,status:"actif"}:m));
+  setList(p=>p.map(m=>m.id===id?{...m,status:"active"}:m));
   await sb.from("notifications").insert({user_id:id,from_id:id,type:"approved",read:false});
   reload();notify("Membre approuvé ✦");
 };
@@ -5058,7 +5058,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles"},payload=>{
   if(payload.new?.id===myId){
     loadMyProfile(myId);
-    if(payload.new?.status==="actif")setIsPending(false);
+    if(payload.new?.status==="active")setIsPending(false);
   }
   loadMembers();
 })
