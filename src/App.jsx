@@ -4462,10 +4462,18 @@ function AdminPanel({onClose,notify,reload,reloadPosts}){
   },[]);
 
   const approve=async(id)=>{
-    await sb.from("profiles").update({status:"actif",updated_at:new Date().toISOString()}).eq("id",id);
-    setList(p=>p.map(m=>m.id===id?{...m,status:"actif"}:m));
-    reload();notify("Membre approuvé ✦");
-  };
+  await sb.from("profiles").update({status:"actif",updated_at:new Date().toISOString()}).eq("id",id);
+  setList(p=>p.map(m=>m.id===id?{...m,status:"actif"}:m));
+  // Envoyer une notification à l'utilisateur approuvé
+  await sb.from("notifications").insert({
+    user_id:id,
+    from_id:id,
+    type:"approved",
+    read:false
+  });
+  reload();notify("Membre approuvé ✦");
+};
+
   const reject=async id=>{
     if(!window.confirm("Rejeter et supprimer ?"))return;
     await sb.auth.admin?.deleteUser(id);
@@ -5050,7 +5058,13 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${myId}`},()=>{
         loadUnreadNotifs(myId);
       })
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles"},payload=>{if(payload.new?.id===myId)loadMyProfile(myId);loadMembers();})
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles"},payload=>{
+  if(payload.new?.id===myId){
+    loadMyProfile(myId);
+    if(payload.new?.status==="actif")setIsPending(false);
+  }
+  loadMembers();
+})
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"connections"},async payload=>{
         if(payload.new?.to_id===myId){await loadConnections(myId);const follower=(members||[]).find(m=>m.id===payload.new.from_id);addInAppNotif("✦",`${follower?.name||"Quelqu'un"} s'est connecté`,"Nouvelle connexion !",()=>setTab("discover"));}
         else if(payload.new?.from_id===myId)loadConnections(myId);
