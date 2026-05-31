@@ -52,173 +52,198 @@ const PAGE_SIZE = 20;
 const AppContext = createContext(null);
 const useApp = () => useContext(AppContext);
 
-// ── PALETTE PREMIUM ───────────────────────────────────────
-const getThemePalette=(mode)=>{
+// ── PALETTE PREMIUM & ADDICTIVE ───────────────────────────────────────
+const getThemePalette = (mode) => {
+  // Base commune pour les structures d'ombres et d'effets ultra-modernes
+  const glassBlur = "blur(20px) saturate(180%)";
+  
+  if (mode === "facebook") {
+    return {
+      bg: "#FFFFFF", bg2: "#F0F2F5", bg3: "#E4E6EB",
+      card: "rgba(0, 0, 0, 0.02)", cardSolid: "#F0F2F5",
+      glass: "rgba(255, 255, 255, 0.7)", glassMid: "rgba(240, 242, 245, 0.8)",
+      blur: glassBlur,
+      border: "rgba(0, 0, 0, 0.06)", borderHi: "rgba(0, 0, 0, 0.12)",
+      text: "#050505", sub: "#65676B", muted: "#8A8D91",
+      accent: "#1877F2", accentL: "#4293FB", accentD: "#0558D4",
+      accentBg: "rgba(24, 119, 242, 0.06)", accentBg2: "rgba(24, 119, 242, 0.12)",
+      secondary: "#E4E6EB", secondaryBg: "rgba(0, 0, 0, 0.05)",
+      err: "#FA3E3E", ok: "#2ABBA7",
+      gradAccent: "linear-gradient(135deg, #1877F2 0%, #4293FB 100%)",
+      gradSurface: "linear-gradient(160deg, #F0F2F5 0%, #FFFFFF 100%)",
+      glow: "0 0 40px rgba(24, 119, 242, 0.12)",
+      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
+    };
+  }
 
-   if(mode==="facebook"){return{
-  bg:"#FFFFFF",bg2:"#F0F2F5",bg3:"#E4E6EB",
-  card:"rgba(0,0,0,0.03)",cardSolid:"#F0F2F5",
-  glass:"rgba(0,0,0,0.03)",glassMid:"rgba(0,0,0,0.05)",
-  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
-  text:"#050505",sub:"#65676B",muted:"#BCC0C4",
-  gold:"#1877F2",goldL:"#0A66C2",goldD:"#0558D4",
-  goldBg:"rgba(24,119,242,0.08)",goldBg2:"rgba(24,119,242,0.15)",
-  navy:"#1877F2",navyBg:"rgba(24,119,242,0.12)",
-  err:"#FA3E3E",ok:"#42B72A",
-  gradGold:"linear-gradient(135deg,#1877F2 0%,#4293FB 45%,#0558D4 100%)",
-  gradGoldV:"linear-gradient(180deg,#1877F2 0%,#4293FB 100%)",
-  gradDark:"linear-gradient(160deg,#F0F2F5 0%,#FFFFFF 100%)",
-  glow:"0 0 40px rgba(24,119,242,0.15)",glowGold:"0 0 20px rgba(24,119,242,0.4)",
-  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
-};}
-if(mode==="youtube"){return{
-  bg:"#FFFFFF",bg2:"#F9F9F9",bg3:"#F1F1F1",
-  card:"rgba(0,0,0,0.02)",cardSolid:"#F9F9F9",
-  glass:"rgba(0,0,0,0.02)",glassMid:"rgba(0,0,0,0.04)",
-  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
-  text:"#0F0F0F",sub:"#606060",muted:"#AAAAAA",
-  gold:"#FF0000",goldL:"#CC0000",goldD:"#990000",
-  goldBg:"rgba(255,0,0,0.08)",goldBg2:"rgba(255,0,0,0.15)",
-  navy:"#FF0000",navyBg:"rgba(255,0,0,0.12)",
-  err:"#FF0000",ok:"#00B300",
-  gradGold:"linear-gradient(135deg,#FF0000 0%,#FF4444 45%,#CC0000 100%)",
-  gradGoldV:"linear-gradient(180deg,#FF0000 0%,#FF4444 100%)",
-  gradDark:"linear-gradient(160deg,#F9F9F9 0%,#FFFFFF 100%)",
-  glow:"0 0 40px rgba(255,0,0,0.15)",glowGold:"0 0 20px rgba(255,0,0,0.4)",
-  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
-};}
-if(mode==="whatsapp"){return{
-  bg:"#FFFFFF",bg2:"#F0F2F5",bg3:"#E8F5E9",
-  card:"rgba(0,0,0,0.02)",cardSolid:"#F0F2F5",
-  glass:"rgba(0,0,0,0.02)",glassMid:"rgba(0,0,0,0.04)",
-  border:"rgba(0,0,0,0.08)",borderHi:"rgba(0,0,0,0.12)",
-  text:"#111B21",sub:"#667781",muted:"#ADBAC1",
-  gold:"#25D366",goldL:"#128C7E",goldD:"#075E54",
-  goldBg:"rgba(37,211,102,0.08)",goldBg2:"rgba(37,211,102,0.15)",
-  navy:"#34B7F1",navyBg:"rgba(52,183,241,0.12)",
-  err:"#F15C6D",ok:"#25D366",
-  gradGold:"linear-gradient(135deg,#25D366 0%,#128C7E 45%,#075E54 100%)",
-  gradGoldV:"linear-gradient(180deg,#25D366 0%,#128C7E 100%)",
-  gradDark:"linear-gradient(160deg,#F0F2F5 0%,#FFFFFF 100%)",
-  glow:"0 0 40px rgba(37,211,102,0.15)",glowGold:"0 0 20px rgba(37,211,102,0.4)",
-  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
-};}
-if(mode==="snapchat"){return{
-  bg:"#FFFC00",bg2:"#FFF500",bg3:"#F5EB00",
-  card:"rgba(0,0,0,0.04)",cardSolid:"#FFF500",
-  glass:"rgba(0,0,0,0.04)",glassMid:"rgba(0,0,0,0.07)",
-  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
-  text:"#000000",sub:"#333333",muted:"#777777",
-  gold:"#000000",goldL:"#222222",goldD:"#000000",
-  goldBg:"rgba(0,0,0,0.08)",goldBg2:"rgba(0,0,0,0.15)",
-  navy:"#000000",navyBg:"rgba(0,0,0,0.12)",
-  err:"#FF3B30",ok:"#34C759",
-  gradGold:"linear-gradient(135deg,#000000 0%,#333333 45%,#000000 100%)",
-  gradGoldV:"linear-gradient(180deg,#000000 0%,#333333 100%)",
-  gradDark:"linear-gradient(160deg,#FFF500 0%,#FFFC00 100%)",
-  glow:"0 0 40px rgba(0,0,0,0.15)",glowGold:"0 0 20px rgba(0,0,0,0.4)",
-  shadowCard:"0 8px 40px rgba(0,0,0,0.1), 0 1px 0 rgba(255,255,255,0.5)",
-};}
-if(mode==="tiktok"){return{
-  bg:"#000000",bg2:"#0A0A0A",bg3:"#111111",
-  card:"rgba(255,255,255,0.03)",cardSolid:"#0A0A0A",
-  glass:"rgba(255,255,255,0.03)",glassMid:"rgba(255,255,255,0.06)",
-  border:"rgba(255,255,255,0.08)",borderHi:"rgba(255,255,255,0.14)",
-  text:"#FFFFFF",sub:"#A0A0A0",muted:"#444444",
-  gold:"#FE2C55",goldL:"#25F4EE",goldD:"#D41C3F",
-  goldBg:"rgba(254,44,85,0.08)",goldBg2:"rgba(254,44,85,0.15)",
-  navy:"#25F4EE",navyBg:"rgba(37,244,238,0.12)",
-  err:"#FE2C55",ok:"#25F4EE",
-  gradGold:"linear-gradient(135deg,#FE2C55 0%,#25F4EE 45%,#D41C3F 100%)",
-  gradGoldV:"linear-gradient(180deg,#FE2C55 0%,#25F4EE 100%)",
-  gradDark:"linear-gradient(160deg,#0A0A0A 0%,#000000 100%)",
-  glow:"0 0 40px rgba(254,44,85,0.15)",glowGold:"0 0 20px rgba(254,44,85,0.4)",
-  shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
-};}
-if(mode==="google"){return{
-  bg:"#FFFFFF",bg2:"#F8F9FA",bg3:"#F1F3F4",
-  card:"rgba(0,0,0,0.02)",cardSolid:"#F8F9FA",
-  glass:"rgba(0,0,0,0.02)",glassMid:"rgba(0,0,0,0.04)",
-  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
-  text:"#202124",sub:"#5F6368",muted:"#AAAAAA",
-  gold:"#4285F4",goldL:"#EA4335",goldD:"#34A853",
-  goldBg:"rgba(66,133,244,0.08)",goldBg2:"rgba(66,133,244,0.15)",
-  navy:"#FBBC05",navyBg:"rgba(251,188,5,0.12)",
-  err:"#EA4335",ok:"#34A853",
-  gradGold:"linear-gradient(135deg,#4285F4 0%,#EA4335 33%,#FBBC05 66%,#34A853 100%)",
-  gradGoldV:"linear-gradient(180deg,#4285F4 0%,#34A853 100%)",
-  gradDark:"linear-gradient(160deg,#F8F9FA 0%,#FFFFFF 100%)",
-  glow:"0 0 40px rgba(66,133,244,0.15)",glowGold:"0 0 20px rgba(66,133,244,0.4)",
-  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
-};}
-  if(mode==="light"){return{
-    bg:"#FBF9F4",bg2:"#F4F0E6",bg3:"#EFECE0",
-    card:"rgba(0,0,0,0.02)",cardSolid:"#F0ECE0",
-    glass:"rgba(0,0,0,0.03)",glassMid:"rgba(0,0,0,0.05)",
-    border:"rgba(0,0,0,0.08)",borderHi:"rgba(0,0,0,0.14)",
-    text:"#1C1A17",sub:"#6E6A5F",muted:"#B0AB9F",
-    gold:"#C9952A",goldL:"#A07020",goldD:"#8A6218",
-    goldBg:"rgba(201,149,42,0.08)",goldBg2:"rgba(201,149,42,0.15)",
-    navy:"#3A6A9A",navyBg:"rgba(58,106,154,0.12)",
-    err:"#C84040",ok:"#40A860",
-    gradGold:"linear-gradient(135deg,#C9952A 0%,#E8B84B 45%,#A07020 100%)",
-    gradGoldV:"linear-gradient(180deg,#C9952A 0%,#E8B84B 100%)",
-    gradDark:"linear-gradient(160deg,#F4F0E6 0%,#FBF9F4 100%)",
-    glow:"0 0 40px rgba(201,149,42,0.15), 0 0 80px rgba(201,149,42,0.05)",
-    glowGold:"0 0 20px rgba(201,149,42,0.4)",
-    shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
-  };}
-  if(mode==="dark_green"){return{
-    bg:"#0B141A",bg2:"#111B21",bg3:"#1A2530",
-    card:"rgba(255,255,255,0.03)",cardSolid:"#111B21",
-    glass:"rgba(255,255,255,0.03)",glassMid:"rgba(255,255,255,0.06)",
-    border:"rgba(255,255,255,0.07)",borderHi:"rgba(255,255,255,0.12)",
-    text:"#E9EDEF",sub:"#8696A0",muted:"#3A4A54",
-    gold:"#00A884",goldL:"#25D366",goldD:"#007A5E",
-    goldBg:"rgba(0,168,132,0.08)",goldBg2:"rgba(0,168,132,0.15)",
-    navy:"#53BDEB",navyBg:"rgba(83,189,235,0.12)",
-    err:"#F15C6D",ok:"#25D366",
-    gradGold:"linear-gradient(135deg,#00A884 0%,#25D366 45%,#007A5E 100%)",
-    gradGoldV:"linear-gradient(180deg,#00A884 0%,#25D366 100%)",
-    gradDark:"linear-gradient(160deg,#111B21 0%,#0B141A 100%)",
-    glow:"0 0 40px rgba(0,168,132,0.15), 0 0 80px rgba(0,168,132,0.05)",
-    glowGold:"0 0 20px rgba(0,168,132,0.4)",
-    shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
-  };}
-  if(mode==="dark_blue"){return{
-    bg:"#010A15",bg2:"#0A192F",bg3:"#0D2137",
-    card:"rgba(255,255,255,0.03)",cardSolid:"#0A192F",
-    glass:"rgba(255,255,255,0.03)",glassMid:"rgba(255,255,255,0.06)",
-    border:"rgba(255,255,255,0.08)",borderHi:"rgba(255,255,255,0.14)",
-    text:"#F0F5FF",sub:"#8892B0",muted:"#3A4A6A",
-    gold:"#1DA1F2",goldL:"#64FFDA",goldD:"#0A85D9",
-    goldBg:"rgba(29,161,242,0.08)",goldBg2:"rgba(29,161,242,0.15)",
-    navy:"#64FFDA",navyBg:"rgba(100,255,218,0.12)",
-    err:"#F15C6D",ok:"#64FFDA",
-    gradGold:"linear-gradient(135deg,#1DA1F2 0%,#64FFDA 45%,#0A85D9 100%)",
-    gradGoldV:"linear-gradient(180deg,#1DA1F2 0%,#64FFDA 100%)",
-    gradDark:"linear-gradient(160deg,#0A192F 0%,#010A15 100%)",
-    glow:"0 0 40px rgba(29,161,242,0.15), 0 0 80px rgba(29,161,242,0.05)",
-    glowGold:"0 0 20px rgba(29,161,242,0.4)",
-    shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
-  };}
-  // dark par défaut
-  return{
-    bg:"#000000",bg2:"#080808",bg3:"#0F0F0F",
-    card:"rgba(255,255,255,0.03)",cardSolid:"#0A0A0A",
-    glass:"rgba(255,255,255,0.04)",glassMid:"rgba(255,255,255,0.07)",
-    border:"rgba(255,255,255,0.06)",borderHi:"rgba(255,255,255,0.12)",
-    text:"#F0EDE8",sub:"#888880",muted:"#3A3A38",
-    gold:"#C9952A",goldL:"#E8B84B",goldD:"#8A6218",
-    goldBg:"rgba(201,149,42,0.08)",goldBg2:"rgba(201,149,42,0.15)",
-    navy:"#3A6A9A",navyBg:"rgba(58,106,154,0.12)",
-    err:"#C84040",ok:"#40A860",
-    gradGold:"linear-gradient(135deg,#C9952A 0%,#E8B84B 45%,#A07020 100%)",
-    gradGoldV:"linear-gradient(180deg,#C9952A 0%,#E8B84B 100%)",
-    gradDark:"linear-gradient(160deg,#0A0805 0%,#000000 100%)",
-    glow:"0 0 40px rgba(201,149,42,0.15), 0 0 80px rgba(201,149,42,0.05)",
-    glowGold:"0 0 20px rgba(201,149,42,0.4)",
-    shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
+  if (mode === "youtube") {
+    return {
+      bg: "#FFFFFF", bg2: "#F9F9F9", bg3: "#F2F2F2",
+      card: "rgba(0, 0, 0, 0.015)", cardSolid: "#F9F9F9",
+      glass: "rgba(255, 255, 255, 0.8)", glassMid: "rgba(249, 249, 249, 0.85)",
+      blur: glassBlur,
+      border: "rgba(0, 0, 0, 0.05)", borderHi: "rgba(0, 0, 0, 0.1)",
+      text: "#0F0F0F", sub: "#606060", muted: "#909090",
+      accent: "#FF0033", accentL: "#FF335C", accentD: "#CC0029", // Un rouge légèrement bleuté, moins agressif, typique du premium
+      accentBg: "rgba(255, 0, 51, 0.05)", accentBg2: "rgba(255, 0, 51, 0.12)",
+      secondary: "#F2F2F2", secondaryBg: "rgba(0, 0, 0, 0.04)",
+      err: "#FF0033", ok: "#00B359",
+      gradAccent: "linear-gradient(135deg, #FF0033 0%, #FF5275 100%)",
+      gradSurface: "linear-gradient(160deg, #F9F9F9 0%, #FFFFFF 100%)",
+      glow: "0 0 40px rgba(255, 0, 51, 0.1)",
+      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
+    };
+  }
+
+  if (mode === "whatsapp") {
+    return {
+      bg: "#FFFFFF", bg2: "#F0F2F5", bg3: "#E8F5E9",
+      card: "rgba(0, 0, 0, 0.015)", cardSolid: "#F0F2F5",
+      glass: "rgba(255, 255, 255, 0.75)", glassMid: "rgba(240, 242, 245, 0.85)",
+      blur: glassBlur,
+      border: "rgba(0, 0, 0, 0.05)", borderHi: "rgba(0, 0, 0, 0.1)",
+      text: "#111B21", sub: "#667781", muted: "#94A3B8",
+      accent: "#00A884", accentL: "#25D366", accentD: "#008F72",
+      accentBg: "rgba(0, 168, 132, 0.06)", accentBg2: "rgba(0, 168, 132, 0.12)",
+      secondary: "#F0F2F5", secondaryBg: "rgba(0, 0, 0, 0.04)",
+      err: "#EA0038", ok: "#00A884",
+      gradAccent: "linear-gradient(135deg, #00A884 0%, #25D366 100%)",
+      gradSurface: "linear-gradient(160deg, #F0F2F5 0%, #FFFFFF 100%)",
+      glow: "0 0 40px rgba(0, 168, 132, 0.1)",
+      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
+    };
+  }
+
+  if (mode === "snapchat") {
+    return {
+      bg: "#FFFC00", bg2: "#FFF81F", bg3: "#E6E300",
+      card: "rgba(0, 0, 0, 0.03)", cardSolid: "#FFF81F",
+      glass: "rgba(255, 252, 0, 0.8)", glassMid: "rgba(255, 248, 31, 0.85)",
+      blur: glassBlur,
+      border: "rgba(0, 0, 0, 0.06)", borderHi: "rgba(0, 0, 0, 0.12)",
+      text: "#000000", sub: "#2C2C2C", muted: "#606060",
+      accent: "#000000", accentL: "#1A1A1A", accentD: "#000000",
+      accentBg: "rgba(0, 0, 0, 0.05)", accentBg2: "rgba(0, 0, 0, 0.12)",
+      secondary: "rgba(0, 0, 0, 0.05)", secondaryBg: "rgba(0, 0, 0, 0.08)",
+      err: "#FF3B30", ok: "#34C759",
+      gradAccent: "linear-gradient(135deg, #000000 0%, #2C2C2C 100%)",
+      gradSurface: "linear-gradient(160deg, #FFF81F 0%, #FFFC00 100%)",
+      glow: "0 0 40px rgba(0, 0, 0, 0.08)",
+      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03)",
+    };
+  }
+
+  if (mode === "tiktok") {
+    return {
+      bg: "#121212", bg2: "#1E1E1E", bg3: "#262626", // Fini le noir pur #000 absolu qui fatigue les yeux, place au noir OLED de studio
+      card: "rgba(255, 255, 255, 0.02)", cardSolid: "#1E1E1E",
+      glass: "rgba(18, 18, 18, 0.75)", glassMid: "rgba(30, 30, 30, 0.85)",
+      blur: glassBlur,
+      border: "rgba(255, 255, 255, 0.06)", borderHi: "rgba(255, 255, 255, 0.12)",
+      text: "#EFEEEE", sub: "#A1A1AA", muted: "#52525B",
+      accent: "#FE2C55", accentL: "#25F4EE", accentD: "#E11D48",
+      accentBg: "rgba(254, 44, 85, 0.08)", accentBg2: "rgba(37, 244, 238, 0.08)", // Double interaction iconique
+      secondary: "#262626", secondaryBg: "rgba(255, 255, 255, 0.06)",
+      err: "#FE2C55", ok: "#25F4EE",
+      gradAccent: "linear-gradient(135deg, #FE2C55 0%, #EC4899 50%, #25F4EE 100%)", // Dégradé cinétique addictif
+      gradSurface: "linear-gradient(160deg, #1E1E1E 0%, #121212 100%)",
+      glow: "0 0 45px rgba(254, 44, 85, 0.25), 0 0 90px rgba(37, 244, 238, 0.15)",
+      shadowCard: "0 16px 40px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.02)",
+    };
+  }
+
+  if (mode === "google") {
+    return {
+      bg: "#FFFFFF", bg2: "#F8F9FA", bg3: "#F1F3F4",
+      card: "rgba(0, 0, 0, 0.015)", cardSolid: "#F8F9FA",
+      glass: "rgba(255, 255, 255, 0.8)", glassMid: "rgba(248, 249, 24A, 0.85)",
+      blur: glassBlur,
+      border: "rgba(0, 0, 0, 0.05)", borderHi: "rgba(0, 0, 0, 0.1)",
+      text: "#1F1F1F", sub: "#5F6368", muted: "#9AA0A6",
+      accent: "#1A73E8", accentL: "#4285F4", accentD: "#0B57D0",
+      accentBg: "rgba(26, 115, 232, 0.06)", accentBg2: "rgba(26, 115, 232, 0.12)",
+      secondary: "#F1F3F4", secondaryBg: "rgba(0, 0, 0, 0.04)",
+      err: "#EA4335", ok: "#34A853",
+      gradAccent: "linear-gradient(135deg, #4285F4 0%, #34A853 50%, #FBBC05 100%)",
+      gradSurface: "linear-gradient(160deg, #F8F9FA 0%, #FFFFFF 100%)",
+      glow: "0 0 40px rgba(66, 133, 244, 0.1)",
+      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
+    };
+  }
+
+  if (mode === "light") {
+    return {
+      bg: "#FAF8F5", bg2: "#F3EFE3", bg3: "#E9E3D3",
+      card: "rgba(0, 0, 0, 0.01)", cardSolid: "#F3EFE3",
+      glass: "rgba(250, 248, 245, 0.75)", glassMid: "rgba(243, 239, 227, 0.85)",
+      blur: glassBlur,
+      border: "rgba(0, 0, 0, 0.04)", borderHi: "rgba(0, 0, 0, 0.09)",
+      text: "#1A1816", sub: "#6B665B", muted: "#A39E91",
+      accent: "#BC861A", accentL: "#D9A73D", accentD: "#8F6410",
+      accentBg: "rgba(188, 134, 26, 0.05)", accentBg2: "rgba(188, 134, 26, 0.12)",
+      secondary: "#E9E3D3", secondaryBg: "rgba(0, 0, 0, 0.03)",
+      err: "#BA3C3C", ok: "#359653",
+      gradAccent: "linear-gradient(135deg, #BC861A 0%, #D9A73D 100%)",
+      gradSurface: "linear-gradient(160deg, #F3EFE3 0%, #FAF8F5 100%)",
+      glow: "0 0 40px rgba(188, 134, 26, 0.08)",
+      shadowCard: "0 12px 35px rgba(139, 124, 98, 0.08), 0 1px 2px rgba(0, 0, 0, 0.02)",
+    };
+  }
+
+  if (mode === "dark_green") {
+    return {
+      bg: "#0A1014", bg2: "#121B22", bg3: "#1A2630",
+      card: "rgba(255, 255, 255, 0.015)", cardSolid: "#121B22",
+      glass: "rgba(10, 16, 20, 0.75)", glassMid: "rgba(18, 27, 34, 0.85)",
+      blur: glassBlur,
+      border: "rgba(255, 255, 255, 0.05)", borderHi: "rgba(255, 255, 255, 0.1)",
+      text: "#E9EDEF", sub: "#8696A0", muted: "#475E6E",
+      accent: "#00A884", accentL: "#128C7E", accentD: "#007A5E",
+      accentBg: "rgba(0, 168, 132, 0.08)", accentBg2: "rgba(0, 168, 132, 0.15)",
+      secondary: "#1A2630", secondaryBg: "rgba(255, 255, 255, 0.04)",
+      err: "#EF4444", ok: "#10B981",
+      gradAccent: "linear-gradient(135deg, #00A884 0%, #128C7E 100%)",
+      gradSurface: "linear-gradient(160deg, #121B22 0%, #0A1014 100%)",
+      glow: "0 0 40px rgba(0, 168, 132, 0.12)",
+      shadowCard: "0 16px 40px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.02)",
+    };
+  }
+
+  if (mode === "dark_blue") {
+    return {
+      bg: "#030712", bg2: "#0B1528", bg3: "#112240",
+      card: "rgba(255, 255, 255, 0.015)", cardSolid: "#0B1528",
+      glass: "rgba(3, 7, 18, 0.75)", glassMid: "rgba(11, 21, 40, 0.85)",
+      blur: glassBlur,
+      border: "rgba(255, 255, 255, 0.05)", borderHi: "rgba(255, 255, 255, 0.11)",
+      text: "#F3F4F6", sub: "#94A3B8", muted: "#334155",
+      accent: "#38BDF8", accentL: "#7DD3FC", accentD: "#0284C7",
+      accentBg: "rgba(56, 189, 248, 0.07)", accentBg2: "rgba(56, 189, 248, 0.14)",
+      secondary: "#112240", secondaryBg: "rgba(255, 255, 255, 0.04)",
+      err: "#EF4444", ok: "#38BDF8",
+      gradAccent: "linear-gradient(135deg, #38BDF8 0%, #0284C7 100%)",
+      gradSurface: "linear-gradient(160deg, #0B1528 0%, #030712 100%)",
+      glow: "0 0 40px rgba(56, 189, 248, 0.15)",
+      shadowCard: "0 16px 40px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.02)",
+    };
+  }
+
+  // ── THEME PAR DÉFAUT (PREMIUM DARK LUXE) ───────────────────────────
+  return {
+    bg: "#050505", bg2: "#0D0D0D", bg3: "#161616",
+    card: "rgba(255, 255, 255, 0.015)", cardSolid: "#0D0D0D",
+    glass: "rgba(5, 5, 5, 0.75)", glassMid: "rgba(13, 13, 13, 0.85)",
+    blur: glassBlur,
+    border: "rgba(255, 255, 255, 0.05)", borderHi: "rgba(255, 255, 255, 0.1)",
+    text: "#F4F4F5", sub: "#A1A1AA", muted: "#3F3F46",
+    accent: "#D4AF37", accentL: "#F3E5AB", accentD: "#AA7C11", // Un or précieux de haute joaillerie, pas criard
+    accentBg: "rgba(212, 175, 55, 0.06)", accentBg2: "rgba(212, 175, 55, 0.12)",
+    secondary: "#161616", secondaryBg: "rgba(255, 255, 255, 0.04)",
+    err: "#EF4444", ok: "#10B981",
+    gradAccent: "linear-gradient(135deg, #D4AF37 0%, #F3E5AB 100%)",
+    gradSurface: "linear-gradient(160deg, #0D0D0D 0%, #050505 100%)",
+    glow: "0 0 45px rgba(212, 175, 55, 0.15)",
+    shadowCard: "0 16px 40px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.02)",
   };
 };
 
@@ -2408,7 +2433,7 @@ useEffect(()=>{
         <StatusCreatorModal myProfile={myProfile} session={session} myStatuses={myStatuses}
           onClose={()=>{setCreating(false);setHideNav(false);}} onDone={()=>{setCreating(false);load();notify("Statut publié ✦");setHideNav(false);}}/>
       )}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Statuts</h2>
       </div>
       <div style={{maxWidth:640,margin:"0 auto",padding:"16px"}}>
@@ -2475,7 +2500,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",gap:12,alignItems:"center"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",gap:12,alignItems:"center"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text,whiteSpace:"nowrap"}}>Découvrir</h2>
         <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
           <Search size={14} color={T.muted}/>
@@ -2590,7 +2615,7 @@ useEffect(()=>{
       onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;onScrollChange?.(e.currentTarget.scrollTop);}}>
 
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         {!searching?(
   <>
     <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
@@ -2916,7 +2941,7 @@ function MsgsTab({convs,members,getM,onOpen,onDeleteConv,onOpenCeleste}){
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       <InstallBanner/>
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Messages</h2>
       </div>
       <div style={{maxWidth:640,margin:"0 auto",padding:"8px 0 80px"}}>
