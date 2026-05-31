@@ -3344,10 +3344,10 @@ try {
       <input ref={iRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={e=>handleFile(e,true)}/>
       <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBgPhoto}/>
 
-      {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.18,pointerEvents:"none"}}/>}
+      {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
       {/* Chat header */}
-      <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.94)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <Av u={user} size={42} online={user.online} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
         <div style={{flex:1,cursor:"pointer"}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
           <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{user.name}</p>
@@ -4110,7 +4110,7 @@ function ParametresModal({myProfile,onLogout,notify}){
         {section==="apparence"&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {THEMES.map(t=>{
-              const locked=(t.id==="dark_green"||t.id==="dark_blue")&&!(myProfile?.badge==="confirmed"||myProfile?.badge==="friend");
+              const locked=t.premium&&!(myProfile?.badge==="confirmed"||myProfile?.badge==="friend");
               return(
                 <Btn key={t.id} onClick={()=>{if(locked){notify("🔒 Thème réservé aux membres certifiés");return;}setAppTheme(t.id);}}
                   style={{width:"100%",padding:"14px 16px",background:mode===t.id?T.goldBg:T.card,border:`1px solid ${mode===t.id?T.gold+"55":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:locked?0.6:1}}>
