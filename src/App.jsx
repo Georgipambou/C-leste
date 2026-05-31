@@ -54,6 +54,103 @@ const useApp = () => useContext(AppContext);
 
 // ── PALETTE PREMIUM ───────────────────────────────────────
 const getThemePalette=(mode)=>{
+
+   if(mode==="facebook"){return{
+  bg:"#FFFFFF",bg2:"#F0F2F5",bg3:"#E4E6EB",
+  card:"rgba(0,0,0,0.03)",cardSolid:"#F0F2F5",
+  glass:"rgba(0,0,0,0.03)",glassMid:"rgba(0,0,0,0.05)",
+  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
+  text:"#050505",sub:"#65676B",muted:"#BCC0C4",
+  gold:"#1877F2",goldL:"#0A66C2",goldD:"#0558D4",
+  goldBg:"rgba(24,119,242,0.08)",goldBg2:"rgba(24,119,242,0.15)",
+  navy:"#1877F2",navyBg:"rgba(24,119,242,0.12)",
+  err:"#FA3E3E",ok:"#42B72A",
+  gradGold:"linear-gradient(135deg,#1877F2 0%,#4293FB 45%,#0558D4 100%)",
+  gradGoldV:"linear-gradient(180deg,#1877F2 0%,#4293FB 100%)",
+  gradDark:"linear-gradient(160deg,#F0F2F5 0%,#FFFFFF 100%)",
+  glow:"0 0 40px rgba(24,119,242,0.15)",glowGold:"0 0 20px rgba(24,119,242,0.4)",
+  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
+};}
+if(mode==="youtube"){return{
+  bg:"#FFFFFF",bg2:"#F9F9F9",bg3:"#F1F1F1",
+  card:"rgba(0,0,0,0.02)",cardSolid:"#F9F9F9",
+  glass:"rgba(0,0,0,0.02)",glassMid:"rgba(0,0,0,0.04)",
+  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
+  text:"#0F0F0F",sub:"#606060",muted:"#AAAAAA",
+  gold:"#FF0000",goldL:"#CC0000",goldD:"#990000",
+  goldBg:"rgba(255,0,0,0.08)",goldBg2:"rgba(255,0,0,0.15)",
+  navy:"#FF0000",navyBg:"rgba(255,0,0,0.12)",
+  err:"#FF0000",ok:"#00B300",
+  gradGold:"linear-gradient(135deg,#FF0000 0%,#FF4444 45%,#CC0000 100%)",
+  gradGoldV:"linear-gradient(180deg,#FF0000 0%,#FF4444 100%)",
+  gradDark:"linear-gradient(160deg,#F9F9F9 0%,#FFFFFF 100%)",
+  glow:"0 0 40px rgba(255,0,0,0.15)",glowGold:"0 0 20px rgba(255,0,0,0.4)",
+  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
+};}
+if(mode==="whatsapp"){return{
+  bg:"#FFFFFF",bg2:"#F0F2F5",bg3:"#E8F5E9",
+  card:"rgba(0,0,0,0.02)",cardSolid:"#F0F2F5",
+  glass:"rgba(0,0,0,0.02)",glassMid:"rgba(0,0,0,0.04)",
+  border:"rgba(0,0,0,0.08)",borderHi:"rgba(0,0,0,0.12)",
+  text:"#111B21",sub:"#667781",muted:"#ADBAC1",
+  gold:"#25D366",goldL:"#128C7E",goldD:"#075E54",
+  goldBg:"rgba(37,211,102,0.08)",goldBg2:"rgba(37,211,102,0.15)",
+  navy:"#34B7F1",navyBg:"rgba(52,183,241,0.12)",
+  err:"#F15C6D",ok:"#25D366",
+  gradGold:"linear-gradient(135deg,#25D366 0%,#128C7E 45%,#075E54 100%)",
+  gradGoldV:"linear-gradient(180deg,#25D366 0%,#128C7E 100%)",
+  gradDark:"linear-gradient(160deg,#F0F2F5 0%,#FFFFFF 100%)",
+  glow:"0 0 40px rgba(37,211,102,0.15)",glowGold:"0 0 20px rgba(37,211,102,0.4)",
+  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
+};}
+if(mode==="snapchat"){return{
+  bg:"#FFFC00",bg2:"#FFF500",bg3:"#F5EB00",
+  card:"rgba(0,0,0,0.04)",cardSolid:"#FFF500",
+  glass:"rgba(0,0,0,0.04)",glassMid:"rgba(0,0,0,0.07)",
+  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
+  text:"#000000",sub:"#333333",muted:"#777777",
+  gold:"#000000",goldL:"#222222",goldD:"#000000",
+  goldBg:"rgba(0,0,0,0.08)",goldBg2:"rgba(0,0,0,0.15)",
+  navy:"#000000",navyBg:"rgba(0,0,0,0.12)",
+  err:"#FF3B30",ok:"#34C759",
+  gradGold:"linear-gradient(135deg,#000000 0%,#333333 45%,#000000 100%)",
+  gradGoldV:"linear-gradient(180deg,#000000 0%,#333333 100%)",
+  gradDark:"linear-gradient(160deg,#FFF500 0%,#FFFC00 100%)",
+  glow:"0 0 40px rgba(0,0,0,0.15)",glowGold:"0 0 20px rgba(0,0,0,0.4)",
+  shadowCard:"0 8px 40px rgba(0,0,0,0.1), 0 1px 0 rgba(255,255,255,0.5)",
+};}
+if(mode==="tiktok"){return{
+  bg:"#000000",bg2:"#0A0A0A",bg3:"#111111",
+  card:"rgba(255,255,255,0.03)",cardSolid:"#0A0A0A",
+  glass:"rgba(255,255,255,0.03)",glassMid:"rgba(255,255,255,0.06)",
+  border:"rgba(255,255,255,0.08)",borderHi:"rgba(255,255,255,0.14)",
+  text:"#FFFFFF",sub:"#A0A0A0",muted:"#444444",
+  gold:"#FE2C55",goldL:"#25F4EE",goldD:"#D41C3F",
+  goldBg:"rgba(254,44,85,0.08)",goldBg2:"rgba(254,44,85,0.15)",
+  navy:"#25F4EE",navyBg:"rgba(37,244,238,0.12)",
+  err:"#FE2C55",ok:"#25F4EE",
+  gradGold:"linear-gradient(135deg,#FE2C55 0%,#25F4EE 45%,#D41C3F 100%)",
+  gradGoldV:"linear-gradient(180deg,#FE2C55 0%,#25F4EE 100%)",
+  gradDark:"linear-gradient(160deg,#0A0A0A 0%,#000000 100%)",
+  glow:"0 0 40px rgba(254,44,85,0.15)",glowGold:"0 0 20px rgba(254,44,85,0.4)",
+  shadowCard:"0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04)",
+};}
+if(mode==="google"){return{
+  bg:"#FFFFFF",bg2:"#F8F9FA",bg3:"#F1F3F4",
+  card:"rgba(0,0,0,0.02)",cardSolid:"#F8F9FA",
+  glass:"rgba(0,0,0,0.02)",glassMid:"rgba(0,0,0,0.04)",
+  border:"rgba(0,0,0,0.1)",borderHi:"rgba(0,0,0,0.15)",
+  text:"#202124",sub:"#5F6368",muted:"#AAAAAA",
+  gold:"#4285F4",goldL:"#EA4335",goldD:"#34A853",
+  goldBg:"rgba(66,133,244,0.08)",goldBg2:"rgba(66,133,244,0.15)",
+  navy:"#FBBC05",navyBg:"rgba(251,188,5,0.12)",
+  err:"#EA4335",ok:"#34A853",
+  gradGold:"linear-gradient(135deg,#4285F4 0%,#EA4335 33%,#FBBC05 66%,#34A853 100%)",
+  gradGoldV:"linear-gradient(180deg,#4285F4 0%,#34A853 100%)",
+  gradDark:"linear-gradient(160deg,#F8F9FA 0%,#FFFFFF 100%)",
+  glow:"0 0 40px rgba(66,133,244,0.15)",glowGold:"0 0 20px rgba(66,133,244,0.4)",
+  shadowCard:"0 8px 40px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8)",
+};}
   if(mode==="light"){return{
     bg:"#FBF9F4",bg2:"#F4F0E6",bg3:"#EFECE0",
     card:"rgba(0,0,0,0.02)",cardSolid:"#F0ECE0",
@@ -371,18 +468,54 @@ function InstallBanner(){
 }
 
 // ── FLAG SELECTOR ─────────────────────────────────────────
-const COUNTRIES = [
-  {code:"CG",flag:"🇨🇬",name:"Congo-Brazzaville"},
-  {code:"CD",flag:"🇨🇩",name:"RD Congo"},
-  {code:"FR",flag:"🇫🇷",name:"France"},
-  {code:"BE",flag:"🇧🇪",name:"Belgique"},
-  {code:"CM",flag:"🇨🇲",name:"Cameroun"},
-  {code:"CI",flag:"🇨🇮",name:"Côte d'Ivoire"},
-  {code:"SN",flag:"🇸🇳",name:"Sénégal"},
-  {code:"GA",flag:"🇬🇦",name:"Gabon"},
-  {code:"US",flag:"🇺🇸",name:"États-Unis"},
-  {code:"CA",flag:"🇨🇦",name:"Canada"},
-  {code:"OTHER",flag:"🌍",name:"Autre"},
+const COUNTRIES=[
+  // Afrique Centrale
+  {code:"CG",flag:"🇨🇬",name:"Congo-Brazzaville",dial:"+242"},
+  {code:"CD",flag:"🇨🇩",name:"RD Congo",dial:"+243"},
+  {code:"CM",flag:"🇨🇲",name:"Cameroun",dial:"+237"},
+  {code:"GA",flag:"🇬🇦",name:"Gabon",dial:"+241"},
+  {code:"CF",flag:"🇨🇫",name:"Centrafrique",dial:"+236"},
+  {code:"TD",flag:"🇹🇩",name:"Tchad",dial:"+235"},
+  {code:"GQ",flag:"🇬🇶",name:"Guinée Équatoriale",dial:"+240"},
+  {code:"BI",flag:"🇧🇮",name:"Burundi",dial:"+257"},
+  {code:"RW",flag:"🇷🇼",name:"Rwanda",dial:"+250"},
+  // Afrique de l'Ouest
+  {code:"CI",flag:"🇨🇮",name:"Côte d'Ivoire",dial:"+225"},
+  {code:"SN",flag:"🇸🇳",name:"Sénégal",dial:"+221"},
+  {code:"ML",flag:"🇲🇱",name:"Mali",dial:"+223"},
+  {code:"BF",flag:"🇧🇫",name:"Burkina Faso",dial:"+226"},
+  {code:"NE",flag:"🇳🇪",name:"Niger",dial:"+227"},
+  {code:"BJ",flag:"🇧🇯",name:"Bénin",dial:"+229"},
+  {code:"TG",flag:"🇹🇬",name:"Togo",dial:"+228"},
+  {code:"GN",flag:"🇬🇳",name:"Guinée",dial:"+224"},
+  {code:"GW",flag:"🇬🇼",name:"Guinée-Bissau",dial:"+245"},
+  {code:"MR",flag:"🇲🇷",name:"Mauritanie",dial:"+222"},
+  // Afrique du Nord
+  {code:"MA",flag:"🇲🇦",name:"Maroc",dial:"+212"},
+  {code:"DZ",flag:"🇩🇿",name:"Algérie",dial:"+213"},
+  {code:"TN",flag:"🇹🇳",name:"Tunisie",dial:"+216"},
+  // Afrique de l'Est et Sud
+  {code:"MG",flag:"🇲🇬",name:"Madagascar",dial:"+261"},
+  {code:"DJ",flag:"🇩🇯",name:"Djibouti",dial:"+253"},
+  {code:"KM",flag:"🇰🇲",name:"Comores",dial:"+269"},
+  {code:"SC",flag:"🇸🇨",name:"Seychelles",dial:"+248"},
+  {code:"MU",flag:"🇲🇺",name:"Maurice",dial:"+230"},
+  // Europe
+  {code:"FR",flag:"🇫🇷",name:"France",dial:"+33"},
+  {code:"BE",flag:"🇧🇪",name:"Belgique",dial:"+32"},
+  {code:"CH",flag:"🇨🇭",name:"Suisse",dial:"+41"},
+  {code:"LU",flag:"🇱🇺",name:"Luxembourg",dial:"+352"},
+  {code:"MC",flag:"🇲🇨",name:"Monaco",dial:"+377"},
+  // Amérique
+  {code:"CA",flag:"🇨🇦",name:"Canada",dial:"+1"},
+  {code:"HT",flag:"🇭🇹",name:"Haïti",dial:"+509"},
+  // Océanie
+  {code:"NC",flag:"🇳🇨",name:"Nouvelle-Calédonie",dial:"+687"},
+  {code:"PF",flag:"🇵🇫",name:"Polynésie Française",dial:"+689"},
+  // Autres
+  {code:"US",flag:"🇺🇸",name:"États-Unis",dial:"+1"},
+  {code:"GB",flag:"🇬🇧",name:"Royaume-Uni",dial:"+44"},
+  {code:"OTHER",flag:"🌍",name:"Autre",dial:"+"},
 ];
 function FlagSelector({selected,onChange}){
   const [open,setOpen]=useState(false);
@@ -814,6 +947,40 @@ function ReportModal({onClose,onSubmit}){
   );
 }
 
+function DialSelector({selected,onChange}){
+  const [open,setOpen]=useState(false);
+  const [search,setSearch]=useState("");
+  const cur=COUNTRIES.find(c=>c.code===selected)||COUNTRIES[0];
+  const filtered=COUNTRIES.filter(c=>
+    c.name.toLowerCase().includes(search.toLowerCase())||
+    c.dial.includes(search)
+  );
+  return(
+    <div style={{position:"relative"}}>
+      <Btn onClick={()=>{setOpen(o=>!o);setSearch("");}} style={{padding:"11px 12px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,color:T.text,whiteSpace:"nowrap"}}>
+        {cur.flag} {cur.dial} <span style={{fontSize:11,color:T.muted}}>▾</span>
+      </Btn>
+      {open&&(
+        <div style={{position:"absolute",top:"110%",left:0,zIndex:99,background:"#111",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",minWidth:240,boxShadow:"0 20px 40px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border}`}}>
+            <input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un pays..." style={{width:"100%",background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 12px",color:T.text,fontSize:13,outline:"none"}}/>
+          </div>
+          <div style={{maxHeight:240,overflowY:"auto"}}>
+            {filtered.map(c=>(
+              <Btn key={c.code} onClick={()=>{onChange(c.code,c.dial);setOpen(false);setSearch("");}} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,fontSize:13,color:T.text,background:c.code===selected?T.goldBg:"transparent",textAlign:"left"}}>
+                <span style={{fontSize:16}}>{c.flag}</span>
+                <span style={{flex:1}}>{c.name}</span>
+                <span style={{color:T.muted,fontSize:12}}>{c.dial}</span>
+              </Btn>
+            ))}
+            {filtered.length===0&&<p style={{padding:"12px 14px",color:T.muted,fontSize:13}}>Aucun résultat</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AUTH SCREEN ───────────────────────────────────────────
 function AuthScreen({mode,setMode,onSuccess}){
   const [accountType,setAccountType]=useState("membre");
@@ -897,9 +1064,9 @@ if(data.user){onSuccess?.("pending");}
                     </div>
                     <AuthField val={paroisse} set={setParoisse} placeholder="Quartier / Ville *"/>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <FlagSelector selected={country} onChange={setCountry}/>
-                      <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="☎ Téléphone *" type="tel"/></div>
-                    </div>
+  <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(p=>p.replace(/^\+\d+\s*/,"")&&p||dial+" ");}}/>
+  <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="Numéro *" type="tel"/></div>
+</div>
                     <AuthField val={whatsapp} set={setWhatsapp} placeholder="WhatsApp (si différent)"/>
                   </>
                 ):(
@@ -917,8 +1084,11 @@ if(data.user){onSuccess?.("pending");}
                     </select>
                     <AuthField val={orgCountry} set={setOrgCountry} placeholder="Pays *"/>
                     <AuthField val={orgDesc} set={setOrgDesc} placeholder="Description (optionnel)"/>
-                    <AuthField val={phone} set={setPhone} placeholder="☎ Téléphone *" type="tel"/>
-                    <AuthField val={whatsapp} set={setWhatsapp} placeholder="WhatsApp (si différent)"/>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+  <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(dial+" ");}}/>
+  <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="Numéro *" type="tel"/></div>
+</div>
+<AuthField val={whatsapp} set={setWhatsapp} placeholder="WhatsApp (si différent)"/>
                   </>
                 )}
               </>
@@ -2010,7 +2180,7 @@ if(isMe){
       <div style={{position:"absolute",top:"calc(env(safe-area-inset-top,16px) + 12px)",left:16,right:16,zIndex:2,display:"flex",alignItems:"center",gap:10,marginTop:8}}>
         <Av u={author} size={38} ring/>
         <div style={{flex:1}}>
-          <p style={{margin:0,fontSize:14,fontWeight:600,color:"#fff"}}>{author?.name}</p>
+          <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.name}</p>
           <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ago(current.ts)}{paused&&" · ⏸ Pause"}</p>
         </div>
         {isMe&&<Btn onClick={()=>{if(window.confirm("Voulez-vous vraiment supprimer ce statut ?")){onDelete(current.id);idx>0?setIdx(idx-1):onClose();}}} style={{background:"rgba(200,64,64,0.2)",border:`1px solid rgba(200,64,64,0.3)`,borderRadius:8,padding:"5px 10px",color:"#ff6060",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Trash2 size={12}/>Suppr.</Btn>}
@@ -2043,11 +2213,11 @@ if(isMe){
       background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[current.text_background]||"#000",
       display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 32px"
     }}>
-      <p style={{margin:0,fontSize:28,fontWeight:800,color:"#fff",lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center"}}>{current.text}</p>
+      <p style={{margin:0,fontSize:28,fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center"}}>{current.text}</p>
     </div>
   ):(
     <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(20px)",borderRadius:20,padding:"20px 24px",maxWidth:"80%",textAlign:"center",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
-      <p style={{margin:0,fontSize:20,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400}}>{current.text}</p>
+      <p style={{margin:0,fontSize:20,color:T.text,lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400}}>{current.text}</p>
     </div>
   )
 )}
@@ -2592,7 +2762,7 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
       borderRadius:16,padding:"32px 20px",marginBottom:10,minHeight:160,
       display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"
     }}>
-      <p style={{margin:0,fontSize:22,fontWeight:700,color:"#fff",lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
+      <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
     </div>
   ):(
     <p style={{margin:"0 0 10px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>
@@ -3546,13 +3716,18 @@ function ParametresModal({myProfile,onLogout,notify}){
     notify(next?"👁 Profil visible":"🔒 Profil masqué");
   };
 
-  const THEMES=[
-    {id:"dark",label:"Noir Doré",emoji:"🌙"},
-    {id:"light",label:"Blanc Doré",emoji:"☀️"},
-    {id:"dark_green",label:"Vert WhatsApp",emoji:"💚"},
-    {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊"},
-  ];
-
+ const THEMES=[
+  {id:"dark",label:"Noir Doré",emoji:"🌙"},
+  {id:"light",label:"Blanc Doré",emoji:"☀️"},
+  {id:"dark_green",label:"Vert WhatsApp",emoji:"💚"},
+  {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊"},
+  {id:"facebook",label:"Facebook",emoji:"🔵"},
+  {id:"youtube",label:"YouTube",emoji:"🔴"},
+  {id:"whatsapp",label:"WhatsApp",emoji:"🟢"},
+  {id:"snapchat",label:"Snapchat",emoji:"🟡"},
+  {id:"tiktok",label:"TikTok",emoji:"🖤"},
+  {id:"google",label:"Google",emoji:"🌈"},
+];
   if(!open)return null;
 
   return(
