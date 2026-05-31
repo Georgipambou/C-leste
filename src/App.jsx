@@ -4462,15 +4462,10 @@ function AdminPanel({onClose,notify,reload,reloadPosts}){
   },[]);
 
   const approve=async(id)=>{
-  await sb.from("profiles").update({status:"actif",updated_at:new Date().toISOString()}).eq("id",id);
+  const{error}=await sb.from("profiles").update({status:"actif"}).eq("id",id);
+  if(error){notify("Erreur : "+error.message);console.error(error);return;}
   setList(p=>p.map(m=>m.id===id?{...m,status:"actif"}:m));
-  // Envoyer une notification à l'utilisateur approuvé
-  await sb.from("notifications").insert({
-    user_id:id,
-    from_id:id,
-    type:"approved",
-    read:false
-  });
+  await sb.from("notifications").insert({user_id:id,from_id:id,type:"approved",read:false});
   reload();notify("Membre approuvé ✦");
 };
 
@@ -4490,13 +4485,15 @@ if(data)setList(data.map(normProfile));
     reload?.();
     notify(ns==="suspended"?"🚫 Suspendu":"✓ Réactivé avec succès");
   };
-  const chBadge=async(id,badge)=>{
-    await sb.from("profiles").update({badge}).eq("id",id);
-    setList(p=>p.map(m=>m.id===id?{...m,badge}:m));
-    notify("Badge mis à jour ✦");
-  };
+ const chBadge=async(id,badge)=>{
+  const{error}=await sb.from("profiles").update({badge}).eq("id",id);
+  if(error){notify("Erreur : "+error.message);console.error(error);return;}
+  setList(p=>p.map(m=>m.id===id?{...m,badge}:m));
+  notify("Badge mis à jour ✦");
+};
   const togglePin=async(pid,pinned)=>{
-    await sb.from("posts").update({pinned:!pinned}).eq("id",pid);
+    const{error}=await sb.from("posts").update({pinned:!pinned}).eq("id",pid);
+    if(error){notify("Erreur : "+error.message);console.error(error);return;}
     setAllPosts(p=>p.map(x=>x.id===pid?{...x,pinned:!pinned}:x));
     reloadPosts?.();notify(pinned?"Désépinglé":"Épinglé ✦");
   };
