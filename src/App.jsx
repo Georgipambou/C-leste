@@ -52,200 +52,342 @@ const PAGE_SIZE = 20;
 const AppContext = createContext(null);
 const useApp = () => useContext(AppContext);
 
-// ── PALETTE PREMIUM & ADDICTIVE ───────────────────────────────────────
+// ── PALETTE PREMIUM ───────────────────────────────────────
 const getThemePalette = (mode) => {
-  // Base commune pour les structures d'ombres et d'effets ultra-modernes
-  const glassBlur = "blur(20px) saturate(180%)";
-  
-  if (mode === "facebook") {
-    return {
-      bg: "#FFFFFF", bg2: "#F0F2F5", bg3: "#E4E6EB",
-      card: "rgba(0, 0, 0, 0.02)", cardSolid: "#F0F2F5",
-      glass: "rgba(255, 255, 255, 0.7)", glassMid: "rgba(240, 242, 245, 0.8)",
-      blur: glassBlur,
-      border: "rgba(0, 0, 0, 0.06)", borderHi: "rgba(0, 0, 0, 0.12)",
-      text: "#050505", sub: "#65676B", muted: "#8A8D91",
-      accent: "#1877F2", accentL: "#4293FB", accentD: "#0558D4",
-      accentBg: "rgba(24, 119, 242, 0.06)", accentBg2: "rgba(24, 119, 242, 0.12)",
-      secondary: "#E4E6EB", secondaryBg: "rgba(0, 0, 0, 0.05)",
-      err: "#FA3E3E", ok: "#2ABBA7",
-      gradAccent: "linear-gradient(135deg, #1877F2 0%, #4293FB 100%)",
-      gradSurface: "linear-gradient(160deg, #F0F2F5 0%, #FFFFFF 100%)",
-      glow: "0 0 40px rgba(24, 119, 242, 0.12)",
-      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
-    };
-  }
-
-  if (mode === "youtube") {
-    return {
-      bg: "#FFFFFF", bg2: "#F9F9F9", bg3: "#F2F2F2",
-      card: "rgba(0, 0, 0, 0.015)", cardSolid: "#F9F9F9",
-      glass: "rgba(255, 255, 255, 0.8)", glassMid: "rgba(249, 249, 249, 0.85)",
-      blur: glassBlur,
-      border: "rgba(0, 0, 0, 0.05)", borderHi: "rgba(0, 0, 0, 0.1)",
-      text: "#0F0F0F", sub: "#606060", muted: "#909090",
-      accent: "#FF0033", accentL: "#FF335C", accentD: "#CC0029", // Un rouge légèrement bleuté, moins agressif, typique du premium
-      accentBg: "rgba(255, 0, 51, 0.05)", accentBg2: "rgba(255, 0, 51, 0.12)",
-      secondary: "#F2F2F2", secondaryBg: "rgba(0, 0, 0, 0.04)",
-      err: "#FF0033", ok: "#00B359",
-      gradAccent: "linear-gradient(135deg, #FF0033 0%, #FF5275 100%)",
-      gradSurface: "linear-gradient(160deg, #F9F9F9 0%, #FFFFFF 100%)",
-      glow: "0 0 40px rgba(255, 0, 51, 0.1)",
-      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
-    };
-  }
-
-  if (mode === "whatsapp") {
-    return {
-      bg: "#FFFFFF", bg2: "#F0F2F5", bg3: "#E8F5E9",
-      card: "rgba(0, 0, 0, 0.015)", cardSolid: "#F0F2F5",
-      glass: "rgba(255, 255, 255, 0.75)", glassMid: "rgba(240, 242, 245, 0.85)",
-      blur: glassBlur,
-      border: "rgba(0, 0, 0, 0.05)", borderHi: "rgba(0, 0, 0, 0.1)",
-      text: "#111B21", sub: "#667781", muted: "#94A3B8",
-      accent: "#00A884", accentL: "#25D366", accentD: "#008F72",
-      accentBg: "rgba(0, 168, 132, 0.06)", accentBg2: "rgba(0, 168, 132, 0.12)",
-      secondary: "#F0F2F5", secondaryBg: "rgba(0, 0, 0, 0.04)",
-      err: "#EA0038", ok: "#00A884",
-      gradAccent: "linear-gradient(135deg, #00A884 0%, #25D366 100%)",
-      gradSurface: "linear-gradient(160deg, #F0F2F5 0%, #FFFFFF 100%)",
-      glow: "0 0 40px rgba(0, 168, 132, 0.1)",
-      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
-    };
-  }
-
-  if (mode === "snapchat") {
-    return {
-      bg: "#FFFC00", bg2: "#FFF81F", bg3: "#E6E300",
-      card: "rgba(0, 0, 0, 0.03)", cardSolid: "#FFF81F",
-      glass: "rgba(255, 252, 0, 0.8)", glassMid: "rgba(255, 248, 31, 0.85)",
-      blur: glassBlur,
-      border: "rgba(0, 0, 0, 0.06)", borderHi: "rgba(0, 0, 0, 0.12)",
-      text: "#000000", sub: "#2C2C2C", muted: "#606060",
-      accent: "#000000", accentL: "#1A1A1A", accentD: "#000000",
-      accentBg: "rgba(0, 0, 0, 0.05)", accentBg2: "rgba(0, 0, 0, 0.12)",
-      secondary: "rgba(0, 0, 0, 0.05)", secondaryBg: "rgba(0, 0, 0, 0.08)",
-      err: "#FF3B30", ok: "#34C759",
-      gradAccent: "linear-gradient(135deg, #000000 0%, #2C2C2C 100%)",
-      gradSurface: "linear-gradient(160deg, #FFF81F 0%, #FFFC00 100%)",
-      glow: "0 0 40px rgba(0, 0, 0, 0.08)",
-      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03)",
-    };
-  }
-
-  if (mode === "tiktok") {
-    return {
-      bg: "#121212", bg2: "#1E1E1E", bg3: "#262626", // Fini le noir pur #000 absolu qui fatigue les yeux, place au noir OLED de studio
-      card: "rgba(255, 255, 255, 0.02)", cardSolid: "#1E1E1E",
-      glass: "rgba(18, 18, 18, 0.75)", glassMid: "rgba(30, 30, 30, 0.85)",
-      blur: glassBlur,
-      border: "rgba(255, 255, 255, 0.06)", borderHi: "rgba(255, 255, 255, 0.12)",
-      text: "#EFEEEE", sub: "#A1A1AA", muted: "#52525B",
-      accent: "#FE2C55", accentL: "#25F4EE", accentD: "#E11D48",
-      accentBg: "rgba(254, 44, 85, 0.08)", accentBg2: "rgba(37, 244, 238, 0.08)", // Double interaction iconique
-      secondary: "#262626", secondaryBg: "rgba(255, 255, 255, 0.06)",
-      err: "#FE2C55", ok: "#25F4EE",
-      gradAccent: "linear-gradient(135deg, #FE2C55 0%, #EC4899 50%, #25F4EE 100%)", // Dégradé cinétique addictif
-      gradSurface: "linear-gradient(160deg, #1E1E1E 0%, #121212 100%)",
-      glow: "0 0 45px rgba(254, 44, 85, 0.25), 0 0 90px rgba(37, 244, 238, 0.15)",
-      shadowCard: "0 16px 40px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.02)",
-    };
-  }
-
-  if (mode === "google") {
-    return {
-      bg: "#FFFFFF", bg2: "#F8F9FA", bg3: "#F1F3F4",
-      card: "rgba(0, 0, 0, 0.015)", cardSolid: "#F8F9FA",
-      glass: "rgba(255, 255, 255, 0.8)", glassMid: "rgba(248, 249, 24A, 0.85)",
-      blur: glassBlur,
-      border: "rgba(0, 0, 0, 0.05)", borderHi: "rgba(0, 0, 0, 0.1)",
-      text: "#1F1F1F", sub: "#5F6368", muted: "#9AA0A6",
-      accent: "#1A73E8", accentL: "#4285F4", accentD: "#0B57D0",
-      accentBg: "rgba(26, 115, 232, 0.06)", accentBg2: "rgba(26, 115, 232, 0.12)",
-      secondary: "#F1F3F4", secondaryBg: "rgba(0, 0, 0, 0.04)",
-      err: "#EA4335", ok: "#34A853",
-      gradAccent: "linear-gradient(135deg, #4285F4 0%, #34A853 50%, #FBBC05 100%)",
-      gradSurface: "linear-gradient(160deg, #F8F9FA 0%, #FFFFFF 100%)",
-      glow: "0 0 40px rgba(66, 133, 244, 0.1)",
-      shadowCard: "0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
-    };
-  }
-
-  if (mode === "light") {
-    return {
-      bg: "#FAF8F5", bg2: "#F3EFE3", bg3: "#E9E3D3",
-      card: "rgba(0, 0, 0, 0.01)", cardSolid: "#F3EFE3",
-      glass: "rgba(250, 248, 245, 0.75)", glassMid: "rgba(243, 239, 227, 0.85)",
-      blur: glassBlur,
-      border: "rgba(0, 0, 0, 0.04)", borderHi: "rgba(0, 0, 0, 0.09)",
-      text: "#1A1816", sub: "#6B665B", muted: "#A39E91",
-      accent: "#BC861A", accentL: "#D9A73D", accentD: "#8F6410",
-      accentBg: "rgba(188, 134, 26, 0.05)", accentBg2: "rgba(188, 134, 26, 0.12)",
-      secondary: "#E9E3D3", secondaryBg: "rgba(0, 0, 0, 0.03)",
-      err: "#BA3C3C", ok: "#359653",
-      gradAccent: "linear-gradient(135deg, #BC861A 0%, #D9A73D 100%)",
-      gradSurface: "linear-gradient(160deg, #F3EFE3 0%, #FAF8F5 100%)",
-      glow: "0 0 40px rgba(188, 134, 26, 0.08)",
-      shadowCard: "0 12px 35px rgba(139, 124, 98, 0.08), 0 1px 2px rgba(0, 0, 0, 0.02)",
-    };
-  }
-
-  if (mode === "dark_green") {
-    return {
-      bg: "#0A1014", bg2: "#121B22", bg3: "#1A2630",
-      card: "rgba(255, 255, 255, 0.015)", cardSolid: "#121B22",
-      glass: "rgba(10, 16, 20, 0.75)", glassMid: "rgba(18, 27, 34, 0.85)",
-      blur: glassBlur,
-      border: "rgba(255, 255, 255, 0.05)", borderHi: "rgba(255, 255, 255, 0.1)",
-      text: "#E9EDEF", sub: "#8696A0", muted: "#475E6E",
-      accent: "#00A884", accentL: "#128C7E", accentD: "#007A5E",
-      accentBg: "rgba(0, 168, 132, 0.08)", accentBg2: "rgba(0, 168, 132, 0.15)",
-      secondary: "#1A2630", secondaryBg: "rgba(255, 255, 255, 0.04)",
-      err: "#EF4444", ok: "#10B981",
-      gradAccent: "linear-gradient(135deg, #00A884 0%, #128C7E 100%)",
-      gradSurface: "linear-gradient(160deg, #121B22 0%, #0A1014 100%)",
-      glow: "0 0 40px rgba(0, 168, 132, 0.12)",
-      shadowCard: "0 16px 40px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.02)",
-    };
-  }
-
-  if (mode === "dark_blue") {
-    return {
-      bg: "#030712", bg2: "#0B1528", bg3: "#112240",
-      card: "rgba(255, 255, 255, 0.015)", cardSolid: "#0B1528",
-      glass: "rgba(3, 7, 18, 0.75)", glassMid: "rgba(11, 21, 40, 0.85)",
-      blur: glassBlur,
-      border: "rgba(255, 255, 255, 0.05)", borderHi: "rgba(255, 255, 255, 0.11)",
-      text: "#F3F4F6", sub: "#94A3B8", muted: "#334155",
-      accent: "#38BDF8", accentL: "#7DD3FC", accentD: "#0284C7",
-      accentBg: "rgba(56, 189, 248, 0.07)", accentBg2: "rgba(56, 189, 248, 0.14)",
-      secondary: "#112240", secondaryBg: "rgba(255, 255, 255, 0.04)",
-      err: "#EF4444", ok: "#38BDF8",
-      gradAccent: "linear-gradient(135deg, #38BDF8 0%, #0284C7 100%)",
-      gradSurface: "linear-gradient(160deg, #0B1528 0%, #030712 100%)",
-      glow: "0 0 40px rgba(56, 189, 248, 0.15)",
-      shadowCard: "0 16px 40px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.02)",
-    };
-  }
-
-  // ── THEME PAR DÉFAUT (PREMIUM DARK LUXE) ───────────────────────────
+ 
+  // ─── FACEBOOK — Azur institutionnel ────────────────────────────────────────
+  // Blanc pur · Bleu confiance · Netteté maximale · Ombres légères
+  if (mode === "facebook") { return {
+    bg:         "#FFFFFF",
+    bg2:        "#F0F2F5",
+    bg3:        "#E4E6EB",
+    card:       "rgba(0,0,0,0.025)",
+    cardSolid:  "#F0F2F5",
+    glass:      "rgba(0,0,0,0.025)",
+    glassMid:   "rgba(0,0,0,0.050)",
+    border:     "rgba(0,0,0,0.10)",
+    borderHi:   "rgba(0,0,0,0.17)",
+    text:       "#050505",
+    sub:        "#62656B",
+    muted:      "#BCC0C4",
+    gold:       "#1877F2",
+    goldL:      "#45A0FF",
+    goldD:      "#0558D4",
+    goldBg:     "rgba(24,119,242,0.08)",
+    goldBg2:    "rgba(24,119,242,0.16)",
+    navy:       "#1877F2",
+    navyBg:     "rgba(24,119,242,0.12)",
+    err:        "#E23737",
+    ok:         "#31A24C",
+    warn:       "#F09400",
+    gradGold:   "linear-gradient(135deg,#1877F2 0%,#45A0FF 50%,#0558D4 100%)",
+    gradGoldV:  "linear-gradient(180deg,#1877F2 0%,#45A0FF 100%)",
+    gradDark:   "linear-gradient(160deg,#F0F2F5 0%,#FFFFFF 100%)",
+    glow:       "0 0 40px rgba(24,119,242,0.12)",
+    glowGold:   "0 0 16px rgba(24,119,242,0.35)",
+    shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.9)",
+  }; }
+ 
+  // ─── YOUTUBE — Écarlate maîtrisé ───────────────────────────────────────────
+  // Blanc propre · Rouge affiné (pas trop agressif) · Impact clair
+  if (mode === "youtube") { return {
+    bg:         "#FFFFFF",
+    bg2:        "#F9F9F9",
+    bg3:        "#F1F1F1",
+    card:       "rgba(0,0,0,0.020)",
+    cardSolid:  "#F9F9F9",
+    glass:      "rgba(0,0,0,0.020)",
+    glassMid:   "rgba(0,0,0,0.045)",
+    border:     "rgba(0,0,0,0.10)",
+    borderHi:   "rgba(0,0,0,0.17)",
+    text:       "#0F0F0F",
+    sub:        "#5C5C5C",
+    muted:      "#AAAAAA",
+    gold:       "#CC0000",   // Rouge plus doux que #FF0000 — moins agressif
+    goldL:      "#FF3333",
+    goldD:      "#990000",
+    goldBg:     "rgba(204,0,0,0.07)",
+    goldBg2:    "rgba(204,0,0,0.14)",
+    navy:       "#065FD4",
+    navyBg:     "rgba(6,95,212,0.12)",
+    err:        "#CC0000",
+    ok:         "#297A3A",
+    warn:       "#E68800",
+    gradGold:   "linear-gradient(135deg,#CC0000 0%,#FF3333 50%,#990000 100%)",
+    gradGoldV:  "linear-gradient(180deg,#CC0000 0%,#FF3333 100%)",
+    gradDark:   "linear-gradient(160deg,#F9F9F9 0%,#FFFFFF 100%)",
+    glow:       "0 0 40px rgba(204,0,0,0.12)",
+    glowGold:   "0 0 16px rgba(204,0,0,0.35)",
+    shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.9)",
+  }; }
+ 
+  // ─── WHATSAPP — Menthe digitale ─────────────────────────────────────────────
+  // Blanc aéré · Vert digital affiné · Fraîcheur & confiance
+  if (mode === "whatsapp") { return {
+    bg:         "#FFFFFF",
+    bg2:        "#F0F2F5",
+    bg3:        "#E8F2EC",
+    card:       "rgba(0,0,0,0.025)",
+    cardSolid:  "#F0F2F5",
+    glass:      "rgba(0,0,0,0.025)",
+    glassMid:   "rgba(0,0,0,0.050)",
+    border:     "rgba(0,0,0,0.09)",
+    borderHi:   "rgba(0,0,0,0.15)",
+    text:       "#111B21",
+    sub:        "#667781",
+    muted:      "#B0BAC1",
+    gold:       "#00A878",   // Vert plus profond & moins saturé que #25D366
+    goldL:      "#25C896",
+    goldD:      "#007A58",
+    goldBg:     "rgba(0,168,120,0.08)",
+    goldBg2:    "rgba(0,168,120,0.16)",
+    navy:       "#027EB5",
+    navyBg:     "rgba(2,126,181,0.12)",
+    err:        "#E23030",
+    ok:         "#00A878",
+    warn:       "#E89200",
+    gradGold:   "linear-gradient(135deg,#00A878 0%,#25C896 50%,#007A58 100%)",
+    gradGoldV:  "linear-gradient(180deg,#00A878 0%,#25C896 100%)",
+    gradDark:   "linear-gradient(160deg,#F0F2F5 0%,#FFFFFF 100%)",
+    glow:       "0 0 40px rgba(0,168,120,0.12)",
+    glowGold:   "0 0 16px rgba(0,168,120,0.35)",
+    shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.9)",
+  }; }
+ 
+  // ─── SNAPCHAT — Jaune incandescent ─────────────────────────────────────────
+  // Jaune vif mais calibré · Noir pur · Contraste maximum
+  if (mode === "snapchat") { return {
+    bg:         "#FFFC00",
+    bg2:        "#FFF500",
+    bg3:        "#F5EB00",
+    card:       "rgba(0,0,0,0.04)",
+    cardSolid:  "#FFF500",
+    glass:      "rgba(0,0,0,0.04)",
+    glassMid:   "rgba(0,0,0,0.08)",
+    border:     "rgba(0,0,0,0.12)",
+    borderHi:   "rgba(0,0,0,0.20)",
+    text:       "#000000",
+    sub:        "#2E2E2E",
+    muted:      "#707070",
+    gold:       "#000000",
+    goldL:      "#1A1A1A",
+    goldD:      "#000000",
+    goldBg:     "rgba(0,0,0,0.07)",
+    goldBg2:    "rgba(0,0,0,0.14)",
+    navy:       "#000000",
+    navyBg:     "rgba(0,0,0,0.10)",
+    err:        "#E03030",
+    ok:         "#1A8C40",
+    warn:       "#E07800",
+    gradGold:   "linear-gradient(135deg,#000000 0%,#2E2E2E 50%,#000000 100%)",
+    gradGoldV:  "linear-gradient(180deg,#000000 0%,#2E2E2E 100%)",
+    gradDark:   "linear-gradient(160deg,#FFF500 0%,#FFFC00 100%)",
+    glow:       "0 0 40px rgba(0,0,0,0.12)",
+    glowGold:   "0 0 16px rgba(0,0,0,0.30)",
+    shadowCard: "0 4px 16px rgba(0,0,0,0.12), 0 1px 0 rgba(255,255,255,0.4)",
+  }; }
+ 
+  // ─── TIKTOK — Néon duel ────────────────────────────────────────────────────
+  // Noir absolu · Rouge vif + Cyan · Énergie maximale · Identité forte
+  if (mode === "tiktok") { return {
+    bg:         "#000000",
+    bg2:        "#0C0C0C",
+    bg3:        "#141414",
+    card:       "rgba(255,255,255,0.04)",
+    cardSolid:  "#0C0C0C",
+    glass:      "rgba(255,255,255,0.04)",
+    glassMid:   "rgba(255,255,255,0.08)",
+    border:     "rgba(255,255,255,0.09)",
+    borderHi:   "rgba(255,255,255,0.16)",
+    text:       "#FFFFFF",
+    sub:        "#9A9A9A",
+    muted:      "#404040",
+    gold:       "#FF2645",   // Rouge affiné — plus lisible que #FE2C55
+    goldL:      "#FF6B7A",
+    goldD:      "#CC1030",
+    goldBg:     "rgba(255,38,69,0.09)",
+    goldBg2:    "rgba(255,38,69,0.17)",
+    navy:       "#25F4EE",
+    navyBg:     "rgba(37,244,238,0.12)",
+    err:        "#FF2645",
+    ok:         "#25F4EE",
+    warn:       "#FFCC00",
+    gradGold:   "linear-gradient(135deg,#FF2645 0%,#FF6B7A 35%,#25F4EE 100%)",
+    gradGoldV:  "linear-gradient(180deg,#FF2645 0%,#25F4EE 100%)",
+    gradDark:   "linear-gradient(160deg,#0C0C0C 0%,#000000 100%)",
+    glow:       "0 0 40px rgba(255,38,69,0.15)",
+    glowGold:   "0 0 20px rgba(255,38,69,0.45)",
+    shadowCard: "0 8px 40px rgba(0,0,0,0.70), 0 1px 0 rgba(255,255,255,0.04)",
+  }; }
+ 
+  // ─── GOOGLE — Tetrachromie premium ─────────────────────────────────────────
+  // Blanc immaculé · Palette 4 couleurs · Équilibre et clarté
+  if (mode === "google") { return {
+    bg:         "#FFFFFF",
+    bg2:        "#F8F9FA",
+    bg3:        "#F1F3F4",
+    card:       "rgba(0,0,0,0.020)",
+    cardSolid:  "#F8F9FA",
+    glass:      "rgba(0,0,0,0.020)",
+    glassMid:   "rgba(0,0,0,0.045)",
+    border:     "rgba(0,0,0,0.10)",
+    borderHi:   "rgba(0,0,0,0.17)",
+    text:       "#202124",
+    sub:        "#5F6368",
+    muted:      "#AAAAAA",
+    gold:       "#1A73E8",   // Bleu Google affiné — plus profond
+    goldL:      "#4285F4",
+    goldD:      "#0D5DB8",
+    goldBg:     "rgba(26,115,232,0.08)",
+    goldBg2:    "rgba(26,115,232,0.15)",
+    navy:       "#E8710A",   // Orange secondaire (Google colors)
+    navyBg:     "rgba(232,113,10,0.10)",
+    err:        "#D32F2F",
+    ok:         "#188038",
+    warn:       "#E37400",
+    gradGold:   "linear-gradient(135deg,#1A73E8 0%,#4285F4 33%,#EA4335 66%,#34A853 100%)",
+    gradGoldV:  "linear-gradient(180deg,#1A73E8 0%,#34A853 100%)",
+    gradDark:   "linear-gradient(160deg,#F8F9FA 0%,#FFFFFF 100%)",
+    glow:       "0 0 40px rgba(26,115,232,0.12)",
+    glowGold:   "0 0 16px rgba(26,115,232,0.35)",
+    shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+  }; }
+ 
+  // ─── LIGHT — Parchemin Or ───────────────────────────────────────────────────
+  // Ivoire chaud · Or antiquaire · Élégance intemporelle · Haute lisibilité
+  if (mode === "light") { return {
+    bg:         "#FDFAF4",   // Ivoire très légèrement chaud — pas blanc froid
+    bg2:        "#F5F1E8",
+    bg3:        "#EDE8DA",
+    card:       "rgba(0,0,0,0.025)",
+    cardSolid:  "#F0EBE0",
+    glass:      "rgba(0,0,0,0.030)",
+    glassMid:   "rgba(0,0,0,0.055)",
+    border:     "rgba(0,0,0,0.09)",
+    borderHi:   "rgba(0,0,0,0.16)",
+    text:       "#1A1714",   // Presque noir, teinté chaud
+    sub:        "#6B6560",
+    muted:      "#B8B2A8",
+    gold:       "#B8820E",   // Or profond — plus élégant que #C9952A
+    goldL:      "#D9A830",
+    goldD:      "#8A6008",
+    goldBg:     "rgba(184,130,14,0.09)",
+    goldBg2:    "rgba(184,130,14,0.17)",
+    navy:       "#2E619A",
+    navyBg:     "rgba(46,97,154,0.12)",
+    err:        "#C43838",
+    ok:         "#2E9E5A",
+    warn:       "#D48A10",
+    gradGold:   "linear-gradient(135deg,#B8820E 0%,#D9A830 50%,#8A6008 100%)",
+    gradGoldV:  "linear-gradient(180deg,#B8820E 0%,#D9A830 100%)",
+    gradDark:   "linear-gradient(160deg,#F5F1E8 0%,#FDFAF4 100%)",
+    glow:       "0 0 40px rgba(184,130,14,0.12), 0 0 80px rgba(184,130,14,0.04)",
+    glowGold:   "0 0 18px rgba(184,130,14,0.38)",
+    shadowCard: "0 4px 16px rgba(0,0,0,0.07), 0 1px 0 rgba(255,255,255,0.9)",
+  }; }
+ 
+  // ─── DARK GREEN — Équinoxe ──────────────────────────────────────────────────
+  // Forêt profonde · Jade & émeraude · Chaleur organique · Nature premium
+  if (mode === "dark_green") { return {
+    bg:         "#060E0B",   // Noir teinté vert — beaucoup plus riche que #0B141A
+    bg2:        "#0D1C16",
+    bg3:        "#132720",
+    card:       "rgba(255,255,255,0.04)",
+    cardSolid:  "#0F1E18",
+    glass:      "rgba(255,255,255,0.04)",
+    glassMid:   "rgba(255,255,255,0.07)",
+    border:     "rgba(255,255,255,0.07)",
+    borderHi:   "rgba(0,210,140,0.20)",
+    text:       "#E5EFEA",
+    sub:        "#6E9080",
+    muted:      "#253A30",
+    gold:       "#00C896",   // Jade vif — plus lisible que #00A884
+    goldL:      "#3DDFB8",
+    goldD:      "#00966E",
+    goldBg:     "rgba(0,200,150,0.09)",
+    goldBg2:    "rgba(0,200,150,0.17)",
+    navy:       "#60C8FF",
+    navyBg:     "rgba(96,200,255,0.12)",
+    err:        "#E86060",
+    ok:         "#00C896",
+    warn:       "#E8B840",
+    gradGold:   "linear-gradient(135deg,#00C896 0%,#3DDFB8 50%,#00966E 100%)",
+    gradGoldV:  "linear-gradient(180deg,#00C896 0%,#3DDFB8 100%)",
+    gradDark:   "linear-gradient(160deg,#0D1C16 0%,#060E0B 100%)",
+    glow:       "0 0 40px rgba(0,200,150,0.14), 0 0 80px rgba(0,200,150,0.05)",
+    glowGold:   "0 0 20px rgba(0,200,150,0.42)",
+    shadowCard: "0 8px 40px rgba(0,0,0,0.65), 0 1px 0 rgba(255,255,255,0.04)",
+  }; }
+ 
+  // ─── DARK BLUE — Cosmos ────────────────────────────────────────────────────
+  // Nuit profonde · Bleu électrique & Cyan · Tech premium · Contraste intense
+  if (mode === "dark_blue") { return {
+    bg:         "#00080F",   // Bleu-noir absolu — plus immersif que #010A15
+    bg2:        "#051525",
+    bg3:        "#0A2035",
+    card:       "rgba(255,255,255,0.04)",
+    cardSolid:  "#071830",
+    glass:      "rgba(255,255,255,0.04)",
+    glassMid:   "rgba(255,255,255,0.08)",
+    border:     "rgba(255,255,255,0.08)",
+    borderHi:   "rgba(100,200,255,0.20)",
+    text:       "#EEF4FF",
+    sub:        "#7A92B2",
+    muted:      "#2A3A52",
+    gold:       "#3BA5F5",   // Bleu électrique vif — plus dynamique que #1DA1F2
+    goldL:      "#72CFFF",
+    goldD:      "#1A7FCC",
+    goldBg:     "rgba(59,165,245,0.09)",
+    goldBg2:    "rgba(59,165,245,0.18)",
+    navy:       "#5EECD5",
+    navyBg:     "rgba(94,236,213,0.12)",
+    err:        "#F06060",
+    ok:         "#42D9A0",
+    warn:       "#F0C040",
+    gradGold:   "linear-gradient(135deg,#3BA5F5 0%,#72CFFF 50%,#1A7FCC 100%)",
+    gradGoldV:  "linear-gradient(180deg,#3BA5F5 0%,#72CFFF 100%)",
+    gradDark:   "linear-gradient(160deg,#051525 0%,#00080F 100%)",
+    glow:       "0 0 40px rgba(59,165,245,0.14), 0 0 80px rgba(59,165,245,0.05)",
+    glowGold:   "0 0 20px rgba(59,165,245,0.42)",
+    shadowCard: "0 8px 40px rgba(0,0,0,0.70), 0 1px 0 rgba(255,255,255,0.04)",
+  }; }
+ 
+  // ─── DARK (défaut) — Or impérial ──────────────────────────────────────────
+  // Noir absolu · Or chaud · Lisibilité maximale · Prestige & exclusivité
+  // C'est le mode identitaire de Céleste — à soigner particulièrement
   return {
-    bg: "#050505", bg2: "#0D0D0D", bg3: "#161616",
-    card: "rgba(255, 255, 255, 0.015)", cardSolid: "#0D0D0D",
-    glass: "rgba(5, 5, 5, 0.75)", glassMid: "rgba(13, 13, 13, 0.85)",
-    blur: glassBlur,
-    border: "rgba(255, 255, 255, 0.05)", borderHi: "rgba(255, 255, 255, 0.1)",
-    text: "#F4F4F5", sub: "#A1A1AA", muted: "#3F3F46",
-    accent: "#D4AF37", accentL: "#F3E5AB", accentD: "#AA7C11", // Un or précieux de haute joaillerie, pas criard
-    accentBg: "rgba(212, 175, 55, 0.06)", accentBg2: "rgba(212, 175, 55, 0.12)",
-    secondary: "#161616", secondaryBg: "rgba(255, 255, 255, 0.04)",
-    err: "#EF4444", ok: "#10B981",
-    gradAccent: "linear-gradient(135deg, #D4AF37 0%, #F3E5AB 100%)",
-    gradSurface: "linear-gradient(160deg, #0D0D0D 0%, #050505 100%)",
-    glow: "0 0 45px rgba(212, 175, 55, 0.15)",
-    shadowCard: "0 16px 40px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.02)",
+    bg:         "#000000",   // Noir absolu — pas de compromise
+    bg2:        "#0C0C0C",   // Légèrement relevé pour les surfaces
+    bg3:        "#141414",   // Zones tertiaires (inputs, chips)
+    card:       "rgba(255,255,255,0.04)",
+    cardSolid:  "#111111",
+    glass:      "rgba(255,255,255,0.05)",
+    glassMid:   "rgba(255,255,255,0.09)",
+    border:     "rgba(255,255,255,0.07)",   // Plus visible que 0.06 — meilleure lisibilité
+    borderHi:   "rgba(255,255,255,0.14)",
+    text:       "#F5F0E8",   // Blanc chaud — repose les yeux, plus premium
+    sub:        "#9A9690",   // Gris légèrement chaud pour cohérence
+    muted:      "#3D3D3A",   // Muet chaud — séparateurs, disabled
+    gold:       "#D4A843",   // Or impérial — plus riche que #C9952A
+    goldL:      "#F0C96A",   // Or clair — hover, highlights
+    goldD:      "#A07C22",   // Or foncé — pressed, ombres colorées
+    goldBg:     "rgba(212,168,67,0.09)",
+    goldBg2:    "rgba(212,168,67,0.17)",
+    navy:       "#4A7EC9",   // Bleu plus profond que #3A6A9A
+    navyBg:     "rgba(74,126,201,0.13)",
+    err:        "#E05252",   // Rouge moins agressif que #C84040
+    ok:         "#3DB874",   // Vert plus vif — succès visible
+    warn:       "#E8A930",   // Ambre — avertissements
+    gradGold:   "linear-gradient(135deg,#D4A843 0%,#F0C96A 50%,#A07C22 100%)",
+    gradGoldV:  "linear-gradient(180deg,#D4A843 0%,#F0C96A 100%)",
+    gradDark:   "linear-gradient(160deg,#0C0C0C 0%,#000000 100%)",
+    glow:       "0 0 40px rgba(212,168,67,0.14), 0 0 80px rgba(212,168,67,0.05)",
+    glowGold:   "0 0 20px rgba(212,168,67,0.42)",
+    shadowCard: "0 8px 40px rgba(0,0,0,0.70), 0 1px 0 rgba(255,255,255,0.04)",
   };
 };
+ 
+
 
 let _themeMode="dark";
 try{_themeMode=localStorage.getItem("celeste_theme")||"dark";}catch(_){}
@@ -2500,7 +2642,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",gap:12,alignItems:"center"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",gap:12,alignItems:"center"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text,whiteSpace:"nowrap"}}>Découvrir</h2>
         <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
           <Search size={14} color={T.muted}/>
