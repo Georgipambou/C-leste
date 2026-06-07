@@ -1632,7 +1632,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
 
     // Détecter @
     const textBeforeCursor=val.slice(0,cursor);
-    const match=textBeforeCursor.match(/@(\w*)$/);
+    const match=textBeforeCursor.match(/@([\w\u00C0-\u017F]*)$/);
     if(match){
       const query=match[1].toLowerCase();
       setMentionQuery(query);
@@ -1992,6 +1992,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify}){
+const {members}=useApp();
 const [viewImg,setViewImg]=useState(null);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
@@ -2113,6 +2114,8 @@ const [isForSale,setIsForSale]=useState(false);
 const [whatsappNum,setWhatsappNum]=useState("");
 const [whatsappIndicatif,setWhatsappIndicatif]=useState("242");
 const fRef=useRef();
+const mentionedIdsRef=useRef([]);
+const {members}=useApp();
 
   const cropImage=src=>new Promise(resolve=>{
     setCropSrc(src);
@@ -2242,13 +2245,16 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
             <p style={{margin:"0 0 6px",fontSize:15,fontWeight:700,color:T.text}}>{myProfile?.fullName}</p>
 
             {/* Zone texte */}
-            <textarea value={text} onChange={e=>setText(e.target.value)}
-              placeholder="Quoi de neuf ?"
-              autoFocus
-              rows={4}
-              style={{width:"100%",background:"transparent",border:"none",color:T.text,fontSize:16,outline:"none",resize:"none",lineHeight:1.7,fontFamily:"inherit",padding:0,
-                ...(textBg?{background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg],borderRadius:14,padding:"12px",color:"#fff",fontSize:18,fontWeight:700,textAlign:"center"}:{})
-              }}/>
+           <MentionInput
+  value={text}
+  onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
+  placeholder="Quoi de neuf ?"
+  rows={4}
+  members={members||[]}
+  style={{width:"100%",background:"transparent",border:"none",color:T.text,fontSize:16,outline:"none",resize:"none",lineHeight:1.7,fontFamily:"inherit",padding:0,
+    ...(textBg?{background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg],borderRadius:14,padding:"12px",color:"#fff",fontSize:18,fontWeight:700,textAlign:"center"}:{})
+  }}
+/>
 
             {/* Option vente (badge doré + Congo uniquement) */}
             {canSell&&(
@@ -4528,7 +4534,7 @@ if(existingPool){
             }
           }).catch(()=>{win.close();notify("Erreur de paiement — réessaie");});
         }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-          <span style={{fontSize:18}}>✦</span> Obtenir le badge — 1 000 FCFA
+          <span style={{fontSize:18}}>✦</span> Obtenir le badge — 2 000 FCFA
         </Btn>
       )}
     </div>
@@ -4650,6 +4656,66 @@ function WalletScreen({session,myProfile,notify,onClose}){
   const [showWithdraw,setShowWithdraw]=useState(false);
   const cemacCountries=["CG","CM","GA","TD","CF","GQ"];
   const isCemac=cemacCountries.includes(myProfile?.country||"CG");
+  const [liveStats,setLiveStats]=useState(null);
+
+useEffect(()=>{
+  const loadLive=async()=>{
+    const since=new Date(Date.now()-24*60*60*1000).toISOString();
+    const month=new Date().toISOString().slice(0,7);
+    
+    // Mes likes reçus aujourd'hui
+    const{count:myLikesToday}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",since);
+    
+    // Mes posts aujourd'hui
+    const{count:myPostsToday}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",since);
+    
+    // Total likes de tout le monde aujourd'hui
+    const{data:allLikes}=await sb.from("valid_likes").select("author_id").gte("created_at",since);
+    const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",since);
+    
+    // Pool du mois
+    const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+    
+    // Calculer les scores
+    const likeCounts={};
+    (allLikes||[]).forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
+    const postCounts={};
+    (allPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
+    
+    const scores={};
+    const allIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
+    allIds.forEach(uid=>{
+      const l=likeCounts[uid]||0;
+      const p=postCounts[uid]||0;
+      if(l>0&&p>0)scores[uid]=l*p;
+    });
+    
+    const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
+    const myScore=(myLikesToday||0)*(myPostsToday||0);
+    
+    // Pool journalier estimé
+    const now=new Date();
+    const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+    const daysLeft=daysInMonth-now.getDate()+1;
+    const dailyPool=Math.floor((pool?.pool_amount||0)/daysLeft);
+    
+    const myEstimate=totalScore>0?Math.floor((myScore/totalScore)*dailyPool):0;
+    
+    setLiveStats({
+      myLikesToday:myLikesToday||0,
+      myPostsToday:myPostsToday||0,
+      myScore,
+      totalScore,
+      dailyPool,
+      myEstimate,
+      poolMonth:pool?.pool_amount||0
+    });
+  };
+  
+  loadLive();
+  const interval=setInterval(loadLive,60000); // refresh chaque minute
+  return()=>clearInterval(interval);
+},[session.user.id]);
   const [withdrawAmount,setWithdrawAmount]=useState("");
   const [withdrawPhone,setWithdrawPhone]=useState("");
   const [withdrawOp,setWithdrawOp]=useState("mtn");
@@ -4731,7 +4797,44 @@ function WalletScreen({session,myProfile,notify,onClose}){
             </button>
           </div>
         </div>
+{liveStats&&(
+  <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:20,padding:"20px",marginBottom:16}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL,letterSpacing:1}}>📊 AUJOURD'HUI EN DIRECT</p>
+      <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 6px rgba(34,197,94,0.6)",animation:"pulse 2s infinite"}}/>
+    </div>
+    
+    {/* Stats du jour */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
+        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>❤ {liveStats.myLikesToday}</p>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus aujourd'hui</p>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
+        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>✦ {liveStats.myPostsToday}</p>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs aujourd'hui</p>
+      </div>
+    </div>
 
+    {/* Barre de progression */}
+    <div style={{marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+        <span style={{fontSize:11,color:T.muted}}>Ta part du pool journalier</span>
+        <span style={{fontSize:11,color:T.goldL,fontWeight:700}}>{liveStats.totalScore>0?Math.round((liveStats.myScore/liveStats.totalScore)*100):0}%</span>
+      </div>
+      <div style={{height:6,background:"rgba(255,255,255,0.08)",borderRadius:3,overflow:"hidden"}}>
+        <div style={{height:"100%",borderRadius:3,background:T.gradGold,width:`${liveStats.totalScore>0?Math.min(100,Math.round((liveStats.myScore/liveStats.totalScore)*100)):0}%`,transition:"width 1s ease"}}/>
+      </div>
+    </div>
+
+    {/* Estimation */}
+    <div style={{background:`linear-gradient(135deg,${T.goldD}22,${T.navy}44)`,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px",textAlign:"center"}}>
+      <p style={{margin:"0 0 4px",fontSize:11,color:T.muted}}>Estimation de tes gains ce soir</p>
+      <p style={{margin:"0 0 2px",fontSize:28,fontWeight:800,color:T.goldL,fontFamily:"'Cormorant Garamond',serif"}}>~{liveStats.myEstimate.toLocaleString("fr-FR")} F</p>
+      <p style={{margin:0,fontSize:10,color:T.muted}}> {liveStats.dailyPool.toLocaleString("fr-FR")} : {liveStats.poolMonth.toLocaleString("fr-FR")} F</p>
+    </div>
+  </div>
+)}
         {/* Stats du mois — discret */}
         <div style={{display:"flex",gap:10,marginBottom:24}}>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
@@ -4817,7 +4920,7 @@ function LikedPostsTab({session,notify,onImageView}){
   const [likedPosts,setLikedPosts]=useState([]);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
-    sb.from("likes").select("post_id,posts(*,author:profiles(id,prenom,nom,badge,avatar_url))").eq("user_id",session?.user?.id).order("created_at",{ascending:false}).then(({data})=>{
+    sb.from("likes").select("post_id,posts(*,author:profiles(id,prenom,nom,badge,avatar_url))").eq("user_id",session?.user?.id).then(({data})=>{
       setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean));
       setLoading(false);
     });
@@ -5332,7 +5435,7 @@ if(data)setList(data.map(normProfile));
             }
             // Marquer comme distribué
             await sb.from("badge_pool").update({distributed:true}).eq("month",month);
-            notify(`✦ Distribution effectuée — ${Object.keys(counts).length} membres récompensés`);
+            notify(`✦ Distribution effectuée — ${Object.keys(scores).length} membres récompensés`);
           }} style={{width:"100%",padding:"11px",background:"rgba(61,184,116,0.08)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:12,color:"#4ade80",fontSize:13,fontWeight:600}}>
             💰 Distribuer le pool du mois
           </Btn>
@@ -5694,7 +5797,9 @@ if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{sb.from
   const seenPostIdsRef = useRef(new Set());
  const loadPosts=useCallback(async(page=1)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).order("created_at",{ascending:false}).range(from,to);
+  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+.or("visibility.is.null,visibility.in.(testing,growing,viral,background)")
+.not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
@@ -5711,23 +5816,25 @@ const visible=mapped.filter(p=>!blockedSet.has(p.by)).sort((a,b)=>{
     
   // ── ALGORITHME MIX PREMIUM SANS FILE INDIENNE ──
 const pinned=visible.filter(p=>p.pinned);
-const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge);
+const viral=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility==="viral");
+const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility!=="viral");
 const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
-
 const shuffle=arr=>[...arr].sort(()=>Math.random()-0.5);
+const viralShuffled=shuffle(viral);
 const badgeShuffled=shuffle(withBadge);
 const noBadgeShuffled=shuffle(noBadge);
-
-// Mix : 2 avec badge, 1 sans badge, en alternance
 const mixed=[...pinned];
-let bi=0,ni=0;
-while(bi<badgeShuffled.length||ni<noBadgeShuffled.length){
+let vi=0,bi=0,ni=0;
+while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
+  // 1 viral en premier si dispo
+  if(vi<viralShuffled.length){mixed.push(viralShuffled[vi++]);}
   // 2 avec badge
   if(bi<badgeShuffled.length){mixed.push(badgeShuffled[bi++]);}
   if(bi<badgeShuffled.length){mixed.push(badgeShuffled[bi++]);}
-  // 1 sans badge
+  // 1 sans badge (arrière-plan)
   if(ni<noBadgeShuffled.length){mixed.push(noBadgeShuffled[ni++]);}
 }
+
 
 if(page===1){
   seenPostIdsRef.current=new Set(mixed.map(p=>p.id));
@@ -5845,8 +5952,9 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   },[session?.user?.id,members]);
 
   const goTab=t=>{
-  if(t==="home"&&tab==="home"){loadPosts(1);feedScrollRef.current=0;}
-  setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
+ if(t==="home"&&tab==="home"){loadPosts(1);feedScrollRef.current=0;}
+if(t!=="home")feedScrollRef.current=document.querySelector("[data-feed-scroll]")?.scrollTop||feedScrollRef.current;
+setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
 };
   const unread=(convs||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
   const pending=(members||[]).filter(m=>m.status==="pending").length;
@@ -5951,7 +6059,9 @@ window.addEventListener("celeste_open_user",handleOpenUser);
             <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);setOpenUserId(uid);}}/>
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
-              {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={id=>{setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos}/>}
+              <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={id=>{setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos}/>
+</div>
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
