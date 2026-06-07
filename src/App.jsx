@@ -38,7 +38,7 @@ import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react";
 import { uploadToR2 } from "./uploadMedia";
-import Cropper from "react-easy-crop";
+
 
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -400,6 +400,12 @@ const setAppTheme=(mode)=>{
 };
 
 // ── UTILITAIRES ───────────────────────────────────────────
+const distKm=(lat1,lon1,lat2,lon2)=>{
+  if(!lat1||!lon1||!lat2||!lon2)return 99999;
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+};
 const ago   = ts => {
   const d = Date.now() - new Date(ts).getTime();
   if (d < 60000)    return "maintenant";
@@ -437,6 +443,12 @@ const renderTextWithMentions = (text, onMentionClick) => {
   });
 };
 const normProfile = p => ({
+  isOnline:p.last_seen?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
+country:p.country||null,
+  followersCount:p.followersCount||0,
+joined_at:p.joined_at||null,
+  latitude:p.latitude||null,
+longitude:p.longitude||null,
   id:p.id, name:`${p.prenom||""} ${(p.nom||"")[0]||""}.`.trim(),
   fullName:`${p.prenom||""} ${p.nom||""}`.trim(),
   initials:initials(p.prenom,p.nom), color:colorFor(p.id),
@@ -644,8 +656,7 @@ const COUNTRIES=[
   {code:"CF",flag:"🇨🇫",name:"Centrafrique",dial:"+236"},
   {code:"TD",flag:"🇹🇩",name:"Tchad",dial:"+235"},
   {code:"GQ",flag:"🇬🇶",name:"Guinée Équatoriale",dial:"+240"},
-  {code:"BI",flag:"🇧🇮",name:"Burundi",dial:"+257"},
-  {code:"RW",flag:"🇷🇼",name:"Rwanda",dial:"+250"},
+  {code:"AO",flag:"🇦🇴",name:"Angola",dial:"+244"},
   // Afrique de l'Ouest
   {code:"CI",flag:"🇨🇮",name:"Côte d'Ivoire",dial:"+225"},
   {code:"SN",flag:"🇸🇳",name:"Sénégal",dial:"+221"},
@@ -655,18 +666,26 @@ const COUNTRIES=[
   {code:"BJ",flag:"🇧🇯",name:"Bénin",dial:"+229"},
   {code:"TG",flag:"🇹🇬",name:"Togo",dial:"+228"},
   {code:"GN",flag:"🇬🇳",name:"Guinée",dial:"+224"},
-  {code:"GW",flag:"🇬🇼",name:"Guinée-Bissau",dial:"+245"},
   {code:"MR",flag:"🇲🇷",name:"Mauritanie",dial:"+222"},
+  {code:"SL",flag:"🇸🇱",name:"Sierra Leone",dial:"+232"},
+  {code:"GH",flag:"🇬🇭",name:"Ghana",dial:"+233"},
   // Afrique du Nord
   {code:"MA",flag:"🇲🇦",name:"Maroc",dial:"+212"},
   {code:"DZ",flag:"🇩🇿",name:"Algérie",dial:"+213"},
   {code:"TN",flag:"🇹🇳",name:"Tunisie",dial:"+216"},
+  {code:"LY",flag:"🇱🇾",name:"Libye",dial:"+218"},
   // Afrique de l'Est et Sud
   {code:"MG",flag:"🇲🇬",name:"Madagascar",dial:"+261"},
   {code:"DJ",flag:"🇩🇯",name:"Djibouti",dial:"+253"},
   {code:"KM",flag:"🇰🇲",name:"Comores",dial:"+269"},
-  {code:"SC",flag:"🇸🇨",name:"Seychelles",dial:"+248"},
+  {code:"RW",flag:"🇷🇼",name:"Rwanda",dial:"+250"},
+  {code:"BI",flag:"🇧🇮",name:"Burundi",dial:"+257"},
+  {code:"MZ",flag:"🇲🇿",name:"Mozambique",dial:"+258"},
+  // Îles et Océan Indien
   {code:"MU",flag:"🇲🇺",name:"Maurice",dial:"+230"},
+  {code:"SC",flag:"🇸🇨",name:"Seychelles",dial:"+248"},
+  {code:"CV",flag:"🇨🇻",name:"Cap-Vert",dial:"+238"},
+  {code:"ST",flag:"🇸🇹",name:"São Tomé-et-Príncipe",dial:"+239"},
   // Europe
   {code:"FR",flag:"🇫🇷",name:"France",dial:"+33"},
   {code:"BE",flag:"🇧🇪",name:"Belgique",dial:"+32"},
@@ -676,12 +695,13 @@ const COUNTRIES=[
   // Amérique
   {code:"CA",flag:"🇨🇦",name:"Canada",dial:"+1"},
   {code:"HT",flag:"🇭🇹",name:"Haïti",dial:"+509"},
+  {code:"GF",flag:"🇬🇫",name:"Guyane française",dial:"+594"},
+  {code:"MQ",flag:"🇲🇶",name:"Martinique",dial:"+596"},
+  {code:"GP",flag:"🇬🇵",name:"Guadeloupe",dial:"+590"},
   // Océanie
   {code:"NC",flag:"🇳🇨",name:"Nouvelle-Calédonie",dial:"+687"},
   {code:"PF",flag:"🇵🇫",name:"Polynésie Française",dial:"+689"},
-  // Autres
-  {code:"US",flag:"🇺🇸",name:"États-Unis",dial:"+1"},
-  {code:"GB",flag:"🇬🇧",name:"Royaume-Uni",dial:"+44"},
+  // Autre
   {code:"OTHER",flag:"🌍",name:"Autre",dial:"+"},
 ];
 function FlagSelector({selected,onChange}){
@@ -983,69 +1003,214 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick}){
   );
 });
 
+// ── VIDEO TRIM MODAL ──────────────────────────────────────
+function VideoTrimModal({videoSrc,onClose,onDone}){
+  const videoRef=useRef();
+  const [duration,setDuration]=useState(0);
+  const [start,setStart]=useState(0);
+  const [end,setEnd]=useState(0);
+  const [playing,setPlaying]=useState(false);
+  const [currentTime,setCurrentTime]=useState(0);
+  const MAX=60;
+
+  useEffect(()=>{
+    const v=videoRef.current;if(!v)return;
+    const onLoaded=()=>{const d=Math.min(v.duration,MAX);setDuration(v.duration);setEnd(d);};
+    v.addEventListener("loadedmetadata",onLoaded);
+    v.addEventListener("timeupdate",()=>setCurrentTime(v.currentTime));
+    return()=>v.removeEventListener("loadedmetadata",onLoaded);
+  },[]);
+
+  useEffect(()=>{
+    const v=videoRef.current;if(!v)return;
+    if(currentTime>=end){v.pause();v.currentTime=start;setPlaying(false);}
+  },[currentTime,end,start]);
+
+  const togglePlay=()=>{
+    const v=videoRef.current;
+    if(playing){v.pause();setPlaying(false);}
+    else{v.currentTime=start;v.play();setPlaying(true);}
+  };
+
+  const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"12px 20px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>Annuler</button>
+        <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Couper la vidéo</p>
+        <button onClick={()=>onDone({src:videoSrc,start,end})} style={{background:"none",border:"none",color:"#C9952A",fontSize:15,fontWeight:700,cursor:"pointer",padding:"4px 0"}}>Valider ✦</button>
+      </div>
+
+      <div style={{height:"45vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",position:"relative",flexShrink:0}}>
+        <video ref={videoRef} src={videoSrc} playsInline style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
+        <button onClick={togglePlay} style={{position:"absolute",width:56,height:56,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"2px solid rgba(255,255,255,0.3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:22}}>
+          {playing?"⏸":"▶"}
+        </button>
+      </div>
+
+      <div style={{background:"rgba(0,0,0,0.95)",padding:"20px 20px calc(20px + env(safe-area-inset-bottom,0px))",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Début : {fmt(start)}</span>
+          <span style={{fontSize:12,color:"#C9952A",fontWeight:700}}>Durée : {fmt(end-start)}</span>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Fin : {fmt(end)}</span>
+        </div>
+        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>DÉBUT</p>
+        <input type="range" min={0} max={duration} step={0.1} value={start}
+          onChange={e=>{const v=Number(e.target.value);if(v<end-1){setStart(v);videoRef.current.currentTime=v;}}}
+          style={{width:"100%",accentColor:"#C9952A",marginBottom:14}}/>
+        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>FIN</p>
+        <input type="range" min={0} max={Math.min(duration,MAX)} step={0.1} value={end}
+          onChange={e=>{const v=Number(e.target.value);if(v>start+1){setEnd(v);videoRef.current.currentTime=v;}}}
+          style={{width:"100%",accentColor:"#C9952A",marginBottom:12}}/>
+        <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>Maximum 60 secondes</p>
+      </div>
+    </div>
+  );
+}
+
 // ── IMAGE CROP MODAL ──────────────────────────────────────
 function ImageCropModal({imageSrc,onClose,onDone}){
-  const [crop,setCrop]=useState({x:0,y:0});
-  const [zoom,setZoom]=useState(1);
-  const [croppedAreaPixels,setCroppedAreaPixels]=useState(null);
-  const [aspect,setAspect]=useState(1);
+  const canvasRef=useRef();
+  const imgRef=useRef(new window.Image());
+  const stateRef=useRef({scale:1,offsetX:0,offsetY:0,dragging:false,lastX:0,lastY:0,pinchDist:0});
+  const [ready,setReady]=useState(false);
 
-  const getCroppedImg=async()=>{
-    const image=new window.Image();
-    image.src=imageSrc;
-    await new Promise(r=>{image.onload=r;});
+  useEffect(()=>{
+    const img=imgRef.current;
+    img.onload=()=>{
+      setReady(true);
+      setTimeout(()=>draw(),0);
+    };
+    img.src=imageSrc;
+  },[imageSrc]);
 
-    const canvas=document.createElement("canvas");
+  const draw=()=>{
+    const canvas=canvasRef.current;
+    if(!canvas)return;
     const ctx=canvas.getContext("2d");
-    canvas.width=croppedAreaPixels.width;
-    canvas.height=croppedAreaPixels.height;
-    ctx.drawImage(image,croppedAreaPixels.x,croppedAreaPixels.y,croppedAreaPixels.width,croppedAreaPixels.height,0,0,croppedAreaPixels.width,croppedAreaPixels.height);
-    return new Promise(resolve=>{
-      canvas.toBlob(blob=>{
-        resolve(new File([blob],"cropped.jpg",{type:"image/jpeg"}));
-      },"image/jpeg",0.92);
-    });
+    const img=imgRef.current;
+    const s=stateRef.current;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    ctx.translate(canvas.width/2+s.offsetX,canvas.height/2+s.offsetY);
+    ctx.scale(s.scale,s.scale);
+    ctx.drawImage(img,-img.width/2,-img.height/2);
+    ctx.restore();
+    // Overlay sombre autour du carré central
+    const size=Math.min(canvas.width,canvas.height)*0.85;
+    const ox=(canvas.width-size)/2;
+    const oy=(canvas.height-size)/2;
+    ctx.fillStyle="rgba(0,0,0,0.55)";
+    ctx.fillRect(0,0,canvas.width,oy);
+    ctx.fillRect(0,oy+size,canvas.width,canvas.height-(oy+size));
+    ctx.fillRect(0,oy,ox,size);
+    ctx.fillRect(ox+size,oy,canvas.width-(ox+size),size);
+    // Cadre doré
+    ctx.strokeStyle="rgba(201,149,42,0.8)";
+    ctx.lineWidth=1.5;
+    ctx.strokeRect(ox,oy,size,size);
+    // Grille 3x3
+    ctx.strokeStyle="rgba(255,255,255,0.2)";
+    ctx.lineWidth=0.5;
+    for(let i=1;i<3;i++){
+      ctx.beginPath();ctx.moveTo(ox+size*i/3,oy);ctx.lineTo(ox+size*i/3,oy+size);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(ox,oy+size*i/3);ctx.lineTo(ox+size,oy+size*i/3);ctx.stroke();
+    }
+  };
+
+  // Touch handlers
+  const onTouchStart=e=>{
+    const s=stateRef.current;
+    if(e.touches.length===1){
+      s.dragging=true;
+      s.lastX=e.touches[0].clientX;
+      s.lastY=e.touches[0].clientY;
+    } else if(e.touches.length===2){
+      s.dragging=false;
+      s.pinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    }
+  };
+  const onTouchMove=e=>{
+    e.preventDefault();
+    const s=stateRef.current;
+    if(e.touches.length===1&&s.dragging){
+      s.offsetX+=e.touches[0].clientX-s.lastX;
+      s.offsetY+=e.touches[0].clientY-s.lastY;
+      s.lastX=e.touches[0].clientX;
+      s.lastY=e.touches[0].clientY;
+      draw();
+    } else if(e.touches.length===2){
+      const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      s.scale=Math.max(0.5,Math.min(5,s.scale*(dist/s.pinchDist)));
+      s.pinchDist=dist;
+      draw();
+    }
+  };
+  const onTouchEnd=()=>{stateRef.current.dragging=false;};
+
+  // Mouse handlers (desktop)
+  const onMouseDown=e=>{const s=stateRef.current;s.dragging=true;s.lastX=e.clientX;s.lastY=e.clientY;};
+  const onMouseMove=e=>{
+    const s=stateRef.current;
+    if(!s.dragging)return;
+    s.offsetX+=e.clientX-s.lastX;s.offsetY+=e.clientY-s.lastY;
+    s.lastX=e.clientX;s.lastY=e.clientY;draw();
+  };
+  const onMouseUp=()=>{stateRef.current.dragging=false;};
+  const onWheel=e=>{
+    const s=stateRef.current;
+    s.scale=Math.max(0.5,Math.min(5,s.scale*(e.deltaY<0?1.1:0.9)));
+    draw();
+  };
+
+  const handleDone=()=>{
+    const canvas=canvasRef.current;
+    const size=Math.min(canvas.width,canvas.height)*0.85;
+    const ox=(canvas.width-size)/2;
+    const oy=(canvas.height-size)/2;
+    const out=document.createElement("canvas");
+    out.width=size;out.height=size;
+    out.getContext("2d").drawImage(canvas,ox,oy,size,size,0,0,size,size);
+    out.toBlob(blob=>{
+      onDone(new File([blob],"cropped.jpg",{type:"image/jpeg"}));
+    },"image/jpeg",0.92);
   };
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
       {/* Header */}
-      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.9)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <Btn onClick={onClose} style={{color:T.muted,display:"flex",alignItems:"center",gap:6}}><X size={20}/>Annuler</Btn>
-        <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>Recadrer</p>
-        <Btn onClick={async()=>{const file=await getCroppedImg();onDone(file);}} style={{color:T.goldL,fontWeight:700,fontSize:14}}>Valider ✦</Btn>
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:`1px solid rgba(255,255,255,0.08)`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
+          <X size={18}/>Annuler
+        </button>
+        <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Recadrer</p>
+        <button onClick={handleDone} style={{background:"none",border:"none",color:"#C9952A",fontSize:15,fontWeight:700,cursor:"pointer",padding:"4px 0"}}>
+          Valider ✦
+        </button>
       </div>
 
-      {/* Formats */}
-      <div style={{display:"flex",gap:8,padding:"10px 16px",background:"rgba(0,0,0,0.8)",flexShrink:0,justifyContent:"center"}}>
-        {[{label:"1:1",v:1},{label:"4:5",v:4/5},{label:"9:16",v:9/16},{label:"16:9",v:16/9},{label:"Libre",v:null}].map(a=>(
-          <Btn key={a.label} onClick={()=>setAspect(a.v)}
-            style={{padding:"6px 14px",borderRadius:20,background:aspect===a.v?T.goldBg:"rgba(255,255,255,0.06)",border:`1px solid ${aspect===a.v?T.gold:T.border}`,color:aspect===a.v?T.goldL:T.muted,fontSize:12,fontWeight:600}}>
-            {a.label}
-          </Btn>
-        ))}
-      </div>
-
-      {/* Zone crop */}
-      <div style={{flex:1,position:"relative"}}>
-        <Cropper
-          image={imageSrc}
-          crop={crop}
-          zoom={zoom}
-          aspect={aspect||undefined}
-          onCropChange={setCrop}
-          onZoomChange={setZoom}
-          onCropComplete={(_,pixels)=>setCroppedAreaPixels(pixels)}
-          style={{containerStyle:{background:"#000"}}}
+      {/* Canvas */}
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+        <canvas
+          ref={el=>{canvasRef.current=el;if(el&&ready){el.width=el.offsetWidth;el.height=el.offsetHeight;draw();}}}
+          style={{width:"100%",height:"100%",touchAction:"none",cursor:"grab"}}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+          onWheel={onWheel}
         />
       </div>
 
-      {/* Zoom */}
-      <div style={{padding:"12px 24px",paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.9)",flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:12,color:T.muted}}>−</span>
-        <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={e=>setZoom(Number(e.target.value))}
-          style={{flex:1,accentColor:T.gold}}/>
-        <span style={{fontSize:12,color:T.muted}}>+</span>
+      {/* Hint */}
+      <div style={{padding:"10px 0 calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",textAlign:"center"}}>
+        <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>
+          Glisse · Pince pour zoomer
+        </p>
       </div>
     </div>
   );
@@ -1234,7 +1399,12 @@ if(data.user){onSuccess?.("pending");}
   <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(p=>p.replace(/^\+\d+\s*/,"")&&p||dial+" ");}}/>
   <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="Numéro *" type="tel"/></div>
 </div>
-                    <AuthField val={whatsapp} set={setWhatsapp} placeholder="WhatsApp (si différent)"/>
+                    <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"4px 8px"}}>
+  <select value={country} onChange={e=>setCountry(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,outline:"none",flexShrink:0}}>
+    {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
+  </select>
+  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
+</div>
                   </>
                 ):(
                   <>
@@ -1255,7 +1425,12 @@ if(data.user){onSuccess?.("pending");}
   <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(dial+" ");}}/>
   <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="Numéro *" type="tel"/></div>
 </div>
-<AuthField val={whatsapp} set={setWhatsapp} placeholder="WhatsApp (si différent)"/>
+<div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"4px 8px"}}>
+  <select value={country} onChange={e=>setCountry(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,outline:"none",flexShrink:0}}>
+    {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
+  </select>
+  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
+</div>
                   </>
                 )}
               </>
@@ -1933,6 +2108,10 @@ const [evTitle,setEvTitle]=useState("");
 const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
 const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
+const [videoTrimSrc,setVideoTrimSrc]=useState(null);
+const [isForSale,setIsForSale]=useState(false);
+const [whatsappNum,setWhatsappNum]=useState("");
+const [whatsappIndicatif,setWhatsappIndicatif]=useState("242");
 const fRef=useRef();
 
   const cropImage=src=>new Promise(resolve=>{
@@ -1946,13 +2125,25 @@ const handlePick=async e=>{
     for(const f of files){
       let file=f;
       if(f.type.startsWith("image/")){
-        // Proposer le crop
         const reader=new FileReader();
         const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
         const croppedFile=await cropImage(src);
         file=croppedFile||await compressImage(f);
       }
       if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo max 50MB");continue;}
+      if(f.type.startsWith("video/")){
+        const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+        const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
+        setVideoTrimSrc(null);
+        if(!trimData)continue;
+        setPreviews(p=>[...p,{url:trimData.src,type:"video"}]);
+        setType("photo");
+        setUploading(true);
+        try{const publicUrl=await uploadToR2(f,"posts");setMediaUrls(p=>[...p,publicUrl]);}
+        catch(err){console.error(err);}
+        finally{setUploading(false);}
+        continue;
+      }
       const r=new FileReader();
       r.onload=ev=>setPreviews(p=>[...p,{url:ev.target.result,type:f.type.startsWith("video/")?"video":"image"}]);setType("photo");
       r.readAsDataURL(file);
@@ -1977,11 +2168,10 @@ try {
 
   const submit=async()=>{
     if(busy)return;
-    // ── LIMITE FREEMIUM ──
     const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session?.user?.id);
     const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
     if(!hasBadge&&count>=50){
-      notify("🔒 Limite de 50 posts atteinte — Obtenez le badge certifié pour publier en illimité ✦ ou supprimer vos anciens posts pour libérer de l'espace");
+      notify("🔒 Limite de 50 posts atteinte — Obtenez le badge certifié pour publier en illimité ✦");
       return;
     }
     setBusy(true);
@@ -1993,15 +2183,25 @@ try {
       event_title:type==="event"?evTitle.trim():null,
       event_date:type==="event"?evDate:null,
       event_loc:type==="event"?evLoc:null,
-      text_background:textBg||null
+      text_background:textBg||null,
+      is_for_sale:isForSale||false,
+whatsapp_contact:isForSale?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
+expires_at:isForSale?(new Date(Date.now()+35*24*60*60*1000).toISOString()):null
     });
     setBusy(false); if(!error)onPost();
   };
 
-  const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:evTitle.trim().length>0;
+  const canSell=true;
+const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:evTitle.trim().length>0;
 
   return(
     <>
+{videoTrimSrc&&<VideoTrimModal
+  videoSrc={videoTrimSrc.src}
+  onClose={()=>{setVideoTrimSrc(null);videoTrimSrc.resolve(null);}}
+  onDone={data=>{videoTrimSrc.resolve(data);}}
+/>}
+
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
@@ -2009,137 +2209,157 @@ try {
     onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
-    <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
-      onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,padding:"22px 20px 44px",maxHeight:"92vh",overflowY:"auto",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
+    <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
-        {/* input fichier — multiple */}
-        <input ref={fRef} type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={handlePick}/>
+      <input ref={fRef} type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={handlePick}/>
 
-        {/* Header */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <Av u={myProfile} size={40}/>
-            <div>
-              <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{myProfile?.fullName}</p>
-              <p style={{margin:0,fontSize:11,color:T.muted}}>⛪ {myProfile?.paroisse}</p>
-            </div>
+      {/* ── Header ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"52px 20px 16px",borderBottom:`1px solid ${T.border}`}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:T.text,fontSize:15,fontWeight:500,cursor:"pointer",padding:"8px 4px",letterSpacing:.2}}>
+          Annuler
+        </button>
+        <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:T.text,letterSpacing:2,fontWeight:600}}>
+          Nouveau post
+        </span>
+        <button onClick={submit} disabled={!ok||busy||uploading}
+          style={{background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,padding:"8px 18px",color:ok&&!busy&&!uploading?"#000":T.muted,fontSize:14,fontWeight:700,cursor:ok&&!busy&&!uploading?"pointer":"default",transition:"all .2s",boxShadow:ok&&!busy&&!uploading?"0 4px 16px rgba(201,149,42,0.3)":"none"}}>
+          {busy?"…":uploading?"↑":"Publier"}
+        </button>
+      </div>
+
+      {/* ── Corps scrollable ── */}
+      <div style={{flex:1,overflowY:"auto",padding:"20px 20px 0"}}>
+
+        {/* Avatar + ligne + texte */}
+        <div style={{display:"flex",gap:14}}>
+          {/* Colonne gauche : avatar + ligne */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+            <Av u={myProfile} size={42}/>
+            <div style={{width:2,flex:1,background:`linear-gradient(180deg,${T.border} 0%,transparent 100%)`,marginTop:8,minHeight:40}}/>
           </div>
-          <Btn onClick={onClose} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}><X size={16}/></Btn>
-        </div>
+          {/* Colonne droite : nom + texte + médias */}
+          <div style={{flex:1,minWidth:0,paddingBottom:20}}>
+            <p style={{margin:"0 0 6px",fontSize:15,fontWeight:700,color:T.text}}>{myProfile?.fullName}</p>
 
-        {/* Tabs type */}
-        <div style={{display:"flex",gap:6,marginBottom:16,background:"rgba(255,255,255,0.03)",borderRadius:14,padding:4}}>
-          {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Média"},{id:"event",l:"🗓 Événement"}].map(t=>(
-            <Btn key={t.id} onClick={()=>setType(t.id)} style={{flex:1,padding:"9px 4px",borderRadius:11,background:type===t.id?T.goldBg:"none",color:type===t.id?T.goldL:T.muted,fontSize:11,fontWeight:type===t.id?700:400,border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent",transition:"all .2s"}}>
-              {t.l}
-            </Btn>
-          ))}
-        </div>
+            {/* Zone texte */}
+            <textarea value={text} onChange={e=>setText(e.target.value)}
+              placeholder="Quoi de neuf ?"
+              autoFocus
+              rows={4}
+              style={{width:"100%",background:"transparent",border:"none",color:T.text,fontSize:16,outline:"none",resize:"none",lineHeight:1.7,fontFamily:"inherit",padding:0,
+                ...(textBg?{background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg],borderRadius:14,padding:"12px",color:"#fff",fontSize:18,fontWeight:700,textAlign:"center"}:{})
+              }}/>
 
-        {/* Zone média avec carousel */}
-        {type==="photo"&&(
-          previews.length>0
-            ?<div style={{position:"relative",marginBottom:12}}>
-              {/* Carousel */}
-              <div style={{position:"relative",borderRadius:16,overflow:"hidden",background:"#000"}}>
-                {previews[carouselIdx]?.type==="video"
-                  ?<video src={previews[carouselIdx].url} controls playsInline style={{width:"100%",maxHeight:280,objectFit:"contain",display:"block"}}/>
-                  :<img src={previews[carouselIdx].url} alt="" style={{width:"100%",maxHeight:280,objectFit:"cover",display:"block",borderRadius:16}}/>
-                }
-
-                {/* Overlay upload */}
-                {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
-                  <div style={{width:32,height:32,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
-                  <span style={{color:T.goldL,fontSize:12}}>Upload en cours…</span>
-                </div>}
-
-                {/* Bouton supprimer ce média */}
-                <Btn onClick={()=>removeMedia(carouselIdx)} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14}/></Btn>
-
-                {/* Flèches navigation */}
-                {previews.length>1&&carouselIdx>0&&(
-                  <Btn onClick={()=>setCarouselIdx(i=>i-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:32,height:32,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <ChevronLeft size={16}/>
-                  </Btn>
-                )}
-                {previews.length>1&&carouselIdx<previews.length-1&&(
-                  <Btn onClick={()=>setCarouselIdx(i=>i+1)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:32,height:32,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <ChevronRight size={16}/>
-                  </Btn>
-                )}
-
-                {/* Indicateur points */}
-                {previews.length>1&&(
-                  <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
-                    {previews.map((_,i)=>(
-                      <div key={i} onClick={()=>setCarouselIdx(i)} style={{width:i===carouselIdx?16:6,height:6,borderRadius:3,background:i===carouselIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>
-                    ))}
-                  </div>
-                )}
+            {/* Option vente (badge doré + Congo uniquement) */}
+            {canSell&&(
+              <div onClick={()=>setIsForSale(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
+                <span style={{fontSize:12,color:isForSale?T.goldL:T.muted}}>🛒</span>
+                <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article à vendre</span>
+                <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:2,left:isForSale?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+                </div>
               </div>
-
-              {/* Miniatures + bouton ajouter */}
-              <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4}}>
-                {previews.map((p,i)=>(
-                  <div key={i} onClick={()=>setCarouselIdx(i)} style={{flexShrink:0,width:52,height:52,borderRadius:10,overflow:"hidden",border:`2px solid ${i===carouselIdx?T.gold:T.border}`,cursor:"pointer",transition:"border .2s"}}>
-                    {p.type==="video"
-                      ?<div style={{width:"100%",height:"100%",background:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🎬</div>
-                      :<img src={p.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                    }
-                  </div>
+            )}
+            {isForSale&&(
+              <div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)"}}>
+                <select value={whatsappIndicatif} onChange={e=>setWhatsappIndicatif(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,flexShrink:0,outline:"none"}}>
+                  <option value="242">🇨🇬 +242</option>
+                  <option value="237">🇨🇲 +237</option>
+                  <option value="241">🇬🇦 +241</option>
+                  <option value="235">🇹🇩 +235</option>
+                  <option value="236">🇨🇫 +236</option>
+                  <option value="240">🇬🇶 +240</option>
+                </select>
+                <input value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="Numéro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+              </div>
+            )}
+            {/* Sélecteur fond (texte) */}
+            {type==="text"&&(
+              <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center"}}>
+                <span style={{fontSize:10,color:T.muted,letterSpacing:1}}>FOND</span>
+                {[
+                  {id:null,bg:"transparent",border:T.border},
+                  {id:"bg_noir",bg:"#000000"},{id:"bg_bleu",bg:"#1565C0"},
+                  {id:"bg_vert",bg:"#1B5E20"},{id:"bg_rouge",bg:"#B71C1C"},
+                  {id:"bg_or",bg:"#7B5A00"},{id:"bg_violet",bg:"#4A148C"},
+                ].map(c=>(
+                  <div key={c.id||"none"} onClick={()=>setTextBg(c.id)}
+                    style={{width:24,height:24,borderRadius:"50%",background:c.bg||"transparent",border:`2px solid ${textBg===c.id?T.goldL:(c.border||"rgba(255,255,255,0.2)")}`,cursor:"pointer",transition:"border .2s"}}/>
                 ))}
-                {previews.length<10&&(
-                  <Btn onClick={()=>fRef.current.click()} style={{flexShrink:0,width:52,height:52,borderRadius:10,border:`2px dashed ${T.gold}44`,background:T.goldBg,color:T.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>+</Btn>
-                )}
               </div>
-              <p style={{margin:"4px 0 0",fontSize:10,color:T.muted,textAlign:"right"}}>{previews.length}/10 médias</p>
-            </div>
+            )}
 
-            :<Btn onClick={()=>fRef.current.click()} style={{width:"100%",height:140,borderRadius:16,border:`2px dashed ${T.gold}33`,background:T.goldBg,color:T.gold,fontSize:13,fontWeight:600,marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,transition:"all .2s"}}>
-              <Camera size={32}/><span>Photos ou Vidéos (max 10)</span>
-            </Btn>
-        )}
+            {/* Zone média carousel */}
+            {type==="photo"&&previews.length>0&&(
+              <div style={{position:"relative",marginTop:12}}>
+                <div style={{position:"relative",borderRadius:16,overflow:"hidden",background:"#000"}}>
+                  {previews[carouselIdx]?.type==="video"
+                    ?<video src={previews[carouselIdx].url} controls playsInline style={{width:"100%",maxHeight:300,objectFit:"contain",display:"block"}}/>
+                    :<img src={previews[carouselIdx].url} alt="" style={{width:"100%",maxHeight:300,objectFit:"cover",display:"block",borderRadius:16}}/>
+                  }
+                  {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
+                    <div style={{width:28,height:28,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+                    <span style={{color:T.goldL,fontSize:11}}>Upload…</span>
+                  </div>}
+                  <button onClick={()=>removeMedia(carouselIdx)} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"none",cursor:"pointer"}}><X size={13}/></button>
+                  {previews.length>1&&carouselIdx>0&&(
+                    <button onClick={()=>setCarouselIdx(i=>i-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"none",cursor:"pointer"}}><ChevronLeft size={15}/></button>
+                  )}
+                  {previews.length>1&&carouselIdx<previews.length-1&&(
+                    <button onClick={()=>setCarouselIdx(i=>i+1)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"none",cursor:"pointer"}}><ChevronRight size={15}/></button>
+                  )}
+                  {previews.length>1&&(
+                    <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+                      {previews.map((_,i)=>(
+                        <div key={i} onClick={()=>setCarouselIdx(i)} style={{width:i===carouselIdx?14:5,height:5,borderRadius:3,background:i===carouselIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4}}>
+                  {previews.map((p,i)=>(
+                    <div key={i} onClick={()=>setCarouselIdx(i)} style={{flexShrink:0,width:48,height:48,borderRadius:10,overflow:"hidden",border:`2px solid ${i===carouselIdx?T.gold:T.border}`,cursor:"pointer"}}>
+                      {p.type==="video"?<div style={{width:"100%",height:"100%",background:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🎬</div>
+                        :<img src={p.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                    </div>
+                  ))}
+                  {previews.length<10&&(
+                    <button onClick={()=>fRef.current.click()} style={{flexShrink:0,width:48,height:48,borderRadius:10,border:`2px dashed ${T.gold}44`,background:T.goldBg,color:T.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,cursor:"pointer"}}>+</button>
+                  )}
+                </div>
+              </div>
+            )}
 
-        {/* Événement */}
-        {type==="event"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-            <input value={evTitle} onChange={e=>setEvTitle(e.target.value)} placeholder="Titre de l'événement *" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
-            <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
-            <input value={evLoc} onChange={e=>setEvLoc(e.target.value)} placeholder="📍 Lieu" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+            {/* Événement */}
+            {type==="event"&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
+                <input value={evTitle} onChange={e=>setEvTitle(e.target.value)} placeholder="Titre de l'événement *" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+                <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
+                <input value={evLoc} onChange={e=>setEvLoc(e.target.value)} placeholder="📍 Lieu" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+              </div>
+            )}
           </div>
-        )}
-
-        {/* Sélecteur couleur fond — texte uniquement */}
-{type==="text"&&(
-  <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
-    <span style={{fontSize:11,color:T.muted}}>Fond :</span>
-    {[
-      {id:null,bg:"transparent",border:T.border,label:"Aucun"},
-      {id:"bg_noir",bg:"#000000",label:"⬛"},
-      {id:"bg_bleu",bg:"#1565C0",label:"🟦"},
-      {id:"bg_vert",bg:"#1B5E20",label:"🟩"},
-      {id:"bg_rouge",bg:"#B71C1C",label:"🟥"},
-      {id:"bg_or",bg:"#7B5A00",label:"🟨"},
-      {id:"bg_violet",bg:"#4A148C",label:"🟪"},
-    ].map(c=>(
-      <div key={c.id||"none"} onClick={()=>setTextBg(c.id)}
-        style={{width:28,height:28,borderRadius:"50%",background:c.bg,border:`2px solid ${textBg===c.id?T.goldL:T.border}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,transition:"border .2s"}}/>
-    ))}
-  </div>
-)}
-{/* Texte */}
-<textarea value={text} onChange={e=>setText(e.target.value)}
-  placeholder={type==="photo"?"Description de l'événement…":"Partagez quelque chose…"}
-  rows={type==="photo"?2:4}
-  style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?20:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:12,transition:"all .3s"}}/>
-        {/* Boutons */}
-        <div style={{display:"flex",gap:8}}>
-          <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
-          <Btn onClick={submit} disabled={!ok||busy||uploading} style={{flex:2,padding:"14px",background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.04)",color:ok&&!busy&&!uploading?"#000":T.muted,borderRadius:14,fontSize:14,fontWeight:700,transition:"all .25s",boxShadow:ok&&!busy&&!uploading?"0 8px 24px rgba(201,149,42,0.3)":"none"}}>
-            {busy?"Publication…":uploading?"Upload…":`Publier ✦ ${type==="photo"&&mediaUrls.length>0?`(${mediaUrls.length} média${mediaUrls.length>1?"s":""})`:""}`}
-          </Btn>
         </div>
+      </div>
+
+      {/* ── Barre d'outils en bas ── */}
+      <div style={{borderTop:`1px solid ${T.border}`,padding:"12px 20px 36px",display:"flex",alignItems:"center",gap:20}}>
+        <button onClick={()=>{setType("photo");setTextBg(null);fRef.current.click();}} style={{background:"none",border:"none",cursor:"pointer",color:type==="photo"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+          <Image size={22}/>
+          <span style={{fontSize:9,letterSpacing:.5}}>Photo</span>
+        </button>
+        <button onClick={()=>{setType("photo");setTextBg(null);fRef.current.click();}} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0}}>
+          <Play size={22}/>
+          <span style={{fontSize:9,letterSpacing:.5}}>Vidéo</span>
+        </button>
+        <button onClick={()=>{setType("event");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="event"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+          <span style={{fontSize:18}}>🗓</span>
+          <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
+        </button>
+        <button onClick={()=>setType("text")} style={{background:"none",border:"none",cursor:"pointer",color:type==="text"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+          <span style={{fontSize:18}}>✍</span>
+          <span style={{fontSize:9,letterSpacing:.5}}>Texte</span>
+        </button>
       </div>
     </div>
   </>
@@ -2521,8 +2741,9 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
     const me=(data||[]).filter(s=>s.user_id===session?.user?.id);
     setMyStatuses(me);
     const blockedSet=new Set(blockedUserIds);
+    const followingSet=new Set((myConnections||[]));
     const map=new Map();
-    (data||[]).filter(s=>s.user_id!==session?.user?.id&&!blockedSet.has(s.user_id)).forEach(s=>{
+    (data||[]).filter(s=>s.user_id!==session?.user?.id&&!blockedSet.has(s.user_id)&&followingSet.has(s.user_id)).forEach(s=>{
       const key=s.user_id;
       if(!map.has(key))map.set(key,{author:s.author?normProfile(s.author):null,statuses:[]});
      const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null};
@@ -2628,9 +2849,9 @@ useEffect(()=>{
   );
 }
 
-// ── DISCOVER TAB ──────────────────────────────────────────
-function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onConnectionChange}){
+function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange}){
   const [q,setQ]=useState("");
+  const [filter,setFilter]=useState("tous");
 
   const toggle=async id=>{
     if((myConnections||[]).includes(id)){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",id);notify("Connexion retirée");}
@@ -2638,51 +2859,74 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,onCo
     onConnectionChange();
   };
 
- const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(m.name.toLowerCase().includes(q.toLowerCase())||(m.paroisse||"").toLowerCase().includes(q.toLowerCase())));
+  const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(m.name.toLowerCase().includes(q.toLowerCase())||(m.paroisse||"").toLowerCase().includes(q.toLowerCase())));
+
+  const filtered=filter==="populaires"?[...active].sort((a,b)=>(b.followersCount||0)-(a.followersCount||0)):filter==="recents"?[...active].sort((a,b)=>new Date(b.joined_at||0)-new Date(a.joined_at||0)):filter==="proximite"?[...active].sort((a,b)=>distKm(myProfile?.latitude,myProfile?.longitude,a.latitude,a.longitude)-distKm(myProfile?.latitude,myProfile?.longitude,b.latitude,b.longitude)):filter==="abonnes"?(myFollowers||[]).length===0?[]:[...active].filter(m=>(myFollowers||[]).includes(m.id)):filter==="abonnements"?(myConnections||[]).length===0?[]:[...active].filter(m=>(myConnections||[]).includes(m.id)):active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",gap:12,alignItems:"center"}}>
-        <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text,whiteSpace:"nowrap"}}>Découvrir</h2>
-        <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
-          <Search size={14} color={T.muted}/>
-         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
-          {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex",alignItems:"center"}}><X size={14}/></Btn>}
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Découvrir</h2>
+          <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
+            <Search size={14} color={T.muted}/>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+            {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex",alignItems:"center"}}><X size={14}/></Btn>}
+          </div>
+          <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+          </div>
+        </div>
+        {/* Filtres */}
+        <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
+          {[{k:"tous",l:"Tous"},{k:"populaires",l:"Populaires"},{k:"recents",l:"Récents"},{k:"proximite",l:"À proximité"},{k:"abonnes",l:"Abonnés"},{k:"abonnements",l:"Abonnements"}].map(f=>(
+            <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 18px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:filter===f.k?"transparent":"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
+              {f.l}
+            </button>
+          ))}
         </div>
       </div>
-      <div style={{maxWidth:640,margin:"0 auto",padding:"12px 16px 80px"}}>
-        {active.length===0&&(
-          <div style={{textAlign:"center",padding:"60px 0",color:T.muted}}>
-            <div style={{fontSize:40,marginBottom:12,animation:"float 3s ease infinite"}}>✦</div>
+
+      {/* Grille */}
+      <div style={{padding:"12px 12px 80px",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+        {filtered.length===0&&(
+          <div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:T.muted}}>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun résultat</p>
           </div>
         )}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {active.map((u,i)=>{
-            const conn=(myConnections||[]).includes(u.id);
-            return(
-              <div key={u.id} style={{background:T.card,borderRadius:20,overflow:"hidden",border:`1px solid ${T.border}`,animation:`fadeUp .4s ease ${i*.05}s both`,boxShadow:T.shadowCard,transition:"all .25s",cursor:"pointer"}}
-  onClick={()=>onUser(u.id)}>
-  <div style={{height:72,background:`linear-gradient(135deg,${u.color}33,${u.color}11)`,position:"relative"}}>
-    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.08,fontSize:44,fontFamily:"'Cormorant Garamond',serif",color:u.color}}>✦</div>
-  </div>
-  <div style={{padding:"0 12px 14px",marginTop:-30}}>
-    <Av u={u} size={58}/>
-    <div style={{marginTop:8}}>
-      <p style={{margin:0,padding:0,fontSize:13,fontWeight:600,color:T.text,textAlign:"left"}}>{u.name}</p>
-      <p style={{margin:"2px 0 6px",fontSize:11,color:T.muted}}>📍 {u.paroisse}</p>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <Badge type={u.badge}/>
-        <Btn onClick={e=>{e.stopPropagation();toggle(u.id);}} style={{width:34,height:34,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?13:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",transition:"all .25s",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.3)"}}>
-          {conn?"✦":"+"}
-        </Btn>
-      </div>
-    </div>
-  </div>
-</div>
-            );
-          })}
-        </div>
+        {filtered.map((u,i)=>{
+          const conn=(myConnections||[]).includes(u.id);
+          return(
+            <div key={u.id} style={{position:"relative",borderRadius:18,overflow:"hidden",aspectRatio:"3/4",cursor:"pointer",animation:`fadeUp .4s ease ${i*.04}s both`}}
+              onClick={()=>onUser(u.id)}>
+              {/* Photo de fond */}
+              {u.avatar_url
+                ?<img src={u.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}}/>
+                :<div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${u.color||T.goldD}44,${T.navy}88)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:T.gold,opacity:.5}}>✦</span>
+                </div>
+              }
+              {/* Gradient bas */}
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 40%,rgba(0,0,0,0.85))"}}/>
+              {/* Point online */}
+              <div style={{position:"absolute",top:8,right:8,width:10,height:10,borderRadius:"50%",background:u.isOnline?"#22c55e":"rgba(255,255,255,0.2)",border:"2px solid #000",boxShadow:u.isOnline?"0 0 6px rgba(34,197,94,0.6)":"none"}}/>
+              {/* Infos bas */}
+              <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"8px 10px",display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
+                <div style={{minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"nowrap"}}>
+                    <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</p>
+                    <Badge type={u.badge}/>
+                  </div>
+                  <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {u.paroisse||"Congo"}</p>
+                </div>
+                <Btn onClick={e=>{e.stopPropagation();toggle(u.id);}} style={{width:30,height:30,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?11:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.4)",transition:"all .25s"}}>
+                  {conn?"✦":"+"}
+                </Btn>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2725,8 +2969,25 @@ useEffect(()=>{
     const uid=session?.user?.id;
     const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
     try{
-      if(liked){await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);}
-      else{await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}
+      if(liked){
+        await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);
+        await sb.from("valid_likes").delete().eq("post_id",pid).eq("liker_id",uid);
+      }else{
+        await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+        // Vérifier si le post a moins de 24h
+        const postAge=Date.now()-post.ts;
+        const isValid=postAge<86400000; // 24h en ms
+        const authorHasBadge=post.author?.badge==="confirmed"||post.author?.badge==="friend";
+        if(isValid&&authorHasBadge&&post.by!==uid){
+          const month=new Date().toISOString().slice(0,7);
+          await sb.from("valid_likes").upsert({
+            post_id:pid,
+            liker_id:uid,
+            author_id:post.by,
+            month
+          },{onConflict:"post_id,liker_id",ignoreDuplicates:true});
+        }
+      }
       refreshPost(pid);
     }catch(e){console.warn("toggleLike error:",e);}
   };
@@ -2823,8 +3084,9 @@ useEffect(()=>{
 
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
-  const [saved,setSaved]=useState(false);
+  const [savesCount,setSavesCount]=useState(post.savesCount||0);
   const [showMenu,setShowMenu]=useState(false);
+const [saved,setSaved]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
   const swipeStartRef=useRef(null);
   const liked=(post.likes||[]).includes(session?.user?.id);
@@ -2848,8 +3110,8 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
 
   const handleSave=async()=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle();
-    if(ex){await sb.from("saved_posts").delete().eq("post_id",post.id).eq("user_id",session?.user?.id);setSaved(false);notify("Retiré des sauvegardes");}
-    else{await sb.from("saved_posts").insert({post_id:post.id,user_id:session?.user?.id});setSaved(true);notify("Sauvegardé ✦");}
+   if(ex){await sb.from("saved_posts").delete().eq("post_id",post.id).eq("user_id",session?.user?.id);setSaved(false);setSavesCount(c=>Math.max(0,c-1));notify("Retiré des sauvegardes");}
+      else{await sb.from("saved_posts").insert({post_id:post.id,user_id:session?.user?.id});setSaved(true);setSavesCount(c=>c+1);notify("Sauvegardé ✦");}
   };
 
  const handleDelete=async()=>{
@@ -2962,7 +3224,20 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
 })()}
             </>
           }
-
+{/* Bouton WhatsApp vente */}
+          {post.is_for_sale&&post.whatsapp_contact&&(
+            <a href={`https://wa.me/${post.whatsapp_contact.replace(/\D/g,"")}`} target="_blank" rel="noreferrer"
+              onClick={e=>e.stopPropagation()}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",background:"#25D366",borderRadius:14,color:"#fff",fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8,boxShadow:"0 4px 16px rgba(37,211,102,0.3)"}}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              Discuter sur WhatsApp
+            </a>
+          )}
+{post.is_for_sale&&post.expires_at&&(
+  <p style={{margin:"0 0 6px",fontSize:11,color:T.muted}}>
+    🕐 Expire le {new Date(post.expires_at).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}
+  </p>
+)}
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
             <Btn onClick={onLike} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
@@ -2980,8 +3255,9 @@ function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onI
   </div>
 )}
             <div style={{flex:1}}/>
-            <Btn onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.muted,transition:"all .2s"}}>
+            <Btn onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.muted,transition:"all .2s",display:"flex",alignItems:"center",gap:4}}>
               <Bookmark size={16} fill={saved?"currentColor":"none"}/>
+              {savesCount>0&&<span style={{fontSize:12}}>{savesCount}</span>}
             </Btn>
           </div>
         </div>
@@ -3013,7 +3289,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
@@ -3078,48 +3354,141 @@ return(
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,members,getM,onOpen,onDeleteConv,onOpenCeleste}){
-  const sorted=useMemo(()=>[...(convs||[])].sort((a,b)=>(b.msgs[b.msgs.length-1]?.ts||0)-(a.msgs[a.msgs.length-1]?.ts||0)),[convs]);
+function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste}){
+  const [q,setQ]=useState("");
+  const [filter,setFilter]=useState("tous");
+  const [favorites,setFavorites]=useState(()=>{try{return JSON.parse(localStorage.getItem("celeste_favs")||"[]");}catch{return[];}});
+const [pinned,setPinned]=useState(()=>{try{return JSON.parse(localStorage.getItem("celeste_pins")||"[]");}catch{return[];}});
+const [menuConvId,setMenuConvId]=useState(null);
+const pressTimer=useRef(null);
+
+  const toggleFav=id=>{const next=favorites.includes(id)?favorites.filter(f=>f!==id):[...favorites,id];setFavorites(next);localStorage.setItem("celeste_favs",JSON.stringify(next));};
+const togglePin=id=>{const next=pinned.includes(id)?pinned.filter(p=>p!==id):[...pinned,id];setPinned(next);localStorage.setItem("celeste_pins",JSON.stringify(next));};
+const openMenu=id=>{setMenuConvId(id);};
+
+  const sorted=useMemo(()=>[...(convs||[])].sort((a,b)=>{
+  const aPin=pinned.includes(a.id)?1:0,bPin=pinned.includes(b.id)?1:0;
+  if(bPin!==aPin)return bPin-aPin;
+  return(b.msgs[b.msgs.length-1]?.ts||0)-(a.msgs[a.msgs.length-1]?.ts||0);
+}),[convs,pinned]);
+
+  const filtered=sorted.filter(c=>{
+    const u=getM(c.uid);
+    const name=(u?.name||"").toLowerCase();
+    if(q&&!name.includes(q.toLowerCase()))return false;
+    if(filter==="nonlus")return(c.msgs||[]).some(m=>m.f!=="me"&&!m.read);
+    if(filter==="favoris")return favorites.includes(c.id);
+    return true;
+  });
+
+  const fmtTime=ts=>{
+    if(!ts)return"";
+    const d=new Date(ts),now=new Date();
+    const diff=now-d;
+    if(diff<86400000)return d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+    if(diff<172800000)return"Hier";
+    return d.toLocaleDateString("fr-FR",{weekday:"short"}).replace(".","");
+  };
+
   return(
-    <div style={{flex:1,overflowY:"auto",background:T.bg}}>
+    <div style={{flex:1,overflowY:"auto",background:T.bg,position:"relative"}}>
       <InstallBanner/>
-      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
-        <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Messages</h2>
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text,flex:1}}>Messages <span style={{fontSize:18}}>✦</span></h2>
+          <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+          </div>
+        </div>
+        {/* Recherche */}
+        <div style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+          <Search size={14} color={T.muted}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un message…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+          {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
+        </div>
+        {/* Filtres */}
+        <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
+          {[{k:"tous",l:"💬 Tous"},{k:"nonlus",l:"🔵 Non lus"},{k:"favoris",l:"⭐ Favoris"}].map(f=>(
+            <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
+              {f.l}
+              {f.k==="nonlus"&&sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Liste conversations */}
       <div style={{maxWidth:640,margin:"0 auto",padding:"8px 0 80px"}}>
-        {sorted.length===0&&(
+        {filtered.length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
             <div style={{marginBottom:16,display:"flex",justifyContent:"center",opacity:.3}}><Mail size={48}/></div>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune conversation</p>
-            <p style={{fontSize:13,color:T.muted,marginTop:8}}>Connectez-vous avec d'autres membres</p>
+            <p style={{fontSize:13,marginTop:8}}>Connectez-vous avec d'autres membres</p>
+
           </div>
         )}
-        {sorted.map(c=>{
-          const u=getM(c.uid); const last=c.msgs[c.msgs.length-1];
+        {filtered.map(c=>{
+          const u=getM(c.uid);
+          const last=c.msgs[c.msgs.length-1];
           const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
-          const prev=!last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.type==="voice"?"🎤 Message vocal":last.text||"";
+          const prev=!last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.type==="voice"?"🎤 Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
+          const isFav=favorites.includes(c.id);
+          
           return(
-            <div key={c.id} style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border}`,animation:"fadeUp .3s ease"}}>
-              <Btn onClick={()=>onOpen(c.id)} style={{flex:1,display:"flex",alignItems:"center",gap:13,padding:"14px 16px",textAlign:"left"}}>
-                <Av u={u} size={52} online={u?.online}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                    <span style={{fontSize:14,fontWeight:unreads>0?700:500,color:T.text}}>{u?.name}</span>
-                    <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted}}>{last?hm(last.ts):""}</span>
+  
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:`1px solid ${T.border}`,cursor:"pointer",transition:"background .15s",background:"transparent"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              onClick={()=>menuConvId?setMenuConvId(null):onOpen(c.id)}
+onContextMenu={e=>{e.preventDefault();openMenu(c.id);}}
+onTouchStart={()=>{pressTimer.current=setTimeout(()=>openMenu(c.id),500);}}
+onTouchEnd={()=>clearTimeout(pressTimer.current)}>
+              {/* Avatar */}
+              <div style={{position:"relative",flexShrink:0}}>
+                <Av u={u} size={52}/>
+                {u?.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px solid #000"}}/>}
+                {pinned.includes(c.id)&&<span style={{position:"absolute",top:8,right:36,fontSize:12}}>📌</span>}
+              </div>
+              
+              {/* Infos */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <p style={{margin:0,fontSize:14,fontWeight:unreads>0?700:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name||"?"}</p>
+                    {isFav&&<span style={{fontSize:12}}>⭐</span>}
                   </div>
-                  <span style={{fontSize:12,color:unreads>0?T.sub:T.muted,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {last?.f==="me"?"Toi : ":""}{prev}
-                  </span>
+                  <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
                 </div>
-                {unreads>0&&<span style={{minWidth:20,height:20,borderRadius:10,background:T.gradGold,color:"#000",fontSize:10,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 5px",flexShrink:0,boxShadow:"0 2px 8px rgba(201,149,42,0.4)"}}>{unreads}</span>}
-              </Btn>
-              <Btn onClick={()=>{if(window.confirm("Supprimer ?"))onDeleteConv(c.id);}} style={{padding:"0 16px",color:T.err,opacity:.3,display:"flex",alignItems:"center"}}><Trash2 size={16}/></Btn>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <p style={{margin:0,fontSize:13,color:unreads>0?T.sub:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{prev}</p>
+                  {unreads>0&&<div style={{width:20,height:20,borderRadius:"50%",background:"#4A90D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",flexShrink:0,marginLeft:8}}>{unreads}</div>}
+                </div>
+              </div>
+              {/* Chevron */}
+              <ChevronRight size={16} color={T.muted} style={{flexShrink:0}}/>
             </div>
           );
         })}
-     </div>
+      </div>
+{menuConvId&&(
+  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuConvId(null)}>
+    <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"24px 24px 0 0",padding:"20px 0 40px"}} onClick={e=>e.stopPropagation()}>
+      <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
+      {[
+        {ic:"⭐",label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);setMenuConvId(null);}},
+        {ic:"📌",label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
+        {ic:"🗑️",label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);setMenuConvId(null);},danger:true},
+      ].map(opt=>(
+        <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
+          <span style={{fontSize:20}}>{opt.ic}</span>{opt.label}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
       {/* Bouton flottant Céleste IA */}
-      <div onClick={onOpenCeleste} style={{position:"fixed",bottom:80,right:16,zIndex:50,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",boxShadow:"0 4px 24px rgba(123,47,190,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}>
+      <div onClick={onOpenCeleste} style={{position:"fixed",bottom:90,right:16,zIndex:50,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",boxShadow:"0 4px 24px rgba(123,47,190,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}>
         <span style={{fontSize:26}}>✨</span>
       </div>
     </div>
@@ -3648,7 +4017,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
@@ -3917,6 +4286,17 @@ function ParametresModal({myProfile,onLogout,notify}){
                 badge_expires_at:expiresAt.toISOString(),
                 badge_payment_ref:null
               }).eq("id",session.user.id);
+              const month=new Date().toISOString().slice(0,7);
+const{data:existingPool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+if(existingPool){
+  await sb.from("badge_pool").update({
+    total_collected:existingPool.total_collected+2000,
+    platform_cut:existingPool.platform_cut+400,
+    pool_amount:existingPool.pool_amount+1600
+  }).eq("month",month);
+}else{
+  await sb.from("badge_pool").insert({month,total_collected:2000,platform_cut:400,pool_amount:1600,distributed:false});
+}
               notify("🎉 Badge certifié activé ! ✦");
             }
           }catch(e){console.error("Payment check error:",e);}
@@ -4263,15 +4643,215 @@ function ParametresModal({myProfile,onLogout,notify}){
   );
 }
 
+function WalletScreen({session,myProfile,notify,onClose}){
+  const [wallet,setWallet]=useState(null);
+  const [transactions,setTransactions]=useState([]);
+  const [monthStats,setMonthStats]=useState(null);
+  const [showWithdraw,setShowWithdraw]=useState(false);
+  const cemacCountries=["CG","CM","GA","TD","CF","GQ"];
+  const isCemac=cemacCountries.includes(myProfile?.country||"CG");
+  const [withdrawAmount,setWithdrawAmount]=useState("");
+  const [withdrawPhone,setWithdrawPhone]=useState("");
+  const [withdrawOp,setWithdrawOp]=useState("mtn");
+  const [loading,setLoading]=useState(false);
+  const month=new Date().toISOString().slice(0,7);
+
+  const load=async()=>{
+    let{data:w}=await sb.from("wallets").select("*").eq("user_id",session.user.id).maybeSingle();
+    if(!w){const{data:created}=await sb.from("wallets").insert({user_id:session.user.id,balance:0,total_earned:0}).select().single();w=created;}
+    setWallet(w);
+    const{data:tx}=await sb.from("wallet_transactions").select("*").eq("user_id",session.user.id).order("created_at",{ascending:false}).limit(30);
+    setTransactions(tx||[]);
+    const{count:myLikes}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).eq("month",month);
+    const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+    const{count:totalLikes}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("month",month);
+    // Compter mes posts du mois
+    const{count:myPosts}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",`${month}-01`);
+    // Score estimé
+    const myScore=(myLikes||0)*(myPosts||0);
+    const{data:allLikes}=await sb.from("valid_likes").select("author_id").eq("month",month);
+    const likeCounts={};
+    (allLikes||[]).forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
+    const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",`${month}-01`);
+    const postCounts={};
+    (allPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
+    let totalScore=0;
+    const allIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
+    allIds.forEach(uid=>{
+      const l=likeCounts[uid]||0;
+      const p=postCounts[uid]||0;
+      if(l>0&&p>0)totalScore+=l*p;
+    });
+    const myShare=totalScore>0?Math.floor((myScore/totalScore)*(pool?.pool_amount||0)):0;
+    setMonthStats({myLikes:myLikes||0,myPosts:myPosts||0,myShare,pool:pool?.pool_amount||0});
+  };
+
+  useEffect(()=>{load();},[]);
+
+  const handleWithdraw=async()=>{
+    if(!withdrawAmount||isNaN(withdrawAmount))return notify("Entre un montant valide");
+    const amount=parseInt(withdrawAmount);
+    if(amount<500)return notify("Minimum 500 F CFA");
+    if(amount>wallet?.balance)return notify("Solde insuffisant");
+    if(!withdrawPhone.trim())return notify("Entre ton numéro");
+    setLoading(true);
+    const net=Math.floor(amount*0.95);
+    await sb.from("wallets").update({balance:wallet.balance-amount,updated_at:new Date().toISOString()}).eq("user_id",session.user.id);
+    await sb.from("withdrawal_requests").insert({user_id:session.user.id,amount,phone:withdrawPhone.trim(),operator:withdrawOp,net_amount:net,status:"pending"});
+    await sb.from("wallet_transactions").insert({user_id:session.user.id,type:"withdrawal",amount:-amount,description:`Retrait ${withdrawOp.toUpperCase()} — ${withdrawPhone}`,status:"pending"});
+    setLoading(false);setShowWithdraw(false);setWithdrawAmount("");setWithdrawPhone("");
+    notify("Demande envoyée ✦");load();
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:9999,display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{padding:"52px 20px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:T.gold,cursor:"pointer",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></button>
+        <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text,letterSpacing:2,flex:1}}>Portefeuille</span>
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:"20px 20px 80px"}}>
+        {/* Carte solde style banking */}
+        <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:24,padding:"28px 24px",marginBottom:24,boxShadow:"0 20px 60px rgba(26,35,126,0.4)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,0.05)"}}/>
+          <div style={{position:"absolute",bottom:-40,left:-20,width:160,height:160,borderRadius:"50%",background:"rgba(255,255,255,0.04)"}}/>
+          <p style={{margin:"0 0 6px",fontSize:12,color:"rgba(255,255,255,0.6)",letterSpacing:2,textTransform:"uppercase"}}>Solde disponible</p>
+          <p style={{margin:"0 0 20px",fontSize:42,fontWeight:800,color:"#fff",fontFamily:"'Cormorant Garamond',serif"}}>
+            {(wallet?.balance||0).toLocaleString("fr-FR")}
+            <span style={{fontSize:16,fontWeight:400,marginLeft:6,opacity:.7}}>F CFA</span>
+          </p>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.5)"}}>Total gagné</p>
+              <p style={{margin:0,fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(wallet?.total_earned||0).toLocaleString("fr-FR")} F</p>
+            </div>
+            <button onClick={()=>setShowWithdraw(true)} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              Retirer
+            </button>
+          </div>
+        </div>
+
+        {/* Stats du mois — discret */}
+        <div style={{display:"flex",gap:10,marginBottom:24}}>
+          <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
+            <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myLikes||0}</p>
+            <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus</p>
+          </div>
+          <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
+            <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myPosts||0}</p>
+            <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs</p>
+          </div>
+          <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
+            <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:"#4ade80"}}>~{(monthStats?.myShare||0).toLocaleString("fr-FR")}</p>
+            <p style={{margin:0,fontSize:11,color:T.muted}}>Gain estimé (F)</p>
+          </div>
+        </div>
+
+        {/* Transactions */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Activité récente</p>
+          <span style={{fontSize:12,color:T.goldL,cursor:"pointer"}}>Tout voir</span>
+        </div>
+
+        {transactions.length===0?(
+          <div style={{textAlign:"center",padding:"40px 0",color:T.muted}}>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune transaction</p>
+          </div>
+        ):transactions.map((tx,i)=>(
+          <div key={tx.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:i<transactions.length-1?`1px solid ${T.border}`:"none"}}>
+            <div style={{width:42,height:42,borderRadius:14,background:tx.amount>0?"rgba(74,222,128,0.1)":"rgba(239,68,68,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+              {tx.type==="earning"?"💰":"↑"}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <p style={{margin:"0 0 2px",fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.description||tx.type}</p>
+              <p style={{margin:0,fontSize:11,color:T.muted}}>{new Date(tx.created_at).toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})}</p>
+            </div>
+            <p style={{margin:0,fontSize:14,fontWeight:700,color:tx.amount>0?"#4ade80":"#f87171",flexShrink:0}}>
+              {tx.amount>0?"+":""}{tx.amount.toLocaleString("fr-FR")} F
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal retrait */}
+      {showWithdraw&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",zIndex:10000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowWithdraw(false)}>
+          <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"28px 28px 0 0",padding:"28px 20px 48px"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text}}>Retirer mon argent</h3>
+              <button onClick={()=>setShowWithdraw(false)} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {["mtn","airtel"].map(op=>(
+                <button key={op} onClick={()=>setWithdrawOp(op)} style={{flex:1,height:44,borderRadius:12,border:`1px solid ${withdrawOp===op?T.gold:T.border}`,background:withdrawOp===op?"linear-gradient(135deg,#1a237e,#283593)":"transparent",color:withdrawOp===op?"#fff":T.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                  {op==="mtn"?"📱 MTN MoMo":"📱 Airtel Money"}
+                </button>
+              ))}
+            </div>
+            <input placeholder="Numéro de téléphone" value={withdrawPhone} onChange={e=>setWithdrawPhone(e.target.value)}
+              style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.text,fontSize:14,outline:"none",marginBottom:10}}/>
+            <input placeholder="Montant (min. 500 F CFA)" type="number" value={withdrawAmount} onChange={e=>setWithdrawAmount(e.target.value)}
+              style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.goldL,fontSize:14,outline:"none",fontWeight:700,marginBottom:8}}/>
+            {withdrawAmount&&!isNaN(withdrawAmount)&&parseInt(withdrawAmount)>=500&&(
+              <p style={{margin:"0 0 14px",fontSize:12,color:T.muted,textAlign:"center"}}>
+                Tu recevras : <strong style={{color:T.goldL}}>{Math.floor(parseInt(withdrawAmount)*0.95).toLocaleString("fr-FR")} F CFA</strong> (après 5% commission)
+              </p>
+            )}
+            {isCemac?(
+              <button onClick={handleWithdraw} disabled={loading} style={{width:"100%",height:50,borderRadius:14,border:"none",background:"linear-gradient(135deg,#1a237e,#283593)",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                {loading?"...":"Envoyer la demande ✦"}
+              </button>
+            ):(
+              <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,textAlign:"center"}}>
+                <p style={{margin:0,fontSize:13,color:T.muted}}>Les retraits sont disponibles uniquement pour les pays CEMAC (Congo, Cameroun, Gabon, Tchad, RCA, Guinée Équatoriale)</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function LikedPostsTab({session,notify,onImageView}){
+  const [likedPosts,setLikedPosts]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    sb.from("likes").select("post_id,posts(*,author:profiles(id,prenom,nom,badge,avatar_url))").eq("user_id",session?.user?.id).order("created_at",{ascending:false}).then(({data})=>{
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean));
+      setLoading(false);
+    });
+  },[session?.user?.id]);
+  if(loading)return<div style={{textAlign:"center",padding:40,color:T.muted}}>Chargement…</div>;
+  if(!likedPosts.length)return<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>♡</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun j'aime</p></div>;
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
+      {likedPosts.map(p=>(
+        <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:"pointer",overflow:"hidden",borderRadius:4}} onClick={()=>onImageView&&onImageView(p.img_url||p.media_urls?.[0])}>
+          {p.img_url||p.media_urls?.[0]
+            ?<img src={p.img_url||p.media_urls?.[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            :<div style={{width:"100%",height:"100%",background:T.bg2,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:11,color:T.muted,padding:8,textAlign:"center",overflow:"hidden"}}>{p.text?.slice(0,40)}</span>
+            </div>
+          }
+          <div style={{position:"absolute",bottom:4,left:4,display:"flex",alignItems:"center",gap:3}}>
+            <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {(p.likes_count||0)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
-  const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||""});
+ const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||""});
   const [saving,setSaving]=useState(false);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [showFollowers,setShowFollowers]=useState(false);
-  const [showFollowing,setShowFollowing]=useState(false);
+ const [showFollowing,setShowFollowing]=useState(false);
+const [showWallet,setShowWallet]=useState(false);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
   const avRef=useRef(); const cvRef=useRef();
@@ -4297,7 +4877,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
 
   const saveProfile=async()=>{
     setSaving(true);
-    await sb.from("profiles").update({prenom:form.prenom,nom:form.nom,bio:form.bio,paroisse:form.paroisse,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
+   await sb.from("profiles").update({prenom:form.prenom,nom:form.nom,bio:form.bio,paroisse:form.paroisse,shop_link:form.shop_link||null,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
     setSaving(false);setEditing(false);reload();notify("Profil mis à jour ✦");
   };
 
@@ -4321,12 +4901,13 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
   const followingCount=(myConnections||[]).length;
   const [detailPost, setDetailPost] = useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
 };
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
+      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>setShowWallet(false)}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
 {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} onClose={()=>setDetailPost(null)} onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").insert({post_id:pid,user_id:session?.user?.id});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
@@ -4350,6 +4931,11 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
   <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
     <Edit2 size={14}/>{editing?"Annuler":"Modifier"}
   </Btn>
+  {(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
+    <button onClick={()=>setShowWallet(true)} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+      💰 Portefeuille
+    </button>
+  )}
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
     <Settings size={18} color={T.gold}/>
   </Btn>
@@ -4365,6 +4951,9 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
             </div>
             <input value={form.paroisse} onChange={e=>setForm(f=>({...f,paroisse:e.target.value}))} placeholder="Paroisse" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
             <textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Bio…" rows={3} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.6}}/>
+            {(myProfile?.badge==="friend"&&myProfile?.country==="CG")&&(
+              <input value={form.shop_link||""} onChange={e=>setForm(f=>({...f,shop_link:e.target.value}))} placeholder="🛍️ Lien boutique (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
+            )}
             <Btn onClick={saveProfile} disabled={saving} style={{padding:"12px",background:saving?T.goldBg:T.gradGold,color:"#000",borderRadius:12,fontSize:13,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
               {saving?"Sauvegarde…":"Enregistrer ✦"}
             </Btn>
@@ -4376,7 +4965,12 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
               {myProfile?.badge&&<Badge type={myProfile.badge}/>}
             </div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
-            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
+           {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
+            {myProfile?.shop_link&&(
+              <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
+                🛍️ Ma boutique
+              </a>
+            )}
           </div>
         )}
 
@@ -4454,12 +5048,13 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
         )}
 
         {/* Tabs: Posts / Sauvegardés (NOUVEAU) */}
-        <div style={{display:"flex",gap:1,background:"rgba(255,255,255,0.03)",borderRadius:14,overflow:"hidden",border:`1px solid ${T.border}`,marginBottom:16}}>
-          {["posts","saved"].map(t=>(
-            <Btn key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"11px",background:tab===t?T.goldBg:"none",color:tab===t?T.goldL:T.muted,fontSize:13,fontWeight:tab===t?700:400,border:tab===t?`1px solid ${T.gold}44`:"1px solid transparent",borderRadius:12,transition:"all .2s"}}>
-              {t==="posts"?"Publications":"Sauvegardés"}
-            </Btn>
-          ))}
+        <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
+         {[{k:"posts",l:"Publications",ic:"⊞"},{k:"saved",l:"Enregistrés",ic:"🔖"},{k:"likes",l:"J'aime",ic:"♡"}].map(t=>(
+  <Btn key={t.k} onClick={()=>setTab(t.k)} style={{flex:1,padding:"11px 6px",background:"none",color:tab===t.k?T.goldL:T.muted,fontSize:12,fontWeight:tab===t.k?700:400,borderRadius:0,transition:"all .2s",borderBottom:tab===t.k?`2px solid ${T.gold}`:"2px solid transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+    <span style={{fontSize:16}}>{t.ic}</span>
+    {t.l}
+  </Btn>
+))}
         </div>
 
         {tab==="posts"&&(
@@ -4482,6 +5077,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
         }
         <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
           <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
+          {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>🔖 {p.savesCount}</span>}
         </div>
       </div>
       <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
@@ -4492,6 +5088,9 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
 </div>
         )}
 
+        {tab==="likes"&&(
+          <LikedPostsTab session={session} notify={notify} onImageView={onImageView}/>
+        )}
         {tab==="saved"&&(
           <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView}/>
         )}
@@ -4500,7 +5099,50 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
     </div>
   );
 }
+function WithdrawalRequests({notify}){
+  const [requests,setRequests]=useState([]);
+  const [open,setOpen]=useState(false);
 
+  const load=async()=>{
+    const{data}=await sb.from("withdrawal_requests").select("*,user:profiles!withdrawal_requests_user_id_fkey(prenom,nom)").eq("status","pending").order("created_at",{ascending:false});
+    setRequests(data||[]);
+  };
+
+  useEffect(()=>{if(open)load();},[open]);
+
+  return(
+    <>
+      <button onClick={()=>setOpen(o=>!o)} style={{width:"100%",padding:"11px",background:"rgba(201,149,42,0.08)",border:`1px solid rgba(201,149,42,0.3)`,borderRadius:12,color:"#C9952A",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+        📤 Retraits en attente ({requests.length})
+      </button>
+      {open&&requests.map(r=>(
+        <div key={r.id} style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)",marginTop:6}}>
+          <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:"#F5F0E8"}}>{r.user?.prenom} {r.user?.nom}</p>
+          <p style={{margin:"0 0 4px",fontSize:12,color:"#9A9690"}}>{r.operator?.toUpperCase()} · {r.phone}</p>
+          <p style={{margin:"0 0 10px",fontSize:13,color:"#F0C96A",fontWeight:700}}>À envoyer : {r.net_amount?.toLocaleString("fr-FR")} F CFA</p>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={async()=>{
+              await sb.from("withdrawal_requests").update({status:"confirmed"}).eq("id",r.id);
+              await sb.from("wallet_transactions").update({status:"completed"}).eq("user_id",r.user_id).eq("type","withdrawal").eq("status","pending");
+              notify("Retrait confirmé ✦");load();
+            }} style={{flex:1,padding:"8px",background:"rgba(61,184,116,0.1)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:10,color:"#4ade80",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              ✓ Confirmé (envoyé)
+            </button>
+            <button onClick={async()=>{
+              // Rembourser
+              const{data:w}=await sb.from("wallets").select("*").eq("user_id",r.user_id).maybeSingle();
+              if(w)await sb.from("wallets").update({balance:w.balance+r.amount}).eq("user_id",r.user_id);
+              await sb.from("withdrawal_requests").update({status:"rejected"}).eq("id",r.id);
+              notify("Retrait annulé — remboursé");load();
+            }} style={{padding:"8px 12px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,color:"#f87171",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
 
 // ── ADMIN PANEL ───────────────────────────────────────────
 function AdminPanel({onClose,notify,reload,reloadPosts}){
@@ -4644,7 +5286,59 @@ if(data)setList(data.map(normProfile));
               ))}
             </div>
           )}
-          <Btn onClick={onClose} style={{width:"100%",padding:"11px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:12,color:T.err,fontSize:13,fontWeight:600}}>Fermer</Btn>
+         <Btn onClick={async()=>{
+            if(!window.confirm("Distribuer le pool de ce mois à tous les membres ?"))return;
+            const month=new Date().toISOString().slice(0,7);
+            // Récupérer tous les likes valides du mois
+            const{data:likes}=await sb.from("valid_likes").select("author_id").eq("month",month);
+            if(!likes||likes.length===0){notify("Aucun like valide ce mois");return;}
+            // Récupérer le pool
+            const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+            if(!pool||pool.distributed){notify("Pool inexistant ou déjà distribué");return;}
+           // Compter les likes par auteur
+            const likeCounts={};
+            likes.forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
+
+            // Compter les posts actifs du mois (publiés dans le mois)
+            const{data:monthPosts}=await sb.from("posts").select("author_id,created_at").gte("created_at",`${month}-01`);
+            const postCounts={};
+            (monthPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
+
+            // Calculer le score = likes × posts
+            const scores={};
+            const allUserIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
+            allUserIds.forEach(uid=>{
+              const l=likeCounts[uid]||0;
+              const p=postCounts[uid]||0;
+              if(l>0&&p>0)scores[uid]=l*p;
+            });
+
+            const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
+            // Distribuer
+            for(const[userId,score] of Object.entries(scores)){
+              const share=Math.floor((score/totalScore)*pool.pool_amount);
+              if(share<=0)continue;
+              // Créer ou mettre à jour le wallet
+              const{data:w}=await sb.from("wallets").select("*").eq("user_id",userId).maybeSingle();
+              if(w){
+                await sb.from("wallets").update({balance:w.balance+share,total_earned:w.total_earned+share,updated_at:new Date().toISOString()}).eq("user_id",userId);
+              }else{
+                await sb.from("wallets").insert({user_id:userId,balance:share,total_earned:share});
+              }
+              // Transaction
+              await sb.from("wallet_transactions").insert({user_id:userId,type:"earning",amount:share,description:`Gains likes — ${month}`,month,status:"completed"});
+              // Notification
+              await sb.from("notifications").insert({user_id:userId,from_id:userId,type:"earning",text:`✦ Tu as reçu ${share.toLocaleString("fr-FR")} F CFA pour tes likes du mois de ${month}`,read:false});
+            }
+            // Marquer comme distribué
+            await sb.from("badge_pool").update({distributed:true}).eq("month",month);
+            notify(`✦ Distribution effectuée — ${Object.keys(counts).length} membres récompensés`);
+          }} style={{width:"100%",padding:"11px",background:"rgba(61,184,116,0.08)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:12,color:"#4ade80",fontSize:13,fontWeight:600}}>
+            💰 Distribuer le pool du mois
+          </Btn>
+
+          {/* Retraits en attente */}
+          <WithdrawalRequests notify={notify}/>
         </div>
       </div>
     </div>
@@ -4971,12 +5665,23 @@ useEffect(()=>{
   },[openUserId,members]);
 
   useEffect(()=>{
-    sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);Notification.requestPermission();}});
+    sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);Notification.requestPermission();sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);
+if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);},()=>{});}}});
     const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);}else{setMyProfile(null);setIsPending(false);}});
-    return()=>subscription.unsubscribe();
+    const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},120000);
+    return()=>{subscription.unsubscribe();clearInterval(lsInterval);};
   },[loadMyProfile]);
+  
 
-  const loadMembers=useCallback(async()=>{const{data}=await sb.from("profiles").select("*").neq("status","pending");if(data)setMembers(data.map(normProfile));},[]);
+  const loadMembers=useCallback(async()=>{
+  const{data}=await sb.from("profiles").select("*").neq("status","pending");
+  if(data){
+    const{data:conns}=await sb.from("connections").select("to_id");
+    const counts={};
+    (conns||[]).forEach(c=>{counts[c.to_id]=(counts[c.to_id]||0)+1;});
+    setMembers(data.map(p=>normProfile({...p,followersCount:counts[p.id]||0})));
+  }
+},[]);
 
   const loadBlockedUsers=useCallback(async()=>{
     if(!session?.user?.id)return[];
@@ -4989,13 +5694,20 @@ useEffect(()=>{
   const seenPostIdsRef = useRef(new Set());
  const loadPosts=useCallback(async(page=1)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id))`).order("created_at",{ascending:false}).range(from,to);
+  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).order("created_at",{ascending:false}).range(from,to);
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,text_background:p.text_background||null}));
+   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,expires_at:p.expires_at||null}));
     const blockedSet=new Set(blockedUserIds);
-    const visible=mapped.filter(p=>!blockedSet.has(p.by));
+    const myCountry=myProfile?.country||"CG";
+const visible=mapped.filter(p=>!blockedSet.has(p.by)).sort((a,b)=>{
+  const aLocal=a.is_for_sale&&(a.author?.country||"CG")===myCountry;
+  const bLocal=b.is_for_sale&&(b.author?.country||"CG")===myCountry;
+  if(aLocal&&!bLocal)return -1;
+  if(bLocal&&!aLocal)return 1;
+  return 0;
+});
     
   // ── ALGORITHME MIX PREMIUM SANS FILE INDIENNE ──
 const pinned=visible.filter(p=>p.pinned);
@@ -5032,7 +5744,7 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);}
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime()};
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));return updated;
@@ -5241,8 +5953,8 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               {tab==="home"&&<HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>setShowNewPost(true)} onUser={id=>{setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos}/>}
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
-              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} members={members} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
+              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
             </div>
