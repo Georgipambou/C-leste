@@ -32,7 +32,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck,
-  Eye, Paperclip, LogOut, Sparkles
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -443,7 +443,7 @@ const renderTextWithMentions = (text, onMentionClick) => {
   });
 };
 const normProfile = p => ({
-  isOnline:p.last_seen?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
+  isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
 country:p.country||null,
   followersCount:p.followersCount||0,
 joined_at:p.joined_at||null,
@@ -635,7 +635,7 @@ function InstallBanner(){
   if(!prompt||dismissed)return null;
   return(
     <div style={{background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:16,margin:"12px 16px",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,animation:"fadeUp .4s ease"}}>
-      <span style={{fontSize:24}}>📲</span>
+      <Smartphone size={24} color={T.goldL}/>
       <div style={{flex:1}}>
         <p style={{margin:0,fontSize:13,fontWeight:600,color:T.goldL}}>Installer Céleste</p>
         <p style={{margin:0,fontSize:11,color:T.sub}}>Accès rapide depuis votre écran d'accueil</p>
@@ -796,7 +796,7 @@ const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,
       <input type={type==="password"?(showPw?"text":"password"):type} value={val} onChange={e=>set(e.target.value)}
         placeholder={placeholder} autoComplete={type==="password"?"current-password":"on"}
         style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.text,fontSize:13,outline:"none",transition:"border .2s"}}/>
-      {type==="password"&&<Btn onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}>{showPw?"🙈":"👁"}</Btn>}
+      {type==="password"&&<Btn onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}>{showPw?<EyeOff size={14}/>:<Eye size={14}/>}</Btn>}
     </div>
   );
 });
@@ -1488,14 +1488,14 @@ function NotifsScreen({myProfile,session,members}){
   }[n.type]||n.type);
 
   const icon=n=>({
-    like:"❤️",
-    comment:"💬",
+    like:"♥",
+    comment:"✦",
     reply:"↩️",
     comment_like:"💛",
     follow:"✦",
     mention:"@",
-    status_like:"❤️",
-    status_view:"👁",
+    status_like:"♥",
+    status_view:"◉",
   }[n.type]||"🔔");
 
   const filtered=notifs.filter(n=>{
@@ -2074,7 +2074,7 @@ onTouchEnd={e=>{
             }
             <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 0",borderTop:`1px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,margin:"10px 0"}}>
               <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:6,color:liked?T.gold:T.sub,fontSize:13,fontWeight:600,transition:"all .2s"}}>
-  <span style={{fontSize:18,animation:liked?"pulse .3s ease":""}}>{liked?"❤️":"🤍"}</span>
+  <Heart size={18} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
   {(post.likes||[]).length}
 </Btn>
 <span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
@@ -2360,7 +2360,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
           <span style={{fontSize:9,letterSpacing:.5}}>Vidéo</span>
         </button>
         <button onClick={()=>{setType("event");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="event"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
-          <span style={{fontSize:18}}>🗓</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
         </button>
         <button onClick={()=>setType("text")} style={{background:"none",border:"none",cursor:"pointer",color:type==="text"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
@@ -2622,7 +2622,7 @@ if(isMe){
           {!isMe&&(
             <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
               <div style={{width:48,height:48,borderRadius:"50%",background:liked?"rgba(201,149,42,0.25)":"rgba(255,255,255,0.1)",border:`1px solid ${liked?T.gold:"rgba(255,255,255,0.2)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,transition:"all .2s",boxShadow:liked?T.glowGold:"none"}}>
-                <span style={{fontSize:22,color:liked?T.goldL:"rgba(255,255,255,0.7)",filter:liked?`drop-shadow(0 0 8px ${T.gold})`:"none",transition:"all .2s"}}>{liked?"❤️":"✦"}</span>
+                <Heart size={22} fill={liked?"currentColor":"none"} style={{color:liked?T.goldL:"rgba(255,255,255,0.7)",filter:liked?`drop-shadow(0 0 8px ${T.gold})`:"none",transition:"all .2s"}}/>
               </div>
               <span style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{currentLikes.length}</span>
             </Btn>
@@ -2702,32 +2702,15 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:10,padding:"10px 12px",background:"rgba(16,20,24,0.85)",backdropFilter:"blur(20px)",borderRadius:20,border:"1px solid rgba(255,255,255,0.08)"}}>
-      {/* Aperçu style WhatsApp */}
-      <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"6px 10px 6px 6px",borderLeft:`3px solid ${T.goldL}`}}>
-        <div style={{width:44,height:44,borderRadius:8,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          {current?.mediaUrl && !isVideo && (
-            <img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
-              onError={e=>{e.target.style.display="none";}}/>
-          )}
-          {current?.mediaUrl && isVideo && <span style={{fontSize:18}}>🎬</span>}
-          {!current?.mediaUrl && <span style={{fontSize:18}}>📝</span>}
-        </div>
-        <div style={{flex:1,minWidth:0}}>
-          <p style={{margin:0,fontSize:11,fontWeight:600,color:T.goldL}}>Répondre au statut</p>
-        </div>
-      </div>
-      {/* Champ saisie */}
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"&&replyText.trim())sendStatusReply();}}
-          placeholder="Répondre en privé..." disabled={sending}
-          style={{flex:1,padding:"11px 16px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:24,color:"#fff",outline:"none",fontSize:14}}/>
-        <Btn onClick={sendStatusReply} disabled={!replyText.trim()||sending}
-          style={{background:replyText.trim()&&!sending?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:!replyText.trim()||sending?0.4:1,transition:"all .2s"}}>
-          <Send size={18} color={replyText.trim()&&!sending?"#000":"#fff"}/>
-        </Btn>
-      </div>
+    <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 12px",background:"rgba(16,20,24,0.75)",backdropFilter:"blur(16px)",borderRadius:32,border:"1px solid rgba(255,255,255,0.08)"}}>
+      <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter"&&replyText.trim())sendStatusReply();}}
+        placeholder="Répondre au statut…" disabled={sending}
+        style={{flex:1,padding:"10px 4px",background:"transparent",border:"none",color:"#fff",outline:"none",fontSize:14}}/>
+      <Btn onClick={sendStatusReply} disabled={!replyText.trim()||sending}
+        style={{background:replyText.trim()&&!sending?T.gradGold:"rgba(255,255,255,0.08)",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:!replyText.trim()||sending?0.4:1,transition:"all .2s"}}>
+        <Send size={16} color={replyText.trim()&&!sending?"#000":"#fff"}/>
+      </Btn>
     </div>
   );
 }
@@ -3287,7 +3270,7 @@ const [saved,setSaved]=useState(false);
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
             <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
-              <span style={{fontSize:16,animation:liked?"pulse .3s ease":""}}>{liked?"❤️":"🤍"}</span>
+              <Heart size={16} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
               {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
             </Btn>
             <Btn onClick={()=>onDetail?.(post)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
@@ -3456,7 +3439,7 @@ const openMenu=id=>{setMenuConvId(id);};
         </div>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
-          {[{k:"tous",l:"💬 Tous"},{k:"nonlus",l:"🔵 Non lus"},{k:"favoris",l:"⭐ Favoris"}].map(f=>(
+          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"}].map(f=>(
             <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
               {f.l}
               {f.k==="nonlus"&&sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
@@ -3489,7 +3472,8 @@ const openMenu=id=>{setMenuConvId(id);};
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
               onClick={()=>menuConvId?setMenuConvId(null):onOpen(c.id)}
 onContextMenu={e=>{e.preventDefault();openMenu(c.id);}}
-onTouchStart={()=>{pressTimer.current=setTimeout(()=>openMenu(c.id),500);}}
+onTouchStart={e=>{const startY=e.touches[0].clientY;const startX=e.touches[0].clientX;pressTimer.current=setTimeout(()=>openMenu(c.id),600);e.currentTarget._startY=startY;e.currentTarget._startX=startX;}}
+onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));const dx=Math.abs(e.touches[0].clientX-(e.currentTarget._startX||0));if(dy>10||dx>10)clearTimeout(pressTimer.current);}}
 onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               {/* Avatar */}
               <div style={{position:"relative",flexShrink:0}}>
@@ -3523,12 +3507,12 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
     <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"24px 24px 0 0",padding:"20px 0 40px"}} onClick={e=>e.stopPropagation()}>
       <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
       {[
-        {ic:"⭐",label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);setMenuConvId(null);}},
-        {ic:"📌",label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
-        {ic:"🗑️",label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);setMenuConvId(null);},danger:true},
+        {ic:<Star size={20}/>,label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);setMenuConvId(null);}},
+        {ic:<Pin size={20}/>,label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
+        {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);setMenuConvId(null);},danger:true},
       ].map(opt=>(
         <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
-          <span style={{fontSize:20}}>{opt.ic}</span>{opt.label}
+          <span style={{display:"flex",alignItems:"center"}}>{opt.ic}</span>{opt.label}
         </button>
       ))}
     </div>
@@ -3863,8 +3847,8 @@ try {
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
             onError={e=>{e.target.style.display="none";const span=document.createElement("span");span.style.fontSize="14px";span.textContent="📷";e.target.parentNode.appendChild(span);}}/>
         )}
-        {m.reply_metadata?.type==="video"&&<span style={{fontSize:18}}>🎬</span>}
-        {!m.reply_metadata?.mediaUrl&&<span style={{fontSize:18}}>📝</span>}
+        {m.reply_metadata?.type==="video"&&<Video size={18} color={T.goldL}/>}
+        {!m.reply_metadata?.mediaUrl&&<FileText size={18} color={T.goldL}/>}
       </div>
       <div style={{flex:1,minWidth:0}}>
         <p style={{margin:0,fontSize:10,fontWeight:600,color:mine?"rgba(0,0,0,0.5)":T.goldL}}>Statut</p>
@@ -3877,7 +3861,7 @@ try {
 )}
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
-                    <span style={{fontSize:22,flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?"📄":(m.fileName||"").match(/\.(doc|docx)$/i)?"📝":"📎"}</span>
+                    <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<audio controls src={m.img||m.file_url} style={{maxWidth:"200px",height:32,borderRadius:16}}/>}
@@ -4306,6 +4290,7 @@ function ParametresModal({myProfile,onLogout,notify}){
   const [section,setSection]=useState(null);
   const [dnd,setDnd]=useState(false);
   const [discoverable,setDiscoverable]=useState(true);
+const [hideOnline,setHideOnline]=useState(false);
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 
   useEffect(()=>{
@@ -4316,9 +4301,9 @@ function ParametresModal({myProfile,onLogout,notify}){
 
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
-    sb.from("profiles").select("no_messages,is_discoverable,badge_payment_ref,badge,badge_expires_at").eq("id",session.user.id).single()
+    sb.from("profiles").select("no_messages,is_discoverable,hide_online,badge_payment_ref,badge,badge_expires_at").eq("id",session.user.id).single()
       .then(async({data})=>{
-        if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);}
+        if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);}
         if(data?.badge_payment_ref&&!data?.badge){
           try{
             const res=await fetch(`https://api.notchpay.co/payments/${data.badge_payment_ref}`,{
@@ -4362,7 +4347,13 @@ if(existingPool){
     const next=!discoverable;
     setDiscoverable(next);
     await sb.from("profiles").update({is_discoverable:next}).eq("id",session.user.id);
-    notify(next?"👁 Profil visible":"🔒 Profil masqué");
+    notify(next?"Profil visible":"Profil masqué");
+  };
+  const toggleHideOnline=async()=>{
+    const next=!hideOnline;
+    setHideOnline(next);
+    await sb.from("profiles").update({hide_online:next}).eq("id",session.user.id);
+    notify(next?"Présence masquée":"Présence visible");
   };
 
  const THEMES=[
@@ -4473,6 +4464,28 @@ if(existingPool){
         <div style={{flex:1}}>
           <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Bloquer les messages</p>
           <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
+        </div>
+        <Toggle active={false}/>
+      </div>
+    )}
+
+    {/* Masquer présence en ligne — badge uniquement */}
+    {myProfile?.badge?(
+      <Btn onClick={toggleHideOnline}
+        style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+        <Eye size={20} color={T.goldL}/>
+        <div style={{flex:1,textAlign:"left"}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma présence</p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>{hideOnline?"Personne ne voit votre point vert":"Votre statut en ligne est visible"}</p>
+        </div>
+        <Toggle active={hideOnline}/>
+      </Btn>
+    ):(
+      <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
+        <Eye size={20} color={T.muted}/>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma présence</p>
+          <p style={{margin:0,fontSize:11,color:T.gold}}>Réservé aux membres certifiés</p>
         </div>
         <Toggle active={false}/>
       </div>
@@ -4673,7 +4686,7 @@ if(existingPool){
         <span style={{fontSize:18}}>✉️</span> mrdesetoiles@gmail.com
       </a>
       <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textDecoration:"none"}}>
-        <span style={{fontSize:18}}>💬</span> WhatsApp : +242 067 131 327
+        <MessageCircle size={18} color={T.goldL}/> WhatsApp : +242 067 131 327
       </a>
     </div>
 
@@ -4957,29 +4970,31 @@ useEffect(()=>{
     </div>
   );
 }
-function LikedPostsTab({session,notify,onImageView}){
+function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections}){
   const [likedPosts,setLikedPosts]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [detailPost,setDetailPost]=useState(null);
   useEffect(()=>{
-    sb.from("likes").select("post_id,posts(*,author:profiles(id,prenom,nom,badge,avatar_url))").eq("user_id",session?.user?.id).then(({data})=>{
-      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean));
+    sb.from("likes").select("post_id,posts(*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false})));
       setLoading(false);
     });
   },[session?.user?.id]);
   if(loading)return<div style={{textAlign:"center",padding:40,color:T.muted}}>Chargement…</div>;
   if(!likedPosts.length)return<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>♡</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun j'aime</p></div>;
+  if(detailPost)return<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} onComment={()=>{}} notify={notify}/>;
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
       {likedPosts.map(p=>(
-        <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:"pointer",overflow:"hidden",borderRadius:4}} onClick={()=>onImageView&&onImageView(p.img_url||p.media_urls?.[0])}>
-          {p.img_url||p.media_urls?.[0]
-            ?<img src={p.img_url||p.media_urls?.[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            :<div style={{width:"100%",height:"100%",background:T.bg2,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{fontSize:11,color:T.muted,padding:8,textAlign:"center",overflow:"hidden"}}>{p.text?.slice(0,40)}</span>
+        <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:"pointer",overflow:"hidden",borderRadius:4}} onClick={()=>setDetailPost(p)}>
+          {p.img||(p.media_urls||[])[0]
+            ?<img src={p.img||(p.media_urls||[])[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            :<div style={{width:"100%",height:"100%",background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:11,color:p.text_background?"#fff":T.muted,padding:8,textAlign:"center",overflow:"hidden"}}>{p.text?.slice(0,40)}</span>
             </div>
           }
           <div style={{position:"absolute",bottom:4,left:4,display:"flex",alignItems:"center",gap:3}}>
-            <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {(p.likes_count||0)}</span>
+            <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {(p.likes||[]).length}</span>
           </div>
         </div>
       ))}
@@ -4987,7 +5002,7 @@ function LikedPostsTab({session,notify,onImageView}){
   );
 }
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
-function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView}){
+function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
  const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||""});
@@ -5040,7 +5055,13 @@ const [showWallet,setShowWallet]=useState(false);
     reload();notify("Photo mise à jour ✦");
   };
 
-  const myPosts=(posts||[]).filter(p=>p.by===session?.user?.id);
+  const [myPosts,setMyPosts]=useState((posts||[]).filter(p=>p.by===session?.user?.id));
+useEffect(()=>{
+  if(!session?.user?.id)return;
+  sb.from("posts").select("*,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).then(({data})=>{
+    if(data)setMyPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null})));
+  });
+},[session?.user?.id]);
   const followersCount=(myFollowers||[]).length;
   const followingCount=(myConnections||[]).length;
   const [detailPost, setDetailPost] = useState(null);
@@ -5193,7 +5214,7 @@ const [showWallet,setShowWallet]=useState(false);
 
         {/* Tabs: Posts / Sauvegardés (NOUVEAU) */}
         <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
-         {[{k:"posts",l:"Publications",ic:"⊞"},{k:"saved",l:"Enregistrés",ic:"🔖"},{k:"likes",l:"J'aime",ic:"♡"}].map(t=>(
+         {[{k:"posts",l:"Publications"},{k:"saved",l:"Enregistrés"},{k:"likes",l:"J'aime"}].map(t=>(
   <Btn key={t.k} onClick={()=>setTab(t.k)} style={{flex:1,padding:"11px 6px",background:"none",color:tab===t.k?T.goldL:T.muted,fontSize:12,fontWeight:tab===t.k?700:400,borderRadius:0,transition:"all .2s",borderBottom:tab===t.k?`2px solid ${T.gold}`:"2px solid transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
     <span style={{fontSize:16}}>{t.ic}</span>
     {t.l}
@@ -5213,10 +5234,9 @@ const [showWallet,setShowWallet]=useState(false);
     <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}>
       <div onClick={()=>setDetailPost(p)} style={{width:"100%",height:"100%"}}>
         {p.img
-          ?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-          :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
-            <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
-            <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text}</p>
+          ?<img src={p.img||(p.media_urls||[])[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",padding:8,background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2}}>
+            <p style={{margin:0,fontSize:11,fontWeight:700,color:p.text_background?"#fff":T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text}</p>
           </div>
         }
         <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
@@ -5233,7 +5253,7 @@ const [showWallet,setShowWallet]=useState(false);
         )}
 
         {tab==="likes"&&(
-          <LikedPostsTab session={session} notify={notify} onImageView={onImageView}/>
+          <LikedPostsTab session={session} notify={notify} onImageView={onImageView} myProfile={myProfile} getM={getM} myConnections={myConnections}/>
         )}
         {tab==="saved"&&(
           <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView}/>
@@ -5731,6 +5751,7 @@ const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
+const [unreadStatuses,setUnreadStatuses]=useState(0);
   const [hideNav,setHideNav]=useState(false);
 const [hideChrome,setHideChrome]=useState(false);
 const [isAppBlurred,setIsAppBlurred]=useState(false);
@@ -5935,7 +5956,20 @@ useEffect(()=>{
     loadConnections(session.user.id);
     loadUnreadNotifs(session.user.id);
     loadBlockedUsers().then(()=>loadConvs(session.user.id));
-    const onlineInterval=setInterval(()=>loadMembers(),60000);
+    const loadUnreadStatuses=async()=>{
+      const since=new Date(Date.now()-24*60*60*1000).toISOString();
+      const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session.user.id);
+      const followedIds=(conns||[]).map(c=>c.to_id);
+      if(!followedIds.length){setUnreadStatuses(0);return;}
+      const{data:statuses}=await sb.from("statuses").select("id").in("user_id",followedIds).gte("created_at",since);
+      if(!statuses?.length){setUnreadStatuses(0);return;}
+      const statusIds=statuses.map(s=>s.id);
+      const{data:views}=await sb.from("status_views").select("status_id").eq("viewer_id",session.user.id).in("status_id",statusIds);
+      const viewedIds=new Set((views||[]).map(v=>v.status_id));
+      setUnreadStatuses(statusIds.filter(id=>!viewedIds.has(id)).length);
+    };
+    loadUnreadStatuses();
+    const onlineInterval=setInterval(()=>{loadMembers();loadUnreadStatuses();},30000);
     return()=>clearInterval(onlineInterval);
   }
 },[session?.user?.id,myProfile?.id,isPending]);
@@ -6004,6 +6038,10 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         loadConnections(myId);
         if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
       })
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"statuses"},async payload=>{
+        const{data:conn}=await sb.from("connections").select("id").eq("from_id",myId).eq("to_id",payload.new?.user_id).maybeSingle();
+        if(conn)setUnreadStatuses(n=>n+1);
+      })
       .subscribe();
    return()=>{
       window.removeEventListener("celeste_open_user",handleOpenUser);
@@ -6013,6 +6051,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
 
   const goTab=t=>{
  if(t==="home"&&tab==="home"){loadPosts(1);feedScrollRef.current=0;}
+ if(t==="statuses")setUnreadStatuses(0);
 if(t!=="home")feedScrollRef.current=document.querySelector("[data-feed-scroll]")?.scrollTop||feedScrollRef.current;
 setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
 };
@@ -6125,7 +6164,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
-             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg}/>}
+             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
             </div>
         </div>
@@ -6135,7 +6174,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           <div style={{height:72,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -20px 60px rgba(0,0,0,0.4)",position:"relative",margin:"0 12px 8px",borderRadius:24,border:`1px solid rgba(255,255,255,0.08)`}}>
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
-              {id:"statuses",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>,lb:"Statuts"},
+              {id:"statuses",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>,lb:"Statuts",badge:unreadStatuses},
               {id:"discover",ic:<span style={{fontSize:19,lineHeight:1}}>✦</span>,lb:"Découvrir"},
               {id:"messages",ic:<Mail size={21} strokeWidth={1.8}/>,lb:"Messages",badge:unread},
               {id:"profile",ic:<User size={21} strokeWidth={1.8}/>,lb:"Profil"},
