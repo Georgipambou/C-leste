@@ -1756,6 +1756,7 @@ useEffect(()=>{
    const uid=(await sb.auth.getUser())?.data?.user?.id;
 const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
     if(!error){
+      await sb.rpc("increment_phase_interactions",{post_id:postId});
       setText("");
       setMediaFile(null);
       setMediaPreview(null);
@@ -2867,7 +2868,16 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFo
 
   const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(m.name.toLowerCase().includes(q.toLowerCase())||(m.paroisse||"").toLowerCase().includes(q.toLowerCase())));
 
-  const filtered=filter==="populaires"?[...active].sort((a,b)=>(b.followersCount||0)-(a.followersCount||0)):filter==="recents"?[...active].sort((a,b)=>new Date(b.joined_at||0)-new Date(a.joined_at||0)):filter==="proximite"?[...active].sort((a,b)=>distKm(myProfile?.latitude,myProfile?.longitude,a.latitude,a.longitude)-distKm(myProfile?.latitude,myProfile?.longitude,b.latitude,b.longitude)):filter==="abonnes"?(myFollowers||[]).length===0?[]:[...active].filter(m=>(myFollowers||[]).includes(m.id)):filter==="abonnements"?(myConnections||[]).length===0?[]:[...active].filter(m=>(myConnections||[]).includes(m.id)):active;
+  let filtered;
+if(filter==="populaires") filtered=[...active].sort((a,b)=>(b.followersCount||0)-(a.followersCount||0));
+else if(filter==="recents") filtered=[...active].sort((a,b)=>new Date(b.joined_at||0)-new Date(a.joined_at||0));
+else if(filter==="proximite"){
+  if(!myProfile?.latitude) filtered=[];
+  else filtered=[...active].filter(m=>m.latitude&&m.longitude&&distKm(myProfile.latitude,myProfile.longitude,m.latitude,m.longitude)<50).sort((a,b)=>distKm(myProfile.latitude,myProfile.longitude,a.latitude,a.longitude)-distKm(myProfile.latitude,myProfile.longitude,b.latitude,b.longitude));
+}
+else if(filter==="abonnes") filtered=(myFollowers||[]).length===0?[]:[...active].filter(m=>(myFollowers||[]).includes(m.id));
+else if(filter==="abonnements") filtered=(myConnections||[]).length===0?[]:[...active].filter(m=>(myConnections||[]).includes(m.id));
+else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -2898,7 +2908,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFo
       <div style={{padding:"12px 12px 80px",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
         {filtered.length===0&&(
           <div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:T.muted}}>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun résultat</p>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>{filter==="proximite"&&!myProfile?.latitude?"Localisation non disponible — active le GPS":"Aucun résultat"}</p>
           </div>
         )}
         {filtered.map((u,i)=>{
@@ -2948,6 +2958,26 @@ const observer=useRef();
 useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
 const scrollRef=useRef();
 const savedScroll=useRef(initialScroll);
+const viewedPostIds=useRef(new Set());
+const postsRef=useRef(posts);
+useEffect(()=>{postsRef.current=posts;},[posts]);
+useEffect(()=>{
+  const timer=setTimeout(()=>{
+    const viewObserver=new IntersectionObserver(entries=>{
+      entries.forEach(async entry=>{
+        if(!entry.isIntersecting)return;
+        const postId=entry.target.dataset.postId;
+        if(!postId||viewedPostIds.current.has(postId))return;
+        viewedPostIds.current.add(postId);
+        viewObserver.unobserve(entry.target);
+        await sb.rpc("increment_phase_views",{post_id:postId});
+      });
+    },{threshold:0.6});
+    document.querySelectorAll("[data-post-id]").forEach(el=>viewObserver.observe(el));
+    return()=>viewObserver.disconnect();
+  },300);
+  return()=>clearTimeout(timer);
+},[posts.length]);
 const feedScrollRef=useRef(initialScroll);
 
 useEffect(()=>{
@@ -2960,8 +2990,7 @@ useEffect(()=>{
     };
     window.addEventListener("celeste_open_post",handler);
     return()=>window.removeEventListener("celeste_open_post",handler);
-  },[posts]);
-
+  },[]);
   useEffect(()=>{
     if(!bottomRef.current||!hasMore)return;
     observer.current=new IntersectionObserver(entries=>{if(entries[0].isIntersecting)loadMore();},{threshold:.5});
@@ -2970,7 +2999,9 @@ useEffect(()=>{
   },[hasMore,loadMore]);
 
   const toggleLike=async pid=>{
+    console.log("toggleLike called pid:", pid, "posts count:", (posts||[]).length);
     const post=(posts||[]).find(p=>p.id===pid);
+    
     if(!post)return;
     const uid=session?.user?.id;
     const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
@@ -2980,6 +3011,7 @@ useEffect(()=>{
         await sb.from("valid_likes").delete().eq("post_id",pid).eq("liker_id",uid);
       }else{
         await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+        await sb.rpc("increment_phase_interactions",{post_id:pid});
         // Vérifier si le post a moins de 24h
         const postAge=Date.now()-post.ts;
         const isValid=postAge<86400000; // 24h en ms
@@ -2994,7 +3026,13 @@ useEffect(()=>{
           },{onConflict:"post_id,liker_id",ignoreDuplicates:true});
         }
       }
-      refreshPost(pid);
+      setPosts(prev=>(prev||[]).map(p=>{
+  if(p.id!==pid)return p;
+  const liked=(p.likes||[]).some(l=>(l.user_id||l)===uid);
+  const next={...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]};
+  console.log("toggleLike result text_background:", next.text_background);
+  return next;
+}));
     }catch(e){console.warn("toggleLike error:",e);}
   };
 
@@ -3060,19 +3098,21 @@ useEffect(()=>{
         )}
 
         {(posts||[]).filter(p=>!searchQuery||p.text?.toLowerCase().includes(searchQuery.toLowerCase())||p.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((p,i)=>(
-          <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-           onDetail={()=>{savedScroll.current=scrollRef.current?.scrollTop||0;setDetailPost(p);}}
-            onLike={()=>toggleLike(p.id)}
-            onSave={()=>toggleSave(p.id)}
+          <div key={p.id} data-post-id={p.id}>
+<PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
+           onDetail={setDetailPost}
+            onLike={toggleLike}
+            onSave={toggleSave}
             onUser={onUser}
             onImageView={onImageView}
             notify={notify}
-            refresh={()=>refreshPost(p.id)}
+            refresh={refreshPost}
             setPosts={setPosts}
-            animDelay={i*.03}
+            animDelay={0}
             myConnections={myConnections}
             onConnect={onConnect}
           />
+</div>
         ))}
 
         {loadingMore&&(
@@ -3089,13 +3129,13 @@ useEffect(()=>{
 }
 
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
-function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
+const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
   const [showMenu,setShowMenu]=useState(false);
 const [saved,setSaved]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
   const swipeStartRef=useRef(null);
-  const liked=(post.likes||[]).includes(session?.user?.id);
+  const liked=(post.likes||[]).some(l=>(l.user_id||l)===session?.user?.id);
   const isMine=post.by===session?.user?.id;
   const isAdmin=myProfile?.is_admin;
 
@@ -3134,11 +3174,11 @@ const [saved,setSaved]=useState(false);
   const handlePin=async()=>{
   if(!myProfile?.is_admin&&post.by!==session?.user?.id)return;
   await sb.from("posts").update({pinned:!post.pinned}).eq("id",post.id);
-  refresh?.();notify(post.pinned?"Désépinglé":"Épinglé ✦");
+  refresh?.(post.id);notify(post.pinned?"Désépinglé":"Épinglé ✦");
 };
 
   return(
-    <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px",animation:`fadeUp .4s ease ${animDelay}s both`,cursor:"pointer"}} onClick={()=>onDetail?.()}>
+    <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px",animation:`fadeUp .4s ease ${animDelay}s both`,cursor:"pointer"}} onClick={()=>onDetail?.(post)}>
       <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
         {/* Avatar */}
         <div style={{position:"relative",display:"inline-block"}}>
@@ -3194,7 +3234,7 @@ const [saved,setSaved]=useState(false);
   post.text_background?(
     <div style={{
       background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[post.text_background]||T.card,
-      borderRadius:16,padding:"32px 20px",marginBottom:10,minHeight:160,
+      borderRadius:16,padding:"32px 20px",marginBottom:10,minHeight:160,maxHeight:160,overflow:"hidden",
       display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"
     }}>
       <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
@@ -3246,11 +3286,11 @@ const [saved,setSaved]=useState(false);
 )}
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
-            <Btn onClick={onLike} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
+            <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
               <span style={{fontSize:16,animation:liked?"pulse .3s ease":""}}>{liked?"❤️":"🤍"}</span>
               {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
             </Btn>
-            <Btn onClick={()=>onDetail?.()} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
+            <Btn onClick={()=>onDetail?.(post)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
               <MessageCircle size={16}/>
               {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
             </Btn>
@@ -3271,7 +3311,7 @@ const [saved,setSaved]=useState(false);
     </div>
   );
 }
-
+);
 // ── SAVED POSTS (NOUVEAU depuis App 9) ────────────────────
 function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
   const [posts,setPosts]=useState([]);
@@ -3289,6 +3329,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
           eventDate:p.event_date||null,eventLoc:p.event_loc||null,
           likes:(p.likes||[]).map(l=>l.user_id)||(p.likes||[]),
           comments:[],ts:new Date(p.created_at).getTime(),pinned:p.pinned||false
+          
         }));
         setPosts(mapped);setLoading(false);
       });
@@ -5768,9 +5809,9 @@ useEffect(()=>{
   },[openUserId,members]);
 
   useEffect(()=>{
-    sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);Notification.requestPermission();sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);
+    sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);Notification.requestPermission();sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id).then(({error})=>{if(error)console.warn("last_seen:",error);});
 if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);},()=>{});}}});
-    const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);}else{setMyProfile(null);setIsPending(false);}});
+    const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
     const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},120000);
     return()=>{subscription.unsubscribe();clearInterval(lsInterval);};
   },[loadMyProfile]);
@@ -5795,18 +5836,26 @@ if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{sb.from
   },[session?.user?.id]);
 
   const seenPostIdsRef = useRef(new Set());
+  const postOrderRef=useRef([]);
  const loadPosts=useCallback(async(page=1)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
   const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
-.or("visibility.is.null,visibility.in.(testing,growing,viral,background)")
+.or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,expires_at:p.expires_at||null}));
+   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),ppinned:p.pinned||false,
+post_phase:p.post_phase||1,
+text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,expires_at:p.expires_at||null,post_phase:p.post_phase||1,phase_views:p.phase_views||0}));
     const blockedSet=new Set(blockedUserIds);
-    const myCountry=myProfile?.country||"CG";
-const visible=mapped.filter(p=>!blockedSet.has(p.by)).sort((a,b)=>{
+const myId=session?.user?.id;
+const myCountry=myProfile?.country||"CG";
+const visible=mapped.filter(p=>{
+  if(blockedSet.has(p.by))return false;
+  if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by))return false;
+  return true;
+}).sort((a,b)=>{
   const aLocal=a.is_for_sale&&(a.author?.country||"CG")===myCountry;
   const bLocal=b.is_for_sale&&(b.author?.country||"CG")===myCountry;
   if(aLocal&&!bLocal)return -1;
@@ -5819,10 +5868,10 @@ const pinned=visible.filter(p=>p.pinned);
 const viral=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility==="viral");
 const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility!=="viral");
 const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
-const shuffle=arr=>[...arr].sort(()=>Math.random()-0.5);
-const viralShuffled=shuffle(viral);
-const badgeShuffled=shuffle(withBadge);
-const noBadgeShuffled=shuffle(noBadge);
+const seedSort=arr=>[...arr].sort((a,b)=>a.id.localeCompare(b.id));
+const viralShuffled=seedSort(viral);
+const badgeShuffled=seedSort(withBadge);
+const noBadgeShuffled=seedSort(noBadge);
 const mixed=[...pinned];
 let vi=0,bi=0,ni=0;
 while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
@@ -5838,6 +5887,8 @@ while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.lengt
 
 if(page===1){
   seenPostIdsRef.current=new Set(mixed.map(p=>p.id));
+  const order=mixed.map(p=>p.id);
+  postOrderRef.current=order;
   setPosts(mixed);
 }else{
   const filtered=mixed.filter(p=>!seenPostIdsRef.current.has(p.id));
@@ -5853,8 +5904,15 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);}
   const refreshPost=useCallback(async pid=>{
     const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime()};
-    setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));return updated;
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,whatsapp_contact:data.whatsapp_contact||null,expires_at:data.expires_at||null,pinned:data.pinned||false};
+    setPosts(prev=>{
+  const map=new Map((prev||[]).map(p=>[p.id,p]));
+  map.set(pid,updated);
+  const order=postOrderRef.current;
+  if(order.length)return order.map(id=>map.get(id)).filter(Boolean);
+  return (prev||[]).map(p=>p.id===pid?updated:p);
+});
+return updated;
   },[]);
 
  const loadConvs=useCallback(async myId=>{
@@ -5877,6 +5935,8 @@ useEffect(()=>{
     loadConnections(session.user.id);
     loadUnreadNotifs(session.user.id);
     loadBlockedUsers().then(()=>loadConvs(session.user.id));
+    const onlineInterval=setInterval(()=>loadMembers(),60000);
+    return()=>clearInterval(onlineInterval);
   }
 },[session?.user?.id,myProfile?.id,isPending]);
   useEffect(()=>{
