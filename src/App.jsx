@@ -32,7 +32,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -91,18 +91,18 @@ const getThemePalette = (mode) => {
   // ─── YOUTUBE — Écarlate maîtrisé ───────────────────────────────────────────
   // Blanc propre · Rouge affiné (pas trop agressif) · Impact clair
   if (mode === "youtube") { return {
-    bg:         "#FFFFFF",
-    bg2:        "#F9F9F9",
-    bg3:        "#F1F1F1",
-    card:       "rgba(0,0,0,0.020)",
-    cardSolid:  "#F9F9F9",
-    glass:      "rgba(0,0,0,0.020)",
-    glassMid:   "rgba(0,0,0,0.045)",
-    border:     "rgba(0,0,0,0.10)",
-    borderHi:   "rgba(0,0,0,0.17)",
-    text:       "#0F0F0F",
-    sub:        "#5C5C5C",
-    muted:      "#AAAAAA",
+    bg:         "#0F0F0F",
+    bg2:        "#161616",
+    bg3:        "#1F1F1F",
+    card:       "rgba(255,255,255,0.04)",
+    cardSolid:  "#181818",
+    glass:      "rgba(255,255,255,0.04)",
+    glassMid:   "rgba(255,255,255,0.08)",
+    border:     "rgba(255,255,255,0.08)",
+    borderHi:   "rgba(204,0,0,0.30)",
+    text:       "#F1F1F1",
+    sub:        "#AAAAAA",
+    muted:      "#3A3A3A",
     gold:       "#CC0000",   // Rouge plus doux que #FF0000 — moins agressif
     goldL:      "#FF3333",
     goldD:      "#990000",
@@ -124,18 +124,18 @@ const getThemePalette = (mode) => {
   // ─── WHATSAPP — Menthe digitale ─────────────────────────────────────────────
   // Blanc aéré · Vert digital affiné · Fraîcheur & confiance
   if (mode === "whatsapp") { return {
-    bg:         "#FFFFFF",
-    bg2:        "#F0F2F5",
-    bg3:        "#E8F2EC",
-    card:       "rgba(0,0,0,0.025)",
-    cardSolid:  "#F0F2F5",
-    glass:      "rgba(0,0,0,0.025)",
-    glassMid:   "rgba(0,0,0,0.050)",
-    border:     "rgba(0,0,0,0.09)",
-    borderHi:   "rgba(0,0,0,0.15)",
-    text:       "#111B21",
-    sub:        "#667781",
-    muted:      "#B0BAC1",
+    bg:         "#0B141A",
+    bg2:        "#111B21",
+    bg3:        "#202C33",
+    card:       "rgba(255,255,255,0.04)",
+    cardSolid:  "#182229",
+    glass:      "rgba(255,255,255,0.04)",
+    glassMid:   "rgba(255,255,255,0.08)",
+    border:     "rgba(255,255,255,0.08)",
+    borderHi:   "rgba(0,168,120,0.25)",
+    text:       "#E9EDEF",
+    sub:        "#8696A0",
+    muted:      "#3A4A50",
     gold:       "#00A878",   // Vert plus profond & moins saturé que #25D366
     goldL:      "#25C896",
     goldD:      "#007A58",
@@ -527,7 +527,7 @@ const GS = `
 
  html, body, #root {
     height: 100%;
-    background: #000;
+    background: ${T.bg};
     overscroll-behavior: contain;
   }
 
@@ -1079,6 +1079,12 @@ function ImageCropModal({imageSrc,onClose,onDone}){
   useEffect(()=>{
     const img=imgRef.current;
     img.onload=()=>{
+      const canvas=canvasRef.current;
+      if(canvas){
+        const size=Math.min(canvas.offsetWidth,canvas.offsetHeight)*0.85;
+        const scaleToFit=Math.min(size/img.width,size/img.height);
+        stateRef.current.scale=scaleToFit;
+      }
       setReady(true);
       setTimeout(()=>draw(),0);
     };
@@ -1209,7 +1215,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
       {/* Hint */}
       <div style={{padding:"10px 0 calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",textAlign:"center"}}>
         <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>
-          Glisse · Pince pour zoomer
+          Glisse pour recadrer · Pince pour zoomer
         </p>
       </div>
     </div>
@@ -1524,7 +1530,7 @@ function NotifsScreen({myProfile,session,members}){
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`}}>
         <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Activité</h2>
           {notifs.some(n=>!n.read)&&(
@@ -2112,6 +2118,8 @@ const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
 const [videoTrimSrc,setVideoTrimSrc]=useState(null);
 const [isForSale,setIsForSale]=useState(false);
+const [contactType,setContactType]=useState("whatsapp");
+const [contactLink,setContactLink]=useState("");
 const [whatsappNum,setWhatsappNum]=useState("");
 const [whatsappIndicatif,setWhatsappIndicatif]=useState("242");
 const fRef=useRef();
@@ -2189,13 +2197,15 @@ try {
       event_loc:type==="event"?evLoc:null,
       text_background:textBg||null,
       is_for_sale:isForSale||false,
-whatsapp_contact:isForSale?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
-expires_at:isForSale?(new Date(Date.now()+35*24*60*60*1000).toISOString()):null
+whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
+contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
+expires_at:isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null
     });
     setBusy(false); if(!error)onPost();
   };
 
-  const canSell=true;
+  const canSell=!!myProfile?.badge;
+const [saleExpiry,setSaleExpiry]=useState("30");
 const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:evTitle.trim().length>0;
 
   return(
@@ -2268,16 +2278,39 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
               </div>
             )}
             {isForSale&&(
-              <div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)"}}>
-                <select value={whatsappIndicatif} onChange={e=>setWhatsappIndicatif(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,flexShrink:0,outline:"none"}}>
-                  <option value="242">🇨🇬 +242</option>
-                  <option value="237">🇨🇲 +237</option>
-                  <option value="241">🇬🇦 +241</option>
-                  <option value="235">🇹🇩 +235</option>
-                  <option value="236">🇨🇫 +236</option>
-                  <option value="240">🇬🇶 +240</option>
-                </select>
-                <input value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="Numéro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+              <div style={{marginBottom:8,display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn onClick={()=>setContactType("whatsapp")} style={{flex:1,padding:"8px",borderRadius:10,border:`1px solid ${contactType==="whatsapp"?T.gold:T.border}`,background:contactType==="whatsapp"?T.goldBg:"transparent",color:contactType==="whatsapp"?T.goldL:T.muted,fontSize:12,fontWeight:600}}>
+                    WhatsApp
+                  </Btn>
+                  <Btn onClick={()=>setContactType("link")} style={{flex:1,padding:"8px",borderRadius:10,border:`1px solid ${contactType==="link"?T.gold:T.border}`,background:contactType==="link"?T.goldBg:"transparent",color:contactType==="link"?T.goldL:T.muted,fontSize:12,fontWeight:600}}>
+                    Lien
+                  </Btn>
+                </div>
+                {contactType==="whatsapp"?(
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)"}}>
+                    <select value={whatsappIndicatif} onChange={e=>setWhatsappIndicatif(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,flexShrink:0,outline:"none"}}>
+                      <option value="242">🇨🇬 +242</option>
+                      <option value="237">🇨🇲 +237</option>
+                      <option value="241">🇬🇦 +241</option>
+                      <option value="235">🇹🇩 +235</option>
+                      <option value="236">🇨🇫 +236</option>
+                      <option value="240">🇬🇶 +240</option>
+                    </select>
+                    <input value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="Numéro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+                  </div>
+                ):(
+                  <input value={contactLink} onChange={e=>setContactLink(e.target.value)} placeholder="https://… (lien vers ta boutique)" style={{padding:"10px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)",color:T.text,fontSize:13,outline:"none",width:"100%"}}/>
+                  
+                )}
+                <div style={{display:"flex",gap:6}}>
+                  {[{v:"7",l:"7j"},{v:"15",l:"15j"},{v:"30",l:"30j"},{v:"0",l:"Jamais"}].map(opt=>(
+                    <Btn key={opt.v} onClick={()=>setSaleExpiry(opt.v)}
+                      style={{flex:1,padding:"6px 4px",borderRadius:8,border:`1px solid ${saleExpiry===opt.v?T.gold:T.border}`,background:saleExpiry===opt.v?T.goldBg:"transparent",color:saleExpiry===opt.v?T.goldL:T.muted,fontSize:11,fontWeight:600}}>
+                      {opt.l}
+                    </Btn>
+                  ))}
+                </div>
               </div>
             )}
             {/* Sélecteur fond (texte) */}
@@ -2641,10 +2674,15 @@ if(isMe){
           )}
        </div>
       {!isMe&&(
-  <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,padding:"8px 16px",paddingBottom:"calc(8px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.7)",backdropFilter:"blur(10px)"}}
+  <div style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0",paddingBottom:"calc(4px + env(safe-area-inset-bottom,0px))"}}
     onFocus={()=>{if(!paused)togglePause();}}
     onBlur={()=>{if(paused)togglePause();}}>
-    <StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} current={current} onClose={onClose} session={session}/>
+    <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{flexShrink:0,width:48,height:48,borderRadius:"50%",background:liked?"rgba(201,149,42,0.25)":"rgba(255,255,255,0.1)",border:`1px solid ${liked?T.gold:"rgba(255,255,255,0.2)"}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:liked?T.glowGold:"none"}}>
+      <Heart size={22} fill={liked?"currentColor":"none"} style={{color:liked?T.goldL:"rgba(255,255,255,0.7)"}}/>
+    </Btn>
+    <div style={{flex:1}}>
+      <StatusReplyInput statusOwnerId={author?.id} statusId={current?.id} current={current} onClose={onClose} session={session}/>
+    </div>
   </div>
 )}
       </div>
@@ -2865,7 +2903,7 @@ else filtered=active;
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Découvrir</h2>
           <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
@@ -3184,7 +3222,7 @@ const [saved,setSaved]=useState(false);
                 <MoreHorizontal size={18}/>
               </Btn>
               {showMenu&&(
-                <div style={{position:"absolute",right:0,top:"110%",zIndex:20,background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",minWidth:180,boxShadow:"0 20px 40px rgba(0,0,0,0.8)",animation:"scaleIn .15s ease"}}
+                <div style={{position:"absolute",right:0,top:"110%",zIndex:20,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",minWidth:180,boxShadow:"0 20px 40px rgba(0,0,0,0.8)",animation:"scaleIn .15s ease"}}
                   onClick={e=>e.stopPropagation()}>
                   <Btn onClick={()=>{handleSave();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:saved?T.goldL:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
                     <Bookmark size={14}/>{saved?"Retiré des sauvegardes":"Sauvegarder"}
@@ -3260,6 +3298,14 @@ const [saved,setSaved]=useState(false);
               style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",background:"#25D366",borderRadius:14,color:"#fff",fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8,boxShadow:"0 4px 16px rgba(37,211,102,0.3)"}}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Discuter sur WhatsApp
+            </a>
+          )}
+          {post.is_for_sale&&post.contact_link&&(
+            <a href={post.contact_link} target="_blank" rel="noreferrer"
+              onClick={e=>e.stopPropagation()}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8,boxShadow:`0 4px 16px ${T.goldBg2}`}}>
+              <ExternalLink size={16}/>
+              En savoir plus
             </a>
           )}
 {post.is_for_sale&&post.expires_at&&(
@@ -3424,7 +3470,7 @@ const openMenu=id=>{setMenuConvId(id);};
     <div style={{flex:1,overflowY:"auto",background:T.bg,position:"relative"}}>
       <InstallBanner/>
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text,flex:1}}>Messages <span style={{fontSize:18}}>✦</span></h2>
           <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -4357,16 +4403,16 @@ if(existingPool){
   };
 
  const THEMES=[
-  {id:"dark",label:"Noir Doré",emoji:"🌙",premium:false},
-  {id:"light",label:"Blanc Doré",emoji:"☀️",premium:false},
-  {id:"dark_green",label:"Vert WhatsApp",emoji:"💚",premium:true},
-  {id:"dark_blue",label:"Bleu Nuit",emoji:"🌊",premium:true},
-  {id:"facebook",label:"Facebook",emoji:"🔵",premium:true},
-  {id:"youtube",label:"YouTube",emoji:"🔴",premium:true},
-  {id:"whatsapp",label:"WhatsApp",emoji:"🟢",premium:true},
-  {id:"snapchat",label:"Snapchat",emoji:"🟡",premium:true},
-  {id:"tiktok",label:"TikTok",emoji:"🖤",premium:true},
-  {id:"google",label:"Google",emoji:"🌈",premium:true},
+  {id:"dark",label:"Noir Doré",premium:false},
+  {id:"light",label:"Blanc Doré",premium:false},
+  {id:"dark_green",label:"Vert Forêt",premium:true},
+  {id:"dark_blue",label:"Bleu Cosmos",premium:true},
+  {id:"facebook",label:"Facebook",premium:true},
+  {id:"youtube",label:"YouTube",premium:true},
+  {id:"whatsapp",label:"WhatsApp",premium:true},
+  {id:"snapchat",label:"Snapchat",premium:true},
+  {id:"tiktok",label:"TikTok",premium:true},
+  {id:"google",label:"Google",premium:true},
 ];
   if(!open)return null;
 
@@ -4405,7 +4451,7 @@ if(existingPool){
             ].map(item=>(
               <Btn key={item.id} onClick={()=>setSection(item.id)}
                 style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-                <span style={{fontSize:20}}>{item.emoji}</span>
+                <div style={{width:20,height:20,borderRadius:"50%",background:({dark:"#000",light:"#FDFAF4",dark_green:"#060E0B",dark_blue:"#00080F",facebook:"#1877F2",youtube:"#CC0000",whatsapp:"#0B141A",snapchat:"#FFFC00",tiktok:"#FF2645",google:"#4285F4"}[item.id]||"#000"),border:"2px solid rgba(255,255,255,0.2)"}}/>
                 <div style={{flex:1,textAlign:"left"}}>
                   <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{item.title}</p>
                   <p style={{margin:0,fontSize:11,color:T.muted}}>{item.sub}</p>
@@ -5577,7 +5623,7 @@ const send=async()=>{
   return(
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
       {/* Header */}
-      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
         <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
         <div style={{flex:1}}>
@@ -5868,7 +5914,7 @@ if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{sb.from
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
    const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),ppinned:p.pinned||false,
 post_phase:p.post_phase||1,
-text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,expires_at:p.expires_at||null,post_phase:p.post_phase||1,phase_views:p.phase_views||0}));
+text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,post_phase:p.post_phase||1,phase_views:p.phase_views||0}));
     const blockedSet=new Set(blockedUserIds);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
@@ -5925,7 +5971,7 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);}
   const refreshPost=useCallback(async pid=>{
     const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,whatsapp_contact:data.whatsapp_contact||null,expires_at:data.expires_at||null,pinned:data.pinned||false};
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false};
     setPosts(prev=>{
   const map=new Map((prev||[]).map(p=>[p.id,p]));
   map.set(pid,updated);
@@ -5939,7 +5985,7 @@ return updated;
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}).limit(1,{foreignTable:"messages"}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId)
     ]);
     if(data){
