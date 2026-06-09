@@ -32,7 +32,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -1443,7 +1443,7 @@ if(data.user){onSuccess?.("pending");}
             )}
             <AuthField val={email} set={setEmail} placeholder="Email *" type="email"/>
             <AuthField val={pw} set={setPw} placeholder="Mot de passe *" type="password" showPw={showPw} setShowPw={setShowPw}/>
-            {err&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:12}}>⚠ {err}</div>}
+            {err&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:12}}style={{display:"flex",alignItems:"center",gap:6}}><AlertTriangle size={14}/> {err}</div>}
             <Btn onClick={submit} disabled={busy} style={{padding:"16px",background:busy?T.goldBg:T.gradGold,color:"#000",borderRadius:14,fontSize:14,fontWeight:700,boxShadow:busy?"none":"0 8px 32px rgba(201,149,42,0.3), 0 0 0 1px rgba(201,149,42,0.1)",opacity:busy?.6:1,transition:"all .25s",marginTop:4,letterSpacing:.3}}>
               {busy?"⏳ Chargement…":mode==="login"?"Se connecter ✦":"Créer mon compte ✦"}
             </Btn>
@@ -2270,7 +2270,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
             {/* Option vente (badge doré + Congo uniquement) */}
             {canSell&&(
               <div onClick={()=>setIsForSale(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
-                <span style={{fontSize:12,color:isForSale?T.goldL:T.muted}}>🛒</span>
+                <ShoppingBag size={14} color={isForSale?T.goldL:T.muted}/>
                 <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article à vendre</span>
                 <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
                   <div style={{position:"absolute",top:2,left:isForSale?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
@@ -2468,7 +2468,7 @@ const handlePick=async e=>{
           <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Nouveau statut</h3>
           <Btn onClick={onClose} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}><X size={16}/></Btn>
         </div>
-        {!canAdd&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:13,marginBottom:14}}>⚠ Limite de 10 statuts atteinte.</div>}
+        {!canAdd&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:13,marginBottom:14}}style={{display:"flex",alignItems:"center",gap:6}}><AlertTriangle size={14}/> Limite de 10 statuts atteinte.</div>}
         <div style={{display:"flex",gap:6,marginBottom:16,background:"rgba(255,255,255,0.03)",borderRadius:14,padding:4}}>
           {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Photo/Vidéo"}].map(t=>(
             <Btn key={t.id} onClick={()=>setType(t.id)} style={{flex:1,padding:"9px",borderRadius:11,background:type===t.id?T.goldBg:"none",color:type===t.id?T.goldL:T.muted,fontSize:12,fontWeight:type===t.id?700:400,border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent",transition:"all .2s"}}>{t.l}</Btn>
@@ -2667,7 +2667,7 @@ if(isMe){
                 <span style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{currentLikes.length}</span>
               </Btn>
               <Btn onClick={e=>{e.stopPropagation();setShowInfo(!showInfo);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-                <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👁</div>
+                <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}><Eye size={20} color="rgba(255,255,255,0.8)"/></div>
                 <span style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{currentViews.length}</span>
               </Btn>
             </>
@@ -2694,7 +2694,7 @@ if(isMe){
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
               <div style={{width:36,height:36,borderRadius:"50%",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold}}>{name[0]}</div>
               <span style={{color:T.text,fontSize:13}}>{name}</span>
-              {currentLikes.includes(v.viewer_id)&&<span style={{fontSize:14,marginLeft:"auto"}}>❤️</span>}
+              {currentLikes.includes(v.viewer_id)&&<Heart size={14} fill="currentColor" style={{color:T.gold,marginLeft:"auto"}}/>}
             </div>
           );})}
         </div>
@@ -3310,7 +3310,7 @@ const [saved,setSaved]=useState(false);
           )}
 {post.is_for_sale&&post.expires_at&&(
   <p style={{margin:"0 0 6px",fontSize:11,color:T.muted}}>
-    🕐 Expire le {new Date(post.expires_at).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}
+    Expire le {new Date(post.expires_at).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}
   </p>
 )}
           {/* Actions */}
@@ -4475,7 +4475,7 @@ if(existingPool){
     {myProfile?.badge?(
       <Btn onClick={toggleDiscoverable}
         style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:20}}>👁</span>
+        <Eye size={20} color={T.goldL}/>
         <div style={{flex:1,textAlign:"left"}}>
           <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans Découvrir</p>
           <p style={{margin:0,fontSize:11,color:T.muted}}>{discoverable?"Votre profil est visible":"Votre profil est masqué"}</p>
@@ -4484,7 +4484,7 @@ if(existingPool){
       </Btn>
     ):(
       <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
-        <span style={{fontSize:20}}>👁</span>
+        <Eye size={20} color={T.muted}/>
         <div style={{flex:1}}>
           <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans Découvrir</p>
           <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
@@ -4766,12 +4766,13 @@ useEffect(()=>{
     // Mes likes reçus aujourd'hui
     const{count:myLikesToday}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",since);
     
-    // Mes posts aujourd'hui
-    const{count:myPostsToday}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",since);
+    // Mes posts du mois
+    const monthStart=new Date().toISOString().slice(0,7)+"-01";
+    const{count:myPostsToday}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",monthStart);
     
     // Total likes de tout le monde aujourd'hui
     const{data:allLikes}=await sb.from("valid_likes").select("author_id").gte("created_at",since);
-    const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",since);
+    const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",monthStart);
     
     // Pool du mois
     const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
@@ -4813,8 +4814,19 @@ useEffect(()=>{
   };
   
   loadLive();
-  const interval=setInterval(loadLive,60000); // refresh chaque minute
-  return()=>clearInterval(interval);
+  const interval=setInterval(loadLive,30000);
+  
+  // Realtime — se déclenche dès qu'un like est reçu
+  const ch=sb.channel("wallet_live")
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"valid_likes",filter:`author_id=eq.${session.user.id}`},()=>{
+      loadLive();
+    })
+    .on("postgres_changes",{event:"DELETE",schema:"public",table:"valid_likes",filter:`author_id=eq.${session.user.id}`},()=>{
+      loadLive();
+    })
+    .subscribe();
+  
+  return()=>{clearInterval(interval);sb.removeChannel(ch);};
 },[session.user.id]);
   const [withdrawAmount,setWithdrawAmount]=useState("");
   const [withdrawPhone,setWithdrawPhone]=useState("");
