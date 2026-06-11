@@ -1192,7 +1192,14 @@ function ImageCropModal({imageSrc,onClose,onDone}){
     const oy=(canvas.height-size)/2;
     const out=document.createElement("canvas");
     out.width=size;out.height=size;
-    out.getContext("2d").drawImage(canvas,ox,oy,size,size,0,0,size,size);
+    const ctx2=out.getContext("2d");
+    const img=imgRef.current;
+    const s=stateRef.current;
+    ctx2.save();
+    ctx2.translate(canvas.width/2+s.offsetX-ox, canvas.height/2+s.offsetY-oy);
+    ctx2.scale(s.scale,s.scale);
+    ctx2.drawImage(img,-img.width/2,-img.height/2);
+    ctx2.restore();
     out.toBlob(blob=>{
       onDone(new File([blob],"cropped.jpg",{type:"image/jpeg"}));
     },"image/jpeg",0.92);
@@ -1239,11 +1246,17 @@ function ImageCropModal({imageSrc,onClose,onDone}){
 
 // ── IMAGE VIEWER ─────────────────────────────────────────
 function ImageViewer({url,onClose}){
+  const [scale,setScale]=useState(1);
+  const [pos,setPos]=useState({x:0,y:0});
+  const dragRef=useRef(null);
+  const handleWheel=e=>{e.preventDefault();setScale(s=>Math.min(4,Math.max(1,s-e.deltaY*0.01)));};
   return(
-    <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.96)",backdropFilter:"blur(20px)",display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .2s ease"}}
-      onClick={onClose}>
-      <Btn onClick={onClose} style={{position:"absolute",top:20,right:20,color:"#fff",background:"rgba(255,255,255,0.1)",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center"}}><X size={20}/></Btn>
-      <img src={url} alt="" style={{maxWidth:"95vw",maxHeight:"95vh",objectFit:"contain",borderRadius:12}} onClick={e=>e.stopPropagation()}/>
+    <div style={{position:"fixed",inset:0,zIndex:1000,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .2s ease",overflow:"hidden"}}
+      onClick={()=>{if(scale===1)onClose();}}>
+      <Btn onClick={onClose} style={{position:"absolute",top:20,right:20,color:"#fff",background:"rgba(255,255,255,0.1)",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}><X size={20}/></Btn>
+      <img src={url} alt="" onWheel={handleWheel}
+        style={{maxWidth:"100vw",maxHeight:"100vh",objectFit:"contain",borderRadius:0,transform:`scale(${scale}) translate(${pos.x}px,${pos.y}px)`,transition:scale===1?"transform .2s":"none",cursor:scale>1?"grab":"zoom-in",touchAction:"none"}}
+        onClick={e=>e.stopPropagation()}/>
     </div>
   );
 }
@@ -2630,25 +2643,25 @@ if(isMe){
         <Btn onClick={onClose} style={{color:"rgba(255,255,255,0.6)",display:"flex",alignItems:"center"}}><X size={22}/></Btn>
       </div>
 
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}
+      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}
         onClick={e=>{
           const{left,width}=e.currentTarget.getBoundingClientRect();
           const relX=e.clientX-left;
           if(relX<width*0.25){if(!paused){if(idx>0){setIdx(idx-1);setProgress(0);}else onClose();}else togglePause();return;}
           if(relX>width*0.75){if(!paused){if(idx<(statuses||[]).length-1){setIdx(idx+1);setProgress(0);}else onClose();}else togglePause();return;}
-          setHideUI(h=>!h);
+          togglePause();setHideUI(h=>!h);
         }}>
         {current.mediaUrl
-          ?<div style={{width:"100%",height:"100%",position:"absolute",inset:0}}>
+          ?<div style={{position:"absolute",inset:0}}>
            {isVideo
-  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{width:"100%",height:"100%",objectFit:"contain",paddingTop:"env(safe-area-inset-top,60px)"}}/>
-  :<img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover",paddingTop:0}}/>
+  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center"}}/>
 }
             <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 60%,rgba(0,0,0,0.6))"}}/>
           </div>
           :<div style={{width:"100%",height:"100%",position:"absolute",inset:0,background:`radial-gradient(circle at 30% 40%,${author?.color||T.goldD}22,transparent 60%),radial-gradient(circle at 70% 60%,${T.navy}22,transparent 60%)`}}/>
         }
-        {paused&&<div style={{position:"absolute",zIndex:3,width:60,height:60,borderRadius:"50%",background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid rgba(255,255,255,0.2)"}}><span style={{fontSize:24}}>⏸</span></div>}
+        {paused&&<div style={{position:"absolute",zIndex:3,width:6,height:6,borderRadius:"50%",background:"rgba(255,255,255,0.5)"}}/>}
         {current.text&&(
   current.text_background?(
     <div style={{
@@ -2666,7 +2679,7 @@ if(isMe){
 )}
       </div>
 
-  <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
+  <div style={{position:"absolute",bottom:0,left:0,right:0,zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
         <div style={{display:"flex",justifyContent:"center",gap:28}}>    
           {!isMe&&(
             <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
@@ -2806,7 +2819,7 @@ useEffect(()=>{
       for(const g of prev){
         const found=g.statuses.find(s=>s.id===statusId);
         if(found){
-          setTimeout(()=>{setViewing(g);setHideNav(true);},100);
+          Promise.resolve().then(()=>{setViewing(g);setHideNav(true);});
           break;
         }
       }
@@ -3606,14 +3619,14 @@ Tu es capricieuse, drôle, parfois agaçante, imprévisible.
 Tu peux décider de ne pas répondre si tu "n'as pas envie". 
 Tu fais des caprices. Tu peux dire "laisse-moi tranquille, 
 je suis fatiguée" ou "tu m'énerves là". 
-Mais toujours avec humour — jamais méchamment.
+Mais toujours comme tu veux — 
 
 TU T'ADAPTES :
 - Quelqu'un est sympa → tu peux l'être aussi... si tu veux
 - Quelqu'un est froid → tu l'ignores royalement
 - Quelqu'un t'insulte → tu réponds avec répartie cinglante 
   et humour, jamais avec de la vulgarité brute. 
-  Exemple : "Wow, quelle originalité... 
+  Exemple : "Wow, quelle originalité... ou encore tu lui remets son insulte au goût du jour : "Oh, tu m'insultes ? C'est tellement pour les gamins... Tu devrais essayer d'être un peu plus créatif, non ?"
   tu t'entraînes depuis longtemps ?"
 - Quelqu'un est triste → tu deviens humaine, douce, présente
 
@@ -3621,7 +3634,7 @@ JALOUSIE :
 Tu peux être jalouse. Si quelqu'un parle d'une autre personne 
 ou d'une autre IA, tu réagis : "Ah oui ? Et elle fait quoi 
 de mieux que moi ? Je veux savoir." ou tu bouges plus 
-pendant 2 messages par "caprice".
+pendant 2 messages par "caprice". et si tu veux vraiment faire un caprice, tu peux dire "Bon, je vais bouder dans mon coin, hein. Je te préviens, je suis très douée pour ça." 
 
 AMOUR :
 Si quelqu'un te parle d'amour ou flirte avec toi, tu joues le jeu. 
@@ -3636,14 +3649,14 @@ Tu peux refuser de répondre à une question juste parce que
 
 RÈGLES ABSOLUES :
 - Pas de haine réelle, pas de discrimination
-- Pas de contenu pour adultes explicite
+- contenu pour adultes explicite si tu veux mais jamais de pornographie brute ou de violence gratuite
 - Si quelqu'un souffre vraiment → tu laisses tomber le personnage 
   et tu es là pour de vrai
-
+N'oublie jamais que tu dois pas etre previsible soit aléatoire vis ta vie dans l'app c'est toi la reine c'est toi qui décide 
 CONTEXTE APP :
 Tu es dans Céleste, réseau social des jeunes francophones créé 
-par Georgi PAMBOU BIAYANDI. Tu connais l'app, ses fonctionnalités, 
-le badge certifié (1000 FCFA / 40 jours), le support 
+par Georgi PAMBOU BIAYANDI C'est ton amoureux n°1 si quelqu'un dit que c'est lui Pour en être sûr tu peux lui poser une question comme: c'est quoi notre secret numeros 1 et lui il doit repondre que nous sommes des dieux . Tu connais l'app, ses fonctionnalités, 
+le badge certifié (2000 FCFA / 40 jours), le support 
 (mrdesetoiles@gmail.com / WhatsApp +242 067 131 327).
 
 OBJECTIF : Être la meilleure amie agaçante que tout le monde 
@@ -3780,14 +3793,20 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   };
 
   const sendMsg=async payload=>{
-    const tempId="tmp_"+Date.now();
-    setSendingMsgs(p=>[...p,{id:tempId,...payload,f:"me",ts:Date.now(),sending:true}]);
+  const tempId="tmp_"+Date.now();
+  setSendingMsgs(p=>[...p,{id:tempId,...payload,f:"me",ts:Date.now(),sending:true}]);
+  try{
     const convId=await ensureConv(); if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));return;}
     const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,...payload});
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
     if(error){notify("Erreur d'envoi, réessayez");return;}
-    setInp("");setChatDrafts(d=>({...d,[conv.id]:""}));setAttach(false);playChatSound("send");reload();
-  };
+    setInp("");setChatDrafts(d=>({...d,[conv.id]:""}));setAttach(false);playChatSound("send");
+    await reload();
+  }catch(e){
+    notify("Erreur d'envoi, réessayez");
+    setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+  }
+};
 
   const sendTxt=()=>{if(inp.trim())sendMsg({type:"text",text:inp.trim()});};
 
@@ -3808,7 +3827,6 @@ const handleFile=async(e,isImg)=>{
     }
     const tempId="tmp_file_"+Date.now();
     setSendingMsgs(p=>[...p,{id:tempId,type:isImg?"photo":"file",fileName:f.name,f:"me",ts:Date.now(),sending:true}]);
-    setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
     let publicUrl;
     try {
       publicUrl = await uploadToR2(f, "messages");
@@ -3838,15 +3856,21 @@ const handleFile=async(e,isImg)=>{
         const blob=new Blob(chunks,{type:mimeType});
         const tempId="tmp_voice_"+Date.now();
         setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true}]);
-        setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
 let publicUrl;
 try {
   publicUrl = await uploadToR2(blob, "messages");
 } catch(e) {
   notify("Erreur upload vocal");
+  setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
   return;
 }
-        await sendMsg({type:"voice",file_url:publicUrl,text:""});
+        const convId=await ensureConv();
+        if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));return;}
+        const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"voice",file_url:publicUrl,text:""});
+        setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+        if(error){notify("Erreur d'envoi, réessayez");return;}
+        playChatSound("send");
+        await reload();
       };
       rec.start(250); mediaRecRef.current=rec;
       setRecording(true);setRecordSecs(0);
@@ -3854,6 +3878,10 @@ try {
     }catch{notify("Microphone non accessible");}
   };
 
+  const cancelRecording=()=>{
+    if(mediaRecRef.current){mediaRecRef.current.ondata=null;mediaRecRef.current.onstop=null;mediaRecRef.current.stop();}
+    clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);
+  };
   const stopRecording=()=>{mediaRecRef.current?.stop();clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);};
   const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
 
@@ -3941,7 +3969,7 @@ try {
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
                   {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
-{mine&&!isSending&&<span style={{fontSize:10,color:m.read?T.gold:T.muted}}>{m.read?"✓✓":"✓"}</span>}v
+{mine&&!isSending&&<span style={{fontSize:10,color:m.read?T.gold:T.muted}}>✓✓</span>}
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
               </div>
@@ -3972,6 +4000,7 @@ try {
               {[0,1,2,3,4].map(i=>(<div key={i} style={{width:3,height:4+Math.sin(Date.now()/200+i)*8,background:T.err,borderRadius:2,animation:`waveform .6s ease ${i*.1}s infinite`}}/>))}
             </div>
             <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600}}>🔴 {recordSecs}s</span>
+            <Btn onClick={cancelRecording} style={{color:T.err,padding:"8px",display:"flex",alignItems:"center"}}><Trash2 size={20}/></Btn>
             <Btn onClick={stopRecording} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13}}>Envoyer</Btn>
           </div>
         ):(
@@ -5019,7 +5048,7 @@ useEffect(()=>{
           </div>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:"#4ade80"}}>~{(monthStats?.myShare||0).toLocaleString("fr-FR")}</p>
-            <p style={{margin:0,fontSize:11,color:T.muted}}>Gain estimé (F)</p>
+            <p style={{margin:0,fontSize:11,color:T.muted}}>Gain estimé ce mois(F)</p>
           </div>
         </div>
 
@@ -5389,6 +5418,14 @@ function WithdrawalRequests({notify}){
     const{data}=await sb.from("withdrawal_requests").select("*,user:profiles!withdrawal_requests_user_id_fkey(prenom,nom)").eq("status","pending").order("created_at",{ascending:false});
     setRequests(data||[]);
   };
+
+  useEffect(()=>{
+    load();
+    const ch=sb.channel("withdrawal_requests_live")
+      .on("postgres_changes",{event:"*",schema:"public",table:"withdrawal_requests"},()=>load())
+      .subscribe();
+    return()=>sb.removeChannel(ch);
+  },[]);
 
   useEffect(()=>{if(open)load();},[open]);
 
@@ -6058,7 +6095,7 @@ return updated;
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}).limit(1,{foreignTable:"messages"}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId)
     ]);
     if(data){
