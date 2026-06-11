@@ -38,6 +38,8 @@ import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react";
 import { uploadToR2 } from "./uploadMedia";
+import { PrivacyScreen } from '@capacitor-community/privacy-screen';
+import { Capacitor } from '@capacitor/core';
 
 
 // ── SUPABASE ──────────────────────────────────────────────
@@ -46,7 +48,20 @@ const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON;
 if(!SUPABASE_URL||!SUPABASE_ANON)console.error("Variables Supabase manquantes !");
 const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"");
 
-const PAGE_SIZE = 20;
+const playChatSound=(type)=>{
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    if(type==="send"){o.frequency.setValueAtTime(880,ctx.currentTime);g.gain.setValueAtTime(0.15,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.12);}
+    else{o.frequency.setValueAtTime(660,ctx.currentTime);o.frequency.setValueAtTime(880,ctx.currentTime+0.07);g.gain.setValueAtTime(0.15,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.18);}
+    o.start(ctx.currentTime);o.stop(ctx.currentTime+0.2);
+  }catch(_){}
+};
+const PAGE_SIZE=20;
+const isNative=Capacitor.isNativePlatform();
+const enableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.enable();}catch(e){}};
+const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.disable();}catch(e){}};
 
 // ── CONTEXTE GLOBAL ───────────────────────────────────────
 const AppContext = createContext(null);
@@ -2526,6 +2541,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   const [showInfo,setShowInfo]=useState(false);
   const [progress,setProgress]=useState(0);
   const [paused,setPaused]=useState(false);
+  const [hideUI,setHideUI]=useState(false);
   const viewed=useRef(new Set());
   const progressRef=useRef(null);
   const videoRef=useRef(null);
@@ -2597,14 +2613,14 @@ if(isMe){
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:600,background:"#000",display:"flex",flexDirection:"column",animation:"fadeIn .2s ease"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,zIndex:2,display:"flex",gap:3,padding:"env(safe-area-inset-top,16px) 12px 0"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,zIndex:2,display:"flex",gap:3,padding:"env(safe-area-inset-top,16px) 12px 0",opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
         {(statuses||[]).map((_,i)=>(
           <div key={i} style={{flex:1,height:2.5,borderRadius:2,background:"rgba(255,255,255,0.2)",overflow:"hidden"}}>
             <div style={{height:"100%",borderRadius:2,background:"#fff",width:i<idx?"100%":i===idx?`${progress}%`:"0%"}}/>
           </div>
         ))}
       </div>
-      <div style={{position:"absolute",top:"calc(env(safe-area-inset-top,16px) + 12px)",left:16,right:16,zIndex:2,display:"flex",alignItems:"center",gap:10,marginTop:8}}>
+      <div style={{position:"absolute",top:"calc(env(safe-area-inset-top,16px) + 12px)",left:16,right:16,zIndex:2,display:"flex",alignItems:"center",gap:10,marginTop:8,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
         <Av u={author} size={38} ring/>
         <div style={{flex:1}}>
           <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.name}</p>
@@ -2620,13 +2636,13 @@ if(isMe){
           const relX=e.clientX-left;
           if(relX<width*0.25){if(!paused){if(idx>0){setIdx(idx-1);setProgress(0);}else onClose();}else togglePause();return;}
           if(relX>width*0.75){if(!paused){if(idx<(statuses||[]).length-1){setIdx(idx+1);setProgress(0);}else onClose();}else togglePause();return;}
-          togglePause();
+          setHideUI(h=>!h);
         }}>
         {current.mediaUrl
           ?<div style={{width:"100%",height:"100%",position:"absolute",inset:0}}>
            {isVideo
   ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{width:"100%",height:"100%",objectFit:"contain",paddingTop:"env(safe-area-inset-top,60px)"}}/>
-  :<img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"contain",paddingTop:"env(safe-area-inset-top,60px)"}}/>
+  :<img src={current.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover",paddingTop:0}}/>
 }
             <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 60%,rgba(0,0,0,0.6))"}}/>
           </div>
@@ -2650,7 +2666,7 @@ if(isMe){
 )}
       </div>
 
-  <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12}}>
+  <div style={{position:"relative",zIndex:2,padding:"16px 24px",paddingBottom:"calc(16px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
         <div style={{display:"flex",justifyContent:"center",gap:28}}>    
           {!isMe&&(
             <Btn onClick={e=>{e.stopPropagation();toggleLike();}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
@@ -3054,6 +3070,14 @@ useEffect(()=>{
   console.log("toggleLike result text_background:", next.text_background);
   return next;
 }));
+    // Push notif au propriétaire du post
+      if(!liked&&post.by!==uid){
+        sb.functions.invoke('send-push',{body:{
+          targetUserId:post.by,
+          title:"✦ Nouveau like",
+          body:`${myProfile?.prenom||"Quelqu'un"} a aimé ton post`
+        }});
+      }
     }catch(e){console.warn("toggleLike error:",e);}
   };
 
@@ -3681,7 +3705,7 @@ const askGemini=async(text)=>{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
-        system_instruction:{parts:[{text:CELESTE_SYSTEM}]},
+        systemInstruction:{parts:[{text:CELESTE_SYSTEM}]},
         contents:formattedContents
       })
     });
@@ -3712,12 +3736,12 @@ const askGemini=async(text)=>{
   .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
     const nm=payload.new;
     if(nm.sender_id!==session?.user?.id){
-      reload();
+      playChatSound("receive");reload();
     }
   })
   .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
   .subscribe();
-    return()=>sb.removeChannel(ch);
+    return()=>{sb.removeChannel(ch);disableScreenProtection();};
   },[conv.id,reload]);
 
   const lastMsgId=conv.msgs[conv.msgs.length-1]?.id;
@@ -3735,7 +3759,8 @@ const askGemini=async(text)=>{
   },[conv.id,conv.msgs?.length]);
 
  const ensureConv=async()=>{
-    const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge").eq("id",conv.uid).single();
+    const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge,screenshot_protection").eq("id",conv.uid).single();
+if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
     if(targetProfile?.no_messages){
   const{data:myData}=await sb.from("profiles").select("is_admin").eq("id",session?.user?.id).single();
   if(!myData?.is_admin){
@@ -3761,7 +3786,7 @@ const askGemini=async(text)=>{
     const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,...payload});
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
     if(error){notify("Erreur d'envoi, réessayez");return;}
-    setInp("");setChatDrafts(d=>({...d,[conv.id]:""}));setAttach(false);reload();
+    setInp("");setChatDrafts(d=>({...d,[conv.id]:""}));setAttach(false);playChatSound("send");reload();
   };
 
   const sendTxt=()=>{if(inp.trim())sendMsg({type:"text",text:inp.trim()});};
@@ -3915,7 +3940,8 @@ try {
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
-                  {mine&&!isSending&&<span style={{fontSize:10,color:m.read?T.gold:T.muted}}>✓✓</span>}
+                  {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
+{mine&&!isSending&&<span style={{fontSize:10,color:m.read?T.gold:T.muted}}>{m.read?"✓✓":"✓"}</span>}v
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
               </div>
@@ -4061,11 +4087,13 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   const [avatarUrl,setAvatarUrl]=useState(user.avatar_url||null);
 
   useEffect(()=>{
-    sb.from("profiles").select("cover_url,avatar_url").eq("id",user.id).single()
+    sb.from("profiles").select("cover_url,avatar_url,screenshot_protection").eq("id",user.id).single()
       .then(({data})=>{
         if(data?.cover_url)setCoverUrl(data.cover_url);
         if(data?.avatar_url)setAvatarUrl(data.avatar_url);
+        if(data?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
       });
+    return()=>disableScreenProtection();
   },[user.id]);
 
   useEffect(()=>{
@@ -4099,7 +4127,12 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
 
-  const uPosts=(posts||[]).filter(p=>p.by===user.id);
+  const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
+  useEffect(()=>{
+    sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false}).then(({data})=>{
+      if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
+    });
+  },[user.id]);
   const stats=[{l:"POSTS",v:uPosts.length},{l:"ABONNÉS",v:followersCount},{l:"ABONNEMENTS",v:followingCount}];
 
   return(
@@ -4337,6 +4370,7 @@ function ParametresModal({myProfile,onLogout,notify}){
   const [dnd,setDnd]=useState(false);
   const [discoverable,setDiscoverable]=useState(true);
 const [hideOnline,setHideOnline]=useState(false);
+const [screenshotProtection,setScreenshotProtection]=useState(false);
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 
   useEffect(()=>{
@@ -4347,9 +4381,9 @@ const [hideOnline,setHideOnline]=useState(false);
 
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
-    sb.from("profiles").select("no_messages,is_discoverable,hide_online,badge_payment_ref,badge,badge_expires_at").eq("id",session.user.id).single()
+    sb.from("profiles").select("no_messages,is_discoverable,hide_online,screenshot_protection,badge_payment_ref,badge,badge_expires_at")
       .then(async({data})=>{
-        if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);}
+        if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);}
         if(data?.badge_payment_ref&&!data?.badge){
           try{
             const res=await fetch(`https://api.notchpay.co/payments/${data.badge_payment_ref}`,{
@@ -4536,7 +4570,32 @@ if(existingPool){
         <Toggle active={false}/>
       </div>
     )}
-
+{/* Protection captures d'écran — badge uniquement */}
+{myProfile?.badge?(
+  <Btn onClick={async()=>{
+    const next=!screenshotProtection;
+    setScreenshotProtection(next);
+    await sb.from("profiles").update({screenshot_protection:next}).eq("id",session.user.id);
+    notify(next?"🔒 Captures bloquées pour ton contenu":"Captures autorisées");
+  }}
+    style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+    <Eye size={20} color={T.goldL}/>
+    <div style={{flex:1,textAlign:"left"}}>
+      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Protéger mon contenu ✦</p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>{screenshotProtection?"Captures bloquées sur ton profil/posts/messages":"Captures autorisées"}</p>
+    </div>
+    <Toggle active={screenshotProtection}/>
+  </Btn>
+):(
+  <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
+    <Eye size={20} color={T.muted}/>
+    <div style={{flex:1}}>
+      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Protéger mon contenu</p>
+      <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
+    </div>
+    <Toggle active={false}/>
+  </div>
+)}
     {/* Message d'info pour ceux sans badge */}
     {!myProfile?.badge&&(
       <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
@@ -4760,22 +4819,23 @@ function WalletScreen({session,myProfile,notify,onClose}){
 
 useEffect(()=>{
   const loadLive=async()=>{
-    const since=new Date(Date.now()-24*60*60*1000).toISOString();
+    const monthStart=new Date().toISOString().slice(0,7)+"-01T00:00:00.000Z";
     const month=new Date().toISOString().slice(0,7);
     
-    // Mes likes reçus aujourd'hui
-    const{count:myLikesToday}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",since);
+    // Mes likes reçus ce mois
+    const{count:myLikesToday}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",monthStart);
+    
     
     // Mes posts du mois
-    const monthStart=new Date().toISOString().slice(0,7)+"-01";
     const{count:myPostsToday}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",monthStart);
     
-    // Total likes de tout le monde aujourd'hui
-    const{data:allLikes}=await sb.from("valid_likes").select("author_id").gte("created_at",since);
+    // Total likes de tout le monde ce mois
+    const{data:allLikes}=await sb.from("valid_likes").select("author_id").gte("created_at",monthStart);
     const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",monthStart);
     
     // Pool du mois
     const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+
     
     // Calculer les scores
     const likeCounts={};
@@ -4920,11 +4980,11 @@ useEffect(()=>{
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
       <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
         <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>❤ {liveStats.myLikesToday}</p>
-        <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus aujourd'hui</p>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus ce mois</p>
       </div>
       <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
         <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>✦ {liveStats.myPostsToday}</p>
-        <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs aujourd'hui</p>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs ce mois</p>
       </div>
     </div>
 
@@ -5516,6 +5576,7 @@ if(data)setList(data.map(normProfile));
             if(!likes||likes.length===0){notify("Aucun like valide ce mois");return;}
             // Récupérer le pool
             const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+            
             if(!pool||pool.distributed){notify("Pool inexistant ou déjà distribué");return;}
            // Compter les likes par auteur
             const likeCounts={};
@@ -5608,7 +5669,7 @@ const send=async()=>{
           else{acc.push({role,parts:[{text:m.text}]});}
           return acc;
         },[]);
-        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
+        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,{
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
@@ -5623,7 +5684,7 @@ const send=async()=>{
         setMsgs(p=>[...p,{role:"model",text:reply}]);
         if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
         return;
-      }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}}
+      }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}}
     }
     setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
   };
