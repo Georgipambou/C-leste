@@ -5669,7 +5669,7 @@ const send=async()=>{
           else{acc.push({role,parts:[{text:m.text}]});}
           return acc;
         },[]);
-        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
+        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
@@ -5678,7 +5678,7 @@ const send=async()=>{
             generationConfig:{temperature:0.4,maxOutputTokens:2048}
           })
         });
-        if(!res.ok){if(i<retries-1){await new Promise(r=>setTimeout(r,1500));continue;}throw new Error("503");}
+        if(!res.ok){if(res.status===429){setMsgs(p=>[...p,{role:"model",text:"Je reçois trop de messages en ce moment 😅 Attends 1 minute et réessaie !"}]);return;}if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}throw new Error("503");}
         const data=await res.json();
         const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
         setMsgs(p=>[...p,{role:"model",text:reply}]);
