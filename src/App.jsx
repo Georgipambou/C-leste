@@ -1736,6 +1736,9 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
 function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
+  const [loadingCmts,setLoadingCmts]=useState(true);
+  const [hasMoreCmts,setHasMoreCmts]=useState(false);
+  const [cmtPage,setCmtPage]=useState(1);
   const [text,setText]=useState("");
   const [posting,setPosting]=useState(false);
   const [mediaFile,setMediaFile]=useState(null);
@@ -1749,16 +1752,22 @@ const mentionedIdsRef=useRef([]);
     if(ta){ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,140)+"px";}
   },[text]);
 
-  const load=useCallback(async()=>{
+ const load=useCallback(async(page=1)=>{
+    setLoadingCmts(true);
+   const from=(page-1)*30,to=from+29;
     const{data}=await sb.from("comments")
-      .select("*, author:profiles!comments_author_id_fkey(*)")
+      .select("id,post_id,author_id,text,media_url,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
       .eq("post_id",postId)
-      .order("created_at",{ascending:true});
-    setComments(data||[]);
+      .order("created_at",{ascending:true})
+      .range(from,to);
+    if(page===1)setComments(data||[]);
+    else setComments(prev=>[...prev,...(data||[])]);
     onCountChange?.((data||[]).length);
+    setLoadingCmts(false);
+    setHasMoreCmts((data||[]).length===30);
   },[postId,onCountChange]);
 
-  useEffect(()=>{load();},[load]);
+  useEffect(()=>{load(1);setCmtPage(1);},[load]);
   const targetRef=useRef(null);
 useEffect(()=>{
   if(targetRef.current){
@@ -1824,7 +1833,8 @@ mentionedIdsRef.current=[];
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
-      <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:320,overflowY:"auto",paddingRight:4}}>
+      {loadingCmts&&<div style={{display:"flex",justifyContent:"center",padding:"16px 0"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>}
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {comments.map(c=>(
   <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
     style={{borderRadius:12,transition:"background .5s",
@@ -1840,7 +1850,13 @@ mentionedIdsRef.current=[];
           <Btn onClick={()=>{setMediaPreview(null);setMediaFile(null);}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:26,height:26,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={12}/></Btn>
         </div>
       )}
-      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)"}}>
+      {hasMoreCmts&&<Btn onClick={()=>{const next=cmtPage+1;setCmtPage(next);load(next);}} style={{width:"100%",padding:"10px 0",color:T.muted,fontSize:12,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
+  Voir plus de commentaires
+  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
+</Btn>}
+
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)",position:"sticky",bottom:0,zIndex:10}}>
         <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
           const f=e.target.files[0];if(!f)return;
           const compressed=await compressImage(f);
@@ -1929,10 +1945,16 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
     loadMeta();setShowReplies(true);
   };
 
+  const [showCmtMenu,setShowCmtMenu]=useState(false);
   const del=async()=>{
+    setShowCmtMenu(false);
     if(!window.confirm("Supprimer ?"))return;
     await sb.from("comments").delete().eq("id",comment.id);
     onChange?.();
+  };
+  const copy=()=>{
+    navigator.clipboard?.writeText(comment.text||"");
+    setShowCmtMenu(false);
   };
 
   return(
@@ -1946,20 +1968,28 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
       </div>
 
       {/* Colonne droite : contenu */}
-      <div style={{flex:1,minWidth:0}}>
+      <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:13,fontWeight:700,color:T.text}}>{author?.name||"?"}</span>
             <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
           </div>
-          {isMine&&(
-            <Btn onClick={del} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
+          {(isMine||comment.text)&&(
+            <div style={{position:"relative"}}>
+              <Btn onClick={()=>setShowCmtMenu(m=>!m)} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
+              {showCmtMenu&&(
+                <div style={{position:"absolute",right:0,top:24,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:6,zIndex:50,minWidth:140,boxShadow:"0 8px 30px rgba(0,0,0,0.4)"}}>
+                  {comment.text&&<Btn onClick={copy} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,color:T.text,fontSize:13,textAlign:"left"}}>📋 Copier</Btn>}
+                  {isMine&&<Btn onClick={del} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,color:T.err,fontSize:13,textAlign:"left"}}>🗑 Supprimer</Btn>}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
        {/* Texte */}
-        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{renderTextWithMentions(comment.text,()=>{})}</p><TranslateBtn text={comment.text}/></>}
+        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,()=>{})}</p><TranslateBtn text={comment.text}/></>}
 {comment.media_url&&(
   <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
     <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
@@ -2007,13 +2037,14 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
               return(
                 <div key={r.id} style={{display:"flex",gap:10}}>
                   <Av u={ra} size={28}/>
-                  <div style={{flex:1,minWidth:0}}>
+                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
                       <span style={{fontSize:12,fontWeight:700,color:T.text}}>{ra.name}</span>
                       <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
                       {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
                     </div>
-                    <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6}}>{r.text}</p>
+                    <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word"}}>{r.text}</p>
+                    <TranslateBtn text={r.text}/>
                   </div>
                 </div>
               );
@@ -2889,7 +2920,7 @@ useEffect(()=>{
                 <div key={g.author?.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,borderRadius:18,border:`1px solid ${T.border}`,cursor:"pointer",animation:`fadeUp .3s ease ${i*.04}s both`,transition:"all .2s"}}
                   onClick={()=>{setViewing(g);setHideNav(true);}}>
                   <Av u={g.author} size={52} ring/>
-                  <div style={{flex:1,minWidth:0}}>
+                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
                     <p style={{margin:0,fontSize:11,color:T.muted}}>⛪ {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
                   </div>
@@ -4159,7 +4190,7 @@ try {
 }
 
 // ── USER VIEW ─────────────────────────────────────────────
-function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView}){
+function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0}){
   const conn=(myConnections||[]).includes(user.id);
   const [followersCount,setFollowersCount]=useState("…");
   const [followingCount,setFollowingCount]=useState("…");
@@ -4238,11 +4269,13 @@ if(user?.status==="suspended") return(
   </div>
 );
   const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
-  useEffect(()=>{
-    sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false}).then(({data})=>{
-      if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
-    });
+  const loadUPosts=useCallback(async()=>{
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
   },[user.id]);
+  useEffect(()=>{
+    loadUPosts();
+  },[user.id,userPostsVersion]);
   const stats=[{l:"POSTS",v:uPosts.length},{l:"ABONNÉS",v:followersCount},{l:"ABONNEMENTS",v:followingCount}];
 
   return(
@@ -5230,7 +5263,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections}
   );
 }
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
-function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM}){
+function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
  const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||""});
@@ -5289,7 +5322,7 @@ useEffect(()=>{
   sb.from("posts").select("*,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).then(({data})=>{
     if(data)setMyPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null})));
   });
-},[session?.user?.id]);
+},[session?.user?.id, userPostsVersion]);
   const followersCount=(myFollowers||[]).length;
   const followingCount=(myConnections||[]).length;
   const [detailPost, setDetailPost] = useState(null);
@@ -5960,6 +5993,7 @@ function VerificationInfoModal(){
 }
 
 function CelesteApp(){
+  const [userPostsVersion,setUserPostsVersion]=useState(0);
   const [authMode,setAuthMode]=useState("login");
   const [session,setSession]=useState(undefined);
   const [myProfile,setMyProfile]=useState(null);
@@ -6242,7 +6276,15 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           prevMsgCount.current=totalNew;
         }
       })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},payload=>{
+        const pid=payload.old?.id;
+        if(pid){setPosts(prev=>(prev||[]).filter(p=>p.id!==pid));setUserPostsVersion(v=>v+1);}
+      })
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"posts"},()=>{
+        setUserPostsVersion(v=>v+1);
+      })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"likes"},async payload=>{
+        
         const pid=payload.new?.post_id;if(!pid)return;
         const updated=await refreshPost(pid);
         if(updated&&updated.by===myId&&payload.new?.user_id!==myId){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
@@ -6390,7 +6432,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           {openUserId&&openUser&&(
             openUser.account_type==="organisation"
               ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg}/>
-              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg}/>
+              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg} userPostsVersion={userPostsVersion}/>
           )}
           {!openUserId&&openConvId&&openConv&&(
             <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);setOpenUserId(uid);}}/>
@@ -6402,7 +6444,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>setOpenConvId(id)} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>setOpenCeleste(true)}/>}
-             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM}/>}
+             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>setShowNewPost(true)} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
             </div>
         </div>
