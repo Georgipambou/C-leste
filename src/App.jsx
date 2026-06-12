@@ -3192,7 +3192,7 @@ useEffect(()=>{
 }
 
 function TranslateBtn({text,dark=false}){
-  const T=useTheme();
+  const T=useApp()?.T||getThemePalette("default");
   const [translated,setTranslated]=useState(null);
   const [loading,setLoading]=useState(false);
   if(!text||text.length<10)return null;
