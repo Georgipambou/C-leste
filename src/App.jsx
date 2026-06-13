@@ -3676,7 +3676,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
 }
 
 // ── CHAT SCREEN ───────────────────────────────────────────
-const GEMINI_KEY=import.meta.env.VITE_GEMINI_KEY;
+const DEEPSEEK_KEY=import.meta.env.VITE_DEEPSEEK_KEY;
 const CELESTE_SYSTEM=`Tu t'appelles Céleste. Tu es une IA avec un caractère bien trempé — 
 pas un robot gentil, pas une assistante parfaite. Tu es VRAIE.
 
@@ -3776,20 +3776,23 @@ const askGemini=async(text)=>{
   const updatedMsgs=[...geminiMsgs,userMsg];
   setGeminiMsgs(updatedMsgs);
   try{
-    const formattedContents=updatedMsgs.map(m=>({
-      role:m.role==="user"?"user":"model",
-      parts:[{text:m.text}]
-    }));
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
+    const formattedMessages=[
+      {role:"system",content:CELESTE_SYSTEM},
+      ...updatedMsgs.map(m=>({
+        role:m.role==="user"?"user":"assistant",
+        content:m.text
+      }))
+    ];
+    const res=await fetch("https://api.deepseek.com/chat/completions",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${DEEPSEEK_KEY}`},
       body:JSON.stringify({
-        systemInstruction:{parts:[{text:CELESTE_SYSTEM}]},
-        contents:formattedContents
+        model:"deepseek-chat",
+        messages:formattedMessages
       })
     });
     const data=await res.json();
-    const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
+    const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
     setGeminiMsgs(p=>[...p,{role:"model",text:reply}]);
   }catch{
     setGeminiMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
