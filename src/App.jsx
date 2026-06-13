@@ -3268,6 +3268,7 @@ const [saved,setSaved]=useState(false);
     sb.auth.getUser().then(({data})=>{
   if(data?.user?.id)sb.from("post_views").upsert({post_id:post.id,viewer_id:data.user.id},{onConflict:"post_id,viewer_id",ignoreDuplicates:true})
     .then(()=>sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id).then(({count})=>setViews(count||0)));
+  
 });
     // Charger le nombre de vues
     sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
@@ -3278,7 +3279,9 @@ const [saved,setSaved]=useState(false);
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle();
    if(ex){await sb.from("saved_posts").delete().eq("post_id",post.id).eq("user_id",session?.user?.id);setSaved(false);setSavesCount(c=>Math.max(0,c-1));notify("Retiré des sauvegardes");}
       else{await sb.from("saved_posts").insert({post_id:post.id,user_id:session?.user?.id});setSaved(true);setSavesCount(c=>c+1);notify("Sauvegardé ✦");}
+      
   };
+
 
  const handleDelete=async()=>{
     if(!window.confirm("Supprimer ce post ?"))return;
@@ -3292,9 +3295,10 @@ const [saved,setSaved]=useState(false);
   };
 
   const handlePin=async()=>{
-  if(!myProfile?.is_admin&&post.by!==session?.user?.id)return;
+  if(!myProfile?.is_admin)return;
   await sb.from("posts").update({pinned:!post.pinned}).eq("id",post.id);
-  refresh?.(post.id);notify(post.pinned?"Désépinglé":"Épinglé ✦");
+  notify(post.pinned?"Désponsorisé":"Sponsorisé ✦");
+  setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_reload_posts")),300);
 };
 
   return(
@@ -3326,11 +3330,11 @@ const [saved,setSaved]=useState(false);
                   <Btn onClick={()=>{handleSave();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:saved?T.goldL:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
                     <Bookmark size={14}/>{saved?"Retiré des sauvegardes":"Sauvegarder"}
                   </Btn>
-                  {(isMine||isAdmin)&&(
-                    <Btn onClick={()=>{handlePin();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
-                      <Pin size={14}/>{post.pinned?"Désépingler":"Épingler"}
-                    </Btn>
-                  )}
+                  {isAdmin&&(
+    <Btn onClick={()=>{handlePin();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+      <Pin size={14}/>{post.pinned?"Désponsoriser":"✦ Sponsoriser"}
+    </Btn>
+  )}
                   {(isMine||isAdmin)&&(
                     <Btn onClick={()=>{handleDelete();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:T.err,fontSize:13,textAlign:"left"}}>
                       <Trash2 size={14}/>Supprimer
@@ -4078,7 +4082,7 @@ try {
       )}
 
       {/* Input */}
-      <div style={{position:"relative",zIndex:2,background:"rgba(0,0,0,0.96)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
+      <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
         {recording?(
           <div style={{display:"flex",alignItems:"center",gap:12,background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:20,padding:"10px 16px"}}>
             <div style={{display:"flex",gap:3,alignItems:"center"}}>
@@ -6137,16 +6141,15 @@ if(navigator.geolocation){navigator.geolocation.watchPosition(pos=>{sb.from("pro
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),ppinned:p.pinned||false,
-post_phase:p.post_phase||1,
-text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,post_phase:p.post_phase||1,phase_views:p.phase_views||0}));
+   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0}));
     const blockedSet=new Set(blockedUserIds);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
 const visible=mapped.filter(p=>{
   if(blockedSet.has(p.by))return false;
   if(p.author?.status==="suspended")return false;
-  if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by))return false;
+  if(p.pinned)return true;
+if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by))return false;
   return true;
 }).sort((a,b)=>{
   const aLocal=a.is_for_sale&&(a.author?.country||"CG")===myCountry;
@@ -6165,17 +6168,25 @@ const seedSort=arr=>[...arr].sort((a,b)=>a.id.localeCompare(b.id));
 const viralShuffled=seedSort(viral);
 const badgeShuffled=seedSort(withBadge);
 const noBadgeShuffled=seedSort(noBadge);
-const mixed=[...pinned];
+const feed=[];
 let vi=0,bi=0,ni=0;
 while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
-  // 1 viral en premier si dispo
-  if(vi<viralShuffled.length){mixed.push(viralShuffled[vi++]);}
-  // 2 avec badge
-  if(bi<badgeShuffled.length){mixed.push(badgeShuffled[bi++]);}
-  if(bi<badgeShuffled.length){mixed.push(badgeShuffled[bi++]);}
-  // 1 sans badge (arrière-plan)
-  if(ni<noBadgeShuffled.length){mixed.push(noBadgeShuffled[ni++]);}
+  if(vi<viralShuffled.length){feed.push(viralShuffled[vi++]);}
+  if(bi<badgeShuffled.length){feed.push(badgeShuffled[bi++]);}
+  if(bi<badgeShuffled.length){feed.push(badgeShuffled[bi++]);}
+  if(ni<noBadgeShuffled.length){feed.push(noBadgeShuffled[ni++]);}
 }
+const mixed=[];
+let pi=0,fi=0;
+// Mettre le premier post épinglé tout en haut
+if(pinned.length>0){mixed.push(pinned[pi++]);}
+while(fi<feed.length){
+  mixed.push(feed[fi++]);
+  // Intercaler un épinglé toutes les 5 posts normaux
+  if(pi<pinned.length&&fi%5===0){mixed.push(pinned[pi++]);}
+}
+// Ajouter les épinglés restants
+while(pi<pinned.length){mixed.push(pinned[pi++]);}
 
 
 if(page===1){
@@ -6188,8 +6199,8 @@ if(page===1){
   filtered.forEach(p=>seenPostIdsRef.current.add(p.id));
   setPosts(prev=>[...(prev||[]),...filtered]);
 }
-setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);}
-
+setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
+  }
 },[session?.user?.id,blockedUserIds]);
 
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
