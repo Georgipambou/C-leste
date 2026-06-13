@@ -5827,18 +5827,24 @@ const send=async()=>{
           else{acc.push({role,parts:[{text:m.text}]});}
           return acc;
         },[]);
-        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,{
+        const formattedMessages=[
+          {role:"system",content:CELESTE_SYSTEM},
+          ...history.map(h=>({
+            role:h.role==="user"?"user":"assistant",
+            content:h.parts[0].text
+          }))
+        ];
+        const res=await fetch("https://api.deepseek.com/chat/completions",{
           method:"POST",
-          headers:{"Content-Type":"application/json"},
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${DEEPSEEK_KEY}`},
           body:JSON.stringify({
-            systemInstruction:{parts:[{text:CELESTE_SYSTEM}]},
-            contents:history,
-            generationConfig:{temperature:0.4,maxOutputTokens:2048}
+            model:"deepseek-chat",
+            messages:formattedMessages
           })
         });
         if(!res.ok){if(res.status===429){setMsgs(p=>[...p,{role:"model",text:"Je reçois trop de messages en ce moment 😅 Attends 1 minute et réessaie !"}]);return;}if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}throw new Error("503");}
         const data=await res.json();
-        const reply=data.candidates?.[0]?.content?.parts?.[0]?.text||"Je n'ai pas pu répondre.";
+        const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
         setMsgs(p=>[...p,{role:"model",text:reply}]);
         if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
         return;
@@ -5897,7 +5903,7 @@ const send=async()=>{
       </div>
 
       {/* Input */}
-      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.96)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:T.bg2,backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
         <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
           <textarea value={inp} onChange={e=>{
     setInp(e.target.value);
