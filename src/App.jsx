@@ -241,31 +241,31 @@ const getThemePalette = (mode) => {
     bg:         "#FFFFFF",
     bg2:        "#F8F9FA",
     bg3:        "#F1F3F4",
-    card:       "rgba(0,0,0,0.020)",
+    card:       "rgba(0,0,0,0.025)",
     cardSolid:  "#F8F9FA",
-    glass:      "rgba(0,0,0,0.020)",
-    glassMid:   "rgba(0,0,0,0.045)",
-    border:     "rgba(0,0,0,0.10)",
-    borderHi:   "rgba(0,0,0,0.17)",
+    glass:      "rgba(0,0,0,0.025)",
+    glassMid:   "rgba(0,0,0,0.05)",
+    border:     "rgba(0,0,0,0.08)",
+    borderHi:   "rgba(66,133,244,0.30)",
     text:       "#202124",
     sub:        "#5F6368",
-    muted:      "#AAAAAA",
-    gold:       "#1A73E8",   // Bleu Google affiné — plus profond
-    goldL:      "#4285F4",
-    goldD:      "#0D5DB8",
-    goldBg:     "rgba(26,115,232,0.08)",
-    goldBg2:    "rgba(26,115,232,0.15)",
-    navy:       "#E8710A",   // Orange secondaire (Google colors)
-    navyBg:     "rgba(232,113,10,0.10)",
-    err:        "#D32F2F",
-    ok:         "#188038",
-    warn:       "#E37400",
-    gradGold:   "linear-gradient(135deg,#1A73E8 0%,#4285F4 33%,#EA4335 66%,#34A853 100%)",
-    gradGoldV:  "linear-gradient(180deg,#1A73E8 0%,#34A853 100%)",
+    muted:      "#9AA0A6",
+    gold:       "#4285F4",
+    goldL:      "#1A73E8",
+    goldD:      "#1557B0",
+    goldBg:     "rgba(66,133,244,0.08)",
+    goldBg2:    "rgba(66,133,244,0.15)",
+    navy:       "#34A853",
+    navyBg:     "rgba(52,168,83,0.10)",
+    err:        "#EA4335",
+    ok:         "#34A853",
+    warn:       "#FBBC04",
+    gradGold:   "linear-gradient(135deg,#4285F4 0%,#EA4335 33%,#FBBC04 66%,#34A853 100%)",
+    gradGoldV:  "linear-gradient(180deg,#4285F4 0%,#34A853 100%)",
     gradDark:   "linear-gradient(160deg,#F8F9FA 0%,#FFFFFF 100%)",
-    glow:       "0 0 40px rgba(26,115,232,0.12)",
-    glowGold:   "0 0 16px rgba(26,115,232,0.35)",
-    shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+    glow:       "0 0 40px rgba(66,133,244,0.10)",
+    glowGold:   "0 0 16px rgba(66,133,244,0.30)",
+    shadowCard: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)",
   }; }
  
   // ─── LIGHT — Parchemin Or ───────────────────────────────────────────────────
@@ -2708,8 +2708,8 @@ if(isMe){
       <p style={{margin:0,fontSize:28,fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center"}}>{current.text}</p>
     </div>
   ):(
-    <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(20px)",borderRadius:20,padding:"20px 24px",maxWidth:"80%",textAlign:"center",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
-      <p style={{margin:0,fontSize:20,color:T.text,lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400}}>{current.text}</p>
+    <div style={{position:"absolute",bottom:160,left:16,right:16,zIndex:1,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
+      <p style={{margin:0,fontSize:18,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400,textShadow:"0 1px 8px rgba(0,0,0,0.8)",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(current.text,()=>{})}</p>
     </div>
   )
 )}
@@ -3161,7 +3161,7 @@ useEffect(()=>{
   <>
     <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
+  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
   <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
 </div>
     <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
@@ -3241,7 +3241,7 @@ function TranslateBtn({text,dark=false}){
   return(
     <div style={{marginBottom:8}}>
       {translated&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.7,whiteSpace:"pre-line",fontStyle:"italic"}}>{translated}</p>}
-      <button onClick={translate} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:dark?"rgba(0,0,0,0.45)":T.muted,opacity:0.6,display:"flex",alignItems:"center",gap:4}}>
+      <button onClick={e=>{e.stopPropagation();translate();}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:dark?"rgba(0,0,0,0.45)":T.muted,opacity:0.6,display:"flex",alignItems:"center",gap:4}}>
         {loading?"…":translated?"✕ Masquer":"🌐 Traduire"}
       </button>
     </div>
@@ -3251,6 +3251,7 @@ function TranslateBtn({text,dark=false}){
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
+  const [expanded,setExpanded]=useState(false);
   const [showMenu,setShowMenu]=useState(false);
 const [saved,setSaved]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
@@ -3364,7 +3365,7 @@ const [saved,setSaved]=useState(false);
       <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
     </div>
   ):(
-    <>{renderTextWithMentions(post.text, username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})&&<p style={{margin:"0 0 6px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}<TranslateBtn text={post.text}/></>
+    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
   )
 )}
               {(()=>{
@@ -3372,6 +3373,7 @@ const [saved,setSaved]=useState(false);
   if(allMedia.length===0)return null;
   return(
     <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+      onClick={e=>e.stopPropagation()}
       onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
       onTouchEnd={e=>{
         if(swipeStartRef.current===null)return;
@@ -3418,7 +3420,7 @@ const [saved,setSaved]=useState(false);
 )}
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
-            <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
+            <Btn onClick={e=>{e.stopPropagation();onLike(post.id);}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
               <Heart size={16} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
               {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
             </Btn>
@@ -4330,7 +4332,7 @@ if(user?.status==="suspended") return(
 
         <div style={{marginBottom:16}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-            <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text}}>{user.fullName||user.name}</h2>
+            <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.fullName||user.name}</h2>
             {user.badge&&<Badge type={user.badge}/>}
           </div>
           <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>⛪ {user.paroisse}</p>
@@ -4823,30 +4825,29 @@ if(existingPool){
         ))}
       </div>
       {!myProfile?.badge&&(
-        <Btn onClick={()=>{
-          const ref="CELESTE_"+session?.user?.id+"_"+Date.now();
+        <Btn onClick={async()=>{
           const win=window.open("","_blank");
-          fetch("https://api.notchpay.co/payments/initialize",{
-            method:"POST",
-            headers:{"Authorization":"pk.hmyQyUpyfQSnzzoe2ArDlvWueLaND9S7qkFwO46UgHhHlFkF1Z1ad4h6OABv1LOhLEJUm5Vclc42nCOErK3KhgQJUXg2GnpedYxTc1jmT6NL0tuSwWtUDzPxCMZsY","Content-Type":"application/json"},
-            body:JSON.stringify({
-              amount:1000,
-              currency:"XAF",
-              email:session?.user?.email||"user@celeste.app",
-              reference:ref,
-              callback:"https://celeste-green.vercel.app/payment-success",
-              description:"Badge certifié Céleste — 40 jours"
-            })
-          }).then(r=>r.json()).then(async data=>{
-            if(data?.authorization_url){
-              await sb.from("profiles").update({badge_payment_ref:ref}).eq("id",session?.user?.id);
-              win.location.href=data.authorization_url;
+          try{
+            const res=await fetch("https://api.chariow.com/v1/checkout",{
+              method:"POST",
+              headers:{"Authorization":"Bearer sk_20hoymvf_531d0d8326423d81026fa2b4b78d6a46","Content-Type":"application/json"},
+              body:JSON.stringify({
+                product_id:"prd_h1hcmvq7",
+                email:session?.user?.email||"user@celeste.app",
+                first_name:myProfile?.fullName?.split(" ")[0]||"User",
+                last_name:myProfile?.fullName?.split(" ")[1]||"Celeste",
+                redirect_url:`https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/notchpay-webhook?badge_user_id=${session?.user?.id}&sale_id={sale_id}`
+              })
+            });
+            const data=await res.json();
+            if(data?.checkout_url){
+              win.location.href=data.checkout_url;
               notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
             }else{
               win.close();
               notify("Erreur de paiement — réessaie");
             }
-          }).catch(()=>{win.close();notify("Erreur de paiement — réessaie");});
+          }catch(e){win.close();notify("Erreur de paiement — réessaie");}
         }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <span style={{fontSize:18}}>✦</span> Obtenir le badge — 2 000 FCFA
         </Btn>
@@ -5399,7 +5400,7 @@ useEffect(()=>{
         ):(
           <div style={{marginBottom:16}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text}}>{myProfile?.fullName}</h2>
+              <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{myProfile?.fullName}</h2>
               {myProfile?.badge&&<Badge type={myProfile.badge}/>}
             </div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
@@ -5801,7 +5802,6 @@ function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
   useEffect(()=>{
     if(!session?.user?.id||loadedRef.current)return;
     loadedRef.current=true;
-    if(msgs.length>0)return;
     sb.from("celeste_messages").select("*").eq("user_id",session.user.id).order("created_at",{ascending:true})
       .then(({data})=>{
         if(data&&data.length>0)setMsgs(data.map(m=>({role:m.role,text:m.text})));

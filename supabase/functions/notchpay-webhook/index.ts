@@ -3,19 +3,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 serve(async (req) => {
   try {
-    const body = await req.json();
-    console.log("NotchPay webhook received:", JSON.stringify(body));
+    const params = new URL(req.url).searchParams;
+    const badgeUserId = params.get("badge_user_id");
+    const saleId = params.get("sale_id");
 
-    const status = body?.event;
-    const reference = body?.payment?.reference || body?.reference;
-    const paymentStatus = body?.payment?.status || body?.status;
-
-    if (!reference) {
-      return new Response(JSON.stringify({ error: "No reference" }), { status: 400 });
+    if (!badgeUserId || !saleId) {
+      return new Response(JSON.stringify({ error: "Missing params" }), { status: 400 });
     }
 
-    if (paymentStatus !== "complete" && paymentStatus !== "successful" && status !== "payment.complete") {
-      return new Response(JSON.stringify({ message: "Payment not complete yet" }), { status: 200 });
+    // Vérifier le paiement auprès de Chariow
+    const chariowRes = await fetch(`https://api.chariow.com/v1/sales/${saleId}`, {
+      headers: { "Authorization": "Bearer sk_20hoymvf_531d0d8326423d81026fa2b4b78d6a46" }
+    });
+    const sale = await chariowRes.json();
+
+    if (sale?.status !== "completed" && sale?.status !== "paid") {
+      return new Response(JSON.stringify({ error: "Payment not confirmed" }), { status: 402 });
     }
 
     const supabase = createClient(
@@ -23,41 +26,40 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Trouver le profil avec cette référence de paiement
-    const { data: profile, error: findError } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("badge_payment_ref", reference)
-      .maybeSingle();
-
-    if (findError || !profile) {
-      console.error("Profile not found for reference:", reference);
-      return new Response(JSON.stringify({ error: "Profile not found" }), { status: 404 });
-    }
-
-    // Activer le badge pour 40 jours
+    // Activer le badge 40 jours
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 40);
 
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        badge: "confirmed",
-        badge_expires_at: expiresAt.toISOString(),
-        badge_payment_ref: null
-      })
-      .eq("id", profile.id);
+    await supabase.from("profiles").update({
+      badge: "confirmed",
+      badge_expires_at: expiresAt.toISOString(),
+      badge_payment_ref: null
+    }).eq("id", badgeUserId);
 
-    if (updateError) {
-      console.error("Update error:", updateError);
-      return new Response(JSON.stringify({ error: "Update failed" }), { status: 500 });
+    // Mettre à jour le pool du mois
+    const month = new Date().toISOString().slice(0, 7);
+    const { data: existingPool } = await supabase.from("badge_pool").select("*").eq("month", month).maybeSingle();
+    if (existingPool) {
+      await supabase.from("badge_pool").update({
+        total_collected: existingPool.total_collected + 2000,
+        platform_cut: existingPool.platform_cut + 400,
+        pool_amount: existingPool.pool_amount + 1600
+      }).eq("month", month);
+    } else {
+      await supabase.from("badge_pool").insert({ month, total_collected: 2000, platform_cut: 400, pool_amount: 1600, distributed: false });
     }
 
-    console.log("Badge activated for profile:", profile.id);
+    // Notification
+    await supabase.from("notifications").insert({
+      user_id: badgeUserId, from_id: badgeUserId,
+      type: "badge", text: "🎉 Ton badge certifié est activé ! ✦", read: false
+    });
+
+    console.log("Badge Chariow activé pour:", badgeUserId);
     return new Response(JSON.stringify({ success: true }), { status: 200 });
 
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("Erreur activation badge:", err);
     return new Response(JSON.stringify({ error: "Internal error" }), { status: 500 });
   }
 });
