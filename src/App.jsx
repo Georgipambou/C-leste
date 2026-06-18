@@ -458,7 +458,7 @@ const renderTextWithMentions = (text, onMentionClick) => {
   });
 };
 const normProfile = p => ({
-  isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
+  isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<3*60*1000):false,
 country:p.country||null,
   followersCount:p.followersCount||0,
 joined_at:p.joined_at||null,
@@ -1264,7 +1264,7 @@ function ImageViewer({url,onClose}){
 // ── TOAST ─────────────────────────────────────────────────
 function Toast({msg}){
   return(
-    <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:"rgba(10,10,10,0.96)",border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
+    <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:T.bg2,border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
       {msg}
     </div>
   );
@@ -2691,7 +2691,7 @@ if(isMe){
           ?<div style={{position:"absolute",inset:0}}>
            {isVideo
   ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center"}}/>
+  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",objectPosition:"center"}}/>
 }
             <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 60%,rgba(0,0,0,0.6))"}}/>
           </div>
@@ -3047,6 +3047,25 @@ const savedScroll=useRef(initialScroll);
 const viewedPostIds=useRef(new Set());
 const postsRef=useRef(posts);
 useEffect(()=>{postsRef.current=posts;},[posts]);
+useEffect(()=>{
+  if(!posts||posts.length===0)return;
+  const timer=setTimeout(()=>{
+    posts.slice(0,8).forEach(p=>{
+      const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
+      allMedia.forEach(url=>{
+        if(!url)return;
+        const isVideo=/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video");
+        const link=document.createElement("link");
+        link.rel="prefetch";
+        link.href=url;
+        link.as=isVideo?"video":"image";
+        document.head.appendChild(link);
+      });
+    });
+  },1000);
+  return()=>clearTimeout(timer);
+},[posts?.length]);
+
 useEffect(()=>{
   const timer=setTimeout(()=>{
     const viewObserver=new IntersectionObserver(entries=>{
@@ -3747,7 +3766,7 @@ L'APP EN BREF :
 - Notifications en temps réel
 
 LE BADGE CERTIFIÉ ✦ :
-- Coûte 1 000 FCFA pour 40 jours
+- Coûte  2000 FCFA pour 40 jours
 - Donne accès aux thèmes premium, stats de vues, confidentialité avancée, publications prioritaires
 
 LES THÈMES :
@@ -4805,7 +4824,7 @@ if(existingPool){
           <p style={{margin:0,fontSize:11,color:T.muted}}>
             {myProfile?.badge_expires_at
               ?`Expire le ${new Date(myProfile.badge_expires_at).toLocaleDateString("fr-FR")}`
-              :"1 000 FCFA · 40 jours"}
+              :" 2000 FCFA · 40 jours"}
           </p>
         </div>
       </div>
@@ -4826,22 +4845,82 @@ if(existingPool){
       </div>
       {!myProfile?.badge&&(
         <Btn onClick={async()=>{
+          const phoneInput=await new Promise(resolve=>{
+            const overlay=document.createElement("div");
+            overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;";
+            overlay.innerHTML=`
+              <div style="background:#1a1a2e;border-radius:16px;padding:24px;width:320px;display:flex;flex-direction:column;gap:16px;">
+                <p style="color:#fff;font-weight:700;font-size:16px;margin:0;text-align:center;">Numéro de paiement</p>
+                <div style="display:flex;gap:8px;">
+                  <select id="cel-dial" style="background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;width:130px;">
+                    <option value="CG">🇨🇬 +242</option>
+                    <option value="CD">🇨🇩 +243</option>
+                    <option value="CM">🇨🇲 +237</option>
+                    <option value="CI">🇨🇮 +225</option>
+                    <option value="SN">🇸🇳 +221</option>
+                    <option value="ML">🇲🇱 +223</option>
+                    <option value="BF">🇧🇫 +226</option>
+                    <option value="GN">🇬🇳 +224</option>
+                    <option value="BJ">🇧🇯 +229</option>
+                    <option value="TG">🇹🇬 +228</option>
+                    <option value="GA">🇬🇦 +241</option>
+                    <option value="GH">🇬🇭 +233</option>
+                    <option value="NG">🇳🇬 +234</option>
+                    <option value="KE">🇰🇪 +254</option>
+                    <option value="TZ">🇹🇿 +255</option>
+                    <option value="UG">🇺🇬 +256</option>
+                    <option value="RW">🇷🇼 +250</option>
+                    <option value="MA">🇲🇦 +212</option>
+                    <option value="OTHER">🌍 Autre</option>
+                  </select>
+                  <input id="cel-custom-dial" type="text" placeholder="+XXX" style="display:none;background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;width:80px;outline:none;" />
+                  <input id="cel-phone" type="tel" placeholder="06XXXXXXXX" style="background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;flex:1;outline:none;" />
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button id="cel-cancel" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">Annuler</button>
+                  <button id="cel-confirm" style="flex:1;padding:10px;background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Continuer</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+            overlay.querySelector("#cel-dial").onchange=function(){
+              const custom=overlay.querySelector("#cel-custom-dial");
+              custom.style.display=this.value==="OTHER"?"block":"none";
+            };
+            overlay.querySelector("#cel-confirm").onclick=()=>{
+              const num=overlay.querySelector("#cel-phone").value.trim();
+              const dialEl=overlay.querySelector("#cel-dial");
+              const cc=dialEl.value==="OTHER"
+                ?(overlay.querySelector("#cel-custom-dial").value.replace(/\D/g,"")||"00")
+                :dialEl.value;
+              document.body.removeChild(overlay);
+              resolve(num?{number:num.replace(/\D/g,""),country_code:cc}:null);
+            };
+            overlay.querySelector("#cel-cancel").onclick=()=>{
+              document.body.removeChild(overlay);
+              resolve(null);
+            };
+          });
+          if(!phoneInput)return;
           const win=window.open("","_blank");
           try{
             const res=await fetch("https://api.chariow.com/v1/checkout",{
-              method:"POST",
-              headers:{"Authorization":"Bearer sk_20hoymvf_531d0d8326423d81026fa2b4b78d6a46","Content-Type":"application/json"},
-              body:JSON.stringify({
-                product_id:"prd_h1hcmvq7",
-                email:session?.user?.email||"user@celeste.app",
-                first_name:myProfile?.fullName?.split(" ")[0]||"User",
-                last_name:myProfile?.fullName?.split(" ")[1]||"Celeste",
-                redirect_url:`https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/notchpay-webhook?badge_user_id=${session?.user?.id}&sale_id={sale_id}`
-              })
-            });
-            const data=await res.json();
-            if(data?.checkout_url){
-              win.location.href=data.checkout_url;
+  method:"POST",
+  headers:{"Authorization":"Bearer sk_20hoymvf_531d0d8326423d81026fa2b4b78d6a46","Content-Type":"application/json"},
+  body:JSON.stringify({
+    product_id:"prd_h1hcmvq7",
+    email:session?.user?.email||"user@celeste.app",
+    first_name:myProfile?.fullName?.split(" ")[0]||"User",
+    last_name:myProfile?.fullName?.split(" ")[1]||"Celeste",
+    phone:{number:phoneInput.number,country_code:phoneInput.country_code},
+    redirect_url:`https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/notchpay-webhook?badge_user_id=${session?.user?.id}&sale_id={sale_id}`
+  })
+});
+           const data=await res.json();
+console.log("Chariow response:",JSON.stringify(data));
+const checkoutUrl=data?.data?.payment?.checkout_url||data?.checkout_url||data?.data?.checkout_url;
+console.log("checkout_url trouvé:",checkoutUrl);
+if(checkoutUrl){
+              win.location.href=checkoutUrl;
               notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
             }else{
               win.close();
@@ -6105,7 +6184,13 @@ useEffect(()=>{
 },[myId]);
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
 
-  const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
+  const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){
+  const hasBadge=data.badge==="confirmed"||data.badge==="friend";
+  if(!hasBadge&&(data.hide_online||data.screenshot_protection||data.no_messages)){
+    await sb.from("profiles").update({hide_online:false,screenshot_protection:false,no_messages:false}).eq("id",uid);
+    data.hide_online=false;data.screenshot_protection=false;data.no_messages=false;
+  }
+  setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
   const loadConnections=useCallback(async uid=>{if(!uid)return;const[{data:following},{data:followers}]=await Promise.all([sb.from("connections").select("to_id").eq("from_id",uid),sb.from("connections").select("from_id").eq("to_id",uid)]);if(following)setMyConnections(following.map(d=>d.to_id));if(followers)setMyFollowers(followers.map(d=>d.from_id));},[]);
 
   // Load unread notifs count
@@ -6122,7 +6207,7 @@ useEffect(()=>{
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);Notification.requestPermission();sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id).then(({error})=>{if(error)console.warn("last_seen:",error);});
 if(navigator.geolocation){navigator.geolocation.watchPosition(pos=>{sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);},()=>{},{enableHighAccuracy:false,maximumAge:300000,timeout:10000});}}});
     const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id);sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
-    const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},120000);
+    const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},60000);
     return()=>{subscription.unsubscribe();clearInterval(lsInterval);};
   },[loadMyProfile]);
   
