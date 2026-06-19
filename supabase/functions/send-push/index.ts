@@ -1,4 +1,4 @@
-﻿import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ONESIGNAL_APP_ID = "641fff4e-e02d-4fb5-b0d4-c1a479996b20";
 const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_API_KEY") ?? "";
@@ -19,7 +19,8 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
-        filters: [{ field: "external_user_id", value: targetUserId }],
+        include_aliases: { external_id: [targetUserId] },
+        target_channel: "push",
         headings: { fr: title, en: title },
         contents: { fr: body, en: body },
       }),
