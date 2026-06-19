@@ -40,7 +40,7 @@ import React from "react";
 import { uploadToR2 } from "./uploadMedia";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Capacitor } from '@capacitor/core';
-
+import { App as CapApp } from '@capacitor/app';
 
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -2593,7 +2593,12 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
 
   useEffect(()=>{
     if(author?.screenshot_protection)enableScreenProtection();
-    return()=>disableScreenProtection();
+    const ch=sb.channel(`privacy_status_${author?.id}`)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${author?.id}`},payload=>{
+        if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+      })
+      .subscribe();
+    return()=>{sb.removeChannel(ch);disableScreenProtection();};
   },[author?.id]);
 
   useEffect(()=>{
@@ -3180,7 +3185,7 @@ useEffect(()=>{
   <>
     <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
+  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
   <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
 </div>
     <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
@@ -3866,6 +3871,19 @@ const askGemini=async(text)=>{
     sb.from("messages").update({is_read:true}).in("id",ids).then(()=>reload());
   },[conv.id,conv.msgs?.length]);
 
+  useEffect(()=>{
+    sb.from("profiles").select("screenshot_protection").eq("id",conv.uid).single()
+      .then(({data})=>{
+        if(data?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+      });
+    const ch=sb.channel(`privacy_chat_${conv.uid}`)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${conv.uid}`},payload=>{
+        if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+      })
+      .subscribe();
+    return()=>{sb.removeChannel(ch);disableScreenProtection();};
+  },[conv.uid]);
+  
  const ensureConv=async()=>{
     const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge,screenshot_protection").eq("id",conv.uid).single();
 if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
@@ -4241,7 +4259,12 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
         if(data?.avatar_url)setAvatarUrl(data.avatar_url);
         if(data?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
       });
-    return()=>disableScreenProtection();
+    const ch=sb.channel(`privacy_profile_${user.id}`)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${user.id}`},payload=>{
+        if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+      })
+      .subscribe();
+    return()=>{sb.removeChannel(ch);disableScreenProtection();};
   },[user.id]);
 
   useEffect(()=>{
@@ -4350,10 +4373,10 @@ if(user?.status==="suspended") return(
         </div>
 
         <div style={{marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-            <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.fullName||user.name}</h2>
-            {user.badge&&<Badge type={user.badge}/>}
-          </div>
+         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,minWidth:0}}>
+  <h2 style={{margin:0,flex:1,minWidth:0,fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,((user.fullName||user.name)?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.fullName||user.name}</h2>
+  {user.badge&&<Badge type={user.badge}/>}
+</div>
           <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>⛪ {user.paroisse}</p>
           {user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
   /^https?:\/\//.test(part)
@@ -5464,8 +5487,8 @@ useEffect(()=>{
         {editing?(
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20,background:T.card,borderRadius:18,padding:16,border:`1px solid ${T.border}`}}>
             <div style={{display:"flex",gap:8}}>
-              <input value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} placeholder="Prénom" style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
-              <input value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Nom" style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
+              <input value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} placeholder="Prénom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.prenom.length-12)*0.5),outline:"none"}}/>
+<input value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Nom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.nom.length-12)*0.5),outline:"none"}}/>
             </div>
             <input value={form.paroisse} onChange={e=>setForm(f=>({...f,paroisse:e.target.value}))} placeholder="Paroisse" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
             <textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Bio…" rows={3} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.6}}/>
@@ -5478,10 +5501,10 @@ useEffect(()=>{
           </div>
         ):(
           <div style={{marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{myProfile?.fullName}</h2>
-              {myProfile?.badge&&<Badge type={myProfile.badge}/>}
-            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,minWidth:0}}>
+  <h2 style={{margin:0,flex:1,minWidth:0,fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,(myProfile?.fullName?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{myProfile?.fullName}</h2>
+  {myProfile?.badge&&<Badge type={myProfile.badge}/>}
+</div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
             {myProfile?.shop_link&&(
@@ -6172,14 +6195,27 @@ useEffect(()=>{
     window.removeEventListener('touchstart',unlock);
   };
 },[]);
+useEffect(() => {
+  const handler = CapApp.addListener('backButton', () => {
+    if (viewImg) { setViewImg(null); return; }
+    if (openCeleste) { setOpenCeleste(false); return; }
+    if (showNewPost) { setShowNewPost(false); return; }
+    if (showAdmin) { setShowAdmin(false); return; }
+    if (showNotifs) { setShowNotifs(false); return; }
+    if (openUser || openUserId) { setOpenUser(null); setOpenUserId(null); return; }
+    if (openConvId) { setOpenConvId(null); return; }
+    if (tab !== 'home') { setTab('home'); return; }
+    CapApp.minimizeApp();
+  });
 
+  return () => { handler.remove(); };
+}, [viewImg, openCeleste, showNewPost, showAdmin, showNotifs, openUser, openUserId, openConvId, tab]);
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
   const myId=session?.user?.id;
   const addInAppNotif=useCallback((icon,title,body,action)=>{
   const id=Date.now()+Math.random();
   setInAppNotifs(p=>[...p,{id,icon,title,body,action}]);
   playNotifSound();
-  sb.functions.invoke('send-push',{body:{targetUserId:myId,title,body}});
   setTimeout(()=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),5000);
 },[myId]);
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
