@@ -3556,7 +3556,7 @@ const [saved,setSaved]=useState(false);
   if(allMedia.length===0)return null;
   return(
     <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
-      onClick={e=>e.stopPropagation()}
+      onClick={e=>{e.stopPropagation();const url=allMedia[slideIdx]||"";if(url.match(/\.(mp4|mov|webm)/i))onDetail?.(post);}}
       onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
       onTouchEnd={e=>{
         if(swipeStartRef.current===null)return;
