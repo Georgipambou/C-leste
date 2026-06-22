@@ -3089,7 +3089,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
               <div onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(255,255,255,0.2)",zIndex:4,cursor:"pointer"}}><div style={{height:"100%",width:`${progress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.1s linear"}}/></div>
               <div style={{position:"absolute",left:14,right:80,bottom:`calc(20px + env(safe-area-inset-bottom,0px))`,color:"#fff",zIndex:2}}>
                 <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
-                  <span style={{fontWeight:700,fontSize:15}}>@{post.author?.prenom||"utilisateur"}{post.author?.nom?" "+post.author.nom:""}</span>
+                  <span style={{fontWeight:700,fontSize:15}}>{post.author?.prenom||""}{post.author?.nom?" "+post.author.nom:""}</span>
                   <Badge type={post.author?.badge}/>
                 </div>
                 {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
@@ -3125,7 +3125,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0,onScrollChange,pushNav}){
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
-const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));console.log("videoPosts:",videoPosts.length,videoPosts.map(p=>({id:p.id,img:p.img,media_urls:p.media_urls,keys:Object.keys(p)})));
+const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));
 const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
 const bottomRef=useRef();
