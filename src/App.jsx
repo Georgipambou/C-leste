@@ -3054,157 +3054,69 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   const [expandedCaption,setExpandedCaption]=useState(false);
   const [pausedMap,setPausedMap]=useState({});
   const [loadingMap,setLoadingMap]=useState({});
+  const [progressMap,setProgressMap]=useState({});
   const containerRef=useRef(null);
   const videoRefs=useRef({});
   const scrollTimeout=useRef(null);
   const uid=session?.user?.id;
-
-  useEffect(()=>{
-    const el=containerRef.current;
-    if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});
-  },[]);
-
-  const handleScroll=()=>{
-    if(scrollTimeout.current)clearTimeout(scrollTimeout.current);
-    scrollTimeout.current=setTimeout(()=>{
-      const el=containerRef.current;
-      if(!el)return;
-      const idx=Math.round(el.scrollTop/window.innerHeight);
-      if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}
-    },80);
-  };
-
-  useEffect(()=>{
-    Object.entries(videoRefs.current).forEach(([i,v])=>{
-      if(!v)return;
-      if(Number(i)===activeIdx){
-        v.currentTime=0;
-        v.play().catch(()=>{});
-        setPausedMap(p=>({...p,[i]:false}));
-      } else {
-        v.pause();
-      }
-    });
-  },[activeIdx]);
-
-  const togglePause=(idx)=>{
-    const v=videoRefs.current[idx];
-    if(!v)return;
-    if(v.paused){v.play().catch(()=>{});setPausedMap(p=>({...p,[idx]:false}));}
-    else{v.pause();setPausedMap(p=>({...p,[idx]:true}));}
-  };
-
+  useEffect(()=>{const el=containerRef.current;if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});},[]);
+  const handleScroll=()=>{if(scrollTimeout.current)clearTimeout(scrollTimeout.current);scrollTimeout.current=setTimeout(()=>{const el=containerRef.current;if(!el)return;const idx=Math.round(el.scrollTop/window.innerHeight);if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}},80);};
+  useEffect(()=>{Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)===activeIdx){v.currentTime=0;v.play().catch(()=>{});setPausedMap(p=>({...p,[i]:false}));}else{v.pause();}});},[activeIdx]);
+  const togglePause=(idx)=>{const v=videoRefs.current[idx];if(!v)return;if(v.paused){v.play().catch(()=>{});setPausedMap(p=>({...p,[idx]:false}));}else{v.pause();setPausedMap(p=>({...p,[idx]:true}));}};
+  const seekVideo=(idx,e)=>{const v=videoRefs.current[idx];if(!v||!v.duration)return;const rect=e.currentTarget.getBoundingClientRect();v.currentTime=((e.clientX-rect.left)/rect.width)*v.duration;};
   return(
     <div style={{position:"fixed",inset:0,zIndex:1200,background:"#000"}}>
-      <button onClick={onClose} style={{position:"absolute",top:"calc(14px + env(safe-area-inset-top,0px))",left:14,zIndex:10,background:"rgba(0,0,0,0.45)",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",cursor:"pointer"}}>
-        <X size={20}/>
-      </button>
+      <button onClick={onClose} style={{position:"absolute",top:"calc(14px + env(safe-area-inset-top,0px))",left:14,zIndex:10,background:"rgba(0,0,0,0.45)",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",cursor:"pointer"}}><X size={20}/></button>
       <div ref={containerRef} onScroll={handleScroll} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {posts.map((post,idx)=>{
           const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
           const nearActive=Math.abs(idx-activeIdx)<=1;
           const videoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
           const caption=post.text||"";
-          const captionShort=caption.length>100?caption.slice(0,100)+"...":caption;
+          const captionShort=caption.length>120?caption.slice(0,120)+"...":caption;
           const isActive=idx===activeIdx;
           const isPaused=pausedMap[idx]||false;
           const isLoading=loadingMap[idx]||false;
+          const progress=progressMap[idx]||0;
           const isConnected=myConnections?.includes(post.by);
           const isMe=post.by===uid;
           return(
             <div key={post.id} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}}>
-              {nearActive&&videoSrc&&(
-                <video
-                  ref={el=>{videoRefs.current[idx]=el;}}
-                  src={videoSrc}
-                  loop
-                  playsInline
-                  webkit-playsinline="true"
-                  preload={Math.abs(idx-activeIdx)<=1?"auto":"none"}
-                  style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}}
-                  onClick={()=>togglePause(idx)}
-                  onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))}
-                  onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))}
-                  onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))}
-                />
-              )}
-
-              {/* Spinner chargement */}
-              {isActive&&isLoading&&(
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}>
-                  <div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/>
+              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=1?"auto":"none"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
+              {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
+              {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
+              <div onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(255,255,255,0.2)",zIndex:4,cursor:"pointer"}}><div style={{height:"100%",width:`${progress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.1s linear"}}/></div>
+              <div style={{position:"absolute",left:14,right:80,bottom:`calc(20px + env(safe-area-inset-bottom,0px))`,color:"#fff",zIndex:2}}>
+                <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
+                  <span style={{fontWeight:700,fontSize:15}}>@{post.author?.prenom||"utilisateur"}{post.author?.nom?" "+post.author.nom:""}</span>
+                  <Badge type={post.author?.badge}/>
                 </div>
-              )}
-
-              {/* Icone pause */}
-              {isActive&&isPaused&&!isLoading&&(
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}>
-                  <div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:56,height:56,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <Play size={24} color="#fff" style={{marginLeft:3}}/>
-                  </div>
-                </div>
-              )}
-
-              {/* Overlay gradient */}
-              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 45%)",pointerEvents:"none"}}/>
-
-              {/* Infos auteur + caption */}
-              <div style={{position:"absolute",left:14,right:74,bottom:`calc(${post.is_for_sale&&post.whatsapp_contact?"80px":"24px"} + env(safe-area-inset-bottom,0px))`,color:"#fff",zIndex:2}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                  <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1,minWidth:0}}>
-                    <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #C9952A",flexShrink:0}}>
-                      {post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}
-                    </div>
-                    <div style={{minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:4}}>
-                        <span style={{fontWeight:700,fontSize:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post.author?.prenom||"Utilisateur"} {post.author?.nom||""}</span>
-                        <Badge type={post.author?.badge}/>
-                      </div>
-                    </div>
-                  </div>
-                  {!isMe&&!isConnected&&(
-                    <button onClick={()=>onConnect?.(post.by)} style={{background:"#C9952A",border:"none",borderRadius:20,padding:"4px 12px",color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>+ Suivre</button>
-                  )}
-                </div>
-                {caption.length>0&&(
-                  <p style={{margin:0,fontSize:14,lineHeight:1.5,color:"rgba(255,255,255,0.95)"}}>
-                    {isActive&&expandedCaption?caption:captionShort}
-                    {caption.length>100&&isActive&&(
-                      <span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>
-                        {expandedCaption?" moins":" plus"}
-                      </span>
-                    )}
-                  </p>
-                )}
+                {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
               </div>
-
-              {/* Barre de vente */}
-              {post.is_for_sale&&post.whatsapp_contact&&(
-                <a href={`https://wa.me/${post.whatsapp_contact.replace(/\D/g,"")}`} target="_blank" rel="noreferrer"
-                  style={{position:"absolute",left:0,right:0,bottom:`calc(0px + env(safe-area-inset-bottom,0px))`,background:"linear-gradient(135deg,#25D366,#128C7E)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:10,color:"#fff",fontWeight:700,fontSize:15,textDecoration:"none",zIndex:3}}>
-                  <MessageCircle size={20}/> Contacter sur WhatsApp
-                </a>
-              )}
-
-              {/* Sidebar actions */}
-              <div style={{position:"absolute",right:12,bottom:`calc(${post.is_for_sale&&(post.whatsapp_contact)?"90px":"30px"} + env(safe-area-inset-bottom,0px))`,display:"flex",flexDirection:"column",alignItems:"center",gap:20,zIndex:2}}>
-                <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#fff",cursor:"pointer",padding:0}}>
-                  <Heart size={30} fill={liked?"#C9952A":"none"} color={liked?"#C9952A":"#fff"}/>
-                  <span style={{fontSize:12,fontWeight:600}}>{(post.likes||[]).length}</span>
-                </button>
-                <button onClick={()=>onOpenComments(post)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#fff",cursor:"pointer",padding:0}}>
-                  <MessageCircle size={28} color="#fff"/>
-                  <span style={{fontSize:12,fontWeight:600}}>{(post.comments||[]).length}</span>
-                </button>
-                <button onClick={()=>toggleSave(post.id)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#fff",cursor:"pointer",padding:0}}>
-                  <Bookmark size={26} color="#fff"/>
-                </button>
+              {post.is_for_sale&&post.whatsapp_contact&&(<a href={`https://wa.me/${post.whatsapp_contact.replace(/\D/g,"")}`} target="_blank" rel="noreferrer" style={{position:"absolute",left:0,right:0,bottom:`calc(3px + env(safe-area-inset-bottom,0px))`,background:"linear-gradient(135deg,#25D366,#128C7E)",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:10,color:"#fff",fontWeight:700,fontSize:14,textDecoration:"none",zIndex:3}}><MessageCircle size={18}/> Contacter sur WhatsApp</a>)}
+              <div style={{position:"absolute",right:10,bottom:`calc(30px + env(safe-area-inset-bottom,0px))`,display:"flex",flexDirection:"column",alignItems:"center",gap:18,zIndex:2}}>
+                <div style={{position:"relative",marginBottom:4}}>
+                  <div onClick={()=>onUser?.(post.by)} style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}</div>
+                  {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{position:"absolute",bottom:-8,left:"50%",transform:"translateX(-50%)",background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Heart size={32} fill={liked?"#ff2d55":"none"} color={liked?"#ff2d55":"#fff"}/></button>
+                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.likes||[]).length}</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <button onClick={()=>onOpenComments(post)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><MessageCircle size={30} color="#fff"/></button>
+                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.comments||[]).length}</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <button onClick={()=>toggleSave(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} color="#fff"/></button>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg);}} div::-webkit-scrollbar{display:none;}`}</style>
     </div>
   );
 }
@@ -3346,6 +3258,8 @@ useEffect(()=>{
   notify={notify}
   onUser={onUser}
   onOpenComments={p=>{setReelsIndex(null);setDetailPost(p);}}
+  myConnections={myConnections}
+  onConnect={onConnect}
 />}
       {detailPost&&(
         <PostDetailModal
