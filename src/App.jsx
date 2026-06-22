@@ -59,6 +59,7 @@ const playChatSound=(type)=>{
   }catch(_){}
 };
 const PAGE_SIZE=20;
+const playLikeSound=()=>{try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.type="sine";o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(1100,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(1500,ctx.currentTime+0.08);g.gain.setValueAtTime(0.18,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);o.start(ctx.currentTime);o.stop(ctx.currentTime+0.16);}catch(_){}};
 const isNative=Capacitor.isNativePlatform();
 const enableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.enable();}catch(e){}};
 const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.disable();}catch(e){}};
@@ -3050,6 +3051,7 @@ else filtered=active;
 
 // ── HOME TAB ──────────────────────────────────────────────
 function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
+  const [savedIds,setSavedIds]=useState(new Set());
   const [activeIdx,setActiveIdx]=useState(startIndex);
   const [expandedCaption,setExpandedCaption]=useState(false);
   const [pausedMap,setPausedMap]=useState({});
@@ -3070,7 +3072,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
       <div ref={containerRef} onScroll={handleScroll} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {posts.map((post,idx)=>{
           const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
-          const nearActive=Math.abs(idx-activeIdx)<=1;
+          const nearActive=Math.abs(idx-activeIdx)<=2;
           const videoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
           const caption=post.text||"";
           const captionShort=caption.length>120?caption.slice(0,120)+"...":caption;
@@ -3081,7 +3083,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const isConnected=myConnections?.includes(post.by);
           const isMe=post.by===uid;
           return(<div key={post.id} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}}>
-              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=1?"auto":"none"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
+              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=2?"auto":"none"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
               {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
@@ -3106,7 +3108,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                   <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.comments||[]).length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <button onClick={()=>toggleSave(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} color="#fff"/></button>
+                  <button onClick={()=>{setSavedIds(prev=>{const n=new Set(prev);n.has(post.id)?n.delete(post.id):n.add(post.id);return n;});toggleSave(post.id);}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} fill={savedIds.has(post.id)?"#C9952A":"none"} color={savedIds.has(post.id)?"#C9952A":"#fff"}/></button>
                 </div>
               </div>
             </div>
@@ -3196,6 +3198,8 @@ useEffect(()=>{
     if(!post)return;
     const uid=session?.user?.id;
     const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
+    setPosts(prev=>(prev||[]).map(p=>p.id!==pid?p:{...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]}));
+    if(!liked)playLikeSound();
     try{
       if(liked){
         await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);
