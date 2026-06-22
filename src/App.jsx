@@ -1709,7 +1709,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}
       />
       {showSuggestions&&(
-        <div style={{position:"absolute",bottom:"110%",left:0,right:0,background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
+        <div style={{position:"absolute",bottom:"auto",top:"auto",left:0,right:0,background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease",transform:"translateY(-105%)"}}>
           {/* Barre de recherche */}
           <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
             <Search size={13} color={T.muted}/>
@@ -3055,6 +3055,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   const [activeIdx,setActiveIdx]=useState(startIndex);
   const [expandedCaption,setExpandedCaption]=useState(false);
   const [pausedMap,setPausedMap]=useState({});
+  const [reelsModalOpen,setReelsModalOpen]=useState(false);
   const [loadingMap,setLoadingMap]=useState({});
   const [progressMap,setProgressMap]=useState({});
   const containerRef=useRef(null);
@@ -3063,7 +3064,10 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   const uid=session?.user?.id;
   useEffect(()=>{const el=containerRef.current;if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});},[]);
   const handleScroll=()=>{if(scrollTimeout.current)clearTimeout(scrollTimeout.current);scrollTimeout.current=setTimeout(()=>{const el=containerRef.current;if(!el)return;const idx=Math.round(el.scrollTop/window.innerHeight);if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}},80);};
-  useEffect(()=>{Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)===activeIdx){v.currentTime=0;v.play().catch(()=>{});setPausedMap(p=>({...p,[i]:false}));}else{v.pause();}});},[activeIdx]);
+  useEffect(()=>{const activeVideo=videoRefs.current[activeIdx];
+  if(activeVideo&&!reelsModalOpen){activeVideo.currentTime=0;activeVideo.play().catch(()=>{});setPausedMap(p=>({...p,[activeIdx]:false}));}
+  else if(activeVideo&&reelsModalOpen){activeVideo.pause();}
+  Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)!==activeIdx)v.pause();});},[activeIdx]);
   const togglePause=(idx)=>{const v=videoRefs.current[idx];if(!v)return;if(v.paused){v.play().catch(()=>{});setPausedMap(p=>({...p,[idx]:false}));}else{v.pause();setPausedMap(p=>({...p,[idx]:true}));}};
   const seekVideo=(idx,e)=>{const v=videoRefs.current[idx];if(!v||!v.duration)return;const rect=e.currentTarget.getBoundingClientRect();v.currentTime=((e.clientX-rect.left)/rect.width)*v.duration;};
   return(
@@ -3094,7 +3098,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                   <span style={{fontWeight:700,fontSize:15}}>{post.author?.fullName||post.author?.name||""}</span>
                   <Badge type={post.author?.badge}/>
                 </div>
-                {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
+                {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)",textAlign:"left"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
               </div>
               {post.is_for_sale&&post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{position:'absolute',left:0,right:0,bottom:'calc(4px + env(safe-area-inset-bottom,0px))',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'12px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:14,textDecoration:'none',zIndex:3}}><MessageCircle size={18}/> Contacter sur WhatsApp</a>)}
               <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
@@ -3105,12 +3109,12 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                   <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.likes||[]).length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <button onClick={()=>onOpenComments(post)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><MessageCircle size={30} color="#fff"/></button>
+                  <button onClick={()=>{setReelsModalOpen(true);onOpenComments(post,()=>setReelsModalOpen(false));}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><MessageCircle size={30} color="#fff"/></button>
                   <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.comments||[]).length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                   <button onClick={()=>{setSavedIds(prev=>{const n=new Set(prev);n.has(post.id)?n.delete(post.id):n.add(post.id);return n;});toggleSave(post.id);}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} fill={savedIds.has(post.id)?"#C9952A":"none"} color={savedIds.has(post.id)?"#C9952A":"#fff"}/></button>
-                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{post.saves_count||0}</span>
+                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{post.savesCount||0}</span>
                 </div>
               </div>
             </div>
@@ -3127,6 +3131,7 @@ function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
 const [reelsCommentPost,setReelsCommentPost]=useState(null);
+const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
 const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));
 const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
@@ -3254,7 +3259,7 @@ useEffect(()=>{
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={p=>{setReelsCommentPost(p);setDetailPost(p);}}
+  onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);setDetailPost(p);}}
   myConnections={myConnections}
   onConnect={onConnect}
 />}
@@ -3266,6 +3271,7 @@ useEffect(()=>{
             const pos=savedScroll.current;
             setDetailPost(null);
             setReelsCommentPost(null);
+            if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
             setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=pos;},80);
           }}
           onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
