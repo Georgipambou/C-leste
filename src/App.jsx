@@ -2058,7 +2058,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
 }
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
-function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify}){
+function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800}){
 const {members}=useApp();
 useEffect(()=>{
   if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
@@ -2097,7 +2097,7 @@ useEffect(()=>{
   return(
     <>
       {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
-      <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+      <div style={{position:"fixed",inset:0,zIndex:zIndex,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
         onClick={e=>e.target===e.currentTarget&&onClose()}>
         <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",boxShadow:"0 -20px 60px rgba(0,0,0,0.8)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
@@ -3126,6 +3126,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0,onScrollChange,pushNav}){
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
+const [reelsCommentPost,setReelsCommentPost]=useState(null);
 const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));
 const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
@@ -3253,16 +3254,18 @@ useEffect(()=>{
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={p=>{setReelsIndex(null);setDetailPost(p);}}
+  onOpenComments={p=>{setReelsCommentPost(p);setDetailPost(p);}}
   myConnections={myConnections}
   onConnect={onConnect}
 />}
       {detailPost&&(
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
+          zIndex={reelsCommentPost?1300:800}
           onClose={()=>{
             const pos=savedScroll.current;
             setDetailPost(null);
+            setReelsCommentPost(null);
             setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=pos;},80);
           }}
           onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
