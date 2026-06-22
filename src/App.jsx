@@ -4346,7 +4346,7 @@ try {
 }
 
 // ── USER VIEW ─────────────────────────────────────────────
-function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0}){
+function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0,toggleLike,toggleSave}){
   const conn=(myConnections||[]).includes(user.id);
   const [followersCount,setFollowersCount]=useState("…");
   const [followingCount,setFollowingCount]=useState("…");
@@ -4430,6 +4430,9 @@ if(user?.status==="suspended") return(
   </div>
 );
   const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
+  const [userReelsIndex,setUserReelsIndex]=useState(null);
+  const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
+  const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
   const loadUPosts=useCallback(async()=>{
     const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
     if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
@@ -4442,10 +4445,28 @@ if(user?.status==="suspended") return(
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {showReport&&<ReportModal onClose={()=>setShowReport(false)} onSubmit={handleReport}/>}
+      {userReelsIndex!==null&&toggleLike&&toggleSave&&(
+        <ReelsViewer
+          posts={uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+          startIndex={userReelsIndex}
+          onClose={()=>setUserReelsIndex(null)}
+          toggleLike={toggleLike}
+          toggleSave={toggleSave}
+          session={session}
+          myProfile={myProfile}
+          notify={notify}
+          onUser={()=>{}}
+          onOpenComments={(p,onReelsCb)=>{setUserReelsCommentPost(p);setUserReelsCloseCallback(()=>onReelsCb);setDetailPost(p);}}
+          myConnections={myConnections}
+          onConnect={()=>{}}
+        />
+      )}
       {detailPost&&(
         <PostDetailModal post={detailPost} myProfile={myProfile} session={session}
           getM={id=>id===user.id?user:myProfile}
-          onClose={()=>setDetailPost(null)}
+          zIndex={userReelsCommentPost?1300:800}
+          fromReel={!!userReelsCommentPost}
+          onClose={()=>{setDetailPost(null);setUserReelsCommentPost(null);if(userReelsCloseCallback){userReelsCloseCallback();setUserReelsCloseCallback(null);}}}
           onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").insert({post_id:pid,user_id:session?.user?.id});const u=await refreshPost(pid);if(u)setDetailPost(u);}}
           onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
           notify={notify}/>
@@ -4504,7 +4525,14 @@ if(user?.status==="suspended") return(
           ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune publication encore</p></div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
             {uPosts.map(p=>(
-              <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}} onClick={()=>setDetailPost(p)}>
+              <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}} onClick={()=>{
+                const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
+                if(isVid&&toggleLike&&toggleSave){
+                  const vidPosts=uPosts.filter(q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")));
+                  const idx=vidPosts.findIndex(q=>q.id===p.id);
+                  setUserReelsIndex(idx>=0?idx:0);
+                }else{setDetailPost(p);}
+              }}>
                 {p.img
                   ?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                   :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
@@ -6675,7 +6703,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           {openUserId&&openUser&&(
             openUser.account_type==="organisation"
               ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg}/>
-              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg} userPostsVersion={userPostsVersion}/>
+              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&(
             <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
