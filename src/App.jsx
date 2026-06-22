@@ -3099,7 +3099,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
           const saved=(post.saved_posts||[]).length>0;
           const nearActive=Math.abs(idx-activeIdx)<=1;
-          const videoSrc=post.media_urls?.[0]||post.img;
+          const videoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img_url;
           const caption=post.text||"";
           const captionShort=caption.length>100?caption.slice(0,100)+"...":caption;
           const isActive=idx===activeIdx;
@@ -3188,7 +3188,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0,onScrollChange}){
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
-const videoPosts=posts.filter(p=>p.type==="video"||((p.media_urls||[]).length>0&&(p.media_urls[0]||"").match(/\.(mp4|mov|webm)/i)));
+const videoPosts=posts.filter(p=>(p.img_url||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));
 const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
 const bottomRef=useRef();
@@ -3377,7 +3377,7 @@ useEffect(()=>{
         {(posts||[]).filter(p=>!searchQuery||p.text?.toLowerCase().includes(searchQuery.toLowerCase())||p.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((p,i)=>(
           <div key={p.id} data-post-id={p.id}>
 <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-           onDetail={p=>{const isVid=p.type==="video"||((p.media_urls||[]).length>0&&(p.media_urls[0]||"").match(/\.(mp4|mov|webm)/i));if(isVid){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else setDetailPost(p);}}
+           onDetail={p=>{const isVid=(p.img_url||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else setDetailPost(p);}}
             onLike={toggleLike}
             onSave={toggleSave}
             onUser={onUser}
