@@ -59,7 +59,7 @@ const playChatSound=(type)=>{
   }catch(_){}
 };
 const PAGE_SIZE=20;
-const playLikeSound=()=>{try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.type="sine";o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(1100,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(1500,ctx.currentTime+0.08);g.gain.setValueAtTime(0.18,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);o.start(ctx.currentTime);o.stop(ctx.currentTime+0.16);}catch(_){}};
+const playLikeSound=()=>{try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.type="sine";o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(260,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(320,ctx.currentTime+0.12);g.gain.setValueAtTime(0.22,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.25);o.start(ctx.currentTime);o.stop(ctx.currentTime+0.26);}catch(_){}};
 const isNative=Capacitor.isNativePlatform();
 const enableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.enable();}catch(e){}};
 const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.disable();}catch(e){}};
@@ -3071,7 +3071,8 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
       <button onClick={onClose} style={{position:"absolute",top:"calc(14px + env(safe-area-inset-top,0px))",left:14,zIndex:10,background:"rgba(0,0,0,0.45)",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",cursor:"pointer"}}><X size={20}/></button>
       <div ref={containerRef} onScroll={handleScroll} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {posts.map((post,idx)=>{
-          const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
+          const livePost=(posts||[]).find(p=>p.id===post.id)||post;
+          const liked=(livePost.likes||[]).some(l=>(l.user_id||l)===uid);
           const nearActive=Math.abs(idx-activeIdx)<=2;
           const videoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
           const caption=post.text||"";
@@ -3109,6 +3110,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                   <button onClick={()=>{setSavedIds(prev=>{const n=new Set(prev);n.has(post.id)?n.delete(post.id):n.add(post.id);return n;});toggleSave(post.id);}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} fill={savedIds.has(post.id)?"#C9952A":"none"} color={savedIds.has(post.id)?"#C9952A":"#fff"}/></button>
+                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{post.saves_count||0}</span>
                 </div>
               </div>
             </div>
@@ -3221,14 +3223,7 @@ useEffect(()=>{
           },{onConflict:"post_id,liker_id",ignoreDuplicates:true});
         }
       }
-      setPosts(prev=>(prev||[]).map(p=>{
-  if(p.id!==pid)return p;
-  const liked=(p.likes||[]).some(l=>(l.user_id||l)===uid);
-  const next={...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]};
-  console.log("toggleLike result text_background:", next.text_background);
-  return next;
-}));
-    // Push notif au propriétaire du post
+      // Push notif au propriétaire du post
       if(!liked&&post.by!==uid){
         sb.functions.invoke('send-push',{body:{
           targetUserId:post.by,
