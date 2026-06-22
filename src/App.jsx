@@ -3097,7 +3097,6 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
               <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
                   <div onClick={()=>onUser?.(post.by)} style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}</div>
                   {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{position:"absolute",bottom:-8,left:"50%",transform:"translateX(-50%)",background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
-                </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                   <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Heart size={32} fill={liked?"#ff2d55":"none"} color={liked?"#ff2d55":"#fff"}/></button>
                   <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.likes||[]).length}</span>
