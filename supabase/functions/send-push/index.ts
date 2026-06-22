@@ -5,7 +5,7 @@ const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_API_KEY") ?? "";
 
 Deno.serve(async (req) => {
   try {
-    const { targetUserId, title, body } = await req.json();
+    const { targetUserId, title, body, data } = await req.json();
 
     if (!targetUserId || !title || !body) {
       return new Response(JSON.stringify({ error: "Parametres manquants" }), { status: 400 });
@@ -23,11 +23,12 @@ Deno.serve(async (req) => {
         target_channel: "push",
         headings: { fr: title, en: title },
         contents: { fr: body, en: body },
+        data: data || {},
       }),
     });
 
-    const data = await res.json();
-    return new Response(JSON.stringify(data), { status: 200 });
+    const responseData = await res.json();
+    return new Response(JSON.stringify(responseData), { status: 200 });
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
   }

@@ -1,9 +1,9 @@
-import OneSignal from '@onesignal/capacitor-plugin';
+﻿import OneSignal from '@onesignal/capacitor-plugin';
 import { Capacitor } from '@capacitor/core';
 
 export async function subscribePush(supabaseClient, userId) {
   if (!Capacitor.isNativePlatform()) {
-    console.log("Push ignoré — plateforme non native (web)");
+    console.log("Push ignore - plateforme non native (web)");
     return null;
   }
   try {
@@ -11,7 +11,22 @@ export async function subscribePush(supabaseClient, userId) {
     const permission = await OneSignal.Notifications.requestPermission(true);
     console.log("Permission notif:", permission);
     await OneSignal.login(userId);
-    console.log("✦ OneSignal initialisé pour", userId);
+    console.log("OneSignal initialise pour", userId);
+
+    OneSignal.Notifications.addEventListener('click', (event) => {
+      const data = event?.notification?.additionalData;
+      if (!data || !data.type) return;
+      if (data.type === 'message' && data.convId) {
+        window.dispatchEvent(new CustomEvent('celeste_open_conv', { detail: { convId: data.convId } }));
+      } else if (data.type === 'post' && data.postId) {
+        window.dispatchEvent(new CustomEvent('celeste_open_post', { detail: { postId: data.postId } }));
+      } else if (data.type === 'status' && data.statusId) {
+        window.dispatchEvent(new CustomEvent('celeste_open_status', { detail: { statusId: data.statusId } }));
+      } else if (data.type === 'user' && data.userId) {
+        window.dispatchEvent(new CustomEvent('celeste_open_user', { detail: { uid: data.userId } }));
+      }
+    });
+
     return true;
   } catch(err) {
     console.error('Erreur OneSignal:', err);
