@@ -3051,7 +3051,8 @@ else filtered=active;
 
 // ── HOME TAB ──────────────────────────────────────────────
 function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
-  const [savedIds,setSavedIds]=useState(new Set());
+  const [savedIds,setSavedIds]=useState(()=>new Set((posts||[]).filter(p=>p.saved&&p.saved.length>0).map(p=>p.id)));
+  const [saveCountMap,setSaveCountMap]=useState(()=>{const m={};(posts||[]).forEach(p=>{m[p.id]=p.savesCount||0;});return m;});
   const [activeIdx,setActiveIdx]=useState(startIndex);
   const [expandedCaption,setExpandedCaption]=useState(false);
   const [pausedMap,setPausedMap]=useState({});
@@ -3113,8 +3114,8 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                   <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.comments||[]).length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <button onClick={()=>{setSavedIds(prev=>{const n=new Set(prev);n.has(post.id)?n.delete(post.id):n.add(post.id);return n;});toggleSave(post.id);}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} fill={savedIds.has(post.id)?"#C9952A":"none"} color={savedIds.has(post.id)?"#C9952A":"#fff"}/></button>
-                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{post.savesCount||0}</span>
+                  <button onClick={()=>{const alreadySaved=savedIds.has(post.id);setSavedIds(prev=>{const n=new Set(prev);alreadySaved?n.delete(post.id):n.add(post.id);return n;});setSaveCountMap(prev=>({...prev,[post.id]:Math.max(0,(prev[post.id]||0)+(alreadySaved?-1:1))}));toggleSave(post.id);}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} fill={savedIds.has(post.id)?"#C9952A":"none"} color={savedIds.has(post.id)?"#C9952A":"#fff"}/></button>
+                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{saveCountMap[post.id]??post.savesCount??0}</span>
                 </div>
               </div>
             </div>
