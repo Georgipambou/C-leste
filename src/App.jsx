@@ -817,7 +817,7 @@ const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,
 });
 
 // ── MEDIA PLAYER ─────────────────────────────────────────
-const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {} }) {
+const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideoClick }) {
   const ref = useRef(null);
   const [muted, setMuted] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -925,7 +925,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {} }) {
         {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
       </Btn>
       {!fullscreen && (
-        <Btn onClick={openFullscreen} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+        <Btn onClick={e=>{e.stopPropagation();onVideoClick?onVideoClick():openFullscreen(e);}} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
           <Maximize2 size={15} />
         </Btn>
       )}
@@ -1008,10 +1008,10 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {} }) {
   );
 });
 
-const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick}){
+const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideoClick}){
   if(!url) return null;
   const isVideo=/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video");
-  if(isVideo) return <PostVideoPlayer url={url} style={style}/>;
+  if(isVideo) return <PostVideoPlayer url={url} style={style} onVideoClick={onVideoClick}/>;
   return(
     <img src={url} loading="lazy" alt="" onClick={()=>onImageClick?.(url)}
       style={{width:"100%",borderRadius:14,display:"block",objectFit:"cover",maxHeight:500,cursor:onImageClick?"pointer":"default",...style}}/>
@@ -3565,7 +3565,7 @@ const [saved,setSaved]=useState(false);
         if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
         swipeStartRef.current=null;
       }}>
-      <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView}/>
+      <MediaPlayer url={allMedia[slideIdx]} style={{maxHeight:400}} onImageClick={onImageView} onVideoClick={()=>onDetail?.(post)}/>
       {allMedia.length>1&&(
         <>
           <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
