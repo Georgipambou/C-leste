@@ -743,10 +743,24 @@ function FlagSelector({selected,onChange}){
 
 // ── COMPOSANTS ATOMIQUES ──────────────────────────────────
 
+let _unseenStatusMap=new Map();
+const _statusListeners=new Set();
+function _setUnseenStatusMap(m){_unseenStatusMap=m;_statusListeners.forEach(fn=>fn());}
 const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
+  const [,_forceTick]=useState(0);
+  useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
+  const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
+  const showRing=ring||!!_statusId;
+  const handleStatusCapture=e=>{
+    if(_statusId){
+      e.stopPropagation();
+      window.__celesteSetTab&&window.__celesteSetTab("statuses");
+      setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})),350);
+    }
+  };
   return(
-    <div onClick={onClick} style={{position:"relative",flexShrink:0,width:size,height:size,cursor:onClick?"pointer":"default"}}>
-      {ring && (
+    <div onClick={onClick} onClickCapture={handleStatusCapture} style={{position:"relative",flexShrink:0,width:size,height:size,cursor:onClick?"pointer":"default"}}>
+      {showRing && (
         <svg style={{position:"absolute",inset:-3,width:size+6,height:size+6,zIndex:1,animation:"statusRing 2s ease forwards"}} viewBox={`0 0 ${size+6} ${size+6}`}>
           <circle cx={(size+6)/2} cy={(size+6)/2} r={(size+6)/2-2}
             fill="none" stroke={T.gold} strokeWidth="2"
@@ -756,16 +770,16 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
       )}
       {u?.avatar_url
         ? <img src={u.avatar_url} loading="lazy"
-            style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${ring?T.gold:T.border}`,cursor:"pointer"}}
+            style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${showRing?T.gold:T.border}`,cursor:"pointer"}}
             alt=""
             onClick={e=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:u.avatar_url}}));}}/>
         : <div style={{width:size,height:size,borderRadius:"50%",
             background:`radial-gradient(circle at 35% 35%, ${u?.color||"#666"}cc, ${u?.color||"#444"}44)`,
-            border:`1.5px solid ${ring?T.gold:u?.color||"#888"}44`,
+            border:`1.5px solid ${showRing?T.gold:u?.color||"#888"}44`,
             display:"flex",alignItems:"center",justifyContent:"center",
             fontSize:Math.round(size*.36),fontWeight:700,color:u?.color||"#fff",
             fontFamily:"'Cormorant Garamond',serif",
-            boxShadow:ring?`0 0 12px ${u?.color||T.gold}44`:"none"}}>
+            boxShadow:showRing?`0 0 12px ${u?.color||T.gold}44`:"none"}}>
             {u?.initials||"?"}
           </div>
       }
@@ -6259,6 +6273,7 @@ function CelesteApp(){
   const [blockedUserIds,setBlockedUserIds]=useState([]);
   const [chatDrafts,setChatDrafts]=useState({});
   const [tab,setTab]=useState("home");
+  useEffect(()=>{window.__celesteSetTab=setTab;return()=>{delete window.__celesteSetTab;};},[]);
   const [openConvId,setOpenConvId]=useState(null);
   const [openUserId,setOpenUserId]=useState(null);
   const [openUser,setOpenUser]=useState(null);
@@ -6515,13 +6530,17 @@ useEffect(()=>{
       const since=new Date(Date.now()-24*60*60*1000).toISOString();
       const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session.user.id);
       const followedIds=(conns||[]).map(c=>c.to_id);
-      if(!followedIds.length){setUnreadStatuses(0);return;}
-      const{data:statuses}=await sb.from("statuses").select("id").in("user_id",followedIds).gte("created_at",since);
-      if(!statuses?.length){setUnreadStatuses(0);return;}
+      if(!followedIds.length){setUnreadStatuses(0);_setUnseenStatusMap(new Map());return;}
+      const{data:statuses}=await sb.from("statuses").select("id,user_id").in("user_id",followedIds).gte("created_at",since);
+      if(!statuses?.length){setUnreadStatuses(0);_setUnseenStatusMap(new Map());return;}
       const statusIds=statuses.map(s=>s.id);
       const{data:views}=await sb.from("status_views").select("status_id").eq("viewer_id",session.user.id).in("status_id",statusIds);
       const viewedIds=new Set((views||[]).map(v=>v.status_id));
-      setUnreadStatuses(statusIds.filter(id=>!viewedIds.has(id)).length);
+      const unseen=statuses.filter(s=>!viewedIds.has(s.id));
+      setUnreadStatuses(unseen.length);
+      const byUser=new Map();
+      unseen.forEach(s=>{if(!byUser.has(s.user_id))byUser.set(s.user_id,s.id);});
+      _setUnseenStatusMap(byUser);
     };
     loadUnreadStatuses();
     const onlineInterval=setInterval(()=>{loadMembers();loadUnreadStatuses();},30000);
