@@ -2058,7 +2058,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
 }
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
-function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800}){
+function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800,fromReel=false}){
 const {members}=useApp();
 useEffect(()=>{
   if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
@@ -2133,7 +2133,7 @@ onTouchEnd={e=>{
   if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
   swipeStartRef.current=null;
 }}>
-      <MediaPlayer url={allMedia[slideIdx]} onImageClick={setViewImg}/>
+      {!fromReel&&<MediaPlayer url={allMedia[slideIdx]} onImageClick={setViewImg}/>}
       {allMedia.length>1&&(
         <>
           <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
@@ -3268,6 +3268,7 @@ useEffect(()=>{
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
           zIndex={reelsCommentPost?1300:800}
+          fromReel={!!reelsCommentPost}
           onClose={()=>{
             const pos=savedScroll.current;
             setDetailPost(null);
