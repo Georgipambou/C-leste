@@ -3188,7 +3188,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0,onScrollChange}){
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
-const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));console.log("videoPosts:",videoPosts.length,videoPosts.map(p=>p.img_url));
+const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));console.log("videoPosts:",videoPosts.length,videoPosts.map(p=>({id:p.id,img:p.img,media_urls:p.media_urls,keys:Object.keys(p)})));
 const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
 const bottomRef=useRef();
