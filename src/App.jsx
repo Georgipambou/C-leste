@@ -3049,16 +3049,19 @@ else filtered=active;
 }
 
 // ── HOME TAB ──────────────────────────────────────────────
-function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments}){
+function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
   const [activeIdx,setActiveIdx]=useState(startIndex);
   const [expandedCaption,setExpandedCaption]=useState(false);
+  const [pausedMap,setPausedMap]=useState({});
+  const [loadingMap,setLoadingMap]=useState({});
   const containerRef=useRef(null);
   const videoRefs=useRef({});
   const scrollTimeout=useRef(null);
+  const uid=session?.user?.id;
 
   useEffect(()=>{
     const el=containerRef.current;
-    if(el)el.scrollTo({top:startIndex*el.clientHeight,behavior:"auto"});
+    if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});
   },[]);
 
   const handleScroll=()=>{
@@ -3066,7 +3069,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
     scrollTimeout.current=setTimeout(()=>{
       const el=containerRef.current;
       if(!el)return;
-      const idx=Math.round(el.scrollTop/el.clientHeight);
+      const idx=Math.round(el.scrollTop/window.innerHeight);
       if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}
     },80);
   };
@@ -3074,59 +3077,94 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   useEffect(()=>{
     Object.entries(videoRefs.current).forEach(([i,v])=>{
       if(!v)return;
-      if(Number(i)===activeIdx){v.currentTime=0;v.play().catch(()=>{});}
-      else v.pause();
+      if(Number(i)===activeIdx){
+        v.currentTime=0;
+        v.play().catch(()=>{});
+        setPausedMap(p=>({...p,[i]:false}));
+      } else {
+        v.pause();
+      }
     });
   },[activeIdx]);
 
-  const share=async post=>{
-    const url=`https://celesteapp.social/?post=${post.id}`;
-    try{
-      if(navigator.share){await navigator.share({title:"Celeste",url});}
-      else{await navigator.clipboard.writeText(url);notify("Lien copie");}
-    }catch(e){}
+  const togglePause=(idx)=>{
+    const v=videoRefs.current[idx];
+    if(!v)return;
+    if(v.paused){v.play().catch(()=>{});setPausedMap(p=>({...p,[idx]:false}));}
+    else{v.pause();setPausedMap(p=>({...p,[idx]:true}));}
   };
-
-  const uid=session?.user?.id;
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:1200,background:"#000"}}>
       <button onClick={onClose} style={{position:"absolute",top:"calc(14px + env(safe-area-inset-top,0px))",left:14,zIndex:10,background:"rgba(0,0,0,0.45)",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",cursor:"pointer"}}>
         <X size={20}/>
       </button>
-      <div ref={containerRef} onScroll={handleScroll} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch"}}>
+      <div ref={containerRef} onScroll={handleScroll} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {posts.map((post,idx)=>{
           const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
-          const saved=(post.saved_posts||[]).length>0;
           const nearActive=Math.abs(idx-activeIdx)<=1;
           const videoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
           const caption=post.text||"";
           const captionShort=caption.length>100?caption.slice(0,100)+"...":caption;
           const isActive=idx===activeIdx;
+          const isPaused=pausedMap[idx]||false;
+          const isLoading=loadingMap[idx]||false;
+          const isConnected=myConnections?.includes(post.by);
+          const isMe=post.by===uid;
           return(
-            <div key={post.id} style={{height:"100svh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0}}>
+            <div key={post.id} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}}>
               {nearActive&&videoSrc&&(
                 <video
                   ref={el=>{videoRefs.current[idx]=el;}}
                   src={videoSrc}
                   loop
                   playsInline
+                  webkit-playsinline="true"
                   preload={Math.abs(idx-activeIdx)<=1?"auto":"none"}
-                  style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}}
-                  onClick={e=>{const v=e.currentTarget;v.paused?v.play().catch(()=>{}):v.pause();}}
+                  style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}}
+                  onClick={()=>togglePause(idx)}
+                  onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))}
+                  onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))}
+                  onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))}
                 />
               )}
 
-              {/* Overlay gradient bas */}
-              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 50%)",pointerEvents:"none"}}/>
+              {/* Spinner chargement */}
+              {isActive&&isLoading&&(
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}>
+                  <div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/>
+                </div>
+              )}
+
+              {/* Icone pause */}
+              {isActive&&isPaused&&!isLoading&&(
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}>
+                  <div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:56,height:56,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Play size={24} color="#fff" style={{marginLeft:3}}/>
+                  </div>
+                </div>
+              )}
+
+              {/* Overlay gradient */}
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 45%)",pointerEvents:"none"}}/>
 
               {/* Infos auteur + caption */}
               <div style={{position:"absolute",left:14,right:74,bottom:`calc(${post.is_for_sale&&post.whatsapp_contact?"80px":"24px"} + env(safe-area-inset-bottom,0px))`,color:"#fff",zIndex:2}}>
-                <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
-                  <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #C9952A",flexShrink:0}}>
-                    {post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1,minWidth:0}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #C9952A",flexShrink:0}}>
+                      {post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{fontWeight:700,fontSize:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post.author?.prenom||"Utilisateur"} {post.author?.nom||""}</span>
+                        <Badge type={post.author?.badge}/>
+                      </div>
+                    </div>
                   </div>
-                  <span style={{fontWeight:700,fontSize:15}}>{post.author?.prenom||"Utilisateur"} {post.author?.nom||""}</span>
+                  {!isMe&&!isConnected&&(
+                    <button onClick={()=>onConnect?.(post.by)} style={{background:"#C9952A",border:"none",borderRadius:20,padding:"4px 12px",color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>+ Suivre</button>
+                  )}
                 </div>
                 {caption.length>0&&(
                   <p style={{margin:0,fontSize:14,lineHeight:1.5,color:"rgba(255,255,255,0.95)"}}>
@@ -3147,20 +3185,9 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                   <MessageCircle size={20}/> Contacter sur WhatsApp
                 </a>
               )}
-              {post.is_for_sale&&post.external_link&&!post.whatsapp_contact&&(
-                <a href={post.external_link} target="_blank" rel="noreferrer"
-                  style={{position:"absolute",left:0,right:0,bottom:`calc(0px + env(safe-area-inset-bottom,0px))`,background:"linear-gradient(135deg,#C9952A,#7B5A00)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:10,color:"#fff",fontWeight:700,fontSize:15,textDecoration:"none",zIndex:3}}>
-                  <Send size={18}/> Voir le produit
-                </a>
-              )}
 
               {/* Sidebar actions */}
-              <div style={{position:"absolute",right:12,bottom:`calc(${post.is_for_sale&&(post.whatsapp_contact||post.external_link)?"90px":"30px"} + env(safe-area-inset-bottom,0px))`,display:"flex",flexDirection:"column",alignItems:"center",gap:20,zIndex:2}}>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                  <div style={{width:42,height:42,borderRadius:"50%",background:"rgba(255,255,255,0.15)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}} onClick={()=>onUser?.(post.by)}>
-                    {post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}
-                  </div>
-                </div>
+              <div style={{position:"absolute",right:12,bottom:`calc(${post.is_for_sale&&(post.whatsapp_contact)?"90px":"30px"} + env(safe-area-inset-bottom,0px))`,display:"flex",flexDirection:"column",alignItems:"center",gap:20,zIndex:2}}>
                 <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#fff",cursor:"pointer",padding:0}}>
                   <Heart size={30} fill={liked?"#C9952A":"none"} color={liked?"#C9952A":"#fff"}/>
                   <span style={{fontSize:12,fontWeight:600}}>{(post.likes||[]).length}</span>
@@ -3170,16 +3197,14 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                   <span style={{fontSize:12,fontWeight:600}}>{(post.comments||[]).length}</span>
                 </button>
                 <button onClick={()=>toggleSave(post.id)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#fff",cursor:"pointer",padding:0}}>
-                  <Bookmark size={26} fill={saved?"#C9952A":"none"} color={saved?"#C9952A":"#fff"}/>
-                </button>
-                <button onClick={()=>share(post)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#fff",cursor:"pointer",padding:0}}>
-                  <Send size={24} color="#fff"/>
+                  <Bookmark size={26} color="#fff"/>
                 </button>
               </div>
             </div>
           );
         })}
       </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
     </div>
   );
 }
