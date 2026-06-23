@@ -2554,6 +2554,7 @@ const handlePick=async e=>{
 
   return(
     <>
+{statusTrimSrc&&<VideoTrimModal videoSrc={statusTrimSrc} onClose={()=>{setStatusTrimSrc(null);setStatusTrimFile(null);}} onDone={async trimmedFile=>{setStatusTrimSrc(null);setStatusTrimFile(null);if(!trimmedFile)return;const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(trimmedFile);setUploading(true);try{const publicUrl=await uploadToR2(trimmedFile,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}setUploading(false);}}/>}
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
