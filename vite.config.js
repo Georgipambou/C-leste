@@ -1,11 +1,12 @@
-﻿import { defineConfig } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { compression } from 'vite-plugin-compression2'
+
 export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
-      external: ['@capacitor/app','@capacitor/core','@capacitor/camera','@capacitor/filesystem','@capacitor/push-notifications','@capacitor-community/privacy-screen','@onesignal/capacitor-plugin'],
       output: {
         manualChunks(id) {
           if(id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'react-vendor';
@@ -17,6 +18,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    compression(),
     VitePWA({
       registerType: 'autoUpdate',
       srcDir: 'public',
