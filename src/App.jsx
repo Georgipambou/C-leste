@@ -1726,7 +1726,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}
       />
       {showSuggestions&&anchorRect&&(
-        <div style={{position:"fixed",bottom:Math.max(8,window.innerHeight-anchorRect.top+8),left:anchorRect.left,width:anchorRect.width,maxHeight:"50vh",overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
+        <div style={{position:"fixed",top:Math.min(anchorRect.bottom+8,window.innerHeight-220),left:anchorRect.left,width:anchorRect.width,maxHeight:200,overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
           {/* Barre de recherche */}
           <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
             <Search size={13} color={T.muted}/>
@@ -2302,6 +2302,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
   onDone={data=>{videoTrimSrc.resolve(data);}}
 />}
 
+{statusTrimSrc&&<VideoTrimModal videoSrc={statusTrimSrc} onClose={()=>{setStatusTrimSrc(null);setStatusTrimFile(null);}} onDone={async trimmedFile=>{setStatusTrimSrc(null);setStatusTrimFile(null);if(!trimmedFile)return;const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(trimmedFile);setUploading(true);try{const publicUrl=await uploadToR2(trimmedFile,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}setUploading(false);}}/>}
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
@@ -2519,10 +2520,16 @@ const handlePick=async e=>{
       f=croppedFile||await compressImage(f);
     }
     if(f.type.startsWith("video/")){
-      if(f.size>25*1024*1024){alert("Vidéo max 25MB");return;}
+      if(f.size>200*1024*1024){alert("Vidéo max 200MB");return;}
       const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
-      setStatusTrimFile(f);
-      setStatusTrimSrc(src);
+      const _vid=document.createElement("video");
+      _vid.src=src;
+      await new Promise(res=>{_vid.onloadedmetadata=res;_vid.onerror=res;setTimeout(res,3000);});
+      if(_vid.duration>90){setStatusTrimFile(f);setStatusTrimSrc(src);return;}
+      const r2=new FileReader();r2.onload=ev=>setPreview(ev.target.result);r2.readAsDataURL(f);
+      setUploading(true);
+      try{const publicUrl=await uploadToR2(f,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}
+      setUploading(false);
       return;
     }
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
@@ -2665,7 +2672,7 @@ if(isMe){
 }
     setPaused(false);setProgress(0);
     if(!mediaReady)return;
-    const duration=current.type==="text"?5000:10000;
+    const duration=current.type==="text"?5000:(isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:10000);
     const step=100/(duration/50);
     progressRef.current=setInterval(()=>{
       setProgress(p=>{
@@ -2680,7 +2687,7 @@ if(isMe){
     if(paused){
       setPaused(false);
       if(videoRef.current)videoRef.current.play().catch(()=>{});
-      const duration=current?.type==="text"?5000:10000;
+      const duration=current?.type==="text"?5000:(isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:10000);
       const step=100/(duration/50);
       progressRef.current=setInterval(()=>{
         setProgress(p=>{
@@ -2738,7 +2745,7 @@ if(isMe){
         {current.mediaUrl
           ?<div style={{position:"absolute",inset:0}}>
            {isVideo
-  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} preload="auto" onLoadedData={()=>setMediaReady(true)} onCanPlay={()=>setMediaReady(true)} onError={()=>setMediaReady(true)} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} preload="auto" onLoadedData={()=>setMediaReady(true)} onCanPlay={()=>setMediaReady(true)} onError={()=>setMediaReady(true)} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#000"}}/>
   :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center"}}/>
 }
             {isVideo&&!mediaReady&&(
@@ -3159,7 +3166,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
               <div onTouchStart={e=>{const v=videoRefs.current[idx];if(v)v._seekStart={x:e.touches[0].clientX,t:v.currentTime};}} onTouchMove={e=>{const v=videoRefs.current[idx];if(!v||!v._seekStart||!v.duration)return;const dx=e.touches[0].clientX-v._seekStart.x;const dt=(dx/window.innerWidth)*v.duration;v.currentTime=Math.max(0,Math.min(v.duration,v._seekStart.t+dt));}} onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:0,left:0,right:0,height:4,background:"rgba(255,255,255,0.20)",zIndex:5,cursor:"pointer"}}><div style={{height:"100%",width:`${progress}%`,background:"#C9952A",borderRadius:3,transition:"width 0.05s linear"}}/></div>
-              <div style={{position:"absolute",left:14,right:80,bottom:"calc(92px + env(safe-area-inset-bottom,0px))",color:"#fff",zIndex:2}}>
+              <div style={{position:"absolute",left:14,right:80,bottom:"calc(160px + env(safe-area-inset-bottom,0px))",color:"#fff",zIndex:2}}>
                 <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
                   <span style={{fontWeight:700,fontSize:15}}>{post.author?.fullName||post.author?.name||""}</span>
                   <Badge type={post.author?.badge}/>
@@ -3167,13 +3174,13 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                 {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)",textAlign:"left"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
               </div>
               {post.is_for_sale&&(post.whatsapp_contact||post.contact_link)&&(
-  <div style={{position:'absolute',left:0,right:0,bottom:'calc(60px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
+  <div style={{position:'absolute',left:0,right:0,bottom:'calc(100px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
     {post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}><MessageCircle size={16}/> Contacter sur WhatsApp</a>)}
     {post.contact_link&&(<a href={post.contact_link} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'rgba(74,144,217,0.85)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}>🔗 Voir le lien</a>)}
   </div>
 )}
               <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
-                  <div onClick={()=>onUser?.(post.by)} style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}</div>
+                  <div onClick={()=>onUser?.(post.by)} style={{position:"relative",width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"visible",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} alt=""/>}</div>
                   {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{position:"absolute",bottom:-8,left:"50%",transform:"translateX(-50%)",background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                   <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Heart size={32} fill={liked?"#ff2d55":"none"} color={liked?"#ff2d55":"#fff"}/></button>
