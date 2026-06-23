@@ -2309,22 +2309,6 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
     onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
-{statusTrimSrc&&(
-  <VideoTrimModal
-    videoSrc={statusTrimSrc}
-    onClose={()=>{setStatusTrimSrc(null);setStatusTrimFile(null);}}
-    onDone={async trimmedFile=>{
-      setStatusTrimSrc(null);
-      const file=trimmedFile||statusTrimFile;
-      setStatusTrimFile(null);
-      const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(file);
-      setUploading(true);
-      try{const publicUrl=await uploadToR2(file,"statuses");setMediaUrl(publicUrl);}
-      catch(e){console.error("Erreur upload statut:",e);}
-      setUploading(false);
-    }}
-  />
-)}
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
       <input ref={fRef} type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={handlePick}/>
@@ -2920,15 +2904,24 @@ useEffect(()=>{
   const handler=async e=>{
     const{statusId}=e.detail;
     await load();
-    setGroups(prev=>{
-      for(const g of prev){
-        const found=g.statuses.find(s=>s.id===statusId);
-        if(found){
-          Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing(g);setHideNav(true);});
-          break;
-        }
+    setMyStatuses(prevMy=>{
+      const foundMine=prevMy.find(s=>s.id===statusId);
+      if(foundMine){
+        const myMappedNow=prevMy.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
+        Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing({author:myProfile,statuses:myMappedNow});setHideNav(true);});
+        return prevMy;
       }
-      return prev;
+      setGroups(prev=>{
+        for(const g of prev){
+          const found=g.statuses.find(s=>s.id===statusId);
+          if(found){
+            Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing(g);setHideNav(true);});
+            break;
+          }
+        }
+        return prev;
+      });
+      return prevMy;
     });
   };
   window.addEventListener("celeste_open_status",handler);
@@ -3165,8 +3158,8 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
               {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
-              <div onTouchStart={e=>{const v=videoRefs.current[idx];if(v)v._seekStart={x:e.touches[0].clientX,t:v.currentTime};}} onTouchMove={e=>{const v=videoRefs.current[idx];if(!v||!v._seekStart||!v.duration)return;const dx=e.touches[0].clientX-v._seekStart.x;const dt=(dx/window.innerWidth)*v.duration;v.currentTime=Math.max(0,Math.min(v.duration,v._seekStart.t+dt));}} onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:"calc(4px + env(safe-area-inset-bottom,0px))",left:0,right:0,height:6,background:"rgba(255,255,255,0.25)",zIndex:5,cursor:"pointer"}}><div style={{height:"100%",width:`${progress}%`,background:"#C9952A",borderRadius:3,transition:"width 0.05s linear"}}/></div>
-              <div style={{position:"absolute",left:14,right:80,bottom:"calc(80px + env(safe-area-inset-bottom,0px))",color:"#fff",zIndex:2}}>
+              <div onTouchStart={e=>{const v=videoRefs.current[idx];if(v)v._seekStart={x:e.touches[0].clientX,t:v.currentTime};}} onTouchMove={e=>{const v=videoRefs.current[idx];if(!v||!v._seekStart||!v.duration)return;const dx=e.touches[0].clientX-v._seekStart.x;const dt=(dx/window.innerWidth)*v.duration;v.currentTime=Math.max(0,Math.min(v.duration,v._seekStart.t+dt));}} onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:0,left:0,right:0,height:4,background:"rgba(255,255,255,0.20)",zIndex:5,cursor:"pointer"}}><div style={{height:"100%",width:`${progress}%`,background:"#C9952A",borderRadius:3,transition:"width 0.05s linear"}}/></div>
+              <div style={{position:"absolute",left:14,right:80,bottom:"calc(92px + env(safe-area-inset-bottom,0px))",color:"#fff",zIndex:2}}>
                 <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
                   <span style={{fontWeight:700,fontSize:15}}>{post.author?.fullName||post.author?.name||""}</span>
                   <Badge type={post.author?.badge}/>
@@ -3174,7 +3167,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                 {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)",textAlign:"left"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
               </div>
               {post.is_for_sale&&(post.whatsapp_contact||post.contact_link)&&(
-  <div style={{position:'absolute',left:0,right:0,bottom:'calc(28px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
+  <div style={{position:'absolute',left:0,right:0,bottom:'calc(60px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
     {post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}><MessageCircle size={16}/> Contacter sur WhatsApp</a>)}
     {post.contact_link&&(<a href={post.contact_link} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'rgba(74,144,217,0.85)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}>🔗 Voir le lien</a>)}
   </div>
