@@ -2309,6 +2309,22 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
     onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
+{statusTrimSrc&&(
+  <VideoTrimModal
+    videoSrc={statusTrimSrc}
+    onClose={()=>{setStatusTrimSrc(null);setStatusTrimFile(null);}}
+    onDone={async trimmedFile=>{
+      setStatusTrimSrc(null);
+      const file=trimmedFile||statusTrimFile;
+      setStatusTrimFile(null);
+      const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(file);
+      setUploading(true);
+      try{const publicUrl=await uploadToR2(file,"statuses");setMediaUrl(publicUrl);}
+      catch(e){console.error("Erreur upload statut:",e);}
+      setUploading(false);
+    }}
+  />
+)}
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
       <input ref={fRef} type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={handlePick}/>
@@ -2500,6 +2516,8 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
 const [textBg,setTextBg]=useState(null);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
+const [statusTrimSrc,setStatusTrimSrc]=useState(null);
+const [statusTrimFile,setStatusTrimFile]=useState(null);
 const fRef=useRef();
   const canAdd=(myStatuses||[]).length<10;
 
@@ -2516,7 +2534,13 @@ const handlePick=async e=>{
       const croppedFile=await cropImage(src);
       f=croppedFile||await compressImage(f);
     }
-    if(f.type.startsWith("video/")&&f.size>25*1024*1024){alert("Vidéo max 25MB");return;}
+    if(f.type.startsWith("video/")){
+      if(f.size>25*1024*1024){alert("Vidéo max 25MB");return;}
+      const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+      setStatusTrimFile(f);
+      setStatusTrimSrc(src);
+      return;
+    }
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
     setUploading(true);
     try {
@@ -2731,7 +2755,7 @@ if(isMe){
           ?<div style={{position:"absolute",inset:0}}>
            {isVideo
   ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} preload="auto" onLoadedData={()=>setMediaReady(true)} onCanPlay={()=>setMediaReady(true)} onError={()=>setMediaReady(true)} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
-  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",objectPosition:"center"}}/>
+  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center"}}/>
 }
             {isVideo&&!mediaReady&&(
               <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
@@ -3149,7 +3173,12 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
                 </div>
                 {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)",textAlign:"left"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
               </div>
-              {post.is_for_sale&&post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{position:'absolute',left:0,right:0,bottom:'calc(4px + env(safe-area-inset-bottom,0px))',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'12px 20px',display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:14,textDecoration:'none',zIndex:3}}><MessageCircle size={18}/> Contacter sur WhatsApp</a>)}
+              {post.is_for_sale&&(post.whatsapp_contact||post.contact_link)&&(
+  <div style={{position:'absolute',left:0,right:0,bottom:'calc(28px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
+    {post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}><MessageCircle size={16}/> Contacter sur WhatsApp</a>)}
+    {post.contact_link&&(<a href={post.contact_link} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'rgba(74,144,217,0.85)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}>🔗 Voir le lien</a>)}
+  </div>
+)}
               <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
                   <div onClick={()=>onUser?.(post.by)} style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>}</div>
                   {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{position:"absolute",bottom:-8,left:"50%",transform:"translateX(-50%)",background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
