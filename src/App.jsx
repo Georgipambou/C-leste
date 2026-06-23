@@ -40,6 +40,7 @@ import React from "react";
 import { uploadToR2 } from "./uploadMedia";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
 
 // ── SUPABASE ──────────────────────────────────────────────
@@ -1671,6 +1672,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   const [suggestions,setSuggestions]=useState([]);
   const [mentionQuery,setMentionQuery]=useState("");
   const [cursorPos,setCursorPos]=useState(0);
+  const [anchorRect,setAnchorRect]=useState(null);
   const ref=useRef();
 
   const handleChange=e=>{
@@ -1692,6 +1694,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
       ).slice(0,8);
       setSuggestions(filtered);
       setShowSuggestions(filtered.length>0);
+      if(filtered.length>0&&ref.current)setAnchorRect(ref.current.getBoundingClientRect());
     }else{
       setShowSuggestions(false);
     }
@@ -1722,8 +1725,8 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         placeholder={placeholder}
         style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}
       />
-      {showSuggestions&&(
-        <div style={{position:"absolute",bottom:"auto",top:"auto",left:0,right:0,background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease",transform:"translateY(-105%)"}}>
+      {showSuggestions&&anchorRect&&(
+        <div style={{position:"fixed",bottom:Math.max(8,window.innerHeight-anchorRect.top+8),left:anchorRect.left,width:anchorRect.width,maxHeight:"50vh",overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
           {/* Barre de recherche */}
           <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
             <Search size={13} color={T.muted}/>
@@ -2610,10 +2613,18 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   const [progress,setProgress]=useState(0);
   const [paused,setPaused]=useState(false);
   const [hideUI,setHideUI]=useState(false);
+  const [mediaReady,setMediaReady]=useState(false);
   const viewed=useRef(new Set());
   const progressRef=useRef(null);
   const videoRef=useRef(null);
   const current=(statuses||[])[idx];
+  const isVideo=current?.mediaUrl&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(current.mediaUrl)||current.mediaUrl.includes("video"));
+
+  useEffect(()=>{
+    setMediaReady(!isVideo);
+    const fallback=setTimeout(()=>setMediaReady(true),8000);
+    return()=>clearTimeout(fallback);
+  },[current?.id,isVideo]);
 
   useEffect(()=>{
     if(author?.screenshot_protection)enableScreenProtection();
@@ -2645,6 +2656,7 @@ if(isMe){
     .then(({error})=>console.log("insert view error:",error));
 }
     setPaused(false);setProgress(0);
+    if(!mediaReady)return;
     const duration=current.type==="text"?5000:10000;
     const step=100/(duration/50);
     progressRef.current=setInterval(()=>{
@@ -2654,7 +2666,7 @@ if(isMe){
       });
     },50);
     return()=>clearInterval(progressRef.current);
-  },[current?.id,isMe,session?.user?.id,idx]);
+  },[current?.id,isMe,session?.user?.id,idx,mediaReady]);
 
   const togglePause=()=>{
     if(paused){
@@ -2687,7 +2699,6 @@ if(isMe){
   const currentLikes=likes[current.id]||[];
   const currentViews=views[current.id]||[];
   const liked=currentLikes.includes(session?.user?.id);
-  const isVideo=current.mediaUrl&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(current.mediaUrl)||current.mediaUrl.includes("video"));
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:600,background:"#000",display:"flex",flexDirection:"column",animation:"fadeIn .2s ease"}}>
@@ -2719,9 +2730,14 @@ if(isMe){
         {current.mediaUrl
           ?<div style={{position:"absolute",inset:0}}>
            {isVideo
-  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+  ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} preload="auto" onLoadedData={()=>setMediaReady(true)} onCanPlay={()=>setMediaReady(true)} onError={()=>setMediaReady(true)} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
   :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",objectPosition:"center"}}/>
 }
+            {isVideo&&!mediaReady&&(
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
+                <div style={{width:34,height:34,border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+              </div>
+            )}
             <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent 60%,rgba(0,0,0,0.6))"}}/>
           </div>
           :<div style={{width:"100%",height:"100%",position:"absolute",inset:0,background:`radial-gradient(circle at 30% 40%,${author?.color||T.goldD}22,transparent 60%),radial-gradient(circle at 70% 60%,${T.navy}22,transparent 60%)`}}/>
@@ -3064,6 +3080,22 @@ else filtered=active;
 }
 
 // ── HOME TAB ──────────────────────────────────────────────
+// ── cache vidéo session ──────────────────────────────────────────
+const _vBlobMap=new Map();
+async function getCachedVideoSrc(url){
+  if(!url)return url;
+  if(_vBlobMap.has(url))return _vBlobMap.get(url);
+  try{
+    const cache=await caches.open('celeste-videos');
+    let resp=await cache.match(url);
+    if(!resp){resp=await fetch(url);if(!resp.ok)throw new Error('fetch fail');await cache.put(url,resp.clone());}
+    const blob=await resp.blob();
+    const blobUrl=URL.createObjectURL(blob);
+    _vBlobMap.set(url,blobUrl);
+    return blobUrl;
+  }catch(e){console.warn('video cache:',e);return url;}
+}
+// ─────────────────────────────────────────────────────────────────
 function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
   const [savedIds,setSavedIds]=useState(()=>new Set((posts||[]).filter(p=>p.saved&&p.saved.length>0).map(p=>p.id)));
   const [saveCountMap,setSaveCountMap]=useState(()=>{const m={};(posts||[]).forEach(p=>{m[p.id]=p.savesCount||0;});return m;});
@@ -3093,7 +3125,9 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const livePost=(posts||[]).find(p=>p.id===post.id)||post;
           const liked=(livePost.likes||[]).some(l=>(l.user_id||l)===uid);
           const nearActive=Math.abs(idx-activeIdx)<=2;
-          const videoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
+          const rawVideoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
+          const [videoSrc,setVideoSrc]=useState(rawVideoSrc);
+          useEffect(()=>{if(nearActive&&rawVideoSrc){getCachedVideoSrc(rawVideoSrc).then(setVideoSrc);}else{setVideoSrc(rawVideoSrc);}},[nearActive,rawVideoSrc]);
           const caption=post.text||"";
           const captionShort=caption.length>120?caption.slice(0,120)+"...":caption;
           const isActive=idx===activeIdx;
@@ -6393,7 +6427,7 @@ useEffect(() => {
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);
 subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});
 sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id).then(({error})=>{if(error)console.warn("last_seen:",error);});
-if(navigator.geolocation){navigator.geolocation.watchPosition(pos=>{sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);},()=>{},{enableHighAccuracy:false,maximumAge:300000,timeout:10000});}}});
+(async()=>{try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:10000});await sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);}catch(e){console.warn("geo:",e);}})();}});
     const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
     const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},60000);
     return()=>{subscription.unsubscribe();clearInterval(lsInterval);};
