@@ -1035,14 +1035,14 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideo
 });
 
 // ── VIDEO TRIM MODAL ──────────────────────────────────────
-function VideoTrimModal({videoSrc,onClose,onDone}){
+function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
   const videoRef=useRef();
   const [duration,setDuration]=useState(0);
   const [start,setStart]=useState(0);
   const [end,setEnd]=useState(0);
   const [playing,setPlaying]=useState(false);
   const [currentTime,setCurrentTime]=useState(0);
-  const MAX=60;
+  const MAX=maxDuration;
 
   useEffect(()=>{
     const v=videoRef.current;if(!v)return;
@@ -1094,7 +1094,7 @@ function VideoTrimModal({videoSrc,onClose,onDone}){
         <input type="range" min={0} max={Math.min(duration,MAX)} step={0.1} value={end}
           onChange={e=>{const v=Number(e.target.value);if(v>start+1){setEnd(v);videoRef.current.currentTime=v;}}}
           style={{width:"100%",accentColor:"#C9952A",marginBottom:12}}/>
-        <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>Maximum 60 secondes</p>
+        <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>Maximum {MAX} secondes</p>
       </div>
     </div>
   );
@@ -2302,7 +2302,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
   onDone={data=>{videoTrimSrc.resolve(data);}}
 />}
 
-{statusTrimSrc&&<VideoTrimModal videoSrc={statusTrimSrc} onClose={()=>{setStatusTrimSrc(null);setStatusTrimFile(null);}} onDone={async trimmedFile=>{setStatusTrimSrc(null);setStatusTrimFile(null);if(!trimmedFile)return;const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(trimmedFile);setUploading(true);try{const publicUrl=await uploadToR2(trimmedFile,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}setUploading(false);}}/>}
+
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
@@ -2522,11 +2522,10 @@ const handlePick=async e=>{
     if(f.type.startsWith("video/")){
       if(f.size>200*1024*1024){alert("Vidéo max 200MB");return;}
       const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
-      const _vid=document.createElement("video");
-      _vid.src=src;
-      await new Promise(res=>{_vid.onloadedmetadata=res;_vid.onerror=res;setTimeout(res,3000);});
-      if(_vid.duration>90){setStatusTrimFile(f);setStatusTrimSrc(src);return;}
-      const r2=new FileReader();r2.onload=ev=>setPreview(ev.target.result);r2.readAsDataURL(f);
+      const trimData=await new Promise(resolve=>setStatusTrimSrc({src,resolve}));
+      setStatusTrimSrc(null);
+      if(!trimData)return;
+      setPreview(trimData.src);
       setUploading(true);
       try{const publicUrl=await uploadToR2(f,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}
       setUploading(false);
@@ -2554,7 +2553,7 @@ const handlePick=async e=>{
 
   return(
     <>
-{statusTrimSrc&&<VideoTrimModal videoSrc={statusTrimSrc} onClose={()=>{setStatusTrimSrc(null);setStatusTrimFile(null);}} onDone={async trimmedFile=>{setStatusTrimSrc(null);setStatusTrimFile(null);if(!trimmedFile)return;const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(trimmedFile);setUploading(true);try{const publicUrl=await uploadToR2(trimmedFile,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}setUploading(false);}}/>}
+{statusTrimSrc&&<VideoTrimModal videoSrc={statusTrimSrc.src} maxDuration={90} onClose={()=>{const r=statusTrimSrc.resolve;setStatusTrimSrc(null);r(null);}} onDone={data=>{statusTrimSrc.resolve(data);}}/>}
 {cropSrc&&(
   <ImageCropModal
     imageSrc={cropSrc}
@@ -2747,7 +2746,7 @@ if(isMe){
           ?<div style={{position:"absolute",inset:0}}>
            {isVideo
   ?<video ref={videoRef} src={current.mediaUrl} autoPlay playsInline muted={false} loop={false} preload="auto" onLoadedData={()=>setMediaReady(true)} onCanPlay={()=>setMediaReady(true)} onError={()=>setMediaReady(true)} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",background:"#000"}}/>
-  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center"}}/>
+  :<img src={current.mediaUrl} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"contain",objectPosition:"center",background:"#000"}}/>
 }
             {isVideo&&!mediaReady&&(
               <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
@@ -3130,6 +3129,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   const [reelsModalOpen,setReelsModalOpen]=useState(false);
   const [loadingMap,setLoadingMap]=useState({});
   const [progressMap,setProgressMap]=useState({});
+  const [showControls,setShowControls]=useState(false);
   const containerRef=useRef(null);
   const videoRefs=useRef({});
   const scrollTimeout=useRef(null);
@@ -3161,12 +3161,12 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const progress=progressMap[idx]||0;
           const isConnected=myConnections?.includes(post.by);
           const isMe=post.by===uid;
-          return(<div key={post.id} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}}>
+          return(<div key={post.id} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}} onTouchStart={()=>{setShowControls(true);clearTimeout(window._rctimer);window._rctimer=setTimeout(()=>setShowControls(false),2500);}}>
               {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=2?"auto":"none"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
               {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
-              <div onTouchStart={e=>{const v=videoRefs.current[idx];if(v)v._seekStart={x:e.touches[0].clientX,t:v.currentTime};}} onTouchMove={e=>{const v=videoRefs.current[idx];if(!v||!v._seekStart||!v.duration)return;const dx=e.touches[0].clientX-v._seekStart.x;const dt=(dx/window.innerWidth)*v.duration;v.currentTime=Math.max(0,Math.min(v.duration,v._seekStart.t+dt));}} onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:0,left:0,right:0,height:4,background:"rgba(255,255,255,0.20)",zIndex:5,cursor:"pointer"}}><div style={{height:"100%",width:`${progress}%`,background:"#C9952A",borderRadius:3,transition:"width 0.05s linear"}}/></div>
+              <div onTouchStart={e=>{const v=videoRefs.current[idx];if(v)v._seekStart={x:e.touches[0].clientX,t:v.currentTime};}} onTouchMove={e=>{const v=videoRefs.current[idx];if(!v||!v._seekStart||!v.duration)return;const dx=e.touches[0].clientX-v._seekStart.x;const dt=(dx/window.innerWidth)*v.duration;v.currentTime=Math.max(0,Math.min(v.duration,v._seekStart.t+dt));}} onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:"calc(env(safe-area-inset-bottom,0px) + 56px)",left:0,right:0,height:5,background:"rgba(255,255,255,0.25)",zIndex:5,cursor:"pointer",opacity:showControls?1:0,transition:"opacity 0.3s ease"}}><div style={{height:"100%",width:`${progress}%`,background:"rgba(255,255,255,0.75)",borderRadius:3,transition:"width 0.05s linear"}}/></div>
               <div style={{position:"absolute",left:14,right:80,bottom:"calc(160px + env(safe-area-inset-bottom,0px))",color:"#fff",zIndex:2}}>
                 <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
                   <span style={{fontWeight:700,fontSize:15}}>{post.author?.fullName||post.author?.name||""}</span>
@@ -3181,8 +3181,10 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   </div>
 )}
               <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
-                  <div onClick={()=>onUser?.(post.by)} style={{position:"relative",width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"visible",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} alt=""/>}</div>
-                  {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{position:"absolute",bottom:-8,left:"50%",transform:"translateX(-50%)",background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
+                  <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+  <div onClick={()=>onUser?.(post.by)} style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} alt=""/>}</div>
+  {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
+</div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                   <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Heart size={32} fill={liked?"#ff2d55":"none"} color={liked?"#ff2d55":"#fff"}/></button>
                   <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.likes||[]).length}</span>
@@ -3206,7 +3208,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
 }
 
 
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll=0,onScrollChange,pushNav}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,viewedPostIdsRef}){
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
 const [reelsCommentPost,setReelsCommentPost]=useState(null);
@@ -3219,7 +3221,7 @@ const observer=useRef();
 useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
 const scrollRef=useRef();
 const savedScroll=useRef(initialScroll);
-const viewedPostIds=useRef(new Set());
+const viewedPostIds=viewedPostIdsRef||useRef(new Set());
 const postsRef=useRef(posts);
 useEffect(()=>{postsRef.current=posts;},[posts]);
 useEffect(()=>{
@@ -3248,7 +3250,10 @@ useEffect(()=>{
         if(!entry.isIntersecting)return;
         const postId=entry.target.dataset.postId;
         if(!postId||viewedPostIds.current.has(postId))return;
-        viewedPostIds.current.add(postId);
+viewedPostIds.current.add(postId);
+const prev=JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]");
+const updated=[...new Set([...prev,postId])].slice(-500);
+localStorage.setItem("celeste_seen_posts",JSON.stringify(updated));
         viewObserver.unobserve(entry.target);
         await sb.rpc("increment_phase_views",{post_id:postId});
       });
@@ -4258,13 +4263,22 @@ try {
                 }}>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
-    <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4}}>
+    <div onClick={()=>{if(m.reply_metadata?.statusId)window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}}));}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
             onError={e=>{e.target.style.display="none";const span=document.createElement("span");span.style.fontSize="14px";span.textContent="📷";e.target.parentNode.appendChild(span);}}/>
         )}
-        {m.reply_metadata?.type==="video"&&<Video size={18} color={T.goldL}/>}
+        {m.reply_metadata?.type==="video"&&m.reply_metadata?.mediaUrl&&(
+  <video
+    src={m.reply_metadata.mediaUrl+"#t=0.1"}
+    style={{width:"100%",height:"100%",objectFit:"cover"}}
+    preload="metadata"
+    muted playsInline
+    onLoadedData={e=>{e.target.pause();}}
+  />
+)}
+{m.reply_metadata?.type==="video"&&!m.reply_metadata?.mediaUrl&&<Video size={18} color={T.goldL}/>}
         {!m.reply_metadata?.mediaUrl&&<FileText size={18} color={T.goldL}/>}
       </div>
       <div style={{flex:1,minWidth:0}}>
@@ -4632,13 +4646,14 @@ if(user?.status==="suspended") return(
 }
 
 // ── ORG VIEW ──────────────────────────────────────────────
-function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView}){
+function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView,toggleLike,toggleSave}){
   const conn=(myConnections||[]).includes(user.id);
   const [followersCount,setFollowersCount]=useState("…");
   const [coverPhoto,setCoverPhoto]=useState(user.cover_url||null);
   const [blocked,setBlocked]=useState(false);
   const [showReport,setShowReport]=useState(false);
   const [detailPost,setDetailPost]=useState(null);
+  const [userReelsIndex,setUserReelsIndex]=useState(null);
   const fileRef=useRef(); const coverRef=useRef();
 
   useEffect(()=>{
@@ -4754,7 +4769,14 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 
         {uPosts.map(p=>(
           <div key={p.id} style={{background:T.card,borderRadius:18,overflow:"hidden",marginBottom:10,border:`1px solid ${T.border}`,cursor:"pointer"}}
-            onClick={()=>setDetailPost(p)}>
+            onClick={()=>{
+  const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
+  if(isVid&&toggleLike&&toggleSave){
+    const vidPosts=posts.filter(q=>q.by===user.id&&q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")));
+    const idx=vidPosts.findIndex(q=>q.id===p.id);
+    setUserReelsIndex(idx>=0?idx:0);
+  }else{setDetailPost(p);}
+}}>
             {p.img&&<MediaPlayer url={p.img} style={{maxHeight:200}} onImageClick={()=>onImageView(p.img)}/>}
             <div style={{padding:14}}>
               <p style={{margin:"0 0 6px",fontSize:13,color:T.text,lineHeight:1.6}}>{p.text||p.title}</p>
@@ -5589,7 +5611,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections}
   );
 }
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
-function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0}){
+function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
  const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||""});
@@ -5652,16 +5674,35 @@ useEffect(()=>{
   const followersCount=(myFollowers||[]).length;
   const followingCount=(myConnections||[]).length;
   const [detailPost, setDetailPost] = useState(null);
+  const [userReelsIndex,setUserReelsIndex]=useState(null);
   const refreshPost=async pid=>{
   const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
+  
 };
   return(
+    
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>setShowWallet(false)}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
+      {userReelsIndex!==null&&toggleLike&&toggleSave&&(
+  <ReelsViewer
+    posts={myPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+    startIndex={userReelsIndex}
+    onClose={()=>setUserReelsIndex(null)}
+    toggleLike={toggleLike}
+    toggleSave={toggleSave}
+    session={session}
+    myProfile={myProfile}
+    notify={notify}
+    onUser={()=>{}}
+    onOpenComments={(p)=>{setDetailPost(p);}}
+    myConnections={myConnections}
+    onConnect={()=>{}}
+  />
+)}
 {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} onClose={()=>setDetailPost(null)} onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").insert({post_id:pid,user_id:session?.user?.id});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
       {/* Cover */}
       <div style={{height:160,background:`linear-gradient(135deg,${myProfile?.color||T.gold}22,${T.goldD}11)`,position:"relative",overflow:"hidden",cursor:"pointer"}} onClick={()=>cvRef.current.click()}>
@@ -5819,7 +5860,15 @@ useEffect(()=>{
             :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
   {myPosts.map(p=>(
     <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}>
-      <div onClick={()=>setDetailPost(p)} style={{width:"100%",height:"100%"}}>
+      <div onClick={()=>{
+        const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
+      
+        if(isVid&&toggleLike&&toggleSave){
+          const vidPosts=myPosts.filter(q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")));
+          const idx=vidPosts.findIndex(q=>q.id===p.id);
+          setUserReelsIndex(idx>=0?idx:0);
+        }else{setDetailPost(p);}
+      }} style={{width:"100%",height:"100%"}}>
         {p.img
           ?<img src={p.img||(p.media_urls||[])[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",padding:8,background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2}}>
@@ -6353,6 +6402,7 @@ function CelesteApp(){
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
+const viewedPostIdsRef=useRef(new Set());
   const [unreadNotifs,setUnreadNotifs]=useState(0);
 const [unreadStatuses,setUnreadStatuses]=useState(0);
   const [hideNav,setHideNav]=useState(false);
@@ -6422,7 +6472,7 @@ useEffect(() => {
     CapApp.minimizeApp();
   });
 
-  return () => { handler.remove(); };
+  return () => { handler.then?.(h=>h.remove()).catch(()=>{})||handler.remove?.(); };
 }, [viewImg, tab]);
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
   const myId=session?.user?.id;
@@ -6515,10 +6565,11 @@ const pinned=visible.filter(p=>p.pinned);
 const viral=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility==="viral");
 const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility!=="viral");
 const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
-const seedSort=arr=>[...arr].sort((a,b)=>a.id.localeCompare(b.id));
-const viralShuffled=seedSort(viral);
-const badgeShuffled=seedSort(withBadge);
-const noBadgeShuffled=seedSort(noBadge);
+const seenIds=new Set(JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]"));
+const byDate=(a,b)=>b.ts-a.ts;
+const viralShuffled=[...viral].sort(byDate);
+const badgeShuffled=[...withBadge].sort(byDate);
+const noBadgeShuffled=[...noBadge].sort(byDate);
 const feed=[];
 let vi=0,bi=0,ni=0;
 while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
@@ -6541,11 +6592,15 @@ while(pi<pinned.length){mixed.push(pinned[pi++]);}
 
 
 if(page===1){
-  seenPostIdsRef.current=new Set(mixed.map(p=>p.id));
-  const order=mixed.map(p=>p.id);
+  const unseen=mixed.filter(p=>!seenIds.has(p.id));
+  const seen=mixed.filter(p=>seenIds.has(p.id));
+  const mixed2=[...unseen,...seen];
+  seenPostIdsRef.current=new Set(mixed2.map(p=>p.id));
+  const order=mixed2.map(p=>p.id);
   postOrderRef.current=order;
-  setPosts(mixed);
+  setPosts(mixed2);
 }else{
+ 
   const filtered=mixed.filter(p=>!seenPostIdsRef.current.has(p.id));
   filtered.forEach(p=>seenPostIdsRef.current.add(p.id));
   setPosts(prev=>[...(prev||[]),...filtered]);
@@ -6793,12 +6848,12 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} viewedPostIdsRef={viewedPostIdsRef}/>
 </div>
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav}/>}
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
-             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM}/>}
+             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
             </div>
         </div>
