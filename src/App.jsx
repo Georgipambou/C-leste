@@ -3185,6 +3185,12 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   const scrollTimeout=useRef(null);
   const itemRefs=useRef({});
   const uid=session?.user?.id;
+  useEffect(()=>{
+  const post=posts[activeIdx];
+  if(post?.author?.screenshot_protection)enableScreenProtection();
+  else disableScreenProtection();
+  return()=>disableScreenProtection();
+},[activeIdx,posts]);
   useEffect(()=>{const el=containerRef.current;if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});},[]);
   useEffect(()=>{
   const observer=new IntersectionObserver(entries=>{
@@ -3280,12 +3286,7 @@ const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
 const bottomRef=useRef();
 const observer=useRef();
-useEffect(()=>{
-  const post=posts[activeIdx];
-  if(post?.author?.screenshot_protection)enableScreenProtection();
-  else disableScreenProtection();
-  return()=>disableScreenProtection();
-},[activeIdx,posts]);
+
 useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
 const scrollRef=useRef();
 const savedScroll=useRef(initialScroll);
