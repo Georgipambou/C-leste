@@ -43,6 +43,8 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
 import EasyCrop from "react-easy-crop";
+// Mémoïsation pour éviter les re-renders inutiles
+const MemoFeed = React.memo(({children}) => children);
 
 
 // ── SUPABASE ──────────────────────────────────────────────
@@ -1714,7 +1716,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         setShowSuggestions(true);
         setSuggestions([{id:"__loading__",name:"Chargement…",prenom:"",fullName:"",paroisse:""}]);
       }
-      if(filtered.length>0&&ref.current)setAnchorRect(ref.current.getBoundingClientRect());
+      if(ref.current)setAnchorRect(ref.current.getBoundingClientRect());
     }else{
       setShowSuggestions(false);
     }
@@ -1746,8 +1748,8 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         placeholder={placeholder}
         style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}onFocus={onFocus} onBlur={()=>{setTimeout(()=>{setShowSuggestions(false);if(onBlur)onBlur();},200);}}
       />
-      {showSuggestions&&anchorRect&&(
-        <div style={{position:"fixed",top:Math.min(anchorRect.bottom+8,window.innerHeight-220),left:anchorRect.left,width:anchorRect.width,maxHeight:200,overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
+      {showSuggestions&&suggestions.length>0&&(
+  <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,right:0,maxHeight:200,overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
           {/* Barre de recherche */}
           <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
             <Search size={13} color={T.muted}/>
@@ -4330,7 +4332,7 @@ const openMenu=id=>{setMenuConvId(id);};
         {/* Recherche */}
         <div style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
           <Search size={14} color={T.muted}/>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un message…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
         {/* Filtres */}
@@ -4823,18 +4825,22 @@ const handleFile=async(e,isImg)=>{
 
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
-      {/* Chat header */}
-      <div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-        <Av u={user} size={42} online={user.online} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
-        <div style={{flex:1,cursor:"pointer"}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
-          <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{user.name}</p>
-          <p style={{margin:0,fontSize:11,color:user.online?T.ok:T.muted,display:"flex",alignItems:"center",gap:4}}>
-            {user.online&&<span style={{width:6,height:6,borderRadius:"50%",background:T.ok,display:"inline-block",boxShadow:"0 0 8px rgba(64,168,96,0.6)"}}/>}
-            {user.online?"En ligne":"📍 "+user.paroisse}
-          </p>
-        </div>
-        <Btn onClick={()=>bgRef.current.click()} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:10,padding:"6px 10px",color:T.muted,display:"flex",alignItems:"center"}}><Image size={15}/></Btn>
-      </div>
+      {/* Chat header — style Instagram */}
+<div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"8px 12px",paddingTop:"calc(8px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+  <Btn onClick={()=>window.history.back?.()} style={{color:T.text,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,marginRight:2}}><ChevronLeft size={24}/></Btn>
+  <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
+    <Av u={user} size={36}/>
+    {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
+  </div>
+  <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
+    <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.fullName||user.name}</p>
+    <p style={{margin:0,fontSize:11,color:user.online?"#3DB654":T.muted}}>
+      {user.online?"En ligne ✦":user.paroisse||"Hors ligne"}
+    </p>
+  </div>
+  <Btn onClick={()=>setShowGemini(true)} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Sparkles size={20}/></Btn>
+  <Btn onClick={()=>bgRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Image size={20}/></Btn>
+</div>
 
       {/* Messages */}
       <div style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
@@ -4856,7 +4862,7 @@ const handleFile=async(e,isImg)=>{
   onTouchStart={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;}}
   onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}>
                 <div style={{
-                  background:mine?T.gradGold:"rgba(255,255,255,0.07)",
+                  background:mine?"linear-gradient(135deg,#A855F7,#7C3AED)":"rgba(255,255,255,0.09)",
                   borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
                   padding:"10px 14px",
                   border:mine?"none":`1px solid ${T.border}`,
@@ -4894,16 +4900,24 @@ const handleFile=async(e,isImg)=>{
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
-                    <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:"#fff",wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
-                  {m.text&&<><p style={{margin:0,fontSize:14,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}</p><TranslateBtn text={m.text} dark={mine}/></>}
+                  {m.text&&<><p style={{margin:0,fontSize:14,color:"#fff",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}</p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
-                  {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice")&&<div style={{width:"100%",height:3,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:3}}>
-  <div style={{height:"100%",width:`${m.pct||0}%`,background:T.gradGold,borderRadius:2,transition:"width 0.2s"}}/>
-</div>}
+                  {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice"||m.type==="video")&&(
+  <div style={{marginTop:6}}>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+      <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted}}>Envoi en cours…</span>
+      <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted,fontWeight:700}}>{m.pct||0}%</span>
+    </div>
+    <div style={{width:"100%",height:3,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
+      <div style={{height:"100%",width:`${m.pct||0}%`,background:mine?"rgba(0,0,0,0.3)":T.gradGold,borderRadius:2,transition:"width 0.3s"}}/>
+    </div>
+  </div>
+)}
                   {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
 {mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
 {mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"✓✓":"✓✓"}</span>}
@@ -4941,29 +4955,28 @@ const handleFile=async(e,isImg)=>{
             <Btn onClick={stopRecording} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13}}>Envoyer</Btn>
           </div>
         ):(
-          <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-            <Btn onClick={()=>setAttach(a=>!a)} style={{color:attach?T.gold:T.muted,padding:"8px",display:"flex",alignItems:"center",flexShrink:0,transition:"color .2s"}}><Plus size={22}/></Btn>
-            <div style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${attach?T.gold+"55":T.border}`,borderRadius:20,padding:"9px 14px",transition:"border-color .2s"}}>
-              <textarea value={inp} onChange={e=>{
-    setInp(e.target.value);
-    setChatDrafts(d=>({...d,[conv.id]:e.target.value}));
-    e.target.style.height="auto";
-    e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
-  }}
-  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();sendTxt();}}}
-  placeholder="Message…" rows={1}
-  style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
-            </div>
-            {inp.trim()
-              ?<Btn onClick={sendTxt} style={{background:T.gradGold,borderRadius:"50%",width:42,height:42,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",animation:"sendBounce .3s ease"}}>
-                <Send size={18}/>
-              </Btn>
-              :<Btn onClick={startRecording}
-                style={{color:T.muted,padding:"8px",display:"flex",alignItems:"center",flexShrink:0,transition:"color .2s"}}>
-                <Mic size={22}/>
-              </Btn>
-            }
-          </div>
+         <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
+  <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
+  <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
+    <textarea value={inp} onChange={e=>{
+setInp(e.target.value);
+setChatDrafts(d=>({...d,[conv.id]:e.target.value}));
+e.target.style.height="auto";
+e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
+}}
+onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();sendTxt();}}}
+placeholder="Votre message…" rows={1}
+style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto",fontFamily:"inherit"}}/></div>
+  <Btn onClick={()=>fRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Paperclip size={18}/></Btn>
+  {inp.trim()
+    ?<Btn onClick={sendTxt} style={{background:"linear-gradient(135deg,#A855F7,#7C3AED)",borderRadius:"50%",width:38,height:38,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(124,58,237,0.5)",animation:"sendBounce .3s ease"}}>
+      <Send size={17}/>
+    </Btn>
+    :<Btn onClick={startRecording} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}>
+      <Mic size={18}/>
+    </Btn>
+  }
+</div>
         )}
         
 
@@ -7380,8 +7393,8 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   if(payload.new?.id===myId){
     loadMyProfile(myId);
     if(payload.new?.status==="active")setIsPending(false);
+    loadMembers();
   }
-  loadMembers();
 })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"connections"},async payload=>{
         if(payload.new?.to_id===myId){await loadConnections(myId);const follower=(members||[]).find(m=>m.id===payload.new.from_id);addInAppNotif("✦",`${follower?.name||"Quelqu'un"} s'est connecté`,"Nouvelle connexion !",()=>setTab("discover"));}
