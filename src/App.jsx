@@ -42,6 +42,8 @@ import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
+import EasyCrop from "react-easy-crop";
+
 
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -1047,7 +1049,7 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
   const [start,setStart]=useState(0);
   const [end,setEnd]=useState(0);
   const [playing,setPlaying]=useState(false);
-  const [currentTime,setCurrentTime]=useState(false);
+  const [currentTime,setCurrentTime]=useState(0);
   const [trimming,setTrimming]=useState(false);
   const [trimProgress,setTrimProgress]=useState(0);
   const ffmpegRef=useRef(null);
@@ -1171,159 +1173,103 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
 
 // ── IMAGE CROP MODAL ──────────────────────────────────────
 function ImageCropModal({imageSrc,onClose,onDone}){
-  const canvasRef=useRef();
-  const imgRef=useRef(new window.Image());
-  const stateRef=useRef({scale:1,offsetX:0,offsetY:0,dragging:false,lastX:0,lastY:0,pinchDist:0});
-  const [ready,setReady]=useState(false);
+  const [crop,setCrop]=useState({x:0,y:0});
+  const [zoom,setZoom]=useState(1);
+  const [rotation,setRotation]=useState(0);
+  const [croppedAreaPixels,setCroppedAreaPixels]=useState(null);
+  const [processing,setProcessing]=useState(false);
 
-  useEffect(()=>{
-    const img=imgRef.current;
-    img.onload=()=>{
-      const canvas=canvasRef.current;
-      if(canvas){
-        const size=Math.min(canvas.offsetWidth,canvas.offsetHeight)*0.85;
-        const scaleToFit=Math.min(size/img.width,size/img.height);
-        stateRef.current.scale=scaleToFit;
+  const onCropComplete=useCallback((_,cap)=>setCroppedAreaPixels(cap),[]);
+
+  const handleDone=async()=>{
+    if(!croppedAreaPixels)return;
+    setProcessing(true);
+    try{
+      const image=await new Promise((res,rej)=>{const img=new window.Image();img.crossOrigin="anonymous";img.onload=()=>res(img);img.onerror=rej;img.src=imageSrc;});
+      const canvas=document.createElement("canvas");
+      const ctx=canvas.getContext("2d");
+      const maxSize=Math.max(croppedAreaPixels.width,croppedAreaPixels.height);
+      const safeArea=2*((maxSize/2)*Math.sqrt(2));
+      canvas.width=safeArea;canvas.height=safeArea;
+      ctx.translate(safeArea/2,safeArea/2);
+      ctx.rotate((rotation*Math.PI)/180);
+      ctx.translate(-safeArea/2,-safeArea/2);
+      ctx.drawImage(image,safeArea/2-image.naturalWidth/2,safeArea/2-image.naturalHeight/2);
+      const data=ctx.getImageData(0,0,safeArea,safeArea);
+      canvas.width=croppedAreaPixels.width;canvas.height=croppedAreaPixels.height;
+      ctx.putImageData(data,Math.round(0-safeArea/2+image.naturalWidth*0.5-croppedAreaPixels.x),Math.round(0-safeArea/2+image.naturalHeight*0.5-croppedAreaPixels.y));
+      canvas.toBlob(blob=>{
+        setProcessing(false);
+        onDone(new File([blob],"cropped.jpg",{type:"image/jpeg"}));
+      },"image/jpeg",0.92);
+    }catch(e){
+      setProcessing(false);
+      // fallback : retourner l'image originale
+      if(imageSrc.startsWith("blob:")){
+        const res=await fetch(imageSrc);
+        const blob=await res.blob();
+        onDone(new File([blob],"photo.jpg",{type:"image/jpeg"}));
+      } else {
+        onDone(null);
       }
-      setReady(true);
-      setTimeout(()=>draw(),0);
-    };
-    img.src=imageSrc;
-  },[imageSrc]);
-
-  const draw=()=>{
-    const canvas=canvasRef.current;
-    if(!canvas)return;
-    const ctx=canvas.getContext("2d");
-    const img=imgRef.current;
-    const s=stateRef.current;
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.save();
-    ctx.translate(canvas.width/2+s.offsetX,canvas.height/2+s.offsetY);
-    ctx.scale(s.scale,s.scale);
-    ctx.drawImage(img,-img.width/2,-img.height/2);
-    ctx.restore();
-    // Overlay sombre autour du carré central
-    const size=Math.min(canvas.width,canvas.height)*0.85;
-    const ox=(canvas.width-size)/2;
-    const oy=(canvas.height-size)/2;
-    ctx.fillStyle="rgba(0,0,0,0.55)";
-    ctx.fillRect(0,0,canvas.width,oy);
-    ctx.fillRect(0,oy+size,canvas.width,canvas.height-(oy+size));
-    ctx.fillRect(0,oy,ox,size);
-    ctx.fillRect(ox+size,oy,canvas.width-(ox+size),size);
-    // Cadre doré
-    ctx.strokeStyle="rgba(201,149,42,0.8)";
-    ctx.lineWidth=1.5;
-    ctx.strokeRect(ox,oy,size,size);
-    // Grille 3x3
-    ctx.strokeStyle="rgba(255,255,255,0.2)";
-    ctx.lineWidth=0.5;
-    for(let i=1;i<3;i++){
-      ctx.beginPath();ctx.moveTo(ox+size*i/3,oy);ctx.lineTo(ox+size*i/3,oy+size);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(ox,oy+size*i/3);ctx.lineTo(ox+size,oy+size*i/3);ctx.stroke();
     }
-  };
-
-  // Touch handlers
-  const onTouchStart=e=>{
-    const s=stateRef.current;
-    if(e.touches.length===1){
-      s.dragging=true;
-      s.lastX=e.touches[0].clientX;
-      s.lastY=e.touches[0].clientY;
-    } else if(e.touches.length===2){
-      s.dragging=false;
-      s.pinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    }
-  };
-  const onTouchMove=e=>{
-    e.preventDefault();
-    const s=stateRef.current;
-    if(e.touches.length===1&&s.dragging){
-      s.offsetX+=e.touches[0].clientX-s.lastX;
-      s.offsetY+=e.touches[0].clientY-s.lastY;
-      s.lastX=e.touches[0].clientX;
-      s.lastY=e.touches[0].clientY;
-      draw();
-    } else if(e.touches.length===2){
-      const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      s.scale=Math.max(0.5,Math.min(5,s.scale*(dist/s.pinchDist)));
-      s.pinchDist=dist;
-      draw();
-    }
-  };
-  const onTouchEnd=()=>{stateRef.current.dragging=false;};
-
-  // Mouse handlers (desktop)
-  const onMouseDown=e=>{const s=stateRef.current;s.dragging=true;s.lastX=e.clientX;s.lastY=e.clientY;};
-  const onMouseMove=e=>{
-    const s=stateRef.current;
-    if(!s.dragging)return;
-    s.offsetX+=e.clientX-s.lastX;s.offsetY+=e.clientY-s.lastY;
-    s.lastX=e.clientX;s.lastY=e.clientY;draw();
-  };
-  const onMouseUp=()=>{stateRef.current.dragging=false;};
-  const onWheel=e=>{
-    const s=stateRef.current;
-    s.scale=Math.max(0.5,Math.min(5,s.scale*(e.deltaY<0?1.1:0.9)));
-    draw();
-  };
-
-  const handleDone=()=>{
-    const canvas=canvasRef.current;
-    const size=Math.min(canvas.width,canvas.height)*0.85;
-    const ox=(canvas.width-size)/2;
-    const oy=(canvas.height-size)/2;
-    const out=document.createElement("canvas");
-    out.width=size;out.height=size;
-    const ctx2=out.getContext("2d");
-    const img=imgRef.current;
-    const s=stateRef.current;
-    ctx2.save();
-    ctx2.translate(canvas.width/2+s.offsetX-ox, canvas.height/2+s.offsetY-oy);
-    ctx2.scale(s.scale,s.scale);
-    ctx2.drawImage(img,-img.width/2,-img.height/2);
-    ctx2.restore();
-    out.toBlob(blob=>{
-      onDone(new File([blob],"cropped.jpg",{type:"image/jpeg"}));
-    },"image/jpeg",0.92);
   };
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
       {/* Header */}
-      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:`1px solid rgba(255,255,255,0.08)`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
           <X size={18}/>Annuler
         </button>
         <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Recadrer</p>
-        <button onClick={handleDone} style={{background:"none",border:"none",color:"#C9952A",fontSize:15,fontWeight:700,cursor:"pointer",padding:"4px 0"}}>
-          Valider ✦
+        <button onClick={handleDone} disabled={processing} style={{background:"none",border:"none",color:processing?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:processing?"default":"pointer",padding:"4px 0"}}>
+          {processing?"…":"Valider ✦"}
         </button>
       </div>
 
-      {/* Canvas */}
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-        <canvas
-          ref={el=>{canvasRef.current=el;if(el&&ready){el.width=el.offsetWidth;el.height=el.offsetHeight;draw();}}}
-          style={{width:"100%",height:"100%",touchAction:"none",cursor:"grab"}}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp}
-          onWheel={onWheel}
+      {/* Zone de recadrage */}
+      <div style={{flex:1,position:"relative",background:"#111"}}>
+        <EasyCrop
+          image={imageSrc}
+          crop={crop}
+          zoom={zoom}
+          rotation={rotation}
+          aspect={1}
+          onCropChange={setCrop}
+          onZoomChange={setZoom}
+          onCropComplete={onCropComplete}
+          showGrid={true}
+          style={{
+            containerStyle:{background:"#111"},
+            cropAreaStyle:{border:"2px solid rgba(201,149,42,0.8)",boxShadow:"0 0 0 9999px rgba(0,0,0,0.6)"},
+          }}
         />
       </div>
 
-      {/* Hint */}
-      <div style={{padding:"10px 0 calc(10px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",textAlign:"center"}}>
-        <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>
-          Glisse pour recadrer · Pince pour zoomer
-        </p>
+      {/* Contrôles bas */}
+      <div style={{background:"rgba(0,0,0,0.95)",padding:"14px 20px calc(14px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12,flexShrink:0}}>
+        {/* Zoom */}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:36}}>Zoom</span>
+          <input type="range" min={1} max={3} step={0.01} value={zoom}
+            onChange={e=>setZoom(Number(e.target.value))}
+            style={{flex:1,accentColor:"#C9952A"}}/>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:28,textAlign:"right"}}>{zoom.toFixed(1)}×</span>
+        </div>
+        {/* Rotation */}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:36}}>Rotation</span>
+          <input type="range" min={-180} max={180} step={1} value={rotation}
+            onChange={e=>setRotation(Number(e.target.value))}
+            style={{flex:1,accentColor:"#C9952A"}}/>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:28,textAlign:"right"}}>{rotation}°</span>
+        </div>
+        {/* Reset */}
+        <button onClick={()=>{setZoom(1);setRotation(0);setCrop({x:0,y:0});}}
+          style={{alignSelf:"center",background:"none",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"6px 16px",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer"}}>
+          Réinitialiser
+        </button>
       </div>
     </div>
   );
@@ -1798,7 +1744,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         value={value}
         onChange={handleChange}
         placeholder={placeholder}
-        style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}onFocus={onFocus} onBlur={onBlur}
+        style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}onFocus={onFocus} onBlur={()=>{setTimeout(()=>{setShowSuggestions(false);if(onBlur)onBlur();},200);}}
       />
       {showSuggestions&&anchorRect&&(
         <div style={{position:"fixed",top:Math.min(anchorRect.bottom+8,window.innerHeight-220),left:anchorRect.left,width:anchorRect.width,maxHeight:200,overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
@@ -3121,7 +3067,7 @@ useEffect(()=>{
                   <Av u={g.author} size={52} ring/>
                   <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
-                    <p style={{margin:0,fontSize:11,color:T.muted}}>⛪ {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
+                    <p style={{margin:0,fontSize:11,color:T.muted}}>🌐 {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
                   </div>
                   <span style={{fontSize:11,color:T.gold,fontWeight:700}}>{g.statuses.length}</span>
                 </div>
@@ -3146,7 +3092,8 @@ const MATCH_QUESTIONS=[
   {id:"gender",label:"Tu es…",type:"single",emoji:"🪞",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"}]},
   {id:"seeking_type",label:"Tu cherches…",type:"single",emoji:"✨",options:[{v:"amour",l:"L'amour"},{v:"amitie",l:"Une amitié"},{v:"les_deux",l:"Les deux"}]},
   {id:"seeking_gender",label:"Tu cherches quelqu'un de quel genre ?",type:"single",emoji:"💫",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"},{v:"peu_importe",l:"Peu importe"}]},
-  {id:"seeking_age",label:"Tranche d'âge recherchée",type:"age_range",emoji:"🎂",options:[{v:"18-25",l:"18 – 25 ans"},{v:"25-35",l:"25 – 35 ans"},{v:"35-45",l:"35 – 45 ans"},{v:"45+",l:"45 ans et +"}]},
+  {id:"seeking_age",label:"Tranche d'âge recherchée",type:"age_range",emoji:"🎂",options:[{v:"16-20",l:"16 – 20 ans"},{v:"20-25",l:"20 – 25 ans"},{v:"25-30",l:"25 – 30 ans"},{v:"30+",l:"30 ans et +"}]},
+  {id:"intimacy",label:"L'intimité physique dans une relation, c'est…",type:"single",emoji:"🔥",options:[{v:"central",l:"Très important, c'est une vraie priorité"},{v:"important",l:"Important mais pas le plus essentiel"},{v:"secondaire",l:"Secondaire, le reste prime"},{v:"attente",l:"Je préfère attendre le bon moment"}]},
   {id:"faith",label:"La foi occupe quelle place dans ta vie ?",type:"single",emoji:"🙏",options:[{v:"centrale",l:"Elle est centrale, tout part de là"},{v:"importante",l:"Importante mais pas absolue"},{v:"secondaire",l:"Secondaire"},{v:"aucune",l:"Aucune place"}]},
   {id:"marriage_vision",label:"Ta vision du mariage ?",type:"single",emoji:"💍",options:[{v:"oui",l:"Je veux me marier"},{v:"peut_etre",l:"Peut-être un jour"},{v:"non",l:"Ce n'est pas pour moi"}]},
   {id:"children",label:"Les enfants dans ta vie ?",type:"single",emoji:"👶",options:[{v:"en_veux",l:"J'en veux"},{v:"deja",l:"J'en ai déjà"},{v:"pas_sur",l:"Pas encore sûr·e"},{v:"non",l:"Non"}]},
@@ -3161,11 +3108,11 @@ const MATCH_QUESTIONS=[
 ];
 
 // Questions où la SIMILARITÉ = compatibilité
-const SIMILAR_KEYS=["faith","marriage_vision","children","life_vision","app_expectation","seeking_type"];
+const SIMILAR_KEYS=["faith","marriage_vision","children","life_vision","app_expectation","seeking_type","intimacy"];
 // Questions où la COMPLÉMENTARITÉ = compatibilité
 const COMPLEMENT_KEYS=["conflict_style","expression_level","life_rhythm","family_vs_freedom"];
 // Poids par question
-const Q_WEIGHT={faith:18,marriage_vision:16,children:15,life_vision:12,seeking_type:10,app_expectation:8,conflict_style:10,expression_level:8,life_rhythm:7,family_vs_freedom:7,communication_style:5,relationship_priority:4};
+const Q_WEIGHT={faith:18,marriage_vision:16,children:15,intimacy:14,life_vision:12,seeking_type:10,app_expectation:8,conflict_style:10,expression_level:8,life_rhythm:7,family_vs_freedom:7,communication_style:5,relationship_priority:4};
 // Paires complémentaires optimales
 const COMPLEMENT_PAIRS={
   conflict_style:{parle:"digere",digere:"parle",reagis:"milieu"},
@@ -3177,10 +3124,13 @@ const COMPLEMENT_PAIRS={
 function computeMatchScore(a,b){
   if(!a||!b)return 0;
   // Éliminatoires
-  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||a.seeking_gender===b.gender&&b.seeking_gender===a.gender;
+  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
   if(!genderOk)return 0;
   const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
   if(!typeOk)return 0;
+  const bAge=b.age||null;
+  const ageOk=!bAge||!a.seeking_age_min||!a.seeking_age_max||(bAge>=a.seeking_age_min&&bAge<=a.seeking_age_max);
+  if(!ageOk)return 0;
   let score=0,maxScore=0;
   for(const key of Object.keys(Q_WEIGHT)){
     const w=Q_WEIGHT[key];
@@ -3203,7 +3153,9 @@ function computeMatchScore(a,b){
 
 function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialData=null}){
   const [step,setStep]=useState(0);
-  const [answers,setAnswers]=useState(initialData||{});
+  const ageReverseMap={[JSON.stringify([16,20])]:"16-20",[JSON.stringify([20,25])]:"20-25",[JSON.stringify([25,30])]:"25-30",[JSON.stringify([30,99])]:"30+"};
+  const initialAnswers=initialData?{...initialData,seeking_age:ageReverseMap[JSON.stringify([initialData.seeking_age_min,initialData.seeking_age_max])]||undefined}:{};
+  const [answers,setAnswers]=useState(initialAnswers);
   const [saving,setSaving]=useState(false);
   const total=MATCH_QUESTIONS.length;
   const q=MATCH_QUESTIONS[step];
@@ -3217,7 +3169,10 @@ function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialDa
       setTimeout(()=>setStep(s=>s+1),280);
     } else {
       setSaving(true);
-      const payload={user_id:session?.user?.id,...next,is_active:true,updated_at:new Date().toISOString()};
+      const ageMap={"16-20":[16,20],"20-25":[20,25],"25-30":[25,30],"30+":[30,99]};
+      const [ageMin,ageMax]=ageMap[next.seeking_age]||[16,30];
+      const{seeking_age:_,...rest}=next;
+      const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_age_max:ageMax,is_active:true,updated_at:new Date().toISOString()};
       const{error}=await sb.from("match_profiles").upsert(payload,{onConflict:"user_id"});
       setSaving(false);
       if(!error){notify("✦ Profil Céleste Match enregistré !");onDone(next);}
@@ -3293,6 +3248,35 @@ function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialDa
     </div>
   );
 }
+function getCompatibilityPoints(a,b,score){
+  const points=[];
+  const labels={
+    faith:{centrale:"Foi centrale",importante:"Foi importante",secondaire:"Foi secondaire",aucune:"Sans religion"},
+    marriage_vision:{oui:"Veut se marier",peut_etre:"Ouvert au mariage",non:"Pas de mariage"},
+    children:{en_veux:"Veut des enfants",deja:"A déjà des enfants",pas_sur:"Incertain sur les enfants",non:"Pas d'enfants"},
+    life_vision:{stabilite:"Cherche la stabilité",voyages:"Aime voyager",carriere:"Axé carrière",incertain:"Ouvert à tout"},
+    intimacy:{central:"Intimité prioritaire",important:"Intimité importante",secondaire:"Intimité secondaire",attente:"Préfère attendre"},
+    seeking_type:{amour:"Cherche l'amour",amitie:"Cherche l'amitié",les_deux:"Ouvert à tout"},
+    conflict_style:{parle:"Communication directe",digere:"Prend du recul",reagis:"Réactif mais passe vite"},
+    expression_level:{expressif:"Très expressif",reserve:"Réservé",milieu:"Équilibré"},
+    life_rhythm:{calme:"Rythme calme",social:"Vie sociale active",melange:"Rythme varié"},
+    family_vs_freedom:{famille:"Famille avant tout",liberte:"Liberté individuelle",equilibre:"Équilibre famille/liberté"},
+    app_expectation:{serieux:"Cherche du sérieux",amis:"Cherche des amis",decouverte:"Ouvert à la découverte",verra:"Verra ce qui arrive"},
+  };
+  const complementPairs=COMPLEMENT_PAIRS;
+  for(const key of Object.keys(Q_WEIGHT)){
+    if(!a[key]||!b[key])continue;
+    let match=false;
+    if(SIMILAR_KEYS.includes(key)&&a[key]===b[key])match=true;
+    if(COMPLEMENT_KEYS.includes(key)&&complementPairs[key]?.[a[key]]===b[key])match=true;
+    if(match&&labels[key]?.[a[key]]){
+      points.push({emoji:key==="faith"?"🙏":key==="marriage_vision"?"💍":key==="children"?"👶":key==="life_vision"?"🌅":key==="intimacy"?"🔥":key==="seeking_type"?"✨":key==="conflict_style"?"🌊":key==="expression_level"?"🎭":key==="life_rhythm"?"🌙":key==="family_vs_freedom"?"⚖️":"💎",label:labels[key][a[key]]});
+    }
+  }
+  const maxPoints=score>=100?points.length:score>=90?5:score>=80?4:score>=65?3:2;
+  return points.slice(0,maxPoints);
+}
+
 function MatchWriteBtn({u,score,onChat,notify}){
   const [open,setOpen]=useState(false);
   const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
@@ -3318,9 +3302,14 @@ function MatchWriteBtn({u,score,onChat,notify}){
           style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:13,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
         <button disabled={sending||!msg.trim()} onClick={async()=>{
           setSending(true);
-          await onChat(u.id,msg.trim());
-          notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
-          setOpen(false);
+          try{
+            await onChat(u.id,msg.trim());
+            notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
+            setOpen(false);
+          }catch(e){
+            notify("Erreur — réessaie");
+            setSending(false);
+          }
         }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
           {sending?"Envoi…":"Envoyer ✦"}
         </button>
@@ -3343,9 +3332,9 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
       setLoading(true);
       const{data}=await sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle();
       setMatchProfile(data);
-      if(!data){
+      if(!data||!data.is_active){
         const shown=localStorage.getItem("celeste_match_popup_shown");
-        if(!shown){localStorage.setItem("celeste_match_popup_shown","1");setAutoPopup(true);}
+        if(!shown&&!data){localStorage.setItem("celeste_match_popup_shown","1");setAutoPopup(true);}
       }
       if(data?.is_active&&members?.length>0){
         // Charger les profils des autres membres
@@ -3406,7 +3395,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
         </p>
         <button onClick={()=>setShowOnboarding(true)}
           style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,border:"none",color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,149,42,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-          <span>✦</span> Créer mon profil Match
+          <span>✦</span> {matchProfile?"Réactiver Céleste Match":"Créer mon profil Match"}
         </button>
       </div>
       {(showOnboarding||autoPopup)&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify}
@@ -3453,7 +3442,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
           const u=s.member;
           const col=scoreColor(s.score);
           return(
-            <div key={u.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:20,overflow:"hidden",animation:`fadeUp .35s ease ${i*.08}s both`}}>
+            <div key={u.id} style={{background:s.score===100?"rgba(201,149,42,0.06)":"rgba(255,255,255,0.03)",border:`1.5px solid ${s.score===100?T.gold:T.border}`,borderRadius:20,overflow:"hidden",animation:`fadeUp .35s ease ${i*.08}s both`,boxShadow:s.score===100?"0 0 24px rgba(201,149,42,0.2)":"none"}}>
               <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 14px 10px"}}>
                 {/* Avatar */}
                 <div style={{position:"relative",flexShrink:0}} onClick={()=>onUser(u.id)}>
@@ -3476,10 +3465,24 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
                   <span style={{fontSize:9,color:col,fontWeight:600,display:"block",marginTop:3}}>{scoreLabel(s.score)}</span>
                 </div>
               </div>
+              {/* Points de compatibilité */}
+              {(()=>{
+                const pts=getCompatibilityPoints(matchProfile,s,s.score);
+                return pts.length>0&&(
+                  <div style={{padding:"0 14px 10px",display:"flex",flexWrap:"wrap",gap:6}}>
+                    {s.score===100&&<div style={{width:"100%",marginBottom:4,fontSize:11,color:T.goldL,fontWeight:700,fontStyle:"italic"}}>✦ Connexion parfaite — cela n'arrive presque jamais</div>}
+                    {pts.map((pt,pi)=>(
+                      <span key={pi} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"rgba(201,149,42,0.1)",border:`1px solid ${T.gold}33`,color:T.goldL,display:"flex",alignItems:"center",gap:4}}>
+                        {pt.emoji} {pt.label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
               {/* Message pré-rédigé */}
               <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:11,color:T.muted,flex:1,fontStyle:"italic",lineHeight:1.5}}>
-                  "{u.name?.split(" ")[0]} et moi, {s.score}% de compatibilité — ça mérite qu'on discute ✦"
+                  "{u.name?.split(" ")[0]} et moi, {s.score}% — ça mérite qu'on discute ✦"
                 </span>
                 <MatchWriteBtn u={u} score={s.score} onChat={onChat} notify={notify}/>
               </div>
@@ -3621,6 +3624,14 @@ async function getCachedVideoSrc(url){
     return blobUrl;
   }catch(e){console.warn('video cache:',e);return url;}
 }
+
+function ReelVideoSrc({rawSrc,nearActive,onSrc}){
+  useEffect(()=>{
+    if(nearActive&&rawSrc){getCachedVideoSrc(rawSrc).then(onSrc);}
+    else{onSrc(rawSrc);}
+  },[nearActive,rawSrc]);
+  return null;
+}
 // ─────────────────────────────────────────────────────────────────
 function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
   const [savedIds,setSavedIds]=useState(()=>new Set((posts||[]).filter(p=>p.saved&&p.saved.length>0).map(p=>p.id)));
@@ -3671,8 +3682,8 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const liked=(livePost.likes||[]).some(l=>(l.user_id||l)===uid);
           const nearActive=Math.abs(idx-activeIdx)<=2;
           const rawVideoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
-          const [videoSrc,setVideoSrc]=useState(rawVideoSrc);
-          useEffect(()=>{if(nearActive&&rawVideoSrc){getCachedVideoSrc(rawVideoSrc).then(setVideoSrc);}else{setVideoSrc(rawVideoSrc);}},[nearActive,rawVideoSrc]);
+          const videoSrc=rawVideoSrc; 
+          // géré par ReelVideoSrc ci-dessous dans le rendu
           const caption=post.text||"";
           const captionShort=caption.length>120?caption.slice(0,120)+"...":caption;
           const isActive=idx===activeIdx;
@@ -3682,7 +3693,8 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const isConnected=myConnections?.includes(post.by);
           const isMe=post.by===uid;
           return(<div key={post.id} ref={el=>itemRefs.current[idx]=el} data-idx={idx} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}} onTouchStart={()=>{setShowControls(true);clearTimeout(window._rctimer);window._rctimer=setTimeout(()=>setShowControls(false),2500);}}>
-              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline autoPlay webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=1?"auto":"metadata"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
+            <ReelVideoSrc rawSrc={rawVideoSrc} nearActive={nearActive} onSrc={src=>{const v=videoRefs.current[idx];if(v&&src!==v.src)v.src=src;}}/>
+              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline autoPlay webkit-playsinline="true" preload="auto" style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
               {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
@@ -4547,6 +4559,7 @@ const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
+const [videoTrimSrc,setVideoTrimSrc]=useState(null);
 const [geminiMsgs,setGeminiMsgs]=useState([]);
 const [geminiInp,setGeminiInp]=useState("");
 const [geminiLoading,setGeminiLoading]=useState(false);
@@ -4803,7 +4816,7 @@ const handleFile=async(e,isImg)=>{
           onClose={()=>{const r=videoTrimSrc.resolve;setVideoTrimSrc(null);r(null);}}
           onDone={data=>{videoTrimSrc.resolve(data);}}
         />
-      )}v
+      )}
       <input ref={fRef} type="file" accept="*/*" style={{display:"none"}} onChange={e=>handleFile(e,false)}/>
       <input ref={iRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={e=>handleFile(e,true)}/>
       <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBgPhoto}/>
@@ -5183,10 +5196,10 @@ if(user?.status==="suspended") return(
 
         <div style={{marginBottom:16}}>
          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,minWidth:0}}>
-  <h2 style={{margin:0,flex:1,minWidth:0,textAlign:"left",fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,((user.fullName||user.name)?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.fullName||user.name}</h2>
+  <h2 style={{margin:0,minWidth:0,textAlign:"left",fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,((user.fullName||user.name)?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.fullName||user.name}</h2>
   {user.badge&&<Badge type={user.badge}/>}
 </div>
-          <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>⛪ {user.paroisse}</p>
+          <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>🌐 {user.paroisse}</p>
           {user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
   /^https?:\/\//.test(part)
     ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
@@ -6571,18 +6584,16 @@ function WithdrawalRequests({notify}){
           <p style={{margin:"0 0 10px",fontSize:13,color:"#F0C96A",fontWeight:700}}>À envoyer : {r.net_amount?.toLocaleString("fr-FR")} F CFA</p>
           <div style={{display:"flex",gap:8}}>
             <button onClick={async()=>{
-              await sb.from("withdrawal_requests").update({status:"confirmed"}).eq("id",r.id);
-              await sb.from("wallet_transactions").update({status:"completed"}).eq("user_id",r.user_id).eq("type","withdrawal").eq("status","pending");
+              const{error}=await sb.functions.invoke("process-wallet",{body:{request_id:r.id,action:"confirm"}});
+              if(error)return notify("Erreur — "+error.message);
               notify("Retrait confirmé ✦");load();
             }} style={{flex:1,padding:"8px",background:"rgba(61,184,116,0.1)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:10,color:"#4ade80",fontSize:12,fontWeight:700,cursor:"pointer"}}>
               ✓ Confirmé (envoyé)
             </button>
             <button onClick={async()=>{
-              // Rembourser
-              const{data:w}=await sb.from("wallets").select("*").eq("user_id",r.user_id).maybeSingle();
-              if(w)await sb.from("wallets").update({balance:w.balance+r.amount}).eq("user_id",r.user_id);
-              await sb.from("withdrawal_requests").update({status:"rejected"}).eq("id",r.id);
-              notify("Retrait annulé — remboursé");load();
+              const{error}=await sb.functions.invoke("process-wallet",{body:{request_id:r.id,action:"reject"}});
+              if(error)return notify("Erreur — "+error.message);
+              notify("Retrait annulé — remboursé ✦");load();
             }} style={{padding:"8px 12px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,color:"#f87171",fontSize:12,fontWeight:700,cursor:"pointer"}}>
               ✕
             </button>
