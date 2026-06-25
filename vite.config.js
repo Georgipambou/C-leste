@@ -4,6 +4,12 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { compression } from 'vite-plugin-compression2'
 
 export default defineConfig({
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    }
+  },
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
@@ -12,6 +18,7 @@ export default defineConfig({
           if(id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'react-vendor';
           if(id.includes('node_modules/@supabase')) return 'supabase';
           if(id.includes('node_modules/lucide-react')) return 'lucide';
+          if(id.includes('node_modules/@ffmpeg')) return 'ffmpeg';
         }
       }
     }
