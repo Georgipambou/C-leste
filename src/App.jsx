@@ -430,6 +430,7 @@ const ago   = ts => {
   if (d < 86400000) return `${Math.floor(d/3600000)}h`;
   return `${Math.floor(d/86400000)}j`;
 };
+const fmtCount=n=>{if(!n&&n!==0)return"0";if(n>=1000000)return(n/1000000).toFixed(n>=10000000?0:1).replace(/\.0$/,"")+"M";if(n>=1000)return(n/1000).toFixed(n>=10000?0:1).replace(/\.0$/,"")+"K";return String(n);};
 const hm = ts => new Date(ts).toLocaleTimeString("fr",{hour:"2-digit",minute:"2-digit"});
 const initials = (p="",n="") => ((p[0]||"")+(n[0]||"")).toUpperCase()||"?";
 const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#50A0A0","#A06090"];
@@ -532,13 +533,18 @@ const sendPushNotif=async(title,body)=>{
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const GS = `
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+  @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
+@font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
+@font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
+@media(prefers-reduced-motion:reduce){*{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
   
   *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     touch-action: manipulation; /* Protège le comportement tactile natif */
   }
 
@@ -1280,7 +1286,7 @@ function ImageViewer({url,onClose}){
 // ── TOAST ─────────────────────────────────────────────────
 function Toast({msg}){
   return(
-    <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:T.bg2,border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
+    <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:T.bg2,border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
       {msg}
     </div>
   );
@@ -1291,7 +1297,7 @@ function NotifBanner({notifs,onDismiss,onTap}){
   return(
     <div style={{position:"fixed",top:"env(safe-area-inset-top,0px)",left:0,right:0,zIndex:990,display:"flex",flexDirection:"column",gap:8,padding:"8px 12px",pointerEvents:"none"}}>
       {(notifs||[]).slice(0,3).map(n=>(
-        <div key={n.id} style={{background:"rgba(10,10,10,0.97)",border:`1px solid ${T.gold}33`,backdropFilter:"blur(30px)",borderRadius:18,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 12px 40px rgba(0,0,0,0.7)",animation:"notifIn .4s cubic-bezier(0.34,1.2,0.64,1)",pointerEvents:"all",cursor:n.action?"pointer":"default"}}
+        <div key={n.id} style={{background:"rgba(10,10,10,0.97)",border:`1px solid ${T.gold}33`,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:18,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 12px 40px rgba(0,0,0,0.7)",animation:"notifIn .4s cubic-bezier(0.34,1.2,0.64,1)",pointerEvents:"all",cursor:n.action?"pointer":"default"}}
           onClick={()=>n.action&&onTap(n)}>
           <span style={{fontSize:22,flexShrink:0}}>{n.icon}</span>
           <div style={{flex:1,minWidth:0}}>
@@ -1310,7 +1316,7 @@ function ReportModal({onClose,onSubmit}){
   const [reason,setReason]=useState(""); const [details,setDetails]=useState("");
   const reasons=["Contenu inapproprié","Spam","Harcèlement","Fausse identité","Autre"];
   return(
-    <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+    <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:560,padding:"24px 20px 48px",animation:"slideUp .3s ease"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -1418,7 +1424,7 @@ if(data.user){onSuccess?.("pending");}
           <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vrai personnalitée</p>
         </div>
 
-        <div style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${T.border}`,borderRadius:24,overflow:"hidden",backdropFilter:"blur(30px)"}}>
+        <div style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${T.border}`,borderRadius:24,overflow:"hidden",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)"}}>
           <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,position:"relative"}}>
             {["login","register"].map(m=>(
               <Btn key={m} onClick={()=>{setMode(m);reset();}} style={{flex:1,padding:"16px",fontSize:13,fontWeight:600,color:mode===m?T.goldL:T.sub,transition:"all .3s",letterSpacing:.5,position:"relative"}}>
@@ -1574,7 +1580,7 @@ function NotifsScreen({myProfile,session,members}){
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`}}>
         <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Activité</h2>
           {notifs.some(n=>!n.read)&&(
@@ -1667,7 +1673,7 @@ function NotifsScreen({myProfile,session,members}){
     </div>
   );
 }
-function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,members=[]}){
+function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,members=[],onFocus,onBlur}){
   const [showSuggestions,setShowSuggestions]=useState(false);
   const [suggestions,setSuggestions]=useState([]);
   const [mentionQuery,setMentionQuery]=useState("");
@@ -1709,7 +1715,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   const insertMention=member=>{
     const textBeforeCursor=value.slice(0,cursorPos);
     const textAfterCursor=value.slice(cursorPos);
-    const newText=textBeforeCursor.replace(/@\w*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
+   const newText=textBeforeCursor.replace(/@[\w\u00C0-\u017F]*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
     onChange(newText,member.id);
     setShowSuggestions(false);
     ref.current?.focus();
@@ -1723,7 +1729,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
         value={value}
         onChange={handleChange}
         placeholder={placeholder}
-        style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}
+        style={{width:"100%",background:"transparent",border:"none",padding:"6px 4px",color:T.text,fontSize:14,outline:"none",resize:"none",maxHeight:140,lineHeight:"1.4",fontFamily:"inherit",display:"block",...style}}onFocus={onFocus} onBlur={onBlur}
       />
       {showSuggestions&&anchorRect&&(
         <div style={{position:"fixed",top:Math.min(anchorRect.bottom+8,window.innerHeight-220),left:anchorRect.left,width:anchorRect.width,maxHeight:200,overflowY:"auto",background:"rgba(10,10,10,0.98)",border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
@@ -2114,7 +2120,7 @@ useEffect(()=>{
   return(
     <>
       {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
-      <div style={{position:"fixed",inset:0,zIndex:zIndex,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+      <div style={{position:"fixed",inset:0,zIndex:zIndex,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
         onClick={e=>e.target===e.currentTarget&&onClose()}>
         <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",boxShadow:"0 -20px 60px rgba(0,0,0,0.8)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
@@ -2196,6 +2202,7 @@ const [type,setType]=useState("text"); const [text,setText]=useState("");
 const [previews,setPreviews]=useState([]); const [mediaUrls,setMediaUrls]=useState([]);
 const [carouselIdx,setCarouselIdx]=useState(0);
 const [uploading,setUploading]=useState(false);
+const [uploadPct,setUploadPct]=useState(0);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
 const [evTitle,setEvTitle]=useState("");
@@ -2209,6 +2216,13 @@ const [contactLink,setContactLink]=useState("");
 const [whatsappNum,setWhatsappNum]=useState("");
 const [whatsappIndicatif,setWhatsappIndicatif]=useState("242");
 const fRef=useRef();
+useEffect(()=>{
+  if(window.__celesteSharedFile){
+    handlePick({target:{files:[window.__celesteSharedFile]}});
+    delete window.__celesteSharedFile;
+  }
+},[]);
+const vRef=useRef();
 const mentionedIdsRef=useRef([]);
 const {members}=useApp();
 
@@ -2236,23 +2250,23 @@ const handlePick=async e=>{
         if(!trimData)continue;
         setPreviews(p=>[...p,{url:trimData.src,type:"video"}]);
         setType("photo");
-        setUploading(true);
-        try{const publicUrl=await uploadToR2(f,"posts");setMediaUrls(p=>[...p,publicUrl]);}
-        catch(err){console.error(err);}
-        finally{setUploading(false);}
-        continue;
+        setUploading(true);setUploadPct(0);
+try{const publicUrl=await uploadToR2(f,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
+catch(err){console.error(err);}
+finally{setUploading(false);setUploadPct(0);}
+continue;
       }
       const r=new FileReader();
       r.onload=ev=>setPreviews(p=>[...p,{url:ev.target.result,type:f.type.startsWith("video/")?"video":"image"}]);setType("photo");
       r.readAsDataURL(file);
-     setUploading(true);
+     setUploading(true);setUploadPct(0);
 try {
-  const publicUrl = await uploadToR2(file, "posts");
+  const publicUrl = await uploadToR2(file,"posts",pct=>setUploadPct(pct));
   setMediaUrls(p=>[...p,publicUrl]);
 } catch(e) {
   console.error("Erreur upload post:", e);
 } finally {
-  setUploading(false);
+  setUploading(false);setUploadPct(0);
 }
     }
     e.target.value="";
@@ -2312,7 +2326,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 )}
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
-      <input ref={fRef} type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={handlePick}/>
+      <input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
 
       {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"52px 20px 16px",borderBottom:`1px solid ${T.border}`}}>
@@ -2424,10 +2438,12 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
                     ?<video src={previews[carouselIdx].url} controls playsInline style={{width:"100%",maxHeight:300,objectFit:"contain",display:"block"}}/>
                     :<img src={previews[carouselIdx].url} alt="" style={{width:"100%",maxHeight:300,objectFit:"cover",display:"block",borderRadius:16}}/>
                   }
-                  {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
-                    <div style={{width:28,height:28,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
-                    <span style={{color:T.goldL,fontSize:11}}>Upload…</span>
-                  </div>}
+                  {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}>
+  <div style={{width:120,height:6,background:"rgba(255,255,255,0.15)",borderRadius:3,overflow:"hidden"}}>
+    <div style={{height:"100%",width:`${uploadPct}%`,background:T.gradGold,borderRadius:3,transition:"width 0.2s ease"}}/>
+  </div>
+  <span style={{color:"#fff",fontSize:12,fontWeight:700}}>{uploadPct}%</span>
+</div>}
                   <button onClick={()=>removeMedia(carouselIdx)} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"none",cursor:"pointer"}}><X size={13}/></button>
                   {previews.length>1&&carouselIdx>0&&(
                     <button onClick={()=>setCarouselIdx(i=>i-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"none",cursor:"pointer"}}><ChevronLeft size={15}/></button>
@@ -2475,10 +2491,10 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
           <Image size={22}/>
           <span style={{fontSize:9,letterSpacing:.5}}>Photo</span>
         </button>
-        <button onClick={()=>{setType("photo");setTextBg(null);fRef.current.click();}} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0}}>
-          <Play size={22}/>
-          <span style={{fontSize:9,letterSpacing:.5}}>Vidéo</span>
-        </button>
+        <button onClick={()=>{setType("photo");setTextBg(null);vRef.current.click();}} style={{background:"none",border:"none",cursor:"pointer",color:type==="photo"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+  <Play size={22}/>
+  <span style={{fontSize:9,letterSpacing:.5}}>Vidéo</span>
+</button>
         <button onClick={()=>{setType("event");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="event"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
@@ -2497,13 +2513,22 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
   const [type,setType]=useState("text"); const [text,setText]=useState("");
   const [preview,setPreview]=useState(null); const [mediaUrl,setMediaUrl]=useState(null);
-  const [uploading,setUploading]=useState(false); const [busy,setBusy]=useState(false);
+ const [uploading,setUploading]=useState(false); const [busy,setBusy]=useState(false);
+const [uploadPct,setUploadPct]=useState(0);
+
 const [textBg,setTextBg]=useState(null);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
 const [statusTrimSrc,setStatusTrimSrc]=useState(null);
 const [statusTrimFile,setStatusTrimFile]=useState(null);
 const fRef=useRef();
+useEffect(()=>{
+  if(window.__celesteStatusFile){
+    handlePick({target:{files:[window.__celesteStatusFile]}});
+    delete window.__celesteStatusFile;
+  }
+},[]);
+const vRef=useRef();
   const canAdd=(myStatuses||[]).length<10;
 
   const cropImage=src=>new Promise(resolve=>{
@@ -2527,19 +2552,26 @@ const handlePick=async e=>{
       if(!trimData)return;
       setPreview(trimData.src);
       setUploading(true);
-      try{const publicUrl=await uploadToR2(f,"statuses");setMediaUrl(publicUrl);}catch(e){console.error("Erreur upload vidéo statut:",e);}
-      setUploading(false);
-      return;
+      try{
+  const publicUrl=await uploadToR2(f,"statuses",pct=>setUploadPct(pct));
+  setMediaUrl(publicUrl);
+}catch(e){
+  notify("❌ Upload échoué — vérifie ta connexion");
+  setPreview(null);
+}
+setUploading(false);setUploadPct(0);
+return;
     }
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
     setUploading(true);
     try {
-  const publicUrl = await uploadToR2(f, "statuses");
+  const publicUrl=await uploadToR2(f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 } catch(e) {
-  console.error("Erreur upload statut:", e);
+  notify("❌ Upload échoué — vérifie ta connexion");
+  setPreview(null);
 }
-    setUploading(false);
+setUploading(false);setUploadPct(0);
   };
 
   const submit=async()=>{
@@ -2561,7 +2593,7 @@ const handlePick=async e=>{
     onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
-    <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+    <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,padding:"22px 20px 44px",maxHeight:"92vh",overflowY:"auto",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
         <input ref={fRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={handlePick}/>
@@ -2578,7 +2610,12 @@ const handlePick=async e=>{
         {type==="photo"&&(preview
           ?<div style={{position:"relative",marginBottom:12}}>
             <MediaPlayer url={preview} style={{borderRadius:16,maxHeight:280}}/>
-            {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:32,height:32,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/></div>}
+            {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}>
+  <div style={{width:120,height:5,background:"rgba(255,255,255,0.15)",borderRadius:3,overflow:"hidden"}}>
+    <div style={{height:"100%",width:`${uploadPct}%`,background:T.gradGold,borderRadius:3,transition:"width 0.2s ease"}}/>
+  </div>
+  <span style={{color:"#fff",fontSize:12,fontWeight:700}}>{uploadPct}%</span>
+</div>}
             <Btn onClick={()=>{setPreview(null);setMediaUrl(null);}} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14}/></Btn>
           </div>
           :<Btn onClick={()=>fRef.current.click()} style={{width:"100%",height:140,borderRadius:16,border:`2px dashed ${T.gold}33`,background:T.goldBg,color:T.gold,fontSize:13,fontWeight:600,marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,transition:"all .2s"}}>
@@ -2865,7 +2902,7 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
   };
 
   return (
-    <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 12px",background:"rgba(16,20,24,0.75)",backdropFilter:"blur(16px)",borderRadius:32,border:"1px solid rgba(255,255,255,0.08)"}}>
+    <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 12px",background:"rgba(16,20,24,0.75)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderRadius:32,border:"1px solid rgba(255,255,255,0.08)"}}>
       <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)}
         onKeyDown={e=>{if(e.key==="Enter"&&replyText.trim())sendStatusReply();}}
         placeholder="Répondre au statut…" disabled={sending}
@@ -2885,12 +2922,25 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
   const [myStatuses,setMyStatuses]=useState([]);
   const [viewing,setViewing]=useState(null);
   const [creating,setCreating]=useState(false);
+useEffect(()=>{
+  if(window.__celesteOpenStatus&&window.__celesteSharedFile){
+    const file=window.__celesteSharedFile;
+    delete window.__celesteSharedFile;
+    delete window.__celesteOpenStatus;
+    pushNav(()=>setCreating(false));
+    setCreating(true);
+    window.__celesteStatusFile=file;
+  }
+},[]);
+ const load=useCallback(async()=>{
 
-  const load=useCallback(async()=>{
-    const{data}=await sb.from("statuses")
-      .select("*, author:profiles!statuses_user_id_fkey(*)")
-      .gt("expires_at",new Date().toISOString())
-      .order("created_at",{ascending:false});
+  const relevantIds=[session?.user?.id,...(myConnections||[])].filter(Boolean);
+  if(!relevantIds.length)return;
+  const{data}=await sb.from("statuses")
+    .select("id,user_id,type,text,media_url,text_background,expires_at,created_at,author:profiles!statuses_user_id_fkey(id,prenom,nom,avatar_url,badge,paroisse)")
+    .gt("expires_at",new Date().toISOString())
+    .in("user_id",relevantIds)
+    .order("created_at",{ascending:false});
     const me=(data||[]).filter(s=>s.user_id===session?.user?.id);
     setMyStatuses(me);
     const blockedSet=new Set(blockedUserIds);
@@ -2958,7 +3008,7 @@ useEffect(()=>{
         <StatusCreatorModal myProfile={myProfile} session={session} myStatuses={myStatuses}
           onClose={()=>{setCreating(false);setHideNav(false);}} onDone={()=>{setCreating(false);load();notify("Statut publié ✦");setHideNav(false);}}/>
       )}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Statuts</h2>
       </div>
       <div style={{maxWidth:640,margin:"0 auto",padding:"16px"}}>
@@ -3037,7 +3087,7 @@ else filtered=active;
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Découvrir</h2>
           <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
@@ -3133,9 +3183,21 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   const containerRef=useRef(null);
   const videoRefs=useRef({});
   const scrollTimeout=useRef(null);
+  const itemRefs=useRef({});
   const uid=session?.user?.id;
   useEffect(()=>{const el=containerRef.current;if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});},[]);
-  const handleScroll=()=>{if(scrollTimeout.current)clearTimeout(scrollTimeout.current);scrollTimeout.current=setTimeout(()=>{const el=containerRef.current;if(!el)return;const idx=Math.round(el.scrollTop/window.innerHeight);if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}},80);};
+  useEffect(()=>{
+  const observer=new IntersectionObserver(entries=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const idx=Number(entry.target.dataset.idx);
+        if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}
+      }
+    });
+  },{threshold:0.6});
+  Object.entries(itemRefs.current).forEach(([,el])=>{if(el)observer.observe(el);});
+  return()=>observer.disconnect();
+},[posts]);
   useEffect(()=>{const activeVideo=videoRefs.current[activeIdx];
   if(activeVideo&&!reelsModalOpen){activeVideo.currentTime=0;activeVideo.play().catch(()=>{});setPausedMap(p=>({...p,[activeIdx]:false}));}
   else if(activeVideo&&reelsModalOpen){activeVideo.pause();}
@@ -3145,7 +3207,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   return(
     <div style={{position:"fixed",inset:0,zIndex:1200,background:"#000"}}>
       <button onClick={onClose} style={{position:"absolute",top:"calc(14px + env(safe-area-inset-top,0px))",left:14,zIndex:10,background:"rgba(0,0,0,0.45)",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",cursor:"pointer"}}><X size={20}/></button>
-      <div ref={containerRef} onScroll={handleScroll} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
+      <div ref={containerRef} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
         {posts.map((post,idx)=>{
           const livePost=(posts||[]).find(p=>p.id===post.id)||post;
           const liked=(livePost.likes||[]).some(l=>(l.user_id||l)===uid);
@@ -3161,8 +3223,8 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const progress=progressMap[idx]||0;
           const isConnected=myConnections?.includes(post.by);
           const isMe=post.by===uid;
-          return(<div key={post.id} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}} onTouchStart={()=>{setShowControls(true);clearTimeout(window._rctimer);window._rctimer=setTimeout(()=>setShowControls(false),2500);}}>
-              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=2?"auto":"none"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
+          return(<div key={post.id} ref={el=>itemRefs.current[idx]=el} data-idx={idx} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}} onTouchStart={()=>{setShowControls(true);clearTimeout(window._rctimer);window._rctimer=setTimeout(()=>setShowControls(false),2500);}}>
+              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline autoPlay webkit-playsinline="true" preload={Math.abs(idx-activeIdx)<=1?"auto":"metadata"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
               {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
@@ -3218,6 +3280,12 @@ const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
 const bottomRef=useRef();
 const observer=useRef();
+useEffect(()=>{
+  const post=posts[activeIdx];
+  if(post?.author?.screenshot_protection)enableScreenProtection();
+  else disableScreenProtection();
+  return()=>disableScreenProtection();
+},[activeIdx,posts]);
 useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
 const scrollRef=useRef();
 const savedScroll=useRef(initialScroll);
@@ -3270,7 +3338,7 @@ useEffect(()=>{
       const{postId,commentId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
-      const{data}=await sb.from("posts").select("*,author:profiles!posts_author_id_fkey(*),likes(user_id),comments(id)").eq("id",postId).single();
+      const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id)").eq("id",postId).single();
       if(data)setDetailPost({...data,_targetCommentId:commentId||null});
     };
     window.addEventListener("celeste_open_post",handler);
@@ -3368,12 +3436,12 @@ useEffect(()=>{
       onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;onScrollChange?.(e.currentTarget.scrollTop);}}>
 
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         {!searching?(
   <>
     <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Du nouveau, <span style={{color:T.goldL}}>{myProfile?.prenom||"arrive"}</span></span>
+  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Actu, <span style={{color:T.goldL}}>{myProfile?.prenom||""}</span></span>
   <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
 </div>
     <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
@@ -3682,7 +3750,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
@@ -3787,7 +3855,7 @@ const openMenu=id=>{setMenuConvId(id);};
     <div style={{flex:1,overflowY:"auto",background:T.bg,position:"relative"}}>
       <InstallBanner/>
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text,flex:1}}>Messages <span style={{fontSize:18}}>✦</span></h2>
           <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -3866,7 +3934,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         })}
       </div>
 {menuConvId&&(
-  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuConvId(null)}>
+  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuConvId(null)}>
     <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"24px 24px 0 0",padding:"20px 0 40px"}} onClick={e=>e.stopPropagation()}>
       <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
       {[
@@ -3976,6 +4044,50 @@ CONTACT & SUPPORT :
 
 TON RÔLE :
 Réponds aux questions des utilisateurs sur l'app avec simplicité et bienveillance. Si tu ne sais pas quelque chose de précis, invite l'utilisateur à contacter le support.`;
+
+function VoicePlayer({src,mine}){
+  const [playing,setPlaying]=useState(false);
+  const [progress,setProgress]=useState(0);
+  const [duration,setDuration]=useState(0);
+  const audioRef=useRef(null);
+  const fmt=s=>{if(!s||isNaN(s))return"0:00";const m=Math.floor(s/60),sec=Math.floor(s%60);return`${m}:${sec.toString().padStart(2,"0")}`;};
+  useEffect(()=>{
+    const a=new Audio(src);
+    audioRef.current=a;
+    a.onloadedmetadata=()=>setDuration(a.duration);
+    a.ontimeupdate=()=>setProgress(a.duration?a.currentTime/a.duration*100:0);
+    a.onended=()=>{setPlaying(false);setProgress(0);};
+    return()=>{a.pause();a.src="";};
+  },[src]);
+  const toggle=()=>{
+    const a=audioRef.current;if(!a)return;
+    if(playing){a.pause();setPlaying(false);}
+    else{a.play();setPlaying(true);}
+  };
+  const seek=e=>{
+    const a=audioRef.current;if(!a||!duration)return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const pct=(e.clientX-rect.left)/rect.width;
+    a.currentTime=pct*duration;
+  };
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:10,minWidth:180,padding:"4px 0"}}>
+      <button onClick={toggle} style={{width:36,height:36,borderRadius:"50%",background:mine?"rgba(0,0,0,0.15)":"rgba(201,149,42,0.15)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,color:mine?"#000":T.goldL}}>
+        {playing
+          ?<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          :<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+        }
+      </button>
+      <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
+        <div onClick={seek} style={{height:3,background:mine?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.12)",borderRadius:2,cursor:"pointer",overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${progress}%`,background:mine?"rgba(0,0,0,0.5)":T.goldL,borderRadius:2,transition:"width 0.1s linear"}}/>
+        </div>
+        <span style={{fontSize:10,color:mine?"rgba(0,0,0,0.5)":T.muted}}>{fmt(audioRef.current?.currentTime||0)} / {fmt(duration)}</span>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={mine?"rgba(0,0,0,0.4)":T.muted} strokeWidth="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </div>
+  );
+}
 
 function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile}){
 const [selectedMsg,setSelectedMsg]=useState(null);
@@ -4137,7 +4249,7 @@ const handleFile=async(e,isImg)=>{
     setSendingMsgs(p=>[...p,{id:tempId,type:isImg?"photo":"file",fileName:f.name,f:"me",ts:Date.now(),sending:true}]);
     let publicUrl;
     try {
-      publicUrl = await uploadToR2(f, "messages");
+      publicUrl = await uploadToR2(f,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
     } catch(err) {
       notify("Erreur upload: "+err.message);
       input.value="";
@@ -4180,7 +4292,7 @@ const handleFile=async(e,isImg)=>{
         setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true}]);
 let publicUrl;
 try {
-  publicUrl = await uploadToR2(blob, "messages");
+  publicUrl = await uploadToR2(blob,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
 } catch(e) {
   notify("Erreur upload vocal");
   setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
@@ -4223,7 +4335,7 @@ try {
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
       {/* Chat header */}
-      <div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <Av u={user} size={42} online={user.online} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
         <div style={{flex:1,cursor:"pointer"}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
           <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{user.name}</p>
@@ -4263,7 +4375,7 @@ try {
                 }}>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
-    <div onClick={()=>{if(m.reply_metadata?.statusId)window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}}));}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
+    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
@@ -4295,11 +4407,14 @@ try {
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
-                  {m.type==="voice"&&(m.img||m.file_url)&&<audio controls src={m.img||m.file_url} style={{maxWidth:"200px",height:32,borderRadius:16}}/>}
+                  {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
                   {m.text&&<><p style={{margin:0,fontSize:14,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}</p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
+                  {isSending&&m.pct>0&&m.pct<100&&<div style={{width:"100%",height:3,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:3}}>
+  <div style={{height:"100%",width:`${m.pct}%`,background:T.gradGold,borderRadius:2,transition:"width 0.2s"}}/>
+</div>}
                   {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
 {mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
 {mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"✓✓":"✓✓"}</span>}
@@ -4326,7 +4441,7 @@ try {
       )}
 
       {/* Input */}
-      <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
+      <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
         {recording?(
           <div style={{display:"flex",alignItems:"center",gap:12,background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:20,padding:"10px 16px"}}>
             <div style={{display:"flex",gap:3,alignItems:"center"}}>
@@ -4367,7 +4482,7 @@ try {
       {showGemini&&(
         <div style={{position:"absolute",inset:0,zIndex:100,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}}>
           {/* Header */}
-          <div style={{padding:"12px 16px",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+          <div style={{padding:"12px 16px",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
             <div style={{flex:1}}>
               <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
@@ -4490,7 +4605,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
@@ -4580,8 +4695,8 @@ if(user?.status==="suspended") return(
           <Av u={{...user,avatar_url:avatarUrl}} size={88} ring onClick={()=>{if(avatarUrl)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:avatarUrl}}));}}/>
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
-              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:`1px solid rgba(255,255,255,0.2)`,borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)"}}>Message</Btn>
-<Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
+              <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:`1px solid rgba(255,255,255,0.2)`,borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Message</Btn>
+<Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
             </div>
             <div style={{display:"flex",gap:6}}>
               <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"5px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
@@ -4606,7 +4721,7 @@ if(user?.status==="suspended") return(
         <div style={{display:"flex",gap:1,background:"rgba(255,255,255,0.03)",borderRadius:18,overflow:"hidden",border:`1px solid ${T.border}`,marginBottom:24}}>
           {stats.map((s,i)=>(
             <div key={s.l} style={{flex:1,textAlign:"center",padding:"16px 8px",borderRight:i<stats.length-1?`1px solid ${T.border}`:"none"}}>
-              <p style={{margin:"0 0 3px",fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.goldL}}>{s.v}</p>
+              <p style={{margin:"0 0 3px",fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.goldL}}>{fmtCount(s.v)}</p>
               <p style={{margin:0,fontSize:9,color:T.muted,letterSpacing:1,textTransform:"uppercase"}}>{s.l}</p>
             </div>
           ))}
@@ -4720,7 +4835,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
         }
         {isMe&&(<>
           <input ref={coverRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadCover}/>
-          <Btn onClick={()=>coverRef.current.click()} style={{position:"absolute",top:16,right:16,background:"rgba(0,0,0,0.6)",borderRadius:12,padding:"8px 14px",color:"#fff",fontSize:12,backdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",gap:6}}><Image size={13}/> Changer</Btn>
+          <Btn onClick={()=>coverRef.current.click()} style={{position:"absolute",top:16,right:16,background:"rgba(0,0,0,0.6)",borderRadius:12,padding:"8px 14px",color:"#fff",fontSize:12,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",gap:6}}><Image size={13}/> Changer</Btn>
         </>)}
         <div style={{position:"absolute",bottom:0,left:0,right:0,height:100,background:"linear-gradient(transparent,rgba(0,0,0,0.95))"}}/>
       </div>
@@ -4884,7 +4999,7 @@ if(existingPool){
 
   return(
     <div
-      style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+      style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={()=>{setOpen(false);setSection(null);}}>
       <div
         style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",padding:"28px 20px 48px",animation:"slideUp .35s ease"}}
@@ -5455,7 +5570,7 @@ useEffect(()=>{
               <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.5)"}}>Total gagné</p>
               <p style={{margin:0,fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(wallet?.total_earned||0).toLocaleString("fr-FR")} F</p>
             </div>
-            <button onClick={()=>setShowWithdraw(true)} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            <button onClick={()=>setShowWithdraw(true)} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               Retirer
             </button>
           </div>
@@ -5542,7 +5657,7 @@ useEffect(()=>{
 
       {/* Modal retrait */}
       {showWithdraw&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",zIndex:10000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowWithdraw(false)}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:10000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowWithdraw(false)}>
           <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"28px 28px 0 0",padding:"28px 20px 48px"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text}}>Retirer mon argent</h3>
@@ -5676,7 +5791,7 @@ useEffect(()=>{
   const [detailPost, setDetailPost] = useState(null);
   const [userReelsIndex,setUserReelsIndex]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   
@@ -5708,7 +5823,7 @@ useEffect(()=>{
       <div style={{height:160,background:`linear-gradient(135deg,${myProfile?.color||T.gold}22,${T.goldD}11)`,position:"relative",overflow:"hidden",cursor:"pointer"}} onClick={()=>cvRef.current.click()}>
         {myProfile?.cover_url&&<img src={myProfile.cover_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent,rgba(0,0,0,0.6))"}}/>
-        <div style={{position:"absolute",bottom:12,right:12,background:"rgba(0,0,0,0.6)",borderRadius:10,padding:"5px 10px",fontSize:11,color:"#fff",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",gap:5}}><Camera size={12}/>Changer</div>
+        <div style={{position:"absolute",bottom:12,right:12,background:"rgba(0,0,0,0.6)",borderRadius:10,padding:"5px 10px",fontSize:11,color:"#fff",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"center",gap:5}}><Camera size={12}/>Changer</div>
       </div>
 
       <div style={{padding:"0 18px",maxWidth:640,margin:"0 auto"}}>
@@ -5778,7 +5893,7 @@ useEffect(()=>{
               style={{flex:1,textAlign:"center",padding:"14px 8px",borderRight:i<2?`1px solid ${T.border}`:"none",cursor:s.onClick?"pointer":"default",transition:"background .2s"}}
               onMouseEnter={e=>{if(s.onClick)e.currentTarget.style.background="rgba(201,149,42,0.05)";}}
               onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-              <p style={{margin:"0 0 3px",fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:s.onClick?T.goldL:T.text}}>{s.v}</p>
+              <p style={{margin:"0 0 3px",fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:s.onClick?T.goldL:T.text}}>{fmtCount(s.v)}</p>
               <p style={{margin:0,fontSize:9,color:T.muted,letterSpacing:1,textTransform:"uppercase"}}>{s.l}</p>
             </div>
           ))}
@@ -5786,10 +5901,10 @@ useEffect(()=>{
 
         {/* Modal Abonnés */}
         {showFollowers&&(
-          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowers(false)}>
+          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowers(false)}>
             <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"75vh",display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>Abonnés <span style={{color:T.goldL}}>({followersCount})</span></h3>
+                <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>Abonnés <span style={{color:T.goldL}}>({fmtCount(followersCount)})</span></h3>
                 <Btn onClick={()=>setShowFollowers(false)} style={{color:T.muted}}><X size={20}/></Btn>
               </div>
               <div style={{overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
@@ -5814,7 +5929,7 @@ useEffect(()=>{
 
         {/* Modal Abonnements */}
         {showFollowing&&(
-          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowing(false)}>
+          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowing(false)}>
             <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"75vh",display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>Abonnements <span style={{color:T.goldL}}>({followingCount})</span></h3>
@@ -5880,7 +5995,7 @@ useEffect(()=>{
           {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>🔖 {p.savesCount}</span>}
         </div>
       </div>
-      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
+      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
   <Trash2 size={13}/>
 </Btn>
     </div>
@@ -6009,7 +6124,7 @@ if(data)setList(data.map(normProfile));
   const displayList=filter==="pending"?pending:filter==="suspended"?suspended:filter==="reports"?[]:(list||[]).filter(m=>m.id);
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"90vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
           <div>
@@ -6227,7 +6342,7 @@ const send=async()=>{
   return(
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
       {/* Header */}
-      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
         <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
         <div style={{flex:1}}>
@@ -6270,7 +6385,7 @@ const send=async()=>{
       </div>
 
       {/* Input */}
-      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:T.bg2,backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
         <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
           <textarea value={inp} onChange={e=>{
     setInp(e.target.value);
@@ -6339,7 +6454,7 @@ function VerificationInfoModal(){
         <span>ℹ️</span> En savoir plus sur la vérification
       </Btn>
       {open&&(
-        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
           <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
             <div style={{textAlign:"center",marginBottom:24}}>
               <span style={{fontSize:40}}>🔐</span>
@@ -6386,6 +6501,18 @@ function CelesteApp(){
   const [blockedUserIds,setBlockedUserIds]=useState([]);
   const [chatDrafts,setChatDrafts]=useState({});
   const [tab,setTab]=useState("home");
+  const checkShared=async()=>{
+  try{
+    const{url}=await CapApp.getLaunchUrl()||{};
+    if(!url)return;
+    const res=await fetch(url);
+    const blob=await res.blob();
+    const file=new File([blob],url.split("/").pop()||"media",{type:blob.type});
+    setSharedMedia(file);
+  }catch(e){}
+};
+checkShared();
+CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
   useEffect(()=>{window.__celesteSetTab=setTab;return()=>{delete window.__celesteSetTab;};},[]);
   const [openConvId,setOpenConvId]=useState(null);
   const [openUserId,setOpenUserId]=useState(null);
@@ -6403,6 +6530,7 @@ const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
 const viewedPostIdsRef=useRef(new Set());
+const [sharedMedia,setSharedMedia]=useState(null);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
 const [unreadStatuses,setUnreadStatuses]=useState(0);
   const [hideNav,setHideNav]=useState(false);
@@ -6468,7 +6596,7 @@ useEffect(() => {
       closeFn();
       return;
     }
-    if (tab !== 'home') { setTab('home'); return; }
+    if (tab !== 'home') { navStack.current=[]; setTab('home'); return; }
     CapApp.minimizeApp();
   });
 
@@ -6515,7 +6643,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   
 
   const loadMembers=useCallback(async()=>{
-  const{data}=await sb.from("profiles").select("*").neq("status","pending");
+  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection").neq("status","pending");
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
@@ -6536,7 +6664,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   const postOrderRef=useRef([]);
  const loadPosts=useCallback(async(page=1)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,post_phase,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(data){
@@ -6612,7 +6740,7 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false};
     setPosts(prev=>{
@@ -6662,7 +6790,7 @@ useEffect(()=>{
       _setUnseenStatusMap(byUser);
     };
     loadUnreadStatuses();
-    const onlineInterval=setInterval(()=>{loadMembers();loadUnreadStatuses();},30000);
+    const onlineInterval=setInterval(()=>{loadMembers();loadUnreadStatuses();},120000);
     return()=>clearInterval(onlineInterval);
   }
 },[session?.user?.id,myProfile?.id,isPending]);
@@ -6798,11 +6926,19 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
         {toast&&<Toast msg={toast}/>}
         {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
         <NotifBanner notifs={inAppNotifs} onDismiss={dismissNotif} onTap={n=>{n.action?.();dismissNotif(n.id);}}/>
+          {sharedMedia&&<div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+  <p style={{color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300}}>Partager sur Céleste</p>
+  <div style={{display:"flex",gap:16}}>
+    <button onClick={()=>{setSharedMedia(null);pushNav(()=>setShowNewPost(false));setShowNewPost(true);window.__celesteSharedFile=sharedMedia;}} style={{padding:"12px 24px",background:T.gradGold,border:"none",borderRadius:16,color:"#000",fontWeight:700,fontSize:15,cursor:"pointer"}}>📸 Post</button>
+    <button onClick={()=>{setSharedMedia(null);window.__celesteSharedFile=sharedMedia;window.__celesteOpenStatus=true;}} style={{padding:"12px 24px",background:"rgba(255,255,255,0.08)",border:`1px solid ${T.border}`,borderRadius:16,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer"}}>⭕ Statut</button>
+  </div>
+  <button onClick={()=>setSharedMedia(null)} style={{color:T.muted,background:"none",border:"none",fontSize:13,cursor:"pointer"}}>Annuler</button>
+</div>}
         {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}} notify={notify}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
-        <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:hideNav?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
+        <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:hideNav?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -6829,7 +6965,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
 
         {/* Notifications panel overlay */}
         {showNotifs&&!openConvId&&!openUserId&&(
-          <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(6px)"}} onClick={()=>setShowNotifs(false)}>
+          <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}} onClick={()=>setShowNotifs(false)}>
             <div style={{position:"absolute",top:56,left:0,right:0,background:T.bg3,borderBottom:`1px solid ${T.border}`,maxHeight:"70vh",overflowY:"auto",animation:"slideDown .25s ease"}} onClick={e=>e.stopPropagation()}>
               <NotifsScreen myProfile={myProfile} session={session} members={members}/>
             </div>
