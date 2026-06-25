@@ -17,12 +17,14 @@
     "@capacitor/core": "^8.3.4",
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/ios": "^8.3.4",
+    "@capacitor/share": "^8.0.1",
     "@onesignal/capacitor-plugin": "^1.0.5",
     "@supabase/supabase-js": "^2.106.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-easy-crop": "^5.5.7",
+    "send-intent": "^7.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

@@ -11,5 +11,11 @@ project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/
 include ':capacitor-geolocation'
 project(':capacitor-geolocation').projectDir = new File('../node_modules/@capacitor/geolocation/android')
 
+include ':capacitor-share'
+project(':capacitor-share').projectDir = new File('../node_modules/@capacitor/share/android')
+
 include ':onesignal-capacitor-plugin'
 project(':onesignal-capacitor-plugin').projectDir = new File('../node_modules/@onesignal/capacitor-plugin/android')
+
+include ':send-intent'
+project(':send-intent').projectDir = new File('../node_modules/send-intent/android')
