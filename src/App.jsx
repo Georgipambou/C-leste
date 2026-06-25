@@ -1047,15 +1047,19 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
   const [start,setStart]=useState(0);
   const [end,setEnd]=useState(0);
   const [playing,setPlaying]=useState(false);
-  const [currentTime,setCurrentTime]=useState(0);
+  const [currentTime,setCurrentTime]=useState(false);
+  const [trimming,setTrimming]=useState(false);
+  const [trimProgress,setTrimProgress]=useState(0);
+  const ffmpegRef=useRef(null);
   const MAX=maxDuration;
+  const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
   useEffect(()=>{
     const v=videoRef.current;if(!v)return;
     const onLoaded=()=>{const d=Math.min(v.duration,MAX);setDuration(v.duration);setEnd(d);};
     v.addEventListener("loadedmetadata",onLoaded);
     v.addEventListener("timeupdate",()=>setCurrentTime(v.currentTime));
-    return()=>v.removeEventListener("loadedmetadata",onLoaded);
+    return()=>{v.removeEventListener("loadedmetadata",onLoaded);};
   },[]);
 
   useEffect(()=>{
@@ -1069,15 +1073,74 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
     else{v.currentTime=start;v.play();setPlaying(true);}
   };
 
-  const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+  const handleValidate=async()=>{
+    if(trimming)return;
+    // Si pas de trim significatif, on retourne le src tel quel
+    if(start<0.5&&end>=duration-0.5){
+      onDone({src:videoSrc,start:0,end:duration,file:null});
+      return;
+    }
+    setTrimming(true);
+    setTrimProgress(0);
+    try{
+      const {FFmpeg}=await import("@ffmpeg/ffmpeg");
+      const {fetchFile,toBlobURL}=await import("@ffmpeg/util");
+      if(!ffmpegRef.current){
+        const ff=new FFmpeg();
+        ff.on("progress",({progress})=>setTrimProgress(Math.round(progress*100)));
+        const baseURL="https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
+        await ff.load({
+          coreURL:await toBlobURL(`${baseURL}/ffmpeg-core.js`,"text/javascript"),
+          wasmURL:await toBlobURL(`${baseURL}/ffmpeg-core.wasm`,"application/wasm"),
+        });
+        ffmpegRef.current=ff;
+      }
+      const ff=ffmpegRef.current;
+      const inputData=await fetchFile(videoSrc);
+      await ff.writeFile("input.mp4",inputData);
+      await ff.exec([
+        "-i","input.mp4",
+        "-ss",String(start.toFixed(3)),
+        "-to",String(end.toFixed(3)),
+        "-c:v","libx264","-preset","fast","-crf","23",
+        "-c:a","aac",
+        "-movflags","+faststart",
+        "output.mp4"
+      ]);
+      const data=await ff.readFile("output.mp4");
+      const blob=new Blob([data.buffer],{type:"video/mp4"});
+      const trimmedFile=new File([blob],"trimmed.mp4",{type:"video/mp4"});
+      const trimmedSrc=URL.createObjectURL(blob);
+      onDone({src:trimmedSrc,start:0,end:end-start,file:trimmedFile});
+    }catch(e){
+      console.error("FFmpeg trim error:",e);
+      // Fallback : on envoie l'original
+      onDone({src:videoSrc,start,end,file:null});
+    }finally{
+      setTrimming(false);
+    }
+  };
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
       <div style={{padding:"12px 20px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>Annuler</button>
         <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Couper la vidéo</p>
-        <button onClick={()=>onDone({src:videoSrc,start,end})} style={{background:"none",border:"none",color:"#C9952A",fontSize:15,fontWeight:700,cursor:"pointer",padding:"4px 0"}}>Valider ✦</button>
+        <button onClick={handleValidate} disabled={trimming} style={{background:"none",border:"none",color:trimming?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:trimming?"default":"pointer",padding:"4px 0"}}>
+          {trimming?`Traitement ${trimProgress}%`:"Valider ✦"}
+        </button>
       </div>
+
+      {trimming&&(
+        <div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+          <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid rgba(201,149,42,0.2)",borderTopColor:"#C9952A",animation:"spin .8s linear infinite"}}/>
+          <p style={{margin:0,color:"#fff",fontSize:15,fontWeight:600}}>Découpe en cours…</p>
+          <div style={{width:200,height:4,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
+            <div style={{height:"100%",width:`${trimProgress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.2s"}}/>
+          </div>
+          <p style={{margin:0,color:"rgba(255,255,255,0.4)",fontSize:12}}>{trimProgress}%</p>
+        </div>
+      )}
 
       <div style={{height:"45vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",position:"relative",flexShrink:0}}>
         <video ref={videoRef} src={videoSrc} playsInline style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
@@ -1694,12 +1757,17 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
       const query=match[1].toLowerCase();
       setMentionQuery(query);
       const filtered=(members||[]).filter(m=>
+        !query||
         m.name?.toLowerCase().includes(query)||
         m.prenom?.toLowerCase().includes(query)||
         m.fullName?.toLowerCase().includes(query)
       ).slice(0,8);
       setSuggestions(filtered);
       setShowSuggestions(filtered.length>0);
+      if(filtered.length===0&&(members||[]).length===0){
+        setShowSuggestions(true);
+        setSuggestions([{id:"__loading__",name:"Chargement…",prenom:"",fullName:"",paroisse:""}]);
+      }
       if(filtered.length>0&&ref.current)setAnchorRect(ref.current.getBoundingClientRect());
     }else{
       setShowSuggestions(false);
@@ -1713,9 +1781,10 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   };
 
   const insertMention=member=>{
+    if(member.id==="__loading__")return;
     const textBeforeCursor=value.slice(0,cursorPos);
     const textAfterCursor=value.slice(cursorPos);
-   const newText=textBeforeCursor.replace(/@[\w\u00C0-\u017F]*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
+    const newText=textBeforeCursor.replace(/@[\w\u00C0-\u017F]*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
     onChange(newText,member.id);
     setShowSuggestions(false);
     ref.current?.focus();
@@ -1739,7 +1808,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
             <span style={{fontSize:12,color:T.muted}}>Mentionner · <strong style={{color:T.goldL}}>@{mentionQuery}</strong></span>
           </div>
           {suggestions.map(m=>(
-            <div key={m.id} onMouseDown={e=>{e.preventDefault();insertMention(m);}}
+            <div key={m.id} onMouseDown={e=>{e.preventDefault();insertMention(m);}} onTouchEnd={e=>{e.preventDefault();insertMention(m);}}
               style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,transition:"background .15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(201,149,42,0.06)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -1842,13 +1911,8 @@ if(postData?.author_id&&postData.author_id!==uid){
       
       const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
 for(const mentionedId of uniqueIds){
-  await sb.from("notifications").insert({
-    user_id:mentionedId,
-    from_id:uid,
-    type:"mention",
-    post_id:postId,
-    read:false
-  });
+  await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
+  sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un commentaire`}});
 }
 mentionedIdsRef.current=[];
     }
@@ -2205,11 +2269,12 @@ const [uploading,setUploading]=useState(false);
 const [uploadPct,setUploadPct]=useState(0);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
+const [videoTrimSrc,setVideoTrimSrc]=useState(null);
 const [evTitle,setEvTitle]=useState("");
 const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
 const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
-const [videoTrimSrc,setVideoTrimSrc]=useState(null);
+
 const [isForSale,setIsForSale]=useState(false);
 const [contactType,setContactType]=useState("whatsapp");
 const [contactLink,setContactLink]=useState("");
@@ -2251,7 +2316,7 @@ const handlePick=async e=>{
         setPreviews(p=>[...p,{url:trimData.src,type:"video"}]);
         setType("photo");
         setUploading(true);setUploadPct(0);
-try{const publicUrl=await uploadToR2(f,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
+try{const fileToUpload=trimData.file||f;const publicUrl=await uploadToR2(fileToUpload,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
 catch(err){console.error(err);}
 finally{setUploading(false);setUploadPct(0);}
 continue;
@@ -2301,7 +2366,21 @@ whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${what
 contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
 expires_at:isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null
     });
-    setBusy(false); if(!error)onPost();
+    setBusy(false);
+if(!error){
+  const uid=session?.user?.id;
+  const{data:postData}=await sb.from("posts").select("id").eq("author_id",uid).order("created_at",{ascending:false}).limit(1).single();
+  const postId=postData?.id;
+  if(postId){
+    const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
+    for(const mentionedId of uniqueIds){
+      await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
+      sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un post`}});
+    }
+    mentionedIdsRef.current=[];
+  }
+  onPost();
+}
   };
 
   const canSell=!!myProfile?.badge;
@@ -2326,7 +2405,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 )}
     <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
-      <input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
+      <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePick}/>
+<input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
 
       {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"52px 20px 16px",borderBottom:`1px solid ${T.border}`}}>
@@ -2553,7 +2633,7 @@ const handlePick=async e=>{
       setPreview(trimData.src);
       setUploading(true);
       try{
-  const publicUrl=await uploadToR2(f,"statuses",pct=>setUploadPct(pct));
+  const publicUrl=await uploadToR2(trimData.file||f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 }catch(e){
   notify("❌ Upload échoué — vérifie ta connexion");
@@ -2565,7 +2645,7 @@ return;
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
     setUploading(true);
     try {
-  const publicUrl=await uploadToR2(f,"statuses",pct=>setUploadPct(pct));
+  const publicUrl=await uploadToR2(trimData.file||f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 } catch(e) {
   notify("❌ Upload échoué — vérifie ta connexion");
@@ -3061,7 +3141,368 @@ useEffect(()=>{
   );
 }
 
-function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange}){
+// ── CÉLESTE MATCH — Algorithme de compatibilité ───────────
+const MATCH_QUESTIONS=[
+  {id:"gender",label:"Tu es…",type:"single",emoji:"🪞",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"}]},
+  {id:"seeking_type",label:"Tu cherches…",type:"single",emoji:"✨",options:[{v:"amour",l:"L'amour"},{v:"amitie",l:"Une amitié"},{v:"les_deux",l:"Les deux"}]},
+  {id:"seeking_gender",label:"Tu cherches quelqu'un de quel genre ?",type:"single",emoji:"💫",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"},{v:"peu_importe",l:"Peu importe"}]},
+  {id:"seeking_age",label:"Tranche d'âge recherchée",type:"age_range",emoji:"🎂",options:[{v:"18-25",l:"18 – 25 ans"},{v:"25-35",l:"25 – 35 ans"},{v:"35-45",l:"35 – 45 ans"},{v:"45+",l:"45 ans et +"}]},
+  {id:"faith",label:"La foi occupe quelle place dans ta vie ?",type:"single",emoji:"🙏",options:[{v:"centrale",l:"Elle est centrale, tout part de là"},{v:"importante",l:"Importante mais pas absolue"},{v:"secondaire",l:"Secondaire"},{v:"aucune",l:"Aucune place"}]},
+  {id:"marriage_vision",label:"Ta vision du mariage ?",type:"single",emoji:"💍",options:[{v:"oui",l:"Je veux me marier"},{v:"peut_etre",l:"Peut-être un jour"},{v:"non",l:"Ce n'est pas pour moi"}]},
+  {id:"children",label:"Les enfants dans ta vie ?",type:"single",emoji:"👶",options:[{v:"en_veux",l:"J'en veux"},{v:"deja",l:"J'en ai déjà"},{v:"pas_sur",l:"Pas encore sûr·e"},{v:"non",l:"Non"}]},
+  {id:"life_vision",label:"Dans 5 ans tu te vois…",type:"single",emoji:"🌅",options:[{v:"stabilite",l:"Stable, posé·e, avec un foyer"},{v:"voyages",l:"Explorer, voyager, découvrir"},{v:"carriere",l:"Construire ma carrière"},{v:"incertain",l:"Je ne sais pas encore"}]},
+  {id:"family_vs_freedom",label:"Ce qui prime pour toi ?",type:"single",emoji:"⚖️",options:[{v:"famille",l:"La famille avant tout"},{v:"liberte",l:"Ma liberté individuelle"},{v:"equilibre",l:"Un équilibre entre les deux"}]},
+  {id:"conflict_style",label:"Quand il y a un conflit, tu…",type:"single",emoji:"🌊",options:[{v:"parle",l:"En parles immédiatement"},{v:"digere",l:"Prends du recul d'abord"},{v:"reagis",l:"Réagis fortement puis tu passes"}]},
+  {id:"expression_level",label:"Émotionnellement, tu es…",type:"single",emoji:"🎭",options:[{v:"expressif",l:"Très expressif·ve, tu montres tout"},{v:"reserve",l:"Réservé·e, tu gardes pour toi"},{v:"milieu",l:"Entre les deux"}]},
+  {id:"life_rhythm",label:"Ton rythme de vie idéal ?",type:"single",emoji:"🌙",options:[{v:"calme",l:"Calme, intimité, tranquillité"},{v:"social",l:"Sorties, monde, énergie"},{v:"melange",l:"Un mélange selon les jours"}]},
+  {id:"relationship_priority",label:"Ce qui compte le plus dans une relation ?",type:"single",emoji:"💎",options:[{v:"confiance",l:"La confiance absolue"},{v:"passion",l:"La passion & l'intensité"},{v:"complicite",l:"La complicité & le rire"},{v:"respect",l:"Le respect mutuel"}]},
+  {id:"communication_style",label:"Comment tu communiques ?",type:"single",emoji:"💬",options:[{v:"direct",l:"Direct·e et franc·he"},{v:"doux",l:"Doux·ce et diplomate"},{v:"ecoute",l:"Tu écoutes plus que tu parles"}]},
+  {id:"app_expectation",label:"Tu attends quoi de Céleste ?",type:"single",emoji:"🌟",options:[{v:"serieux",l:"Quelque chose de sérieux"},{v:"amis",l:"Me faire de vrais amis"},{v:"decouverte",l:"Découvrir, voir ce qui arrive"},{v:"verra",l:"Je verrai bien"}]},
+];
+
+// Questions où la SIMILARITÉ = compatibilité
+const SIMILAR_KEYS=["faith","marriage_vision","children","life_vision","app_expectation","seeking_type"];
+// Questions où la COMPLÉMENTARITÉ = compatibilité
+const COMPLEMENT_KEYS=["conflict_style","expression_level","life_rhythm","family_vs_freedom"];
+// Poids par question
+const Q_WEIGHT={faith:18,marriage_vision:16,children:15,life_vision:12,seeking_type:10,app_expectation:8,conflict_style:10,expression_level:8,life_rhythm:7,family_vs_freedom:7,communication_style:5,relationship_priority:4};
+// Paires complémentaires optimales
+const COMPLEMENT_PAIRS={
+  conflict_style:{parle:"digere",digere:"parle",reagis:"milieu"},
+  expression_level:{expressif:"reserve",reserve:"expressif",milieu:"milieu"},
+  life_rhythm:{calme:"social",social:"calme",melange:"melange"},
+  family_vs_freedom:{famille:"liberte",liberte:"famille",equilibre:"equilibre"},
+};
+
+function computeMatchScore(a,b){
+  if(!a||!b)return 0;
+  // Éliminatoires
+  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||a.seeking_gender===b.gender&&b.seeking_gender===a.gender;
+  if(!genderOk)return 0;
+  const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
+  if(!typeOk)return 0;
+  let score=0,maxScore=0;
+  for(const key of Object.keys(Q_WEIGHT)){
+    const w=Q_WEIGHT[key];
+    maxScore+=w;
+    if(!a[key]||!b[key])continue;
+    if(SIMILAR_KEYS.includes(key)){
+      if(a[key]===b[key])score+=w;
+      else score+=Math.round(w*0.2);
+    } else if(COMPLEMENT_KEYS.includes(key)){
+      const ideal=COMPLEMENT_PAIRS[key]?.[a[key]];
+      if(ideal===b[key])score+=w;
+      else if(a[key]===b[key])score+=Math.round(w*0.4);
+      else score+=Math.round(w*0.2);
+    } else {
+      if(a[key]===b[key])score+=w;
+    }
+  }
+  return maxScore>0?Math.round((score/maxScore)*100):0;
+}
+
+function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialData=null}){
+  const [step,setStep]=useState(0);
+  const [answers,setAnswers]=useState(initialData||{});
+  const [saving,setSaving]=useState(false);
+  const total=MATCH_QUESTIONS.length;
+  const q=MATCH_QUESTIONS[step];
+  const progress=((step)/total)*100;
+  const isEdit=!!initialData;
+
+  const select=async v=>{
+    const next={...answers,[q.id]:v};
+    setAnswers(next);
+    if(step<total-1){
+      setTimeout(()=>setStep(s=>s+1),280);
+    } else {
+      setSaving(true);
+      const payload={user_id:session?.user?.id,...next,is_active:true,updated_at:new Date().toISOString()};
+      const{error}=await sb.from("match_profiles").upsert(payload,{onConflict:"user_id"});
+      setSaving(false);
+      if(!error){notify("✦ Profil Céleste Match enregistré !");onDone(next);}
+      else notify("Erreur — réessaie");
+    }
+  };
+
+  const chosen=answers[q.id];
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1200,background:T.bg,display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
+      {/* Header barre progression */}
+      <div style={{padding:"calc(env(safe-area-inset-top,0px) + 16px) 20px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+          {step>0&&<Btn onClick={()=>setStep(s=>s-1)} style={{color:T.muted,display:"flex"}}><ChevronLeft size={22}/></Btn>}
+          <div style={{flex:1,height:3,background:"rgba(255,255,255,0.08)",borderRadius:2}}>
+            <div style={{height:"100%",width:`${progress}%`,background:T.gradGold,borderRadius:2,transition:"width .4s ease"}}/>
+          </div>
+          <span style={{fontSize:11,color:T.muted,minWidth:32,textAlign:"right"}}>{step+1}/{total}</span>
+          <Btn onClick={onClose} style={{color:T.muted,display:"flex",marginLeft:4}}><X size={20}/></Btn>
+        </div>
+      </div>
+
+      {/* Corps */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",padding:"0 24px 40px"}}>
+        {/* Emoji + Question */}
+        <div style={{textAlign:"center",padding:"32px 0 28px",animation:"fadeUp .3s ease"}}>
+          <div style={{fontSize:52,marginBottom:16,filter:`drop-shadow(0 0 20px ${T.gold}55)`}}>{q.emoji}</div>
+          <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:0,lineHeight:1.4}}>{q.label}</h2>
+          {!isEdit&&step===0&&(
+            <p style={{fontSize:13,color:T.muted,marginTop:10,lineHeight:1.7}}>
+              Réponds honnêtement — plus tu es authentique, plus les suggestions seront justes ✦
+            </p>
+          )}
+        </div>
+
+        {/* Options */}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {q.options.map((opt,i)=>{
+            const selected=chosen===opt.v;
+            return(
+              <button key={opt.v} onClick={()=>select(opt.v)}
+                style={{
+                  width:"100%",padding:"16px 20px",
+                  background:selected?T.goldBg2:"rgba(255,255,255,0.04)",
+                  border:`1.5px solid ${selected?T.gold:"rgba(255,255,255,0.08)"}`,
+                  borderRadius:18,color:selected?T.goldL:T.text,
+                  fontSize:15,fontWeight:selected?700:400,
+                  cursor:"pointer",textAlign:"left",
+                  display:"flex",alignItems:"center",gap:14,
+                  transition:"all .2s",
+                  animation:`fadeUp .3s ease ${i*0.06}s both`,
+                  boxShadow:selected?`0 0 0 1px ${T.gold}44, 0 8px 24px rgba(201,149,42,0.15)`:"none",
+                  transform:selected?"scale(1.02)":"scale(1)",
+                }}>
+                <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${selected?T.gold:"rgba(255,255,255,0.15)"}`,background:selected?T.gold:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s"}}>
+                  {selected&&<div style={{width:8,height:8,borderRadius:"50%",background:"#000"}}/>}
+                </div>
+                <span>{opt.l}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Loader sauvegarde */}
+      {saving&&(
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,zIndex:10}}>
+          <div style={{width:48,height:48,borderRadius:"50%",border:`3px solid ${T.goldBg2}`,borderTopColor:T.gold,animation:"spin .8s linear infinite"}}/>
+          <p style={{color:T.goldL,fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Enregistrement ✦</p>
+        </div>
+      )}
+    </div>
+  );
+}
+function MatchWriteBtn({u,score,onChat,notify}){
+  const [open,setOpen]=useState(false);
+  const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
+  const [sending,setSending]=useState(false);
+  if(!open) return(
+    <button onClick={()=>setOpen(true)} style={{flexShrink:0,padding:"8px 14px",background:T.gradGold,border:"none",borderRadius:12,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 12px rgba(201,149,42,0.3)"}}>
+      Écrire ✦
+    </button>
+  );
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1300,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",padding:"0 0 env(safe-area-inset-bottom,0px)"}}>
+      <div style={{width:"100%",background:T.card,borderRadius:"24px 24px 0 0",padding:"20px 16px 24px",display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+          <Av u={u} size={36}/>
+          <div>
+            <p style={{margin:0,fontSize:13,fontWeight:700,color:T.text}}>{u.name}</p>
+            <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
+          </div>
+          <Btn onClick={()=>setOpen(false)} style={{marginLeft:"auto",color:T.muted,display:"flex"}}><X size={18}/></Btn>
+        </div>
+        <textarea value={msg} onChange={e=>setMsg(e.target.value)}
+          rows={4}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:13,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+        <button disabled={sending||!msg.trim()} onClick={async()=>{
+          setSending(true);
+          await onChat(u.id,msg.trim());
+          notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
+          setOpen(false);
+        }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
+          {sending?"Envoi…":"Envoyer ✦"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
+  const [matchProfile,setMatchProfile]=useState(null);
+  const [suggestions,setSuggestions]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showOnboarding,setShowOnboarding]=useState(false);
+  const [expanded,setExpanded]=useState(false);
+  const [autoPopup,setAutoPopup]=useState(false);
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    (async()=>{
+      setLoading(true);
+      const{data}=await sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle();
+      setMatchProfile(data);
+      if(!data){
+        const shown=localStorage.getItem("celeste_match_popup_shown");
+        if(!shown){localStorage.setItem("celeste_match_popup_shown","1");setAutoPopup(true);}
+      }
+      if(data?.is_active&&members?.length>0){
+        // Charger les profils des autres membres
+        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        const{data:otherProfiles}=await sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true);
+        if(otherProfiles){
+          const scored=(otherProfiles||[]).map(op=>{
+            const score=computeMatchScore(data,op);
+            const member=members.find(m=>m.id===op.user_id);
+            return{...op,score,member};
+          }).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
+          setSuggestions(scored);
+        }
+      }
+      setLoading(false);
+    })();
+  },[session?.user?.id,members?.length]);
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    const sub=sb.channel("match_realtime").on("postgres_changes",{event:"*",schema:"public",table:"match_profiles"},()=>{
+      sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle().then(({data:myData})=>{
+        if(!myData?.is_active||!members?.length)return;
+        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true).then(({data:others})=>{
+          if(!others)return;
+          const scored=others.map(op=>{const score=computeMatchScore(myData,op);const member=members.find(m=>m.id===op.user_id);return{...op,score,member};}).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
+          setSuggestions(scored);
+        });
+      });
+    }).subscribe();
+    return()=>sb.removeChannel(sub);
+  },[session?.user?.id,members?.length]);
+
+  const scoreColor=s=>s>=80?T.ok:s>=65?T.goldL:T.gold;
+  const scoreLabel=s=>s>=90?"Connexion rare ✦":s>=80?"Très compatible":s>=65?"Bonne affinité":s>=50?"Affinité modérée":"";
+
+  if(loading)return(
+    <div style={{padding:"20px 16px 8px"}}>
+      <div style={{height:160,background:"rgba(255,255,255,0.03)",borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:24,height:24,borderRadius:"50%",border:`2px solid ${T.border}`,borderTopColor:T.gold,animation:"spin .7s linear infinite"}}/>
+      </div>
+    </div>
+  );
+
+  // Pas encore de profil match
+  if(!matchProfile||!matchProfile.is_active) return(
+    <div style={{padding:"16px 16px 8px"}}>
+      <div style={{background:`linear-gradient(135deg,${T.goldBg} 0%,rgba(201,149,42,0.04) 100%)`,border:`1px solid ${T.gold}33`,borderRadius:22,padding:"22px 20px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:.06}}>✦</div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <span style={{fontSize:24}}>💫</span>
+          <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:400,color:T.text}}>Céleste Match</h3>
+          <span style={{fontSize:10,color:T.goldL,fontWeight:700,background:T.goldBg2,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.gold}33`}}>NOUVEAU</span>
+        </div>
+        <p style={{margin:"0 0 16px",fontSize:13,color:T.sub,lineHeight:1.7}}>
+          Découvre des personnes qui te ressemblent vraiment — pas au hasard, mais selon tes valeurs, ta vision de la vie et ta façon d'être.
+        </p>
+        <button onClick={()=>setShowOnboarding(true)}
+          style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,border:"none",color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,149,42,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <span>✦</span> Créer mon profil Match
+        </button>
+      </div>
+      {(showOnboarding||autoPopup)&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify}
+        onClose={()=>{setShowOnboarding(false);setAutoPopup(false);}}
+        onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);setAutoPopup(false);}}/>}
+    </div>
+  );
+
+  // Pas de suggestions
+  if(suggestions.length===0) return(
+    <div style={{padding:"16px 16px 8px"}}>
+      <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:22,padding:"20px",textAlign:"center"}}>
+        <span style={{fontSize:36,display:"block",marginBottom:8}}>💫</span>
+        <p style={{margin:"0 0 4px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text}}>Céleste Match</p>
+        <p style={{margin:"0 0 12px",fontSize:12,color:T.muted}}>Pas encore de suggestions — la communauté grandit ✦</p>
+        <button onClick={()=>setShowOnboarding(true)} style={{fontSize:12,color:T.goldL,background:"none",border:`1px solid ${T.gold}33`,borderRadius:10,padding:"6px 14px",cursor:"pointer"}}>
+          Modifier mon profil
+        </button>
+      </div>
+      {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
+        onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
+    </div>
+  );
+
+  const visible=expanded?suggestions:suggestions.slice(0,3);
+
+  return(
+    <div style={{padding:"16px 16px 4px"}}>
+      {/* Titre section */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:18}}>💫</span>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text,fontWeight:400}}>Céleste Match</span>
+          <span style={{fontSize:10,color:T.goldL,fontWeight:700,background:T.goldBg2,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.gold}33`}}>{suggestions.length}</span>
+        </div>
+        <button onClick={()=>setShowOnboarding(true)} style={{fontSize:11,color:T.muted,background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
+          Modifier ✏️
+        </button>
+      </div>
+
+      {/* Cartes */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {visible.map((s,i)=>{
+          const u=s.member;
+          const col=scoreColor(s.score);
+          return(
+            <div key={u.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:20,overflow:"hidden",animation:`fadeUp .35s ease ${i*.08}s both`}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 14px 10px"}}>
+                {/* Avatar */}
+                <div style={{position:"relative",flexShrink:0}} onClick={()=>onUser(u.id)}>
+                  <Av u={u} size={54} ring/>
+                  {u.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:T.ok,border:"2px solid "+T.bg,boxShadow:"0 0 6px rgba(34,197,94,0.6)"}}/>}
+                </div>
+                {/* Infos */}
+                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onUser(u.id)}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:14,fontWeight:700,color:T.text}}>{u.name}</span>
+                    <Badge type={u.badge}/>
+                  </div>
+                  <span style={{fontSize:11,color:T.muted}}>📍 {u.paroisse||"Congo"}</span>
+                </div>
+                {/* Score */}
+                <div style={{flexShrink:0,textAlign:"center"}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",background:`${col}11`,position:"relative"}}>
+                    <span style={{fontSize:15,fontWeight:900,color:col}}>{s.score}%</span>
+                  </div>
+                  <span style={{fontSize:9,color:col,fontWeight:600,display:"block",marginTop:3}}>{scoreLabel(s.score)}</span>
+                </div>
+              </div>
+              {/* Message pré-rédigé */}
+              <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:T.muted,flex:1,fontStyle:"italic",lineHeight:1.5}}>
+                  "{u.name?.split(" ")[0]} et moi, {s.score}% de compatibilité — ça mérite qu'on discute ✦"
+                </span>
+                <MatchWriteBtn u={u} score={s.score} onChat={onChat} notify={notify}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Voir plus / moins */}
+      {suggestions.length>3&&(
+        <button onClick={()=>setExpanded(e=>!e)}
+          style={{width:"100%",marginTop:10,padding:"10px",background:"none",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          {expanded?<><ChevronLeft size={14} style={{transform:"rotate(90deg)"}}/> Voir moins</>:<><ChevronRight size={14} style={{transform:"rotate(90deg)"}}/> Voir {suggestions.length-3} de plus</>}
+        </button>
+      )}
+
+      {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
+        onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
+    </div>
+  );
+}
+
+function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange,openChat}){
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("tous");
 
@@ -3086,6 +3527,17 @@ else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
+      <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify}
+        onChat={async(uid,msg)=>{
+          if(openChat)openChat(uid);
+          await new Promise(r=>setTimeout(r,400));
+          await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle().then(async({data:existing})=>{
+            let convId=existing?.id;
+            if(!convId){const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:uid}).select().single();convId=created?.id;}
+            if(convId)await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"text",text:msg});
+          });
+        }}
+      />
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
@@ -3475,7 +3927,7 @@ useEffect(()=>{
         {(posts||[]).filter(p=>!searchQuery||p.text?.toLowerCase().includes(searchQuery.toLowerCase())||p.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((p,i)=>(
           <div key={p.id} data-post-id={p.id}>
 <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-           onDetail={p=>{console.log("onDetail post:",p.id,p.type,p.img,p.media_urls);const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else setDetailPost(p);}}
+           onDetail={p=>{const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid&&!p._forceComments){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else setDetailPost(p);}}
             onLike={toggleLike}
             onSave={toggleSave}
             onUser={onUser}
@@ -3705,7 +4157,7 @@ const [saved,setSaved]=useState(false);
               <Heart size={16} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
               {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
             </Btn>
-            <Btn onClick={()=>onDetail?.(post)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
+            <Btn onClick={()=>onDetail?.({...post,_forceComments:true})} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
               <MessageCircle size={16}/>
               {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
             </Btn>
@@ -4240,37 +4692,50 @@ const handleFile=async(e,isImg)=>{
     let f=e.target.files[0]; if(!f)return;
     const input=e.target;
     if(f.size>50*1024*1024){notify("Fichier trop lourd (max 50MB)");return;}
+    // Recadrage image
     if(isImg&&f.type.startsWith("image/")){
       const reader=new FileReader();
       const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
       const croppedFile=await cropImage(src);
       if(croppedFile)f=croppedFile;
     }
-    const tempId="tmp_file_"+Date.now();
-    setSendingMsgs(p=>[...p,{id:tempId,type:isImg?"photo":"file",fileName:f.name,f:"me",ts:Date.now(),sending:true}]);
-    let publicUrl;
-    try {
-      publicUrl = await uploadToR2(f,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
-    } catch(err) {
-      notify("Erreur upload: "+err.message);
-      input.value="";
-      return;
+    // Trimmer vidéo
+    if(f.type.startsWith("video/")){
+      const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+      const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
+      setVideoTrimSrc(null);
+      if(!trimData){input.value="";return;}
+      if(trimData.file)f=trimData.file;
     }
-    // Envoyer directement sans passer par sendMsg (qui crée un 2e tempId)
+    const tempId="tmp_file_"+Date.now();
+    const fileType=f.type.startsWith("video/")?"video":isImg?"photo":"file";
+    setSendingMsgs(p=>[...p,{id:tempId,type:fileType,fileName:f.name,f:"me",ts:Date.now(),sending:true,pct:0}]);
     const convId=await ensureConv();
     if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));input.value="";return;}
-    let error,attempt=0;
-    while(attempt<3){
-      const res=await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:isImg?"photo":"file",file_url:publicUrl,file_name:f.name,text:""});
-      error=res.error;
-      if(!error)break;
-      attempt++;
-      await new Promise(r=>setTimeout(r,1500*attempt));
-    }
-    setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-    if(error){notify("❌ Message non envoyé — vérifie ta connexion");input.value="";return;}
-    playChatSound("send");
-    await reload();
+    const senderUid=session?.user?.id;
+    const fileName=f.name;
+    (async()=>{
+      let publicUrl;
+      try{
+        publicUrl=await uploadToR2(f,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
+      }catch(err){
+        notify("Erreur upload: "+err.message);
+        setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+        return;
+      }
+      let error,attempt=0;
+      while(attempt<3){
+        const res=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:""});
+        error=res.error;
+        if(!error)break;
+        attempt++;
+        await new Promise(r=>setTimeout(r,1500*attempt));
+      }
+      setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+      if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
+      playChatSound("send");
+      reload();
+    })();
     input.value="";
   };
 
@@ -4287,25 +4752,27 @@ const handleFile=async(e,isImg)=>{
       rec.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
         const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg";
-        const ext=mimeType.split("/")[1].split(";")[0];
         const blob=new Blob(chunks,{type:mimeType});
         const tempId="tmp_voice_"+Date.now();
-        setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true}]);
-let publicUrl;
-try {
-  publicUrl = await uploadToR2(blob,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
-} catch(e) {
-  notify("Erreur upload vocal");
-  setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-  return;
-}
+        setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true,pct:0}]);
         const convId=await ensureConv();
         if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));return;}
-        const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"voice",file_url:publicUrl,text:""});
-        setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-        if(error){notify("Erreur d'envoi, réessayez");return;}
-        playChatSound("send");
-        await reload();
+        const senderUid=session?.user?.id;
+        (async()=>{
+          let publicUrl;
+          try{
+            publicUrl=await uploadToR2(blob,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
+          }catch(e){
+            notify("Erreur upload vocal");
+            setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+            return;
+          }
+          const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:""});
+          setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+          if(error){notify("Erreur d'envoi, réessayez");return;}
+          playChatSound("send");
+          reload();
+        })();
       };
       rec.start(250); mediaRecRef.current=rec;
       setRecording(true);setRecordSecs(0);
@@ -4329,6 +4796,14 @@ try {
           onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
         />
       )}
+      {videoTrimSrc&&(
+        <VideoTrimModal
+          videoSrc={videoTrimSrc.src}
+          maxDuration={600}
+          onClose={()=>{const r=videoTrimSrc.resolve;setVideoTrimSrc(null);r(null);}}
+          onDone={data=>{videoTrimSrc.resolve(data);}}
+        />
+      )}v
       <input ref={fRef} type="file" accept="*/*" style={{display:"none"}} onChange={e=>handleFile(e,false)}/>
       <input ref={iRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={e=>handleFile(e,true)}/>
       <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBgPhoto}/>
@@ -4413,8 +4888,8 @@ try {
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
-                  {isSending&&m.pct>0&&m.pct<100&&<div style={{width:"100%",height:3,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:3}}>
-  <div style={{height:"100%",width:`${m.pct}%`,background:T.gradGold,borderRadius:2,transition:"width 0.2s"}}/>
+                  {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice")&&<div style={{width:"100%",height:3,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:3}}>
+  <div style={{height:"100%",width:`${m.pct||0}%`,background:T.gradGold,borderRadius:2,transition:"width 0.2s"}}/>
 </div>}
                   {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
 {mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
@@ -4911,6 +5386,53 @@ const Toggle=({active})=>(
     </div>
   );
 
+function MatchPrivacyToggle({session,notify}){
+  const [active,setActive]=useState(null);
+  const [showEdit,setShowEdit]=useState(false);
+  const [matchData,setMatchData]=useState(null);
+  const {myProfile}=useApp();
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle()
+      .then(({data})=>{setActive(data?.is_active??null);setMatchData(data);});
+  },[session?.user?.id]);
+
+  const toggle=async()=>{
+    if(active===null){setShowEdit(true);return;}
+    const next=!active;
+    setActive(next);
+    await sb.from("match_profiles").update({is_active:next}).eq("user_id",session.user.id);
+    notify(next?"💫 Céleste Match activé":"Match désactivé");
+  };
+
+  return(
+    <>
+      <Btn onClick={toggle} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:20}}>💫</span>
+        <div style={{flex:1,textAlign:"left"}}>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Céleste Match</p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>
+            {active===null?"Créer ton profil de compatibilité":active?"Suggestions activées — tu apparais dans les résultats":"Désactivé — tu n'apparais plus"}
+          </p>
+        </div>
+        {active!==null&&<Toggle active={!!active}/>}
+        {active===null&&<span style={{fontSize:11,color:T.goldL,fontWeight:700}}>Configurer</span>}
+      </Btn>
+      {active!==null&&(
+        <Btn onClick={()=>setShowEdit(true)} style={{width:"100%",padding:"12px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:10}}>
+          <Edit2 size={16} color={T.muted}/>
+          <span style={{fontSize:13,color:T.sub}}>Modifier mes préférences Match</span>
+          <ChevronRight size={14} color={T.muted} style={{marginLeft:"auto"}}/>
+        </Btn>
+      )}
+      {showEdit&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchData}
+        onClose={()=>setShowEdit(false)}
+        onDone={data=>{setMatchData({...data,is_active:true});setActive(true);setShowEdit(false);}}/>}
+    </>
+  );
+}
+
 function ParametresModal({myProfile,onLogout,notify}){
   const {session}=useApp();
   const [open,setOpen]=useState(false);
@@ -5144,6 +5666,9 @@ if(existingPool){
     <Toggle active={false}/>
   </div>
 )}
+    {/* Céleste Match — activer/désactiver */}
+    <MatchPrivacyToggle session={session} notify={notify}/>
+
     {/* Message d'info pour ceux sans badge */}
     {!myProfile?.badge&&(
       <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
@@ -6988,7 +7513,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
   <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} viewedPostIdsRef={viewedPostIdsRef}/>
 </div>
               {tab==="statuses"&&<StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav}/>}
-              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)}/>}
+              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
