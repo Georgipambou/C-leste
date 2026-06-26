@@ -36,7 +36,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
-import React from "react";
+import React from "react"; 
+import emailjs from "@emailjs/browser";
 import { uploadToR2 } from "./uploadMedia";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Capacitor } from '@capacitor/core';
@@ -1646,13 +1647,13 @@ function NotifsScreen({myProfile,session,members}){
   const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
   if(!data){alert("Cette publication n'existe plus.");return;}
   setTab("home");
-  window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
-  setTimeout(()=>{
-    window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{
-      postId:n.post_id,
-      commentId:n.comment_id||null
-    }}));
-  },350);
+window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+setTimeout(()=>{
+  window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{
+    postId:n.post_id,
+    commentId:n.comment_id||null
+  }}));
+},600);
   return;
 }
                 }}>
@@ -2025,7 +2026,7 @@ function CommentItem({comment,sessionUserId,getM,onChange}){
         </div>
 
        {/* Texte */}
-        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,()=>{})}</p><TranslateBtn text={comment.text}/></>}
+        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>u.name?.toLowerCase().startsWith(username.toLowerCase())||u.fullName?.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p><TranslateBtn text={comment.text}/></>}
 {comment.media_url&&(
   <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
     <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
@@ -3672,7 +3673,11 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   useEffect(()=>{const activeVideo=videoRefs.current[activeIdx];
   if(activeVideo&&!reelsModalOpen){activeVideo.currentTime=0;activeVideo.play().catch(()=>{});setPausedMap(p=>({...p,[activeIdx]:false}));}
   else if(activeVideo&&reelsModalOpen){activeVideo.pause();}
-  Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)!==activeIdx)v.pause();});},[activeIdx]);
+  Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)!==activeIdx){v.pause();v.currentTime=0;}});
+  },[activeIdx]);
+  useEffect(()=>()=>{
+    Object.values(videoRefs.current).forEach(v=>{if(v){v.pause();v.src="";}});
+  },[]);
   const togglePause=(idx)=>{const v=videoRefs.current[idx];if(!v)return;if(v.paused){v.play().catch(()=>{});setPausedMap(p=>({...p,[idx]:false}));}else{v.pause();setPausedMap(p=>({...p,[idx]:true}));}};
   const seekVideo=(idx,e)=>{const v=videoRefs.current[idx];if(!v||!v.duration)return;const rect=e.currentTarget.getBoundingClientRect();v.currentTime=((e.clientX-rect.left)/rect.width)*v.duration;};
   return(
@@ -4696,7 +4701,12 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   }
 };
 
-  const sendTxt=()=>{if(inp.trim())sendMsg({type:"text",text:inp.trim()});};
+  const [sending,setSending]=useState(false);
+  const sendTxt=async()=>{
+    if(!inp.trim()||sending)return;
+    setSending(true);
+    try{await sendMsg({type:"text",text:inp.trim()});}finally{setSending(false);}
+  };
 
 const cropImage=src=>new Promise(resolve=>{
     setCropSrc(src);
@@ -4762,12 +4772,13 @@ const handleFile=async(e,isImg)=>{
   const startRecording=async()=>{
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const rec=new MediaRecorder(stream); const chunks=[];
-      rec.ondataavailable=e=>chunks.push(e.data);
+      const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg";
+      const recOpts=mimeType?{mimeType}:{};
+      const rec=new MediaRecorder(stream,recOpts); const chunks=[];
+      rec.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
       rec.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
-        const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg";
-        const blob=new Blob(chunks,{type:mimeType});
+        const blob=new Blob(chunks,{type:mimeType||"audio/webm"});
         const tempId="tmp_voice_"+Date.now();
         setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true,pct:0}]);
         const convId=await ensureConv();
@@ -4776,7 +4787,9 @@ const handleFile=async(e,isImg)=>{
         (async()=>{
           let publicUrl;
           try{
-            publicUrl=await uploadToR2(blob,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
+            const ext=mimeType.includes("mp4")?"m4a":mimeType.includes("ogg")?"ogg":"webm";
+            const audioFile=new File([blob],`voice_${Date.now()}.${ext}`,{type:mimeType});
+            publicUrl=await uploadToR2(audioFile,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
           }catch(e){
             notify("Erreur upload vocal");
             setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
@@ -4826,8 +4839,7 @@ const handleFile=async(e,isImg)=>{
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
       {/* Chat header — style Instagram */}
-<div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"8px 12px",paddingTop:"calc(8px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-  <Btn onClick={()=>window.history.back?.()} style={{color:T.text,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,marginRight:2}}><ChevronLeft size={24}/></Btn>
+<div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"6px 12px",paddingTop:"calc(6px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
   <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
     <Av u={user} size={36}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
@@ -4838,7 +4850,7 @@ const handleFile=async(e,isImg)=>{
       {user.online?"En ligne ✦":user.paroisse||"Hors ligne"}
     </p>
   </div>
-  <Btn onClick={()=>setShowGemini(true)} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Sparkles size={20}/></Btn>
+ 
   <Btn onClick={()=>bgRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Image size={20}/></Btn>
 </div>
 
@@ -4903,6 +4915,7 @@ const handleFile=async(e,isImg)=>{
                     <span style={{fontSize:12,fontWeight:600,color:"#fff",wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
+{m.type==="video"&&(m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>}
                   {m.text&&<><p style={{margin:0,fontSize:14,color:"#fff",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}</p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
@@ -4913,8 +4926,8 @@ const handleFile=async(e,isImg)=>{
       <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted}}>Envoi en cours…</span>
       <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted,fontWeight:700}}>{m.pct||0}%</span>
     </div>
-    <div style={{width:"100%",height:3,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
-      <div style={{height:"100%",width:`${m.pct||0}%`,background:mine?"rgba(0,0,0,0.3)":T.gradGold,borderRadius:2,transition:"width 0.3s"}}/>
+    <div style={{width:"100%",height:4,background:"rgba(255,255,255,0.12)",borderRadius:2}}>
+      <div style={{height:"100%",width:`${m.pct||0}%`,background:"linear-gradient(90deg,#A855F7,#7C3AED)",borderRadius:2,transition:"width 0.3s"}}/>
     </div>
   </div>
 )}
@@ -4969,7 +4982,7 @@ placeholder="Votre message…" rows={1}
 style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto",fontFamily:"inherit"}}/></div>
   <Btn onClick={()=>fRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Paperclip size={18}/></Btn>
   {inp.trim()
-    ?<Btn onClick={sendTxt} style={{background:"linear-gradient(135deg,#A855F7,#7C3AED)",borderRadius:"50%",width:38,height:38,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(124,58,237,0.5)",animation:"sendBounce .3s ease"}}>
+    ?<Btn onClick={sendTxt} disabled={sending} style={{background:sending?"rgba(124,58,237,0.35)":"linear-gradient(135deg,#A855F7,#7C3AED)",borderRadius:"50%",width:38,height:38,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:sending?"none":"0 4px 16px rgba(124,58,237,0.5)"}}>
       <Send size={17}/>
     </Btn>
     :<Btn onClick={startRecording} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}>
@@ -4982,7 +4995,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
 
       {/* Panneau Gemini */}
       {showGemini&&(
-        <div style={{position:"absolute",inset:0,zIndex:100,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}}>
+        <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}}>
           {/* Header */}
           <div style={{padding:"12px 16px",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
@@ -5042,13 +5055,23 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
       )}
 
       {selectedMsg&&(
-          <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.5)"}} onClick={()=>setSelectedMsg(null)}>
-            <div style={{position:"absolute",bottom:80,left:"50%",transform:"translateX(-50%)",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",minWidth:200}}>
-              <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("Copié !");}} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.text,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>📋 Copier</Btn>
-              {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&<Btn onClick={()=>{deleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.err,textAlign:"left"}}>🗑 Supprimer</Btn>}
-            </div>
+        <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>setSelectedMsg(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
+            {selectedMsg.text&&<div style={{padding:"14px 20px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+              <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
+            </div>}
+            <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("Copié !");}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <span>📋</span><span>Copier</span>
+            </Btn>
+            {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&(
+              <Btn onClick={()=>{deleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+                <span>🗑</span><span>Supprimer</span>
+              </Btn>
+            )}
+            <Btn onClick={()=>setSelectedMsg(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
           </div>
-        )}
+        </div>
+      )}
       </div>
     </div>
   );
@@ -5468,7 +5491,8 @@ function ParametresModal({myProfile,onLogout,notify}){
 const [hideOnline,setHideOnline]=useState(false);
 const [screenshotProtection,setScreenshotProtection]=useState(false);
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
-
+const [showBugReport,setShowBugReport]=useState(false);
+const [bugText,setBugText]=useState("");
   useEffect(()=>{
     const handler=()=>{setOpen(true);setSection(null);};
     window.addEventListener("celeste_open_params",handler);
@@ -5590,12 +5614,41 @@ if(existingPool){
               </Btn>
             ))}
             <div style={{height:1,background:T.border,margin:"16px 0"}}/>
+            <Btn onClick={()=>setShowBugReport(true)} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
+              <span>🐛</span>Signaler un bug
+            </Btn>
             <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}}
               style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               <LogOut size={18}/>Se déconnecter
             </Btn>
           </>
         )}
+        {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
+  <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500}} onClick={e=>e.stopPropagation()}>
+    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
+    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
+      style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#fff",fontSize:14,resize:"none",outline:"none",boxSizing:"border-box"}}/>
+    <Btn onClick={async()=>{
+      if(!bugText?.trim())return;
+      try{
+        await emailjs.send("service_wyyihkf","template_mo0y7od",{
+          from_name:myProfile?.prenom+" "+myProfile?.nom,
+          celeste_id:myProfile?.celeste_id||"inconnu",
+          from_email:myProfile?.email||"non renseigné",
+          device:navigator.userAgent,
+          message:bugText
+        },"ZGvH2EMAp3UlglKfe");
+        alert("Bug signalé ✦ Merci !");
+        setShowBugReport(false);
+        setBugText("");
+      }catch(e){
+        alert("Erreur envoi. Réessaie.");
+      }
+    }} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:12,background:"linear-gradient(135deg,#FF6432,#FF3B6B)",color:"#fff",fontWeight:700,fontSize:14,border:"none"}}>
+      Envoyer
+    </Btn>
+  </div>
+</div>}
 
         {/* Confidentialité */}
         {section==="privacy"&&(
@@ -5894,7 +5947,7 @@ if(checkoutUrl){
     </div>
 
     {[
-      {title:"🌟 Notre mission",text:"Céleste est le réseau social privé et sécurisé des jeunes. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment."},
+      {title:"🌟 Notre mission",text:"Céleste est le réseau social privé et sécurisé des jeunes de 16 à 30 ans. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment."},
     ].map((s,i)=>(
       <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
         <p style={{margin:"0 0 6px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>{s.title}</p>
@@ -5907,7 +5960,7 @@ if(checkoutUrl){
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {[
           "En t'inscrivant sur Céleste, tu certifies que toutes les informations fournies sont exactes et véridiques.",
-          "Céleste est réservé aux jeunes. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.",
+          "Céleste est réservé aux jeunes. de 16 à 30 ans. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.",
           "Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illégal.",
           "Le harcèlement, la violence verbale et toute forme d'intimidation sont prohibés et entraînent une suspension immédiate.",
           "Toute usurpation d'identité est un délit punissable par la loi.",
@@ -5964,6 +6017,32 @@ if(checkoutUrl){
       </div>
     </div>
   );
+  {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
+  <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500}} onClick={e=>e.stopPropagation()}>
+    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
+    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
+      style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#fff",fontSize:14,resize:"none",outline:"none",boxSizing:"border-box"}}/>
+    <Btn onClick={async()=>{
+      if(!bugText?.trim())return;
+      try{
+        await emailjs.send("service_wyyihkf","template_mo0y7od",{
+          from_name:myProfile?.prenom+" "+myProfile?.nom,
+          celeste_id:myProfile?.celeste_id||"inconnu",
+          from_email:myProfile?.email||"non renseigné",
+          device:navigator.userAgent,
+          message:bugText
+        },"ZGvH2EMAp3UlglKfe");
+        alert("Bug signalé ✦ Merci !");
+        setShowBugReport(false);
+        setBugText("");
+      }catch(e){
+        alert("Erreur envoi. Réessaie.");
+      }
+    }} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:12,background:"linear-gradient(135deg,#FF6432,#FF3B6B)",color:"#fff",fontWeight:700,fontSize:14,border:"none"}}>
+      Envoyer
+    </Btn>
+  </div>
+</div>}
 }
 
 function WalletScreen({session,myProfile,notify,onClose}){
@@ -7212,7 +7291,12 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
   const seenPostIdsRef = useRef(new Set());
   const postOrderRef=useRef([]);
- const loadPosts=useCallback(async(page=1)=>{
+ useEffect(()=>{
+    const t=setInterval(()=>setPosts(prev=>(prev||[]).slice(-50)),5*60*1000);
+    return()=>clearInterval(t);
+  },[]);
+
+  const loadPosts=useCallback(async(page=1)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
   const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,post_phase,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
@@ -7448,7 +7532,8 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
       <style>{GS}</style>
       <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp .5s ease"}}>
-        <div style={{fontSize:60,marginBottom:20}}>🚫</div>
+        <div style={{fontSize:60,marginBottom:20}}>
+          🚫</div>
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.err,marginBottom:12}}>Compte suspendu</h2>
         <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Votre compte a été suspendu par un administrateur.<br/>Pour toute question, contactez le support de la communauté.</p>
         <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
