@@ -32,7 +32,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -1055,6 +1055,7 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
   const [playing,setPlaying]=useState(false);
   const [currentTime,setCurrentTime]=useState(0);
   const [trimming,setTrimming]=useState(false);
+  const trimAbortRef=useRef(false);
   const [trimProgress,setTrimProgress]=useState(0);
   const ffmpegRef=useRef(null);
   const MAX=maxDuration;
@@ -1104,12 +1105,11 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
       const inputData=await fetchFile(videoSrc);
       await ff.writeFile("input.mp4",inputData);
       await ff.exec([
-        "-i","input.mp4",
         "-ss",String(start.toFixed(3)),
         "-to",String(end.toFixed(3)),
-        "-c:v","libx264","-preset","fast","-crf","23",
-        "-c:a","aac",
-        "-movflags","+faststart",
+        "-i","input.mp4",
+        "-c","copy",
+        "-avoid_negative_ts","make_zero",
         "output.mp4"
       ]);
       const data=await ff.readFile("output.mp4");
@@ -2678,6 +2678,9 @@ setUploading(false);setUploadPct(0);
           :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>
         }
         <div style={{display:"flex",gap:8,marginTop:8}}>
+          {trimming&&<button onClick={()=>{trimAbortRef.current=true;setTrimming(false);}} style={{width:"100%",padding:"12px",background:"rgba(255,100,50,0.1)",border:"1px solid rgba(255,100,50,0.3)",borderRadius:12,color:"#FF6432",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:8}}>
+          Annuler
+        </button>}
           <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
           <Btn onClick={submit} disabled={!canAdd||busy||uploading} style={{flex:2,padding:"14px",background:canAdd&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.04)",color:canAdd&&!busy&&!uploading?"#000":T.muted,borderRadius:14,fontSize:14,fontWeight:700,transition:"all .25s",boxShadow:canAdd&&!busy&&!uploading?"0 8px 24px rgba(201,149,42,0.3)":"none"}}>
             {busy?"Publication…":uploading?"Upload…":`Publier ✦ (${(myStatuses||[]).length}/10)`}
@@ -3085,7 +3088,7 @@ useEffect(()=>{
                   <Av u={g.author} size={52} ring/>
                   <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
-                    <p style={{margin:0,fontSize:11,color:T.muted}}>🌐 {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
+                    <p style={{margin:0,fontSize:11,color:T.muted}}><MapPin size={11}/> {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
                   </div>
                   <span style={{fontSize:11,color:T.gold,fontWeight:700}}>{g.statuses.length}</span>
                 </div>
@@ -3506,7 +3509,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
                     <span style={{fontSize:14,fontWeight:700,color:T.text}}>{u.name}</span>
                     <Badge type={u.badge}/>
                   </div>
-                  <span style={{fontSize:11,color:T.muted}}>📍 {u.paroisse||"Congo"}</span>
+                  <span style={{fontSize:11,color:T.muted}}><MapPin size={10} style={{display:"inline",marginRight:3}}/>{u.paroisse||"Congo"}</span>
                 </div>
                 {/* Score */}
                 <div style={{flexShrink:0,textAlign:"center"}}>
@@ -3640,7 +3643,7 @@ else filtered=active;
                     <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</p>
                     <Badge type={u.badge}/>
                   </div>
-                  <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {u.paroisse||"Congo"}</p>
+                  <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><MapPin size={10} style={{display:"inline",marginRight:3}}/>{u.paroisse||"Congo"}</p>
                 </div>
                 <Btn onClick={e=>{e.stopPropagation();toggle(u.id);}} style={{width:30,height:30,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?11:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.4)",transition:"all .25s"}}>
                   {conn?"✦":"+"}
@@ -4072,7 +4075,7 @@ function TranslateBtn({text,dark=false}){
     <div style={{marginBottom:8}}>
       {translated&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.7,whiteSpace:"pre-line",fontStyle:"italic"}}>{translated}</p>}
       <button onClick={e=>{e.stopPropagation();translate();}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:dark?"rgba(0,0,0,0.45)":T.muted,opacity:0.6,display:"flex",alignItems:"center",gap:4}}>
-        {loading?"…":translated?"✕ Masquer":"🌐 Traduire"}
+        {loading?"…":translated?<><X size={10}/> Masquer</>:<><Languages size={11}/> Traduire</>}
       </button>
     </div>
   );
@@ -4969,10 +4972,11 @@ const handleFile=async(e,isImg)=>{
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
               <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s"}}
   onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
-  onTouchStart={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;}}
+  onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
+  onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
   onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}>
                 <div style={{
-                  background:mine?"linear-gradient(135deg,#A855F7,#7C3AED)":"rgba(255,255,255,0.09)",
+                  background:mine?T.gradGold:"rgba(255,255,255,0.09)",
                   borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
                   padding:"10px 14px",
                   border:mine?"none":`1px solid ${T.border}`,
@@ -5340,7 +5344,7 @@ if(user?.status==="suspended") return(
   <h2 style={{margin:0,minWidth:0,textAlign:"left",fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,((user.fullName||user.name)?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.fullName||user.name}</h2>
   {user.badge&&<Badge type={user.badge}/>}
 </div>
-          <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>🌐 {user.paroisse}</p>
+          <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}><MapPin size={11}/> {user.paroisse}</p>
           {user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
   /^https?:\/\//.test(part)
     ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
@@ -6298,7 +6302,7 @@ useEffect(()=>{
           <div style={{position:"absolute",bottom:-40,left:-20,width:160,height:160,borderRadius:"50%",background:"rgba(255,255,255,0.04)"}}/>
           <p style={{margin:"0 0 6px",fontSize:12,color:"rgba(255,255,255,0.6)",letterSpacing:2,textTransform:"uppercase"}}>Solde disponible</p>
           <p style={{margin:"0 0 20px",fontSize:42,fontWeight:800,color:"#fff",fontFamily:"'Cormorant Garamond',serif"}}>
-            {(wallet?.balance||0).toLocaleString("fr-FR")}
+            {wallet===null?<span style={{fontSize:24,opacity:.6}}>…</span>:(wallet?.balance||0).toLocaleString("fr-FR")}
             <span style={{fontSize:16,fontWeight:400,marginLeft:6,opacity:.7}}>F CFA</span>
           </p>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -7453,7 +7457,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   
 
   const loadMembers=useCallback(async()=>{
-  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection").neq("status","pending");
+  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,joined_at,created_at").neq("status","pending");
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
