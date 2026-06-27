@@ -3326,12 +3326,12 @@ function getCompatibilityPoints(a,b,score){
   return points.slice(0,maxPoints);
 }
 
-function MatchWriteBtn({u,score,onChat,notify}){
+function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
   const [open,setOpen]=useState(false);
   const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
   const [sending,setSending]=useState(false);
   if(!open) return(
-    <button onClick={()=>setOpen(true)} style={{flexShrink:0,padding:"8px 14px",background:T.gradGold,border:"none",borderRadius:12,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 12px rgba(201,149,42,0.3)"}}>
+    <button onClick={()=>{setOpen(true);onWriteOpen?.(true);}} style={{flexShrink:0,padding:"8px 14px",background:T.gradGold,border:"none",borderRadius:12,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 12px rgba(201,149,42,0.3)"}}>
       Écrire ✦
     </button>
   );
@@ -3345,7 +3345,7 @@ function MatchWriteBtn({u,score,onChat,notify}){
               <p style={{margin:0,fontSize:13,fontWeight:700,color:T.text}}>{u.name}</p>
               <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
             </div>
-            <Btn onClick={()=>setOpen(false)} style={{marginLeft:"auto",color:T.muted,display:"flex"}}><X size={18}/></Btn>
+            <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{marginLeft:"auto",color:T.muted,display:"flex"}}><X size={18}/></Btn>
           </div>
           <textarea value={msg} onChange={e=>setMsg(e.target.value)}
             rows={4}
@@ -3355,8 +3355,8 @@ function MatchWriteBtn({u,score,onChat,notify}){
             try{
               await onChat(u.id,msg.trim());
               notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
-              setOpen(false);
-            }catch(e){
+              setOpen(false);onWriteOpen?.(false);
+          }catch(e){
               notify("Erreur — réessaie");
               setSending(false);
             }
@@ -3369,7 +3369,7 @@ function MatchWriteBtn({u,score,onChat,notify}){
   );
 }
 
-function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
+function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWriteOpen}){
   const [matchProfile,setMatchProfile]=useState(null);
   const [suggestions,setSuggestions]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -3535,7 +3535,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
                 <span style={{fontSize:11,color:T.muted,flex:1,fontStyle:"italic",lineHeight:1.5}}>
                   "{u.name?.split(" ")[0]} et moi, {s.score}% — ça mérite qu'on discute ✦"
                 </span>
-                <MatchWriteBtn u={u} score={s.score} onChat={onChat} notify={notify}/>
+                <MatchWriteBtn u={u} score={s.score} onChat={onChat} notify={notify} onWriteOpen={onWriteOpen}/>
               </div>
             </div>
           );
@@ -3553,6 +3553,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
 function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange,openChat}){
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("tous");
+  const [matchWriting,setMatchWriting]=useState(false);
 
   const toggle=async id=>{
     if((myConnections||[]).includes(id)){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",id);notify("Connexion retirée");}
@@ -3575,7 +3576,8 @@ else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify}
+      const [matchWriting,setMatchWriting]=useState(false);
+      <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting}
         onChat={async(uid,msg)=>{
           const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
           let convId=existing?.id;
@@ -3610,7 +3612,7 @@ else filtered=active;
       </div>
 
       {/* Grille */}
-      <div style={{padding:"12px 12px 80px",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+      <div style={{padding:"12px 12px 80px",display:matchWriting?"none":"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
         {filtered.length===0&&(
           <div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:T.muted}}>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>{filter==="proximite"&&!myProfile?.latitude?"Localisation non disponible — active le GPS":"Aucun résultat"}</p>
