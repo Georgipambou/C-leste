@@ -1859,9 +1859,14 @@ if(postData?.author_id&&postData.author_id!==uid){
 }
       
       const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
+const myPrenom=getM?.(uid)?.prenom||"Quelqu'un";
 for(const mentionedId of uniqueIds){
-  await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
-  sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un commentaire`}});
+  try{
+    await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
+    sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myPrenom} t'a mentionné dans un commentaire`}});
+  }catch(e){
+    console.error("Erreur notification mention:",e);
+  }
 }
 mentionedIdsRef.current=[];
     }
@@ -1876,7 +1881,7 @@ mentionedIdsRef.current=[];
   <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
     style={{borderRadius:12,transition:"background .5s",
       background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
-    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load}/>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load} members={members}/>
   </div>
 ))}
     
@@ -1921,7 +1926,7 @@ mentionedIdsRef.current=[];
 }
 
 // ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
-function CommentItem({comment,sessionUserId,getM,onChange}){
+function CommentItem({comment,sessionUserId,getM,onChange,members}){
   const [likes,setLikes]=useState(0);
   const [liked,setLiked]=useState(false);
   const [replies,setReplies]=useState([]);
@@ -2586,7 +2591,7 @@ const handlePick=async e=>{
   const publicUrl=await uploadToR2(trimData.file||f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 }catch(e){
-  notify("❌ Upload échoué — vérifie ta connexion");
+  console.error("Upload statut vidéo échoué:",e);
   setPreview(null);
 }
 setUploading(false);setUploadPct(0);
@@ -2595,10 +2600,10 @@ return;
     const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
     setUploading(true);
     try {
-  const publicUrl=await uploadToR2(trimData.file||f,"statuses",pct=>setUploadPct(pct));
+  const publicUrl=await uploadToR2(f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 } catch(e) {
-  notify("❌ Upload échoué — vérifie ta connexion");
+  console.error("Upload statut échoué:",e);
   setPreview(null);
 }
 setUploading(false);setUploadPct(0);
@@ -4082,6 +4087,7 @@ function TranslateBtn({text,dark=false}){
 
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
+  const{members}=useApp();
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
   const [expanded,setExpanded]=useState(false);
   const [showMenu,setShowMenu]=useState(false);
@@ -7329,6 +7335,7 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
     return()=>{delete window.__celesteOpenChat;};
   },[session?.user?.id,convs]);
   const [openConvId,setOpenConvId]=useState(null);
+  const [detailPost,setDetailPost]=useState(null);
   const [openUserId,setOpenUserId]=useState(null);
   const [openUser,setOpenUser]=useState(null);
   const [showNewPost,setShowNewPost]=useState(false);
@@ -7832,6 +7839,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
+{detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
             </div>
         </div>
 
