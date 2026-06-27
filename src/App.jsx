@@ -1055,9 +1055,7 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
   const [playing,setPlaying]=useState(false);
   const [currentTime,setCurrentTime]=useState(0);
   const [trimming,setTrimming]=useState(false);
-  const trimAbortRef=useRef(false);
   const [trimProgress,setTrimProgress]=useState(0);
-  const ffmpegRef=useRef(null);
   const MAX=maxDuration;
   const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
@@ -1082,7 +1080,6 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
 
   const handleValidate=async()=>{
     if(trimming)return;
-    // Si pas de trim significatif, on retourne le src tel quel
     if(start<0.5&&end>=duration-0.5){
       onDone({src:videoSrc,start:0,end:duration,file:null});
       return;
@@ -1090,36 +1087,38 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
     setTrimming(true);
     setTrimProgress(0);
     try{
-      const {FFmpeg}=await import("@ffmpeg/ffmpeg");
-      const {fetchFile,toBlobURL}=await import("@ffmpeg/util");
-      if(!ffmpegRef.current){
-        const ff=new FFmpeg();
-        ff.on("progress",({progress})=>setTrimProgress(Math.round(progress*100)));
-       await ff.load({
-  coreURL:await toBlobURL(`${window.location.origin}/ffmpeg-core.js`,"text/javascript"),
-  wasmURL:await toBlobURL(`${window.location.origin}/ffmpeg-core.wasm`,"application/wasm"),
-});
-        ffmpegRef.current=ff;
-      }
-      const ff=ffmpegRef.current;
-      const inputData=await fetchFile(videoSrc);
-      await ff.writeFile("input.mp4",inputData);
-      await ff.exec([
-        "-ss",String(start.toFixed(3)),
-        "-to",String(end.toFixed(3)),
-        "-i","input.mp4",
-        "-c","copy",
-        "-avoid_negative_ts","make_zero",
-        "output.mp4"
-      ]);
-      const data=await ff.readFile("output.mp4");
-      const blob=new Blob([data.buffer],{type:"video/mp4"});
-      const trimmedFile=new File([blob],"trimmed.mp4",{type:"video/mp4"});
+      const v=videoRef.current;
+      v.currentTime=start;
+      await new Promise(res=>v.addEventListener("seeked",res,{once:true}));
+      const stream=v.captureStream();
+      const chunks=[];
+      const mimeType=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")?"video/webm;codecs=vp8,opus":"video/webm";
+      const recorder=new MediaRecorder(stream,{mimeType});
+      recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+      recorder.start(100);
+      v.play();
+      const trimDuration=(end-start)*1000;
+      const startedAt=Date.now();
+      const interval=setInterval(()=>{
+        const elapsed=Date.now()-startedAt;
+        setTrimProgress(Math.min(99,Math.round((elapsed/trimDuration)*100)));
+      },100);
+      await new Promise(res=>{
+        setTimeout(()=>{
+          clearInterval(interval);
+          recorder.stop();
+          v.pause();
+          res();
+        },trimDuration);
+      });
+      await new Promise(res=>recorder.addEventListener("stop",res,{once:true}));
+      setTrimProgress(100);
+      const blob=new Blob(chunks,{type:mimeType});
+      const trimmedFile=new File([blob],"trimmed.webm",{type:"video/webm"});
       const trimmedSrc=URL.createObjectURL(blob);
       onDone({src:trimmedSrc,start:0,end:end-start,file:trimmedFile});
     }catch(e){
-      console.error("FFmpeg trim error:",e);
-      // Fallback : on envoie l'original
+      console.error("Trim error:",e);
       onDone({src:videoSrc,start,end,file:null});
     }finally{
       setTrimming(false);
@@ -1139,7 +1138,8 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
       {trimming&&(
         <div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
           <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid rgba(201,149,42,0.2)",borderTopColor:"#C9952A",animation:"spin .8s linear infinite"}}/>
-          <p style={{margin:0,color:"#fff",fontSize:15,fontWeight:600}}>Découpe en cours…</p>
+          <p style={{margin:0,color:"#C9952A",fontSize:16,fontWeight:700,letterSpacing:1}}>✦ Découpe en cours</p>
+          <p style={{margin:"4px 0 0",color:"rgba(255,255,255,0.4)",fontSize:12}}>Ne ferme pas l'application</p>
           <div style={{width:200,height:4,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
             <div style={{height:"100%",width:`${trimProgress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.2s"}}/>
           </div>
@@ -2736,7 +2736,7 @@ if(isMe){
   sb.from("status_views").select("viewer_id").eq("status_id",current.id).then(async({data})=>{
     if(!data||data.length===0){setViews(v=>({...v,[current.id]:[]}));return;}
     const ids=data.map(d=>d.viewer_id);
-    const{data:profiles}=await sb.from("profiles").select("id,prenom,nom,avatar_url").in("id",ids);
+    const{data:profiles}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge").in("id",ids);
     const merged=data.map(d=>({viewer_id:d.viewer_id,profiles:(profiles||[]).find(p=>p.id===d.viewer_id)||null}));
     setViews(v=>({...v,[current.id]:merged}));
   });
@@ -2803,7 +2803,7 @@ if(isMe){
       <div style={{position:"absolute",top:"calc(env(safe-area-inset-top,16px) + 12px)",left:16,right:16,zIndex:2,display:"flex",alignItems:"center",gap:10,marginTop:8,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
         <Av u={author} size={38} ring/>
         <div style={{flex:1}}>
-          <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.name}</p>
+          <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.prenom} {author?.nom?.[0]?author.nom[0]+".":""}</p>
           <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ago(current.ts)}{paused&&" · ⏸ Pause"}</p>
         </div>
         {isMe&&<Btn onClick={()=>{if(window.confirm("Voulez-vous vraiment supprimer ce statut ?")){onDelete(current.id);idx>0?setIdx(idx-1):onClose();}}} style={{background:"rgba(200,64,64,0.2)",border:`1px solid rgba(200,64,64,0.3)`,borderRadius:8,padding:"5px 10px",color:"#ff6060",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Trash2 size={12}/>Suppr.</Btn>}
@@ -2893,8 +2893,11 @@ if(isMe){
           <p style={{color:T.goldL,fontWeight:700,fontSize:13,marginBottom:12}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
           {currentViews.map((v,i)=>{const prf=v.profiles;const name=prf?`${prf.prenom||""} ${(prf.nom||"")[0]||""}.`.trim():"?";return(
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:36,height:36,borderRadius:"50%",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold}}>{name[0]}</div>
+              <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold}}>
+                {prf?.avatar_url?<img src={prf.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span>{name[0]}</span>}
+              </div>
               <span style={{color:T.text,fontSize:13}}>{name}</span>
+              {prf?.badge&&<span style={{fontSize:12,marginLeft:4}}>{prf.badge}</span>}
               {currentLikes.includes(v.viewer_id)&&<Heart size={14} fill="currentColor" style={{color:T.gold,marginLeft:"auto"}}/>}
             </div>
           );})}
@@ -2995,7 +2998,7 @@ useEffect(()=>{
     setGroups(groups);
     try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(groups));}catch(e){}
     return{me,groups};
-  },[session?.user?.id]);
+  },[session?.user?.id,myConnections]);
 
   useEffect(()=>{load();},[load]);
 
