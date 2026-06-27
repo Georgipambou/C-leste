@@ -4979,7 +4979,7 @@ const handleFile=async(e,isImg)=>{
                 }}>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
-    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
+    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.dispatchEvent(new CustomEvent("celeste_close_conv"));window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
@@ -7275,6 +7275,11 @@ function CelesteApp(){
 checkShared();
 CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
   useEffect(()=>{window.__celesteSetTab=setTab;return()=>{delete window.__celesteSetTab;};},[]);
+  useEffect(()=>{
+    const h=()=>{setOpenConvId(null);setOpenUserId(null);};
+    window.addEventListener("celeste_close_conv",h);
+    return()=>window.removeEventListener("celeste_close_conv",h);
+  },[]);
   useEffect(()=>{
     const handler=e=>{
       const{convId}=e.detail||{};
