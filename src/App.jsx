@@ -3336,32 +3336,34 @@ function MatchWriteBtn({u,score,onChat,notify}){
     </button>
   );
   return(
-    <div style={{position:"fixed",inset:0,zIndex:1300,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",padding:"0 0 env(safe-area-inset-bottom,0px)"}}>
-      <div style={{width:"100%",background:T.card,borderRadius:"24px 24px 0 0",padding:"20px 16px 24px",display:"flex",flexDirection:"column",gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-          <Av u={u} size={36}/>
-          <div>
-            <p style={{margin:0,fontSize:13,fontWeight:700,color:T.text}}>{u.name}</p>
-            <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",padding:"0 0 env(safe-area-inset-bottom,0px)"}} onClick={()=>setOpen(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%"}}>
+        <div style={{width:"100%",background:T.card,borderRadius:"24px 24px 0 0",padding:"20px 16px 24px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+            <Av u={u} size={36}/>
+            <div>
+              <p style={{margin:0,fontSize:13,fontWeight:700,color:T.text}}>{u.name}</p>
+              <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
+            </div>
+            <Btn onClick={()=>setOpen(false)} style={{marginLeft:"auto",color:T.muted,display:"flex"}}><X size={18}/></Btn>
           </div>
-          <Btn onClick={()=>setOpen(false)} style={{marginLeft:"auto",color:T.muted,display:"flex"}}><X size={18}/></Btn>
+          <textarea value={msg} onChange={e=>setMsg(e.target.value)}
+            rows={4}
+            style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:13,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+          <button disabled={sending||!msg.trim()} onClick={async()=>{
+            setSending(true);
+            try{
+              await onChat(u.id,msg.trim());
+              notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
+              setOpen(false);
+            }catch(e){
+              notify("Erreur — réessaie");
+              setSending(false);
+            }
+          }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
+            {sending?"Envoi…":"Envoyer ✦"}
+          </button>
         </div>
-        <textarea value={msg} onChange={e=>setMsg(e.target.value)}
-          rows={4}
-          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:13,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-        <button disabled={sending||!msg.trim()} onClick={async()=>{
-          setSending(true);
-          try{
-            await onChat(u.id,msg.trim());
-            notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
-            setOpen(false);
-          }catch(e){
-            notify("Erreur — réessaie");
-            setSending(false);
-          }
-        }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
-          {sending?"Envoi…":"Envoyer ✦"}
-        </button>
       </div>
     </div>
   );
