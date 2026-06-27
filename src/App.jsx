@@ -3576,7 +3576,6 @@ else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      const [matchWriting,setMatchWriting]=useState(false);
       <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting}
         onChat={async(uid,msg)=>{
           const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
