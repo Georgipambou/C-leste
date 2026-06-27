@@ -409,4 +409,4 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
   );
 }
 
-export default MatchComponents;
+export { computeMatchScore, MatchOnboardingModal, getCompatibilityPoints, MatchWriteBtn, MatchSuggestions };
