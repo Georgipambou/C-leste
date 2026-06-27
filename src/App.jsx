@@ -3173,7 +3173,6 @@ function computeMatchScore(a,b){
     if(km>25)penalty+=50;
   }
   let score=0,maxScore=0;
-  if(penalty>=100)return 0;let score=0,maxScore=0;
   if(penalty>=100)return 0;
   for(const key of Object.keys(Q_WEIGHT)){
     const w=Q_WEIGHT[key];
