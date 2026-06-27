@@ -2995,6 +2995,7 @@ useEffect(()=>{
 
 useEffect(()=>{
   const handler=async e=>{
+    console.log("celeste_open_status reçu",e.detail);
     const{statusId,userId}=e.detail;
     if(userId&&!statusId){
       await load();
