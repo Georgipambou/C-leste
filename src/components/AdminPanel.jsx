@@ -3,8 +3,10 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Trash2, Mail, Search, User, Users, Check, X, Eye, EyeOff, Star, AlertTriangle, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
 import { sb } from "../lib/supabase";
 import { useApp } from "../AppContext";
+import { getThemePalette } from "../App";
 
 function AdminPanel({onClose,notify,reload,reloadPosts}){
+const T=useApp()?.T||getThemePalette("default");
   const [list,setList]=useState([]);
   const [allReports,setAllReports]=useState([]);
   const [allPosts,setAllPosts]=useState([]);

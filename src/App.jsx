@@ -80,7 +80,7 @@ const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScr
 import { AppContext, useApp } from "./AppContext";
 
 // ── PALETTE PREMIUM ───────────────────────────────────────
-const getThemePalette = (mode) => {
+export const getThemePalette = (mode) => {
  
   // ─── FACEBOOK — Azur institutionnel ────────────────────────────────────────
   // Blanc pur · Bleu confiance · Netteté maximale · Ombres légères
