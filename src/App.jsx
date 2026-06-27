@@ -4936,12 +4936,8 @@ const handleFile=async(e,isImg)=>{
 
       {/* Chat header — style Instagram */}
 <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"6px 12px",paddingTop:"calc(6px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-  <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={()=>{
-    const userId=user.id;
-    window.__celesteSetTab?.("statuses");
-    setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{userId}})),400);
-  }}>
-    <Av u={user} size={36}/>
+  <div style={{position:"relative",flexShrink:0}}>
+    <Av u={user} size={36} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
   </div>
   <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
