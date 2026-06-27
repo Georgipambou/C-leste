@@ -766,7 +766,7 @@ function FlagSelector({selected,onChange}){
 let _unseenStatusMap=new Map();
 const _statusListeners=new Set();
 function _setUnseenStatusMap(m){_unseenStatusMap=m;_statusListeners.forEach(fn=>fn());}
-const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
+export const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   const [,_forceTick]=useState(0);
   useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
   const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
@@ -832,7 +832,7 @@ const Badge = memo(function Badge({type}){
   );
 });
 
-const Btn = ({children,onClick,style={},disabled=false,type="button"})=>(
+function Btn( ({children,onClick,style={},disabled=false,type="button"})=>(
   <button type={type} onClick={disabled?undefined:onClick} disabled={disabled}
     style={{cursor:disabled?"not-allowed":"pointer",border:"none",background:"none",outline:"none",...style}}>
     {children}
