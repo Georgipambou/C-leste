@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Céleste — Version Premium 4.0 (FUSION)
  * Design: Noir absolu · Gold vibrant · Glassmorphism · Animations cinématiques
  * Base: Céleste v3 (src_src_App_4.jsx) + nouvelles fonctionnalités App 9
