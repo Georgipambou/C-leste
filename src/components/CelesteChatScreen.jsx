@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Send, X, Sparkles } from "lucide-react";
 import { useApp } from "../AppContext";
+import { getThemePalette } from "../App";
 
 function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
+const T=useApp()?.T||getThemePalette("default");
   const [inp,setInp]=useState("");
   const [loading,setLoading]=useState(false);
   const bottomRef=useRef();

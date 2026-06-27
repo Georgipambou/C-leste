@@ -3,9 +3,11 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Heart, Trash2, Reply, Image, X } from "lucide-react";
 import { sb } from "../lib/supabase";
 import { useApp } from "../AppContext";
+import { getThemePalette } from "../App";
 import { uploadToR2 } from "../uploadMedia";
 
 function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId}){
+const T=useApp()?.T||getThemePalette("default");
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
   const [loadingCmts,setLoadingCmts]=useState(true);
@@ -156,6 +158,7 @@ mentionedIdsRef.current=[];
 }
 
 function CommentItem({comment,sessionUserId,getM,onChange,members}){
+const T=useApp()?.T||getThemePalette("default");
   const [likes,setLikes]=useState(0);
   const [liked,setLiked]=useState(false);
   const [replies,setReplies]=useState([]);

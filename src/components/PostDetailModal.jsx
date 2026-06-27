@@ -3,8 +3,10 @@ import React, { useState, useEffect } from "react";
 import { X, Heart, Bookmark, Share2, ChevronLeft, ChevronRight } from "lucide-react";
 import { sb } from "../lib/supabase";
 import { useApp } from "../AppContext";
+import { getThemePalette } from "../App";
 
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800,fromReel=false}){
+const T=useApp()?.T||getThemePalette("default");
 const {members}=useApp();
 useEffect(()=>{
   if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();

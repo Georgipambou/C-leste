@@ -3,8 +3,10 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Heart, Star, MapPin, Users, Search } from "lucide-react";
 import { sb } from "../lib/supabase";
 import { useApp } from "../AppContext";
+import { getThemePalette } from "../App";
 
 function computeMatchScore(a,b){
+const T=useApp()?.T||getThemePalette("default");
   if(!a||!b)return 0;
   // Éliminatoires absolus
   const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
@@ -54,6 +56,7 @@ function computeMatchScore(a,b){
 }
 
 function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialData=null}){
+const T=useApp()?.T||getThemePalette("default");
   const [step,setStep]=useState(0);
   const ageReverseMap={[JSON.stringify([16,20])]:"16-20",[JSON.stringify([20,25])]:"20-25",[JSON.stringify([25,30])]:"25-30",[JSON.stringify([30,99])]:"30+"};
   const initialAnswers=initialData?{...initialData,seeking_age:ageReverseMap[JSON.stringify([initialData.seeking_age_min,initialData.seeking_age_max])]||undefined}:{};
@@ -157,6 +160,7 @@ const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_
 }
 
 function getCompatibilityPoints(a,b,score){
+const T=useApp()?.T||getThemePalette("default");
   const points=[];
   const labels={
     faith:{centrale:"Foi centrale",importante:"Foi importante",secondaire:"Foi secondaire",aucune:"Sans religion"},
@@ -186,6 +190,7 @@ function getCompatibilityPoints(a,b,score){
 }
 
 function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
+const T=useApp()?.T||getThemePalette("default");
   const [open,setOpen]=useState(false);
   const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
   const [sending,setSending]=useState(false);
@@ -229,6 +234,7 @@ function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
 }
 
 function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWriteOpen}){
+const T=useApp()?.T||getThemePalette("default");
   const [matchProfile,setMatchProfile]=useState(null);
   const [suggestions,setSuggestions]=useState([]);
   const [loading,setLoading]=useState(true);
