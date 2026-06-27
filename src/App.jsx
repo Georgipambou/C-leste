@@ -1820,7 +1820,7 @@ useEffect(()=>{
 },[comments]);
 
   useEffect(()=>{
-    const ch=sb.channel(`comments-${postId}`)
+    const ch=sb.channel(`comments-${postId}-${Math.random()}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},load)
       .subscribe();
     return()=>sb.removeChannel(ch);
@@ -2103,7 +2103,7 @@ function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,n
 const {members}=useApp();
 useEffect(()=>{
   if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
-  const ch=sb.channel(`privacy_post_${post?.by}`)
+  const ch=sb.channel(`privacy_post_${post?.by}-${Math.random()}`)
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${post?.by}`},payload=>{
       if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
     })
