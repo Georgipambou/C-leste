@@ -3575,13 +3575,13 @@ else filtered=active;
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify}
         onChat={async(uid,msg)=>{
-          if(openChat)openChat(uid);
-          await new Promise(r=>setTimeout(r,400));
-          await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle().then(async({data:existing})=>{
-            let convId=existing?.id;
-            if(!convId){const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:uid}).select().single();convId=created?.id;}
-            if(convId)await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"text",text:msg});
-          });
+          const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
+          let convId=existing?.id;
+          if(!convId){const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:uid}).select().single();convId=created?.id;}
+          if(convId){
+            await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"text",text:msg});
+            if(openChat)openChat(uid);
+          }
         }}
       />
       {/* Header */}
