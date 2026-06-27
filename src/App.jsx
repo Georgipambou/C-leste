@@ -1,21 +1,21 @@
-﻿/**
- * CÃ©leste â€” Version Premium 4.0 (FUSION)
- * Design: Noir absolu Â· Gold vibrant Â· Glassmorphism Â· Animations cinÃ©matiques
- * Base: CÃ©leste v3 (src_src_App_4.jsx) + nouvelles fonctionnalitÃ©s App 9
+/**
+ * Céleste — Version Premium 4.0 (FUSION)
+ * Design: Noir absolu · Gold vibrant · Glassmorphism · Animations cinématiques
+ * Base: Céleste v3 (src_src_App_4.jsx) + nouvelles fonctionnalités App 9
  *
- * NouveautÃ©s fusionnÃ©es depuis App (9).jsx :
- *  - Logique complÃ¨te : comment_likes, comment_replies, saved_posts, blocks, badges
+ * Nouveautés fusionnées depuis App (9).jsx :
+ *  - Logique complète : comment_likes, comment_replies, saved_posts, blocks, badges
  *  - SavedPosts tab dans le profil
  *  - Notifications Supabase (table notifications)
- *  - Compteurs en temps rÃ©el (unread notifs, unread msgs)
- *  - CommentItem avec likes & rÃ©ponses (threads)
+ *  - Compteurs en temps réel (unread notifs, unread msgs)
+ *  - CommentItem avec likes & réponses (threads)
  *  - StoriesBar enrichie
  *
- * FonctionnalitÃ©s PRÃ‰SERVÃ‰ES de CÃ©leste :
+ * Fonctionnalités PRÉSERVÉES de Céleste :
  *  - ErrorBoundary, InstallBanner, FlagSelector
- *  - Audio synthÃ©tique (playNotifSound)
+ *  - Audio synthétique (playNotifSound)
  *  - Glassmorphism & animations CSS-in-JS (objet T)
- *  - MediaPlayer vidÃ©o, vocal, fichiers
+ *  - MediaPlayer vidéo, vocal, fichiers
  *  - ChatScreen avec enregistrement audio
  *  - AdminPanel, OrgView, UserView, StatusViewer
  *  - Push notifications (subscribePush)
@@ -44,19 +44,11 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
 import EasyCrop from "react-easy-crop";
-import AdminPanel from "./components/AdminPanel";
-import CelesteChatScreen from "./components/CelesteChatScreen";
-import VideoTrimModal from "./components/VideoTrimModal";
-import CommentsSection from "./components/CommentsSection";
-import PostDetailModal from "./components/PostDetailModal";
-import { computeMatchScore, MatchOnboardingModal, getCompatibilityPoints, MatchWriteBtn, MatchSuggestions } from "./components/MatchComponents";
-import "@fontsource/cormorant-garamond";
-import "@fontsource/space-grotesk";
-// MÃ©moÃ¯sation pour Ã©viter les re-renders inutiles
+// Mémoïsation pour éviter les re-renders inutiles
 const MemoFeed = React.memo(({children}) => children);
 
 
-// â”€â”€ SUPABASE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON;
 if(!SUPABASE_URL||!SUPABASE_ANON)console.error("Variables Supabase manquantes !");
@@ -78,14 +70,15 @@ const isNative=Capacitor.isNativePlatform();
 const enableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.enable();}catch(e){}};
 const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.disable();}catch(e){}};
 
-// â”€â”€ CONTEXTE GLOBAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-import { AppContext, useApp } from "./AppContext";
+// ── CONTEXTE GLOBAL ───────────────────────────────────────
+const AppContext = createContext(null);
+const useApp = () => useContext(AppContext);
 
-// â”€â”€ PALETTE PREMIUM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export const getThemePalette = (mode) => {
+// ── PALETTE PREMIUM ───────────────────────────────────────
+const getThemePalette = (mode) => {
  
-  // â”€â”€â”€ FACEBOOK â€” Azur institutionnel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Blanc pur Â· Bleu confiance Â· NettetÃ© maximale Â· Ombres lÃ©gÃ¨res
+  // ─── FACEBOOK — Azur institutionnel ────────────────────────────────────────
+  // Blanc pur · Bleu confiance · Netteté maximale · Ombres légères
   if (mode === "facebook") { return {
     bg:         "#FFFFFF",
     bg2:        "#F0F2F5",
@@ -117,8 +110,8 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.9)",
   }; }
  
-  // â”€â”€â”€ YOUTUBE â€” Ã‰carlate maÃ®trisÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Blanc propre Â· Rouge affinÃ© (pas trop agressif) Â· Impact clair
+  // ─── YOUTUBE — Écarlate maîtrisé ───────────────────────────────────────────
+  // Blanc propre · Rouge affiné (pas trop agressif) · Impact clair
   if (mode === "youtube") { return {
     bg:         "#0F0F0F",
     bg2:        "#161616",
@@ -132,7 +125,7 @@ export const getThemePalette = (mode) => {
     text:       "#F1F1F1",
     sub:        "#AAAAAA",
     muted:      "#3A3A3A",
-    gold:       "#CC0000",   // Rouge plus doux que #FF0000 â€” moins agressif
+    gold:       "#CC0000",   // Rouge plus doux que #FF0000 — moins agressif
     goldL:      "#FF3333",
     goldD:      "#990000",
     goldBg:     "rgba(204,0,0,0.07)",
@@ -150,8 +143,8 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.9)",
   }; }
  
-  // â”€â”€â”€ WHATSAPP â€” Menthe digitale â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Blanc aÃ©rÃ© Â· Vert digital affinÃ© Â· FraÃ®cheur & confiance
+  // ─── WHATSAPP — Menthe digitale ─────────────────────────────────────────────
+  // Blanc aéré · Vert digital affiné · Fraîcheur & confiance
   if (mode === "whatsapp") { return {
     bg:         "#0B141A",
     bg2:        "#111B21",
@@ -165,7 +158,7 @@ export const getThemePalette = (mode) => {
     text:       "#E9EDEF",
     sub:        "#8696A0",
     muted:      "#3A4A50",
-    gold:       "#00A878",   // Vert plus profond & moins saturÃ© que #25D366
+    gold:       "#00A878",   // Vert plus profond & moins saturé que #25D366
     goldL:      "#25C896",
     goldD:      "#007A58",
     goldBg:     "rgba(0,168,120,0.08)",
@@ -183,8 +176,8 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 2px 8px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.9)",
   }; }
  
-  // â”€â”€â”€ SNAPCHAT â€” Jaune incandescent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Jaune vif mais calibrÃ© Â· Noir pur Â· Contraste maximum
+  // ─── SNAPCHAT — Jaune incandescent ─────────────────────────────────────────
+  // Jaune vif mais calibré · Noir pur · Contraste maximum
   if (mode === "snapchat") { return {
   bg:         "#000000",
   bg2:        "#0A0A0A",
@@ -216,8 +209,8 @@ export const getThemePalette = (mode) => {
   shadowCard: "0 8px 40px rgba(0,0,0,0.80), 0 1px 0 rgba(255,255,255,0.03)",
 }; }
  
-  // â”€â”€â”€ TIKTOK â€” NÃ©on duel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Noir absolu Â· Rouge vif + Cyan Â· Ã‰nergie maximale Â· IdentitÃ© forte
+  // ─── TIKTOK — Néon duel ────────────────────────────────────────────────────
+  // Noir absolu · Rouge vif + Cyan · Énergie maximale · Identité forte
   if (mode === "tiktok") { return {
     bg:         "#000000",
     bg2:        "#0C0C0C",
@@ -231,7 +224,7 @@ export const getThemePalette = (mode) => {
     text:       "#FFFFFF",
     sub:        "#9A9A9A",
     muted:      "#404040",
-    gold:       "#FF2645",   // Rouge affinÃ© â€” plus lisible que #FE2C55
+    gold:       "#FF2645",   // Rouge affiné — plus lisible que #FE2C55
     goldL:      "#FF6B7A",
     goldD:      "#CC1030",
     goldBg:     "rgba(255,38,69,0.09)",
@@ -249,8 +242,8 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 8px 40px rgba(0,0,0,0.70), 0 1px 0 rgba(255,255,255,0.04)",
   }; }
  
-  // â”€â”€â”€ GOOGLE â€” Tetrachromie premium â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Blanc immaculÃ© Â· Palette 4 couleurs Â· Ã‰quilibre et clartÃ©
+  // ─── GOOGLE — Tetrachromie premium ─────────────────────────────────────────
+  // Blanc immaculé · Palette 4 couleurs · Équilibre et clarté
   if (mode === "google") { return {
     bg:         "#FFFFFF",
     bg2:        "#F8F9FA",
@@ -282,10 +275,10 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)",
   }; }
  
-  // â”€â”€â”€ LIGHT â€” Parchemin Or â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Ivoire chaud Â· Or antiquaire Â· Ã‰lÃ©gance intemporelle Â· Haute lisibilitÃ©
+  // ─── LIGHT — Parchemin Or ───────────────────────────────────────────────────
+  // Ivoire chaud · Or antiquaire · Élégance intemporelle · Haute lisibilité
   if (mode === "light") { return {
-    bg:         "#FDFAF4",   // Ivoire trÃ¨s lÃ©gÃ¨rement chaud â€” pas blanc froid
+    bg:         "#FDFAF4",   // Ivoire très légèrement chaud — pas blanc froid
     bg2:        "#F5F1E8",
     bg3:        "#EDE8DA",
     card:       "rgba(0,0,0,0.025)",
@@ -294,10 +287,10 @@ export const getThemePalette = (mode) => {
     glassMid:   "rgba(0,0,0,0.055)",
     border:     "rgba(0,0,0,0.09)",
     borderHi:   "rgba(0,0,0,0.16)",
-    text:       "#1A1714",   // Presque noir, teintÃ© chaud
+    text:       "#1A1714",   // Presque noir, teinté chaud
     sub:        "#6B6560",
     muted:      "#B8B2A8",
-    gold:       "#B8820E",   // Or profond â€” plus Ã©lÃ©gant que #C9952A
+    gold:       "#B8820E",   // Or profond — plus élégant que #C9952A
     goldL:      "#D9A830",
     goldD:      "#8A6008",
     goldBg:     "rgba(184,130,14,0.09)",
@@ -315,10 +308,10 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 4px 16px rgba(0,0,0,0.07), 0 1px 0 rgba(255,255,255,0.9)",
   }; }
  
-  // â”€â”€â”€ DARK GREEN â€” Ã‰quinoxe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // ForÃªt profonde Â· Jade & Ã©meraude Â· Chaleur organique Â· Nature premium
+  // ─── DARK GREEN — Équinoxe ──────────────────────────────────────────────────
+  // Forêt profonde · Jade & émeraude · Chaleur organique · Nature premium
   if (mode === "dark_green") { return {
-    bg:         "#060E0B",   // Noir teintÃ© vert â€” beaucoup plus riche que #0B141A
+    bg:         "#060E0B",   // Noir teinté vert — beaucoup plus riche que #0B141A
     bg2:        "#0D1C16",
     bg3:        "#132720",
     card:       "rgba(255,255,255,0.04)",
@@ -330,7 +323,7 @@ export const getThemePalette = (mode) => {
     text:       "#E5EFEA",
     sub:        "#6E9080",
     muted:      "#253A30",
-    gold:       "#00C896",   // Jade vif â€” plus lisible que #00A884
+    gold:       "#00C896",   // Jade vif — plus lisible que #00A884
     goldL:      "#3DDFB8",
     goldD:      "#00966E",
     goldBg:     "rgba(0,200,150,0.09)",
@@ -348,10 +341,10 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 8px 40px rgba(0,0,0,0.65), 0 1px 0 rgba(255,255,255,0.04)",
   }; }
  
-  // â”€â”€â”€ DARK BLUE â€” Cosmos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Nuit profonde Â· Bleu Ã©lectrique & Cyan Â· Tech premium Â· Contraste intense
+  // ─── DARK BLUE — Cosmos ────────────────────────────────────────────────────
+  // Nuit profonde · Bleu électrique & Cyan · Tech premium · Contraste intense
   if (mode === "dark_blue") { return {
-    bg:         "#00080F",   // Bleu-noir absolu â€” plus immersif que #010A15
+    bg:         "#00080F",   // Bleu-noir absolu — plus immersif que #010A15
     bg2:        "#051525",
     bg3:        "#0A2035",
     card:       "rgba(255,255,255,0.04)",
@@ -363,7 +356,7 @@ export const getThemePalette = (mode) => {
     text:       "#EEF4FF",
     sub:        "#7A92B2",
     muted:      "#2A3A52",
-    gold:       "#3BA5F5",   // Bleu Ã©lectrique vif â€” plus dynamique que #1DA1F2
+    gold:       "#3BA5F5",   // Bleu électrique vif — plus dynamique que #1DA1F2
     goldL:      "#72CFFF",
     goldD:      "#1A7FCC",
     goldBg:     "rgba(59,165,245,0.09)",
@@ -381,32 +374,32 @@ export const getThemePalette = (mode) => {
     shadowCard: "0 8px 40px rgba(0,0,0,0.70), 0 1px 0 rgba(255,255,255,0.04)",
   }; }
  
-  // â”€â”€â”€ DARK (dÃ©faut) â€” Or impÃ©rial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Noir absolu Â· Or chaud Â· LisibilitÃ© maximale Â· Prestige & exclusivitÃ©
-  // C'est le mode identitaire de CÃ©leste â€” Ã  soigner particuliÃ¨rement
+  // ─── DARK (défaut) — Or impérial ──────────────────────────────────────────
+  // Noir absolu · Or chaud · Lisibilité maximale · Prestige & exclusivité
+  // C'est le mode identitaire de Céleste — à soigner particulièrement
   return {
-    bg:         "#000000",   // Noir absolu â€” pas de compromise
-    bg2:        "#0C0C0C",   // LÃ©gÃ¨rement relevÃ© pour les surfaces
+    bg:         "#000000",   // Noir absolu — pas de compromise
+    bg2:        "#0C0C0C",   // Légèrement relevé pour les surfaces
     bg3:        "#141414",   // Zones tertiaires (inputs, chips)
     card:       "rgba(255,255,255,0.04)",
     cardSolid:  "#111111",
     glass:      "rgba(255,255,255,0.05)",
     glassMid:   "rgba(255,255,255,0.09)",
-    border:     "rgba(255,255,255,0.07)",   // Plus visible que 0.06 â€” meilleure lisibilitÃ©
+    border:     "rgba(255,255,255,0.07)",   // Plus visible que 0.06 — meilleure lisibilité
     borderHi:   "rgba(255,255,255,0.14)",
-    text:       "#F5F0E8",   // Blanc chaud â€” repose les yeux, plus premium
-    sub:        "#9A9690",   // Gris lÃ©gÃ¨rement chaud pour cohÃ©rence
-    muted:      "#3D3D3A",   // Muet chaud â€” sÃ©parateurs, disabled
-    gold:       "#D4A843",   // Or impÃ©rial â€” plus riche que #C9952A
-    goldL:      "#F0C96A",   // Or clair â€” hover, highlights
-    goldD:      "#A07C22",   // Or foncÃ© â€” pressed, ombres colorÃ©es
+    text:       "#F5F0E8",   // Blanc chaud — repose les yeux, plus premium
+    sub:        "#9A9690",   // Gris légèrement chaud pour cohérence
+    muted:      "#3D3D3A",   // Muet chaud — séparateurs, disabled
+    gold:       "#D4A843",   // Or impérial — plus riche que #C9952A
+    goldL:      "#F0C96A",   // Or clair — hover, highlights
+    goldD:      "#A07C22",   // Or foncé — pressed, ombres colorées
     goldBg:     "rgba(212,168,67,0.09)",
     goldBg2:    "rgba(212,168,67,0.17)",
     navy:       "#4A7EC9",   // Bleu plus profond que #3A6A9A
     navyBg:     "rgba(74,126,201,0.13)",
     err:        "#E05252",   // Rouge moins agressif que #C84040
-    ok:         "#3DB874",   // Vert plus vif â€” succÃ¨s visible
-    warn:       "#E8A930",   // Ambre â€” avertissements
+    ok:         "#3DB874",   // Vert plus vif — succès visible
+    warn:       "#E8A930",   // Ambre — avertissements
     gradGold:   "linear-gradient(135deg,#D4A843 0%,#F0C96A 50%,#A07C22 100%)",
     gradGoldV:  "linear-gradient(180deg,#D4A843 0%,#F0C96A 100%)",
     gradDark:   "linear-gradient(160deg,#0C0C0C 0%,#000000 100%)",
@@ -428,7 +421,7 @@ const setAppTheme=(mode)=>{
   window.location.reload();
 };
 
-// â”€â”€ UTILITAIRES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── UTILITAIRES ───────────────────────────────────────────
 const distKm=(lat1,lon1,lat2,lon2)=>{
   if(!lat1||!lon1||!lat2||!lon2)return 99999;
   const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
@@ -483,7 +476,7 @@ longitude:p.longitude||null,
   fullName:`${p.prenom||""} ${p.nom||""}`.trim(),
   initials:initials(p.prenom,p.nom), color:colorFor(p.id),
   badge:p.badge||null, status:p.status||"pending",
-  paroisse:p.paroisse||"â€”", age:p.age||null, online:false,
+  paroisse:p.paroisse||"—", age:p.age||null, online:false,
   joined:p.joined_at?.slice(0,10)||"", bio:p.bio||"",
   avatar_url:p.avatar_url||null, cover_url:p.cover_url||null,
   is_admin:p.is_admin||false,
@@ -524,7 +517,7 @@ const playNotifSound=async()=>{
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime+0.4);
   }catch(err){
-    console.warn("Audio bloquÃ© par les restrictions iOS:",err);
+    console.warn("Audio bloqué par les restrictions iOS:",err);
   }
 };
 
@@ -543,11 +536,11 @@ const sendPushNotif=async(title,body)=>{
   }
 };
 
-// â”€â”€ CSS GLOBAL PREMIUM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const GS = `
-  
+  @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
-
+@font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @media(prefers-reduced-motion:reduce){*{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
   
   *, *::before, *::after {
@@ -557,7 +550,7 @@ const GS = `
     -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    touch-action: manipulation; /* ProtÃ¨ge le comportement tactile natif */
+    touch-action: manipulation; /* Protège le comportement tactile natif */
   }
 
  html, body, #root {
@@ -583,7 +576,7 @@ const GS = `
     display: none;
   }
 
-  /* Version corrigÃ©e pour le scroll fluide */
+  /* Version corrigée pour le scroll fluide */
   .scroll-container {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -593,7 +586,7 @@ const GS = `
   input::placeholder,textarea::placeholder{color:${T.muted};}
   select option{background:#111;color:${T.text};}
 
-  /* â”€â”€ ANIMATIONS PREMIUM â”€â”€ */
+  /* ── ANIMATIONS PREMIUM ── */
   @keyframes spin{to{transform:rotate(360deg);}}
   @keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
   @keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}v
@@ -622,7 +615,7 @@ const GS = `
   @keyframes msgIn{from{opacity:0;transform:translateY(8px) scale(0.96);}to{opacity:1;transform:none;}}
   @keyframes statusRing{0%{stroke-dashoffset:251;}100%{stroke-dashoffset:0;}}
 
-  /* â”€â”€ UTILS â”€â”€ */
+  /* ── UTILS ── */
  .premium-card{
     background:${T.card};
     border:1px solid ${T.border};
@@ -642,15 +635,15 @@ const GS = `
   .tap-highlight{transition:opacity 0.15s;} .tap-highlight:active{opacity:0.7;}
 `;
 
-// â”€â”€ ERROR BOUNDARY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ERROR BOUNDARY ────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={hasError:false};}
   static getDerivedStateFromError(){return{hasError:true};}
-  componentDidCatch(e,i){console.error("[CÃ©leste]",e,i);}
+  componentDidCatch(e,i){console.error("[Céleste]",e,i);}
   render(){
     if(this.state.hasError) return(
       <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:20,padding:24}}>
-        <span style={{fontSize:56,animation:"starPulse 2s infinite"}}>âœ¦</span>
+        <span style={{fontSize:56,animation:"starPulse 2s infinite"}}>✦</span>
         <p style={{color:T.muted,fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Une erreur est survenue.</p>
         <button onClick={()=>window.location.reload()} style={{background:T.gradGold,border:"none",borderRadius:14,padding:"13px 28px",color:"#000",fontWeight:700,cursor:"pointer",fontSize:14}}>Recharger</button>
       </div>
@@ -659,7 +652,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// â”€â”€ INSTALL BANNER PWA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── INSTALL BANNER PWA ────────────────────────────────────
 function InstallBanner(){
   const [prompt,setPrompt]=useState(null);
   const [dismissed,setDismissed]=useState(()=>!!localStorage.getItem("pwa_dismissed"));
@@ -673,8 +666,8 @@ function InstallBanner(){
     <div style={{background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:16,margin:"12px 16px",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,animation:"fadeUp .4s ease"}}>
       <Smartphone size={24} color={T.goldL}/>
       <div style={{flex:1}}>
-        <p style={{margin:0,fontSize:13,fontWeight:600,color:T.goldL}}>Installer CÃ©leste</p>
-        <p style={{margin:0,fontSize:11,color:T.sub}}>AccÃ¨s rapide depuis votre Ã©cran d'accueil</p>
+        <p style={{margin:0,fontSize:13,fontWeight:600,color:T.goldL}}>Installer Céleste</p>
+        <p style={{margin:0,fontSize:11,color:T.sub}}>Accès rapide depuis votre écran d'accueil</p>
       </div>
       <Btn onClick={async()=>{prompt.prompt();const{outcome}=await prompt.userChoice;if(outcome==="accepted")setPrompt(null);}} style={{background:T.gradGold,borderRadius:10,padding:"7px 14px",color:"#000",fontWeight:700,fontSize:12}}>Installer</Btn>
       <Btn onClick={()=>{setDismissed(true);localStorage.setItem("pwa_dismissed","1");}} style={{color:T.muted,padding:4}}><X size={16}/></Btn>
@@ -682,63 +675,63 @@ function InstallBanner(){
   );
 }
 
-// â”€â”€ FLAG SELECTOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── FLAG SELECTOR ─────────────────────────────────────────
 const COUNTRIES=[
   // Afrique Centrale
-  {code:"CG",flag:"ðŸ‡¨ðŸ‡¬",name:"Congo-Brazzaville",dial:"+242"},
-  {code:"CD",flag:"ðŸ‡¨ðŸ‡©",name:"RD Congo",dial:"+243"},
-  {code:"CM",flag:"ðŸ‡¨ðŸ‡²",name:"Cameroun",dial:"+237"},
-  {code:"GA",flag:"ðŸ‡¬ðŸ‡¦",name:"Gabon",dial:"+241"},
-  {code:"CF",flag:"ðŸ‡¨ðŸ‡«",name:"Centrafrique",dial:"+236"},
-  {code:"TD",flag:"ðŸ‡¹ðŸ‡©",name:"Tchad",dial:"+235"},
-  {code:"GQ",flag:"ðŸ‡¬ðŸ‡¶",name:"GuinÃ©e Ã‰quatoriale",dial:"+240"},
-  {code:"AO",flag:"ðŸ‡¦ðŸ‡´",name:"Angola",dial:"+244"},
+  {code:"CG",flag:"🇨🇬",name:"Congo-Brazzaville",dial:"+242"},
+  {code:"CD",flag:"🇨🇩",name:"RD Congo",dial:"+243"},
+  {code:"CM",flag:"🇨🇲",name:"Cameroun",dial:"+237"},
+  {code:"GA",flag:"🇬🇦",name:"Gabon",dial:"+241"},
+  {code:"CF",flag:"🇨🇫",name:"Centrafrique",dial:"+236"},
+  {code:"TD",flag:"🇹🇩",name:"Tchad",dial:"+235"},
+  {code:"GQ",flag:"🇬🇶",name:"Guinée Équatoriale",dial:"+240"},
+  {code:"AO",flag:"🇦🇴",name:"Angola",dial:"+244"},
   // Afrique de l'Ouest
-  {code:"CI",flag:"ðŸ‡¨ðŸ‡®",name:"CÃ´te d'Ivoire",dial:"+225"},
-  {code:"SN",flag:"ðŸ‡¸ðŸ‡³",name:"SÃ©nÃ©gal",dial:"+221"},
-  {code:"ML",flag:"ðŸ‡²ðŸ‡±",name:"Mali",dial:"+223"},
-  {code:"BF",flag:"ðŸ‡§ðŸ‡«",name:"Burkina Faso",dial:"+226"},
-  {code:"NE",flag:"ðŸ‡³ðŸ‡ª",name:"Niger",dial:"+227"},
-  {code:"BJ",flag:"ðŸ‡§ðŸ‡¯",name:"BÃ©nin",dial:"+229"},
-  {code:"TG",flag:"ðŸ‡¹ðŸ‡¬",name:"Togo",dial:"+228"},
-  {code:"GN",flag:"ðŸ‡¬ðŸ‡³",name:"GuinÃ©e",dial:"+224"},
-  {code:"MR",flag:"ðŸ‡²ðŸ‡·",name:"Mauritanie",dial:"+222"},
-  {code:"SL",flag:"ðŸ‡¸ðŸ‡±",name:"Sierra Leone",dial:"+232"},
-  {code:"GH",flag:"ðŸ‡¬ðŸ‡­",name:"Ghana",dial:"+233"},
+  {code:"CI",flag:"🇨🇮",name:"Côte d'Ivoire",dial:"+225"},
+  {code:"SN",flag:"🇸🇳",name:"Sénégal",dial:"+221"},
+  {code:"ML",flag:"🇲🇱",name:"Mali",dial:"+223"},
+  {code:"BF",flag:"🇧🇫",name:"Burkina Faso",dial:"+226"},
+  {code:"NE",flag:"🇳🇪",name:"Niger",dial:"+227"},
+  {code:"BJ",flag:"🇧🇯",name:"Bénin",dial:"+229"},
+  {code:"TG",flag:"🇹🇬",name:"Togo",dial:"+228"},
+  {code:"GN",flag:"🇬🇳",name:"Guinée",dial:"+224"},
+  {code:"MR",flag:"🇲🇷",name:"Mauritanie",dial:"+222"},
+  {code:"SL",flag:"🇸🇱",name:"Sierra Leone",dial:"+232"},
+  {code:"GH",flag:"🇬🇭",name:"Ghana",dial:"+233"},
   // Afrique du Nord
-  {code:"MA",flag:"ðŸ‡²ðŸ‡¦",name:"Maroc",dial:"+212"},
-  {code:"DZ",flag:"ðŸ‡©ðŸ‡¿",name:"AlgÃ©rie",dial:"+213"},
-  {code:"TN",flag:"ðŸ‡¹ðŸ‡³",name:"Tunisie",dial:"+216"},
-  {code:"LY",flag:"ðŸ‡±ðŸ‡¾",name:"Libye",dial:"+218"},
+  {code:"MA",flag:"🇲🇦",name:"Maroc",dial:"+212"},
+  {code:"DZ",flag:"🇩🇿",name:"Algérie",dial:"+213"},
+  {code:"TN",flag:"🇹🇳",name:"Tunisie",dial:"+216"},
+  {code:"LY",flag:"🇱🇾",name:"Libye",dial:"+218"},
   // Afrique de l'Est et Sud
-  {code:"MG",flag:"ðŸ‡²ðŸ‡¬",name:"Madagascar",dial:"+261"},
-  {code:"DJ",flag:"ðŸ‡©ðŸ‡¯",name:"Djibouti",dial:"+253"},
-  {code:"KM",flag:"ðŸ‡°ðŸ‡²",name:"Comores",dial:"+269"},
-  {code:"RW",flag:"ðŸ‡·ðŸ‡¼",name:"Rwanda",dial:"+250"},
-  {code:"BI",flag:"ðŸ‡§ðŸ‡®",name:"Burundi",dial:"+257"},
-  {code:"MZ",flag:"ðŸ‡²ðŸ‡¿",name:"Mozambique",dial:"+258"},
-  // ÃŽles et OcÃ©an Indien
-  {code:"MU",flag:"ðŸ‡²ðŸ‡º",name:"Maurice",dial:"+230"},
-  {code:"SC",flag:"ðŸ‡¸ðŸ‡¨",name:"Seychelles",dial:"+248"},
-  {code:"CV",flag:"ðŸ‡¨ðŸ‡»",name:"Cap-Vert",dial:"+238"},
-  {code:"ST",flag:"ðŸ‡¸ðŸ‡¹",name:"SÃ£o TomÃ©-et-PrÃ­ncipe",dial:"+239"},
+  {code:"MG",flag:"🇲🇬",name:"Madagascar",dial:"+261"},
+  {code:"DJ",flag:"🇩🇯",name:"Djibouti",dial:"+253"},
+  {code:"KM",flag:"🇰🇲",name:"Comores",dial:"+269"},
+  {code:"RW",flag:"🇷🇼",name:"Rwanda",dial:"+250"},
+  {code:"BI",flag:"🇧🇮",name:"Burundi",dial:"+257"},
+  {code:"MZ",flag:"🇲🇿",name:"Mozambique",dial:"+258"},
+  // Îles et Océan Indien
+  {code:"MU",flag:"🇲🇺",name:"Maurice",dial:"+230"},
+  {code:"SC",flag:"🇸🇨",name:"Seychelles",dial:"+248"},
+  {code:"CV",flag:"🇨🇻",name:"Cap-Vert",dial:"+238"},
+  {code:"ST",flag:"🇸🇹",name:"São Tomé-et-Príncipe",dial:"+239"},
   // Europe
-  {code:"FR",flag:"ðŸ‡«ðŸ‡·",name:"France",dial:"+33"},
-  {code:"BE",flag:"ðŸ‡§ðŸ‡ª",name:"Belgique",dial:"+32"},
-  {code:"CH",flag:"ðŸ‡¨ðŸ‡­",name:"Suisse",dial:"+41"},
-  {code:"LU",flag:"ðŸ‡±ðŸ‡º",name:"Luxembourg",dial:"+352"},
-  {code:"MC",flag:"ðŸ‡²ðŸ‡¨",name:"Monaco",dial:"+377"},
-  // AmÃ©rique
-  {code:"CA",flag:"ðŸ‡¨ðŸ‡¦",name:"Canada",dial:"+1"},
-  {code:"HT",flag:"ðŸ‡­ðŸ‡¹",name:"HaÃ¯ti",dial:"+509"},
-  {code:"GF",flag:"ðŸ‡¬ðŸ‡«",name:"Guyane franÃ§aise",dial:"+594"},
-  {code:"MQ",flag:"ðŸ‡²ðŸ‡¶",name:"Martinique",dial:"+596"},
-  {code:"GP",flag:"ðŸ‡¬ðŸ‡µ",name:"Guadeloupe",dial:"+590"},
-  // OcÃ©anie
-  {code:"NC",flag:"ðŸ‡³ðŸ‡¨",name:"Nouvelle-CalÃ©donie",dial:"+687"},
-  {code:"PF",flag:"ðŸ‡µðŸ‡«",name:"PolynÃ©sie FranÃ§aise",dial:"+689"},
+  {code:"FR",flag:"🇫🇷",name:"France",dial:"+33"},
+  {code:"BE",flag:"🇧🇪",name:"Belgique",dial:"+32"},
+  {code:"CH",flag:"🇨🇭",name:"Suisse",dial:"+41"},
+  {code:"LU",flag:"🇱🇺",name:"Luxembourg",dial:"+352"},
+  {code:"MC",flag:"🇲🇨",name:"Monaco",dial:"+377"},
+  // Amérique
+  {code:"CA",flag:"🇨🇦",name:"Canada",dial:"+1"},
+  {code:"HT",flag:"🇭🇹",name:"Haïti",dial:"+509"},
+  {code:"GF",flag:"🇬🇫",name:"Guyane française",dial:"+594"},
+  {code:"MQ",flag:"🇲🇶",name:"Martinique",dial:"+596"},
+  {code:"GP",flag:"🇬🇵",name:"Guadeloupe",dial:"+590"},
+  // Océanie
+  {code:"NC",flag:"🇳🇨",name:"Nouvelle-Calédonie",dial:"+687"},
+  {code:"PF",flag:"🇵🇫",name:"Polynésie Française",dial:"+689"},
   // Autre
-  {code:"OTHER",flag:"ðŸŒ",name:"Autre",dial:"+"},
+  {code:"OTHER",flag:"🌍",name:"Autre",dial:"+"},
 ];
 function FlagSelector({selected,onChange}){
   const [open,setOpen]=useState(false);
@@ -746,7 +739,7 @@ function FlagSelector({selected,onChange}){
   return(
     <div style={{position:"relative"}}>
       <Btn onClick={()=>setOpen(o=>!o)} style={{padding:"11px 12px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,fontSize:18,display:"flex",alignItems:"center",gap:4,color:T.text}}>
-        {cur.flag}<span style={{fontSize:11,color:T.muted}}>â–¾</span>
+        {cur.flag}<span style={{fontSize:11,color:T.muted}}>▾</span>
       </Btn>
       {open&&(
         <div style={{position:"absolute",top:"110%",left:0,zIndex:99,background:"#111",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",minWidth:180,boxShadow:"0 20px 40px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
@@ -761,12 +754,12 @@ function FlagSelector({selected,onChange}){
   );
 }
 
-// â”€â”€ COMPOSANTS ATOMIQUES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── COMPOSANTS ATOMIQUES ──────────────────────────────────
 
 let _unseenStatusMap=new Map();
 const _statusListeners=new Set();
 function _setUnseenStatusMap(m){_unseenStatusMap=m;_statusListeners.forEach(fn=>fn());}
-export const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
+const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   const [,_forceTick]=useState(0);
   useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
   const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
@@ -832,14 +825,14 @@ const Badge = memo(function Badge({type}){
   );
 });
 
-function Btn( ({children,onClick,style={},disabled=false,type="button"})=>(
+const Btn = ({children,onClick,style={},disabled=false,type="button"})=>(
   <button type={type} onClick={disabled?undefined:onClick} disabled={disabled}
     style={{cursor:disabled?"not-allowed":"pointer",border:"none",background:"none",outline:"none",...style}}>
     {children}
   </button>
 );
 
-// DÃ©clarÃ© HORS de AuthScreen pour Ã©viter la recrÃ©ation Ã  chaque frappe (fermeture clavier mobile)
+// Déclaré HORS de AuthScreen pour éviter la recréation à chaque frappe (fermeture clavier mobile)
 const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,setShowPw}){
   return(
     <div style={{position:"relative"}}>
@@ -851,7 +844,7 @@ const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,
   );
 });
 
-// â”€â”€ MEDIA PLAYER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MEDIA PLAYER ─────────────────────────────────────────
 const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideoClick }) {
   const ref = useRef(null);
   const [muted, setMuted] = useState(true);
@@ -874,7 +867,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     controlsTimer.current = setTimeout(() => setShowControls(false), 2000);
   };
 
-  // Auto-play/pause selon visibilitÃ©
+  // Auto-play/pause selon visibilité
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -897,12 +890,12 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     };
   }, []);
 
-  // âœ… closeFullscreen dÃ©clarÃ©e au niveau du composant
+  // ✅ closeFullscreen déclarée au niveau du composant
   const closeFullscreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     fullscreenRef.current = false;
     setFullscreen(false);
-    // Pas de manipulation des styles React â€” on laisse React re-render proprement
+    // Pas de manipulation des styles React — on laisse React re-render proprement
     setTimeout(() => {
       if (ref.current && !pausedRef.current) {
         ref.current.play().catch(() => {});
@@ -918,7 +911,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     else { el.pause(); pausedRef.current = true; setPaused(true); setPlaying(false); }
   };
 
-  // âœ… openFullscreen correctement fermÃ©e
+  // ✅ openFullscreen correctement fermée
   const openFullscreen=(e)=>{
   e.stopPropagation();
   const el=ref.current;
@@ -972,7 +965,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     </div>
   );
 
-  // âœ… Mode fullscreen : rendu distinct et propre, aucun style inline sur la vidÃ©o inline
+  // ✅ Mode fullscreen : rendu distinct et propre, aucun style inline sur la vidéo inline
   if (fullscreen) return (
     <div
       onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
@@ -989,7 +982,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     </div>
   );
 
-  // âœ… Mode inline : balise <video> unique, jamais de styles forcÃ©s en sortie de fullscreen
+  // ✅ Mode inline : balise <video> unique, jamais de styles forcés en sortie de fullscreen
   return (
     <div
       style={{ position: "relative", width: "100%" }}
@@ -1053,9 +1046,135 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideo
   );
 });
 
-// â”€â”€ VIDEO TRIM MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── VIDEO TRIM MODAL ──────────────────────────────────────
+function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
+  const videoRef=useRef();
+  const [duration,setDuration]=useState(0);
+  const [start,setStart]=useState(0);
+  const [end,setEnd]=useState(0);
+  const [playing,setPlaying]=useState(false);
+  const [currentTime,setCurrentTime]=useState(0);
+  const [trimming,setTrimming]=useState(false);
+  const trimAbortRef=useRef(false);
+  const [trimProgress,setTrimProgress]=useState(0);
+  const ffmpegRef=useRef(null);
+  const MAX=maxDuration;
+  const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
-// â”€â”€ IMAGE CROP MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(()=>{
+    const v=videoRef.current;if(!v)return;
+    const onLoaded=()=>{const d=Math.min(v.duration,MAX);setDuration(v.duration);setEnd(d);};
+    v.addEventListener("loadedmetadata",onLoaded);
+    v.addEventListener("timeupdate",()=>setCurrentTime(v.currentTime));
+    return()=>{v.removeEventListener("loadedmetadata",onLoaded);};
+  },[]);
+
+  useEffect(()=>{
+    const v=videoRef.current;if(!v)return;
+    if(currentTime>=end){v.pause();v.currentTime=start;setPlaying(false);}
+  },[currentTime,end,start]);
+
+  const togglePlay=()=>{
+    const v=videoRef.current;
+    if(playing){v.pause();setPlaying(false);}
+    else{v.currentTime=start;v.play();setPlaying(true);}
+  };
+
+  const handleValidate=async()=>{
+    if(trimming)return;
+    // Si pas de trim significatif, on retourne le src tel quel
+    if(start<0.5&&end>=duration-0.5){
+      onDone({src:videoSrc,start:0,end:duration,file:null});
+      return;
+    }
+    setTrimming(true);
+    setTrimProgress(0);
+    try{
+      const {FFmpeg}=await import("@ffmpeg/ffmpeg");
+      const {fetchFile,toBlobURL}=await import("@ffmpeg/util");
+      if(!ffmpegRef.current){
+        const ff=new FFmpeg();
+        ff.on("progress",({progress})=>setTrimProgress(Math.round(progress*100)));
+       await ff.load({
+  coreURL:await toBlobURL(`${window.location.origin}/ffmpeg-core.js`,"text/javascript"),
+  wasmURL:await toBlobURL(`${window.location.origin}/ffmpeg-core.wasm`,"application/wasm"),
+});
+        ffmpegRef.current=ff;
+      }
+      const ff=ffmpegRef.current;
+      const inputData=await fetchFile(videoSrc);
+      await ff.writeFile("input.mp4",inputData);
+      await ff.exec([
+        "-ss",String(start.toFixed(3)),
+        "-to",String(end.toFixed(3)),
+        "-i","input.mp4",
+        "-c","copy",
+        "-avoid_negative_ts","make_zero",
+        "output.mp4"
+      ]);
+      const data=await ff.readFile("output.mp4");
+      const blob=new Blob([data.buffer],{type:"video/mp4"});
+      const trimmedFile=new File([blob],"trimmed.mp4",{type:"video/mp4"});
+      const trimmedSrc=URL.createObjectURL(blob);
+      onDone({src:trimmedSrc,start:0,end:end-start,file:trimmedFile});
+    }catch(e){
+      console.error("FFmpeg trim error:",e);
+      // Fallback : on envoie l'original
+      onDone({src:videoSrc,start,end,file:null});
+    }finally{
+      setTrimming(false);
+    }
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"12px 20px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>Annuler</button>
+        <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Couper la vidéo</p>
+        <button onClick={handleValidate} disabled={trimming} style={{background:"none",border:"none",color:trimming?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:trimming?"default":"pointer",padding:"4px 0"}}>
+          {trimming?`Traitement ${trimProgress}%`:"Valider ✦"}
+        </button>
+      </div>
+
+      {trimming&&(
+        <div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+          <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid rgba(201,149,42,0.2)",borderTopColor:"#C9952A",animation:"spin .8s linear infinite"}}/>
+          <p style={{margin:0,color:"#fff",fontSize:15,fontWeight:600}}>Découpe en cours…</p>
+          <div style={{width:200,height:4,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
+            <div style={{height:"100%",width:`${trimProgress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.2s"}}/>
+          </div>
+          <p style={{margin:0,color:"rgba(255,255,255,0.4)",fontSize:12}}>{trimProgress}%</p>
+        </div>
+      )}
+
+      <div style={{height:"45vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",position:"relative",flexShrink:0}}>
+        <video ref={videoRef} src={videoSrc} playsInline style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
+        <button onClick={togglePlay} style={{position:"absolute",width:56,height:56,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"2px solid rgba(255,255,255,0.3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:22}}>
+          {playing?"⏸":"▶"}
+        </button>
+      </div>
+
+      <div style={{background:"rgba(0,0,0,0.95)",padding:"20px 20px calc(20px + env(safe-area-inset-bottom,0px))",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Début : {fmt(start)}</span>
+          <span style={{fontSize:12,color:"#C9952A",fontWeight:700}}>Durée : {fmt(end-start)}</span>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Fin : {fmt(end)}</span>
+        </div>
+        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>DÉBUT</p>
+        <input type="range" min={0} max={duration} step={0.1} value={start}
+          onChange={e=>{const v=Number(e.target.value);if(v<end-1){setStart(v);videoRef.current.currentTime=v;}}}
+          style={{width:"100%",accentColor:"#C9952A",marginBottom:14}}/>
+        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>FIN</p>
+        <input type="range" min={0} max={Math.min(duration,MAX)} step={0.1} value={end}
+          onChange={e=>{const v=Number(e.target.value);if(v>start+1){setEnd(v);videoRef.current.currentTime=v;}}}
+          style={{width:"100%",accentColor:"#C9952A",marginBottom:12}}/>
+        <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>Maximum {MAX} secondes</p>
+      </div>
+    </div>
+  );
+}
+
+// ── IMAGE CROP MODAL ──────────────────────────────────────
 function ImageCropModal({imageSrc,onClose,onDone}){
   const [crop,setCrop]=useState({x:0,y:0});
   const [zoom,setZoom]=useState(1);
@@ -1108,7 +1227,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
         </button>
         <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Recadrer</p>
         <button onClick={handleDone} disabled={processing} style={{background:"none",border:"none",color:processing?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:processing?"default":"pointer",padding:"4px 0"}}>
-          {processing?"â€¦":"Valider âœ¦"}
+          {processing?"…":"Valider ✦"}
         </button>
       </div>
 
@@ -1131,7 +1250,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
         />
       </div>
 
-      {/* ContrÃ´les bas */}
+      {/* Contrôles bas */}
       <div style={{background:"rgba(0,0,0,0.95)",padding:"14px 20px calc(14px + env(safe-area-inset-bottom,0px))",display:"flex",flexDirection:"column",gap:12,flexShrink:0}}>
         {/* Zoom */}
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1139,7 +1258,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
           <input type="range" min={1} max={3} step={0.01} value={zoom}
             onChange={e=>setZoom(Number(e.target.value))}
             style={{flex:1,accentColor:"#C9952A"}}/>
-          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:28,textAlign:"right"}}>{zoom.toFixed(1)}Ã—</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:28,textAlign:"right"}}>{zoom.toFixed(1)}×</span>
         </div>
         {/* Rotation */}
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1147,19 +1266,19 @@ function ImageCropModal({imageSrc,onClose,onDone}){
           <input type="range" min={-180} max={180} step={1} value={rotation}
             onChange={e=>setRotation(Number(e.target.value))}
             style={{flex:1,accentColor:"#C9952A"}}/>
-          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:28,textAlign:"right"}}>{rotation}Â°</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",minWidth:28,textAlign:"right"}}>{rotation}°</span>
         </div>
         {/* Reset */}
         <button onClick={()=>{setZoom(1);setRotation(0);setCrop({x:0,y:0});}}
           style={{alignSelf:"center",background:"none",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"6px 16px",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer"}}>
-          RÃ©initialiser
+          Réinitialiser
         </button>
       </div>
     </div>
   );
 }
 
-// â”€â”€ IMAGE VIEWER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IMAGE VIEWER ─────────────────────────────────────────
 function ImageViewer({url,onClose}){
   const [scale,setScale]=useState(1);
   const [pos,setPos]=useState({x:0,y:0});
@@ -1176,7 +1295,7 @@ function ImageViewer({url,onClose}){
   );
 }
 
-// â”€â”€ TOAST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── TOAST ─────────────────────────────────────────────────
 function Toast({msg}){
   return(
     <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:T.bg2,border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
@@ -1185,7 +1304,7 @@ function Toast({msg}){
   );
 }
 
-// â”€â”€ NOTIF BANNER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── NOTIF BANNER ──────────────────────────────────────────
 function NotifBanner({notifs,onDismiss,onTap}){
   return(
     <div style={{position:"fixed",top:"env(safe-area-inset-top,0px)",left:0,right:0,zIndex:990,display:"flex",flexDirection:"column",gap:8,padding:"8px 12px",pointerEvents:"none"}}>
@@ -1204,10 +1323,10 @@ function NotifBanner({notifs,onDismiss,onTap}){
   );
 }
 
-// â”€â”€ REPORT MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── REPORT MODAL ──────────────────────────────────────────
 function ReportModal({onClose,onSubmit}){
   const [reason,setReason]=useState(""); const [details,setDetails]=useState("");
-  const reasons=["Contenu inappropriÃ©","Spam","HarcÃ¨lement","Fausse identitÃ©","Autre"];
+  const reasons=["Contenu inapproprié","Spam","Harcèlement","Fausse identité","Autre"];
   return(
     <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -1221,7 +1340,7 @@ function ReportModal({onClose,onSubmit}){
             <Btn key={r} onClick={()=>setReason(r)} style={{padding:"11px 16px",borderRadius:12,border:`1px solid ${reason===r?T.gold+"55":T.border}`,background:reason===r?T.goldBg:"transparent",color:reason===r?T.goldL:T.sub,fontSize:13,textAlign:"left",transition:"all .2s"}}>{r}</Btn>
           ))}
         </div>
-        <textarea value={details} onChange={e=>setDetails(e.target.value)} placeholder="DÃ©tails (optionnel)" rows={2} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",marginBottom:12}}/>
+        <textarea value={details} onChange={e=>setDetails(e.target.value)} placeholder="Détails (optionnel)" rows={2} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",marginBottom:12}}/>
         <Btn onClick={()=>reason&&onSubmit(reason,details)} disabled={!reason} style={{width:"100%",padding:"14px",background:reason?T.gradGold:"rgba(255,255,255,0.04)",color:reason?"#000":T.muted,borderRadius:14,fontSize:14,fontWeight:700,transition:"all .25s"}}>Envoyer le signalement</Btn>
       </div>
     </div>
@@ -1239,7 +1358,7 @@ function DialSelector({selected,onChange}){
   return(
     <div style={{position:"relative"}}>
       <Btn onClick={()=>{setOpen(o=>!o);setSearch("");}} style={{padding:"11px 12px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,color:T.text,whiteSpace:"nowrap"}}>
-        {cur.flag} {cur.dial} <span style={{fontSize:11,color:T.muted}}>â–¾</span>
+        {cur.flag} {cur.dial} <span style={{fontSize:11,color:T.muted}}>▾</span>
       </Btn>
       {open&&(
         <div style={{position:"absolute",top:"110%",left:0,zIndex:99,background:"#111",border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",minWidth:240,boxShadow:"0 20px 40px rgba(0,0,0,0.6)",animation:"scaleIn .15s ease"}}>
@@ -1254,7 +1373,7 @@ function DialSelector({selected,onChange}){
                 <span style={{color:T.muted,fontSize:12}}>{c.dial}</span>
               </Btn>
             ))}
-            {filtered.length===0&&<p style={{padding:"12px 14px",color:T.muted,fontSize:13}}>Aucun rÃ©sultat</p>}
+            {filtered.length===0&&<p style={{padding:"12px 14px",color:T.muted,fontSize:13}}>Aucun résultat</p>}
           </div>
         </div>
       )}
@@ -1262,7 +1381,7 @@ function DialSelector({selected,onChange}){
   );
 }
 
-// â”€â”€ AUTH SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── AUTH SCREEN ───────────────────────────────────────────
 function AuthScreen({mode,setMode,onSuccess}){
   const [accountType,setAccountType]=useState("membre");
   const [prenom,setPrenom]=useState(""); const [nom,setNom]=useState("");
@@ -1311,10 +1430,10 @@ if(data.user){onSuccess?.("pending");}
       <div style={{width:"100%",maxWidth:400,animation:"titleReveal .6s ease"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
           <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:76,height:76,borderRadius:"50%",background:"rgba(201,149,42,0.08)",border:`1px solid ${T.gold}33`,marginBottom:22,animation:"glow 3s ease infinite",boxShadow:`0 0 40px rgba(201,149,42,0.15)`}}>
-            <span style={{fontSize:34,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>âœ¦</span>
+            <span style={{fontSize:34,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>✦</span>
           </div>
-          <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,fontWeight:300,color:T.text,letterSpacing:5,marginBottom:6}}>CÃ©leste</h1>
-          <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vrai personnalitÃ©e</p>
+          <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,fontWeight:300,color:T.text,letterSpacing:5,marginBottom:6}}>Céleste</h1>
+          <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vrai personnalitée</p>
         </div>
 
         <div style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${T.border}`,borderRadius:24,overflow:"hidden",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)"}}>
@@ -1331,7 +1450,7 @@ if(data.user){onSuccess?.("pending");}
             {mode==="register"&&(
               <>
                 <div style={{display:"flex",gap:8,marginBottom:4}}>
-                  {[{val:"membre",label:"ðŸ‘¤ Membre"},{val:"organisation",label:"ðŸ›ï¸ Organisation"}].map(t=>(
+                  {[{val:"membre",label:"👤 Membre"},{val:"organisation",label:"🏛️ Organisation"}].map(t=>(
                     <Btn key={t.val} onClick={()=>setAccountType(t.val)} style={{flex:1,padding:"10px",borderRadius:12,fontSize:12,fontWeight:700,border:`1px solid ${accountType===t.val?T.gold:T.border}`,background:accountType===t.val?T.goldBg:"transparent",color:accountType===t.val?T.goldL:T.muted,transition:"all .25s"}}>
                       {t.label}
                     </Btn>
@@ -1340,19 +1459,19 @@ if(data.user){onSuccess?.("pending");}
                 {accountType==="membre"?(
                   <>
                     <div style={{display:"flex",gap:10}}>
-                      <div style={{flex:1}}><AuthField val={prenom} set={setPrenom} placeholder="PrÃ©nom *"/></div>
+                      <div style={{flex:1}}><AuthField val={prenom} set={setPrenom} placeholder="Prénom *"/></div>
                       <div style={{flex:1}}><AuthField val={nom} set={setNom} placeholder="Nom *"/></div>
                     </div>
                     <AuthField val={paroisse} set={setParoisse} placeholder="Quartier / Ville *"/>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
   <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(p=>p.replace(/^\+\d+\s*/,"")&&p||dial+" ");}}/>
-  <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="NumÃ©ro *" type="tel"/></div>
+  <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="Numéro *" type="tel"/></div>
 </div>
                     <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"4px 8px"}}>
   <select value={country} onChange={e=>setCountry(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,outline:"none",flexShrink:0}}>
     {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
   </select>
-  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si diffÃ©rent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
+  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
 </div>
                   </>
                 ):(
@@ -1360,25 +1479,25 @@ if(data.user){onSuccess?.("pending");}
                     <AuthField val={orgName} set={setOrgName} placeholder="Nom de l'organisation *"/>
                     <select value={orgType} onChange={e=>setOrgType(e.target.value)} style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:orgType?T.text:T.sub,fontSize:13,outline:"none",appearance:"none"}}>
                       <option value="">Type *</option>
-<option value="restaurant">ðŸ½ï¸ Restaurant</option>
-<option value="hotel">ðŸ¨ HÃ´tel</option>
-<option value="musique">ðŸŽµ Musique / Artiste</option>
-<option value="entreprise">ðŸ’¼ Entreprise</option>
-<option value="association">ðŸ¤ Association</option>
-<option value="ecole">ðŸŽ“ Ã‰cole / UniversitÃ©</option>
-<option value="autre">ðŸ“Œ Autre</option>
+<option value="restaurant">🍽️ Restaurant</option>
+<option value="hotel">🏨 Hôtel</option>
+<option value="musique">🎵 Musique / Artiste</option>
+<option value="entreprise">💼 Entreprise</option>
+<option value="association">🤝 Association</option>
+<option value="ecole">🎓 École / Université</option>
+<option value="autre">📌 Autre</option>
                     </select>
                     <AuthField val={orgCountry} set={setOrgCountry} placeholder="Pays *"/>
                     <AuthField val={orgDesc} set={setOrgDesc} placeholder="Description (optionnel)"/>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
   <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(dial+" ");}}/>
-  <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="NumÃ©ro *" type="tel"/></div>
+  <div style={{flex:1}}><AuthField val={phone} set={setPhone} placeholder="Numéro *" type="tel"/></div>
 </div>
 <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"4px 8px"}}>
   <select value={country} onChange={e=>setCountry(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,outline:"none",flexShrink:0}}>
     {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
   </select>
-  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si diffÃ©rent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
+  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
 </div>
                   </>
                 )}
@@ -1388,7 +1507,7 @@ if(data.user){onSuccess?.("pending");}
             <AuthField val={pw} set={setPw} placeholder="Mot de passe *" type="password" showPw={showPw} setShowPw={setShowPw}/>
             {err&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:12,display:"flex",alignItems:"center",gap:6}}><AlertTriangle size={14}/> {err}</div>}
             <Btn onClick={submit} disabled={busy} style={{padding:"16px",background:busy?T.goldBg:T.gradGold,color:"#000",borderRadius:14,fontSize:14,fontWeight:700,boxShadow:busy?"none":"0 8px 32px rgba(201,149,42,0.3), 0 0 0 1px rgba(201,149,42,0.1)",opacity:busy?.6:1,transition:"all .25s",marginTop:4,letterSpacing:.3}}>
-              {busy?"â³ Chargementâ€¦":mode==="login"?"Se connecter âœ¦":"CrÃ©er mon compte âœ¦"}
+              {busy?"⏳ Chargement…":mode==="login"?"Se connecter ✦":"Créer mon compte ✦"}
             </Btn>
           </div>
         </div>
@@ -1397,7 +1516,7 @@ if(data.user){onSuccess?.("pending");}
   );
 }
 
-// â”€â”€ NOTIFICATIONS SCREEN (NOUVEAU depuis App 9) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── NOTIFICATIONS SCREEN (NOUVEAU depuis App 9) ───────────
 function NotifsScreen({myProfile,session,members}){
   const {setTab}=useApp();
   const [notifs,setNotifs]=useState([]);
@@ -1426,26 +1545,26 @@ function NotifsScreen({myProfile,session,members}){
   },[session?.user?.id,load]);
 
   const label=n=>({
-    like:"a aimÃ© ta publication",
-    comment:"a commentÃ© ta publication",
-    reply:"a rÃ©pondu Ã  ton commentaire",
-    comment_like:"a aimÃ© ton commentaire",
-    follow:"a commencÃ© Ã  te suivre",
-    mention:"t'a mentionnÃ©",
-    status_like:"a aimÃ© ton statut",
+    like:"a aimé ta publication",
+    comment:"a commenté ta publication",
+    reply:"a répondu à ton commentaire",
+    comment_like:"a aimé ton commentaire",
+    follow:"a commencé à te suivre",
+    mention:"t'a mentionné",
+    status_like:"a aimé ton statut",
     status_view:"a vu ton statut",
   }[n.type]||n.type);
 
   const icon=n=>({
-    like:"â™¥",
-    comment:"âœ¦",
-    reply:"â†©ï¸",
-    comment_like:"ðŸ’›",
-    follow:"âœ¦",
+    like:"♥",
+    comment:"✦",
+    reply:"↩️",
+    comment_like:"💛",
+    follow:"✦",
     mention:"@",
-    status_like:"â™¥",
-    status_view:"â—‰",
-  }[n.type]||"ðŸ””");
+    status_like:"♥",
+    status_view:"◉",
+  }[n.type]||"🔔");
 
   const filtered=notifs.filter(n=>{
     if(filter==="tous")return true;
@@ -1475,7 +1594,7 @@ function NotifsScreen({myProfile,session,members}){
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`}}>
         <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>ActivitÃ©</h2>
+          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Activité</h2>
           {notifs.some(n=>!n.read)&&(
             <span style={{background:T.gradGold,color:"#000",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>
               {notifs.filter(n=>!n.read).length} nouvelles
@@ -1495,7 +1614,7 @@ function NotifsScreen({myProfile,session,members}){
       {/* Liste */}
       {filtered.length===0?(
         <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
-          <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>ðŸ””</div>
+          <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>🔔</div>
           <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucune notification</p>
         </div>
       ):(
@@ -1505,7 +1624,7 @@ function NotifsScreen({myProfile,session,members}){
             return(
               <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:n.read?"transparent":"rgba(201,149,42,0.03)",cursor:"pointer",transition:"background .2s",animation:"fadeUp .3s ease"}}
                 onClick={async()=>{
-                  // Follow â†’ profil de l'expÃ©diteur
+                  // Follow → profil de l'expéditeur
                  if(n.type==="follow"){
     window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
     setTimeout(()=>{
@@ -1513,7 +1632,7 @@ function NotifsScreen({myProfile,session,members}){
     },350);
     return;
   }
-                  // Like/comment statut â†’ vÃ©rifier si statut existe encore
+                  // Like/comment statut → vérifier si statut existe encore
                   if(n.type==="status_like"||n.type==="status_view"){
     if(!n.status_id){alert("Ce statut n'existe plus.");return;}
     const{data}=await sb.from("statuses").select("id").eq("id",n.status_id).maybeSingle();
@@ -1523,7 +1642,7 @@ function NotifsScreen({myProfile,session,members}){
     setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:n.status_id}})),400);
     return;
   }
-                  // Like/comment/mention/reply â†’ vÃ©rifier si post existe encore
+                  // Like/comment/mention/reply → vérifier si post existe encore
                   if(n.post_id){
   const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
   if(!data){alert("Cette publication n'existe plus.");return;}
@@ -1538,7 +1657,7 @@ setTimeout(()=>{
   return;
 }
                 }}>
-                {/* Avatar + icÃ´ne */}
+                {/* Avatar + icône */}
                 <div style={{position:"relative",flexShrink:0}}>
                  <Av u={from||{initials:"?",color:"#888"}} size={46} onClick={e=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:from?.id}}));}}/>
                   <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:T.bg3,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>
@@ -1580,7 +1699,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
     onChange(val);
     setCursorPos(cursor);
 
-    // DÃ©tecter @
+    // Détecter @
     const textBeforeCursor=val.slice(0,cursor);
     const match=textBeforeCursor.match(/@([\w\u00C0-\u017F]*)$/);
     if(match){
@@ -1596,7 +1715,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
       setShowSuggestions(filtered.length>0);
       if(filtered.length===0&&(members||[]).length===0){
         setShowSuggestions(true);
-        setSuggestions([{id:"__loading__",name:"Chargementâ€¦",prenom:"",fullName:"",paroisse:""}]);
+        setSuggestions([{id:"__loading__",name:"Chargement…",prenom:"",fullName:"",paroisse:""}]);
       }
       if(ref.current)setAnchorRect(ref.current.getBoundingClientRect());
     }else{
@@ -1635,7 +1754,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
           {/* Barre de recherche */}
           <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
             <Search size={13} color={T.muted}/>
-            <span style={{fontSize:12,color:T.muted}}>Mentionner Â· <strong style={{color:T.goldL}}>@{mentionQuery}</strong></span>
+            <span style={{fontSize:12,color:T.muted}}>Mentionner · <strong style={{color:T.goldL}}>@{mentionQuery}</strong></span>
           </div>
           {suggestions.map(m=>(
             <div key={m.id} onMouseDown={e=>{e.preventDefault();insertMention(m);}} onTouchEnd={e=>{e.preventDefault();insertMention(m);}}
@@ -1645,7 +1764,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
               <Av u={m} size={32}/>
               <div>
                 <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{m.fullName||m.name}</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>ðŸ“ {m.paroisse}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse}</p>
               </div>
               {m.badge&&<Badge type={m.badge}/>}
             </div>
@@ -1655,11 +1774,446 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
     </div>
   );
 }
-// â”€â”€ COMMENTS SECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── COMMENTS SECTION ─────────────────────────────────────
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId}){
+ const {setHideNav,members}=useApp();
+ const [comments,setComments]=useState([]);
+  const [loadingCmts,setLoadingCmts]=useState(true);
+  const [hasMoreCmts,setHasMoreCmts]=useState(false);
+  const [cmtPage,setCmtPage]=useState(1);
+  const [text,setText]=useState("");
+  const [posting,setPosting]=useState(false);
+  const [mediaFile,setMediaFile]=useState(null);
+  const [mediaPreview,setMediaPreview]=useState(null);
+const mentionedIdsRef=useRef([]);
+  const textareaRef=useRef(null);
+  const imgRef=useRef(null);
 
-// â”€â”€ COMMENT ITEM (NOUVEAU - likes + rÃ©ponses depuis App 9) â”€
+  useEffect(()=>{
+    const ta=textareaRef.current;
+    if(ta){ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,140)+"px";}
+  },[text]);
 
-// â”€â”€ POST DETAIL MODAL (ENRICHI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ const load=useCallback(async(page=1)=>{
+    setLoadingCmts(true);
+   const from=(page-1)*30,to=from+29;
+    const{data}=await sb.from("comments")
+      .select("id,post_id,author_id,text,media_url,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
+      .eq("post_id",postId)
+      .order("created_at",{ascending:true})
+      .range(from,to);
+    if(page===1)setComments(data||[]);
+    else setComments(prev=>[...prev,...(data||[])]);
+    onCountChange?.((data||[]).length);
+    setLoadingCmts(false);
+    setHasMoreCmts((data||[]).length===30);
+  },[postId,onCountChange]);
+
+  useEffect(()=>{load(1);setCmtPage(1);},[load]);
+  const targetRef=useRef(null);
+useEffect(()=>{
+  if(targetRef.current){
+    setTimeout(()=>{
+      targetRef.current?.scrollIntoView({behavior:"smooth",block:"center"});
+    },400);
+  }
+},[comments]);
+
+  useEffect(()=>{
+    const ch=sb.channel(`comments-${postId}-${Math.random()}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},load)
+      .subscribe();
+    return()=>sb.removeChannel(ch);
+  },[postId,load]);
+
+  const submit=async()=>{
+    if((!text.trim()&&!mediaFile)||posting)return;
+    setPosting(true);
+    const trimmed=text.trim();
+    let mediaUrl=null;
+    if(mediaFile){
+     try {
+  mediaUrl = await uploadToR2(mediaFile, "comments");
+} catch(e) {
+  console.error("Erreur upload commentaire:", e);
+}
+    }
+   const uid=(await sb.auth.getUser())?.data?.user?.id;
+const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
+    if(!error){
+      await sb.rpc("increment_phase_interactions",{post_id:postId});
+      setText("");
+      setMediaFile(null);
+      setMediaPreview(null);
+      load();
+      // Notifier l'auteur du post
+const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
+if(postData?.author_id&&postData.author_id!==uid){
+  await sb.from("notifications").insert({
+    user_id:postData.author_id,
+    from_id:uid,
+    type:"comment",
+    post_id:postId,
+    read:false
+  });
+}
+      
+      const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
+const myPrenom=getM?.(uid)?.prenom||"Quelqu'un";
+for(const mentionedId of uniqueIds){
+  try{
+    await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
+    sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myPrenom} t'a mentionné dans un commentaire`}});
+  }catch(e){
+    console.error("Erreur notification mention:",e);
+  }
+}
+mentionedIdsRef.current=[];
+    }
+    setPosting(false);
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
+      {loadingCmts&&<div style={{display:"flex",justifyContent:"center",padding:"16px 0"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>}
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {comments.map(c=>(
+  <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
+    style={{borderRadius:12,transition:"background .5s",
+      background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load} members={members}/>
+  </div>
+))}
+    
+      </div>
+     {mediaPreview&&(
+        <div style={{position:"relative",marginBottom:6}}>
+          <img src={mediaPreview} alt="" style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius:14}}/>
+          <Btn onClick={()=>{setMediaPreview(null);setMediaFile(null);}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:26,height:26,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={12}/></Btn>
+        </div>
+      )}
+      {hasMoreCmts&&<Btn onClick={()=>{const next=cmtPage+1;setCmtPage(next);load(next);}} style={{width:"100%",padding:"10px 0",color:T.muted,fontSize:12,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
+  Voir plus de commentaires
+  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
+</Btn>}
+
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)",position:"sticky",bottom:0,zIndex:10}}>
+        <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+          const f=e.target.files[0];if(!f)return;
+          const compressed=await compressImage(f);
+          const r=new FileReader();r.onload=ev=>setMediaPreview(ev.target.result);r.readAsDataURL(compressed);
+          setMediaFile(compressed);
+          e.target.value="";
+        }}/>
+        <Btn onClick={()=>imgRef.current.click()} style={{color:mediaFile?T.goldL:T.muted,padding:"4px",display:"flex",alignItems:"center",flexShrink:0,transition:"color .2s"}}>
+          <Camera size={18}/>
+        </Btn>
+        <MentionInput
+          value={text}
+          onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
+          placeholder="Ajouter un commentaire..."
+          members={members||[]}
+          onFocus={()=>setHideNav(true)}
+          onBlur={()=>setHideNav(false)}
+        />
+        <Btn onClick={submit} disabled={posting||(!text.trim()&&!mediaFile)} style={{background:(text.trim()||mediaFile)?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:(text.trim()||mediaFile)?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",flexShrink:0,marginBottom:2}}>
+          <Send size={13} style={{transform:"translateX(0.5px)"}}/>
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
+function CommentItem({comment,sessionUserId,getM,onChange,members}){
+  const [likes,setLikes]=useState(0);
+  const [liked,setLiked]=useState(false);
+  const [replies,setReplies]=useState([]);
+  const [showReplies,setShowReplies]=useState(false);
+  const [replyText,setReplyText]=useState("");
+  const [replying,setReplying]=useState(false);
+  const isMine=comment.author_id===sessionUserId;
+  const author=comment.author?normProfile(comment.author):getM(comment.author_id);
+
+  const loadMeta=useCallback(async()=>{
+    const[{count:lc},{data:ml},{data:rep}]=await Promise.all([
+      sb.from("comment_likes").select("*",{count:"exact",head:true}).eq("comment_id",comment.id),
+      sb.from("comment_likes").select("id").eq("comment_id",comment.id).eq("user_id",sessionUserId).maybeSingle(),
+      sb.from("comment_replies").select("*, author:profiles(*)").eq("parent_comment_id",comment.id).order("created_at"),
+    ]);
+    setLikes(lc||0);setLiked(!!ml);setReplies(rep||[]);
+  },[comment.id,sessionUserId]);
+
+  useEffect(()=>{loadMeta();},[loadMeta]);
+
+  const toggleLike=async()=>{
+    if(liked){
+      await sb.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",sessionUserId);
+      setLiked(false);setLikes(l=>l-1);
+    } else {
+      await sb.from("comment_likes").insert({comment_id:comment.id,user_id:sessionUserId});
+      setLiked(true);setLikes(l=>l+1);
+      // Notifier l'auteur du commentaire
+      if(comment.author_id&&comment.author_id!==sessionUserId){
+        await sb.from("notifications").insert({
+          user_id:comment.author_id,
+          from_id:sessionUserId,
+          type:"comment_like",
+          post_id:comment.post_id||null,
+          comment_id:comment.id,
+          read:false
+        });
+      }
+    }
+  };
+
+  const submitReply=async()=>{
+    if(!replyText.trim())return;
+    const text=replyText.trim();
+    setReplyText("");setReplying(false);
+    await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text});
+    // Notifier l'auteur du commentaire
+    if(comment.author_id&&comment.author_id!==sessionUserId){
+      await sb.from("notifications").insert({
+        user_id:comment.author_id,
+        from_id:sessionUserId,
+        type:"reply",
+        post_id:comment.post_id||null,
+        comment_id:comment.id,
+        read:false
+      });
+    }
+    loadMeta();setShowReplies(true);
+  };
+
+  const [showCmtMenu,setShowCmtMenu]=useState(false);
+  const del=async()=>{
+    setShowCmtMenu(false);
+    if(!window.confirm("Supprimer ?"))return;
+    await sb.from("comments").delete().eq("id",comment.id);
+    onChange?.();
+  };
+  const copy=()=>{
+    navigator.clipboard?.writeText(comment.text||"");
+    setShowCmtMenu(false);
+  };
+
+  return(
+    <div style={{display:"flex",gap:10,paddingBottom:4}}>
+      {/* Colonne gauche : avatar + ligne verticale */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+        <Av u={author} size={36} onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:author?.id}}))}/>
+        {(replies.length>0||replying)&&(
+          <div style={{width:2,flex:1,minHeight:16,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:4}}/>
+        )}
+      </div>
+
+      {/* Colonne droite : contenu */}
+      <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{author?.name||"?"}</span>
+            <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
+          </div>
+          {(isMine||comment.text)&&(
+            <div style={{position:"relative"}}>
+              <Btn onClick={()=>setShowCmtMenu(m=>!m)} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
+              {showCmtMenu&&(
+                <div style={{position:"absolute",right:0,top:24,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:6,zIndex:50,minWidth:140,boxShadow:"0 8px 30px rgba(0,0,0,0.4)"}}>
+                  {comment.text&&<Btn onClick={copy} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,color:T.text,fontSize:13,textAlign:"left"}}>📋 Copier</Btn>}
+                  {isMine&&<Btn onClick={del} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,color:T.err,fontSize:13,textAlign:"left"}}>🗑 Supprimer</Btn>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+       {/* Texte */}
+        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>u.name?.toLowerCase().startsWith(username.toLowerCase())||u.fullName?.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p><TranslateBtn text={comment.text}/></>}
+{comment.media_url&&(
+  <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
+    <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
+  </div>
+)}
+
+        {/* Actions style Threads */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
+          <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            {likes>0&&<span>{likes}</span>}
+          </Btn>
+          <Btn onClick={()=>setReplying(r=>!r)} style={{display:"flex",alignItems:"center",gap:5,color:T.muted,fontSize:12}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            {replies.length>0&&<span>{replies.length}</span>}
+          </Btn>
+        </div>
+
+        {/* Champ réponse */}
+        {replying&&(
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
+            <textarea autoFocus rows={1} value={replyText}
+              onChange={e=>{setReplyText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,100)+"px";}}
+              placeholder={`Répondre à ${author?.name||""}…`}
+              style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:16,padding:"8px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.4,maxHeight:100,fontFamily:"inherit"}}/>
+            <Btn onClick={submitReply} disabled={!replyText.trim()} style={{background:replyText.trim()?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:32,height:32,color:replyText.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Send size={13}/>
+            </Btn>
+          </div>
+        )}
+
+        {/* Réponses */}
+        {replies.length>0&&(
+          <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:12,color:T.muted,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:16,height:1,background:T.muted,borderRadius:1}}/>
+            {showReplies?`Masquer les réponses`:`Voir ${replies.length} réponse${replies.length>1?"s":""}`}
+          </Btn>
+        )}
+
+        {showReplies&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:8}}>
+            {replies.map(r=>{
+              const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
+              const isMyReply=r.author_id===sessionUserId;
+              return(
+                <div key={r.id} style={{display:"flex",gap:10}}>
+                  <Av u={ra} size={28}/>
+                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                      <span style={{fontSize:12,fontWeight:700,color:T.text}}>{ra.name}</span>
+                      <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
+                      {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
+                    </div>
+                    <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word"}}>{r.text}</p>
+                    <TranslateBtn text={r.text}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
+function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800,fromReel=false}){
+const {members}=useApp();
+useEffect(()=>{
+  if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+  const ch=sb.channel(`privacy_post_${post?.by}-${Math.random()}`)
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${post?.by}`},payload=>{
+      if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+    })
+    .subscribe();
+  return()=>{sb.removeChannel(ch);disableScreenProtection();};
+},[post?.by]);
+const [viewImg,setViewImg]=useState(null);
+const [openCeleste,setOpenCeleste]=useState(false);
+const [celesteMsgs,setCelesteMsgs]=useState([]);
+const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
+const [views,setViews]=useState(0);
+const [slideIdx,setSlideIdx]=useState(0);
+
+useEffect(()=>{
+  if(!post?.id||!session?.user?.id)return;
+  sb.from("post_views").upsert(
+    {post_id:post.id,viewer_id:session.user.id},
+    {onConflict:"post_id,viewer_id",ignoreDuplicates:true}
+  ).then(()=>{
+    sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+      .then(({count})=>setViews(count||0));
+  });
+},[post?.id,session?.user?.id]);
+
+  const swipeStartRef=useRef(null);
+  const bottomRef=useRef();
+  const auth=post.author||getM(post.by);
+  const liked=(post.likes||[]).includes(session?.user?.id);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[]);
+
+  return(
+    <>
+      {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
+      <div style={{position:"fixed",inset:0,zIndex:zIndex,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+        onClick={e=>e.target===e.currentTarget&&onClose()}>
+        <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",boxShadow:"0 -20px 60px rgba(0,0,0,0.8)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <Av u={auth} size={38}/>
+              <div>
+                <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{auth?.name}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>{ago(post.ts)}</p>
+              </div>
+            </div>
+            <Btn onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+          </div>
+          <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
+            {post.type==="event"
+              ?<div style={{margin:"12px 0",background:T.goldBg,borderRadius:16,padding:16,border:`1px solid ${T.gold}22`}}>
+                <p style={{margin:"0 0 6px",fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:600,color:T.text}}>{post.title}</p>
+                {post.text&&<p style={{margin:"0 0 8px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
+                {post.eventDate&&<p style={{margin:"0 0 3px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
+                {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub}}>📍 {post.eventLoc}</p>}
+              </div>
+              :<>
+              {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text, username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
+  {(()=>{
+  const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
+  if(allMedia.length===0)return null;
+  return(
+    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+      onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
+onTouchEnd={e=>{
+  if(swipeStartRef.current===null)return;
+  const diff=swipeStartRef.current-e.changedTouches[0].clientX;
+  if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
+  if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
+  swipeStartRef.current=null;
+}}>
+      {!fromReel&&<MediaPlayer url={allMedia[slideIdx]} onImageClick={setViewImg}/>}
+      {allMedia.length>1&&(
+        <>
+          <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+            {allMedia.map((_,i)=><div key={i} onClick={()=>setSlideIdx(i)} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
+          </div>
+          <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
+        </>
+      )}
+    </div>
+  );
+})()}
+              </>
+            }
+            <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 0",borderTop:`1px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,margin:"10px 0"}}>
+              <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:6,color:liked?T.gold:T.sub,fontSize:13,fontWeight:600,transition:"all .2s"}}>
+  <Heart size={18} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
+  {(post.likes||[]).length}
+</Btn>
+<span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
+{(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
+  <span style={{color:T.sub,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
+    <Eye size={14}/>{views}
+  </span>
+)}
+            </div>
+            <CommentsSection
+  postId={post.id}
+  sessionUserId={session?.user?.id}
+  getM={getM}
+  onCountChange={setCmtCount}
+  targetCommentId={post._targetCommentId||null}
+/>
+            <div ref={bottomRef}/>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 function NewPostModal({myProfile,session,onClose,onPost,notify}){
 const [type,setType]=useState("text"); const [text,setText]=useState("");
@@ -1707,7 +2261,7 @@ const handlePick=async e=>{
         const croppedFile=await cropImage(src);
         file=croppedFile||await compressImage(f);
       }
-      if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("VidÃ©o max 50MB");continue;}
+      if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo max 50MB");continue;}
       if(f.type.startsWith("video/")){
         const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
         const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
@@ -1748,7 +2302,7 @@ try {
     const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session?.user?.id);
     const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
     if(!hasBadge&&count>=50){
-      notify("ðŸ”’ Limite de 50 posts atteinte â€” Obtenez le badge certifiÃ© pour publier en illimitÃ© âœ¦");
+      notify("🔒 Limite de 50 posts atteinte — Obtenez le badge certifié pour publier en illimité ✦");
       return;
     }
     setBusy(true);
@@ -1775,7 +2329,7 @@ if(!error){
     const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
     for(const mentionedId of uniqueIds){
       await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
-      sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"âœ¦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionnÃ© dans un post`}});
+      sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un post`}});
     }
     mentionedIdsRef.current=[];
   }
@@ -1808,7 +2362,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
       <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePick}/>
 <input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
 
-      {/* â”€â”€ Header â”€â”€ */}
+      {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"52px 20px 16px",borderBottom:`1px solid ${T.border}`}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:T.text,fontSize:15,fontWeight:500,cursor:"pointer",padding:"8px 4px",letterSpacing:.2}}>
           Annuler
@@ -1818,11 +2372,11 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
         </span>
         <button onClick={submit} disabled={!ok||busy||uploading}
           style={{background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,padding:"8px 18px",color:ok&&!busy&&!uploading?"#000":T.muted,fontSize:14,fontWeight:700,cursor:ok&&!busy&&!uploading?"pointer":"default",transition:"all .2s",boxShadow:ok&&!busy&&!uploading?"0 4px 16px rgba(201,149,42,0.3)":"none"}}>
-          {busy?"â€¦":uploading?"â†‘":"Publier"}
+          {busy?"…":uploading?"↑":"Publier"}
         </button>
       </div>
 
-      {/* â”€â”€ Corps scrollable â”€â”€ */}
+      {/* ── Corps scrollable ── */}
       <div style={{flex:1,overflowY:"auto",padding:"20px 20px 0"}}>
 
         {/* Avatar + ligne + texte */}
@@ -1832,7 +2386,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
             <Av u={myProfile} size={42}/>
             <div style={{width:2,flex:1,background:`linear-gradient(180deg,${T.border} 0%,transparent 100%)`,marginTop:8,minHeight:40}}/>
           </div>
-          {/* Colonne droite : nom + texte + mÃ©dias */}
+          {/* Colonne droite : nom + texte + médias */}
           <div style={{flex:1,minWidth:0,paddingBottom:20}}>
             <p style={{margin:"0 0 6px",fontSize:15,fontWeight:700,color:T.text}}>{myProfile?.fullName}</p>
 
@@ -1848,11 +2402,11 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
   }}
 />
 
-            {/* Option vente (badge dorÃ© + Congo uniquement) */}
+            {/* Option vente (badge doré + Congo uniquement) */}
             {canSell&&(
               <div onClick={()=>setIsForSale(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
                 <ShoppingBag size={14} color={isForSale?T.goldL:T.muted}/>
-                <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article Ã  vendre</span>
+                <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article à vendre</span>
                 <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
                   <div style={{position:"absolute",top:2,left:isForSale?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
                 </div>
@@ -1871,17 +2425,17 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
                 {contactType==="whatsapp"?(
                   <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)"}}>
                     <select value={whatsappIndicatif} onChange={e=>setWhatsappIndicatif(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,flexShrink:0,outline:"none"}}>
-                      <option value="242">ðŸ‡¨ðŸ‡¬ +242</option>
-                      <option value="237">ðŸ‡¨ðŸ‡² +237</option>
-                      <option value="241">ðŸ‡¬ðŸ‡¦ +241</option>
-                      <option value="235">ðŸ‡¹ðŸ‡© +235</option>
-                      <option value="236">ðŸ‡¨ðŸ‡« +236</option>
-                      <option value="240">ðŸ‡¬ðŸ‡¶ +240</option>
+                      <option value="242">🇨🇬 +242</option>
+                      <option value="237">🇨🇲 +237</option>
+                      <option value="241">🇬🇦 +241</option>
+                      <option value="235">🇹🇩 +235</option>
+                      <option value="236">🇨🇫 +236</option>
+                      <option value="240">🇬🇶 +240</option>
                     </select>
-                    <input value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="NumÃ©ro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+                    <input value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="Numéro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
                   </div>
                 ):(
-                  <input value={contactLink} onChange={e=>setContactLink(e.target.value)} placeholder="https://â€¦ (lien vers ta boutique)" style={{padding:"10px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)",color:T.text,fontSize:13,outline:"none",width:"100%"}}/>
+                  <input value={contactLink} onChange={e=>setContactLink(e.target.value)} placeholder="https://… (lien vers ta boutique)" style={{padding:"10px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)",color:T.text,fontSize:13,outline:"none",width:"100%"}}/>
                   
                 )}
                 <div style={{display:"flex",gap:6}}>
@@ -1894,7 +2448,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
                 </div>
               </div>
             )}
-            {/* SÃ©lecteur fond (texte) */}
+            {/* Sélecteur fond (texte) */}
             {type==="text"&&(
               <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center"}}>
                 <span style={{fontSize:10,color:T.muted,letterSpacing:1}}>FOND</span>
@@ -1910,7 +2464,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
               </div>
             )}
 
-            {/* Zone mÃ©dia carousel */}
+            {/* Zone média carousel */}
             {type==="photo"&&previews.length>0&&(
               <div style={{position:"relative",marginTop:12}}>
                 <div style={{position:"relative",borderRadius:16,overflow:"hidden",background:"#000"}}>
@@ -1942,7 +2496,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
                 <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4}}>
                   {previews.map((p,i)=>(
                     <div key={i} onClick={()=>setCarouselIdx(i)} style={{flexShrink:0,width:48,height:48,borderRadius:10,overflow:"hidden",border:`2px solid ${i===carouselIdx?T.gold:T.border}`,cursor:"pointer"}}>
-                      {p.type==="video"?<div style={{width:"100%",height:"100%",background:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>ðŸŽ¬</div>
+                      {p.type==="video"?<div style={{width:"100%",height:"100%",background:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🎬</div>
                         :<img src={p.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
                     </div>
                   ))}
@@ -1953,19 +2507,19 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
               </div>
             )}
 
-            {/* Ã‰vÃ©nement */}
+            {/* Événement */}
             {type==="event"&&(
               <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
-                <input value={evTitle} onChange={e=>setEvTitle(e.target.value)} placeholder="Titre de l'Ã©vÃ©nement *" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+                <input value={evTitle} onChange={e=>setEvTitle(e.target.value)} placeholder="Titre de l'événement *" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
                 <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
-                <input value={evLoc} onChange={e=>setEvLoc(e.target.value)} placeholder="ðŸ“ Lieu" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+                <input value={evLoc} onChange={e=>setEvLoc(e.target.value)} placeholder="📍 Lieu" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* â”€â”€ Barre d'outils en bas â”€â”€ */}
+      {/* ── Barre d'outils en bas ── */}
       <div style={{borderTop:`1px solid ${T.border}`,padding:"12px 20px 36px",display:"flex",alignItems:"center",gap:20}}>
         <button onClick={()=>{setType("photo");setTextBg(null);fRef.current.click();}} style={{background:"none",border:"none",cursor:"pointer",color:type==="photo"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <Image size={22}/>
@@ -1973,14 +2527,14 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
         </button>
         <button onClick={()=>{setType("photo");setTextBg(null);vRef.current.click();}} style={{background:"none",border:"none",cursor:"pointer",color:type==="photo"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
   <Play size={22}/>
-  <span style={{fontSize:9,letterSpacing:.5}}>VidÃ©o</span>
+  <span style={{fontSize:9,letterSpacing:.5}}>Vidéo</span>
 </button>
         <button onClick={()=>{setType("event");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="event"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span style={{fontSize:9,letterSpacing:.5}}>Ã‰vÃ©nement</span>
+          <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
         </button>
         <button onClick={()=>setType("text")} style={{background:"none",border:"none",cursor:"pointer",color:type==="text"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
-          <span style={{fontSize:18}}>âœ</span>
+          <span style={{fontSize:18}}>✍</span>
           <span style={{fontSize:9,letterSpacing:.5}}>Texte</span>
         </button>
       </div>
@@ -1989,7 +2543,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
   );
 }
 
-// â”€â”€ STATUS CREATOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── STATUS CREATOR ────────────────────────────────────────
 function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
   const [type,setType]=useState("text"); const [text,setText]=useState("");
   const [preview,setPreview]=useState(null); const [mediaUrl,setMediaUrl]=useState(null); const [trimmedFile,setTrimmedFile]=useState(null);
@@ -2025,7 +2579,7 @@ const handlePick=async e=>{
       f=croppedFile||await compressImage(f);
     }
     if(f.type.startsWith("video/")){
-      if(f.size>200*1024*1024){alert("VidÃ©o max 200MB");return;}
+      if(f.size>200*1024*1024){alert("Vidéo max 200MB");return;}
       const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
       const trimData=await new Promise(resolve=>setStatusTrimSrc({src,resolve}));
       setStatusTrimSrc(null);
@@ -2037,7 +2591,7 @@ const handlePick=async e=>{
   const publicUrl=await uploadToR2(trimData.file||f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 }catch(e){
-  console.error("Upload statut vidÃ©o Ã©chouÃ©:",e);
+  console.error("Upload statut vidéo échoué:",e);
   setPreview(null);
 }
 setUploading(false);setUploadPct(0);
@@ -2049,7 +2603,7 @@ return;
   const publicUrl=await uploadToR2(f,"statuses",pct=>setUploadPct(pct));
   setMediaUrl(publicUrl);
 } catch(e) {
-  console.error("Upload statut Ã©chouÃ©:",e);
+  console.error("Upload statut échoué:",e);
   setPreview(null);
 }
 setUploading(false);setUploadPct(0);
@@ -2084,7 +2638,7 @@ setUploading(false);setUploadPct(0);
         </div>
         {!canAdd&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:13,marginBottom:14,display:"flex",alignItems:"center",gap:6}}><AlertTriangle size={14}/> Limite de 10 statuts atteinte.</div>}
         <div style={{display:"flex",gap:6,marginBottom:16,background:"rgba(255,255,255,0.03)",borderRadius:14,padding:4}}>
-          {[{id:"text",l:"âœ Texte"},{id:"photo",l:"ðŸ“· Photo/VidÃ©o"}].map(t=>(
+          {[{id:"text",l:"✍ Texte"},{id:"photo",l:"📷 Photo/Vidéo"}].map(t=>(
             <Btn key={t.id} onClick={()=>setType(t.id)} style={{flex:1,padding:"9px",borderRadius:11,background:type===t.id?T.goldBg:"none",color:type===t.id?T.goldL:T.muted,fontSize:12,fontWeight:type===t.id?700:400,border:type===t.id?`1px solid ${T.gold}44`:"1px solid transparent",transition:"all .2s"}}>{t.l}</Btn>
           ))}
         </div>
@@ -2103,7 +2657,7 @@ setUploading(false);setUploadPct(0);
             <Btn onClick={()=>{setPreview(null);setMediaUrl(null);}} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14}/></Btn>
           </div>
           :<Btn onClick={()=>fRef.current.click()} style={{width:"100%",height:140,borderRadius:16,border:`2px dashed ${T.gold}33`,background:T.goldBg,color:T.gold,fontSize:13,fontWeight:600,marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,transition:"all .2s"}}>
-            <Camera size={32}/><span>Photo ou VidÃ©o</span>
+            <Camera size={32}/><span>Photo ou Vidéo</span>
           </Btn>
         )}
        {type==="text"&&(
@@ -2124,15 +2678,15 @@ setUploading(false);setUploadPct(0);
   </div>
 )}
 {type==="text"
-  ?<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Partagez votre statutâ€¦" maxLength={280} rows={4}
+  ?<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4}
     style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:8,transition:"all .3s"}}/>
-          :<input value={text} onChange={e=>setText(e.target.value)} placeholder="LÃ©gende (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>
+          :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>
         }
         <div style={{display:"flex",gap:8,marginTop:8}}>
          
           <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
           <Btn onClick={submit} disabled={!canAdd||busy||uploading} style={{flex:2,padding:"14px",background:canAdd&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.04)",color:canAdd&&!busy&&!uploading?"#000":T.muted,borderRadius:14,fontSize:14,fontWeight:700,transition:"all .25s",boxShadow:canAdd&&!busy&&!uploading?"0 8px 24px rgba(201,149,42,0.3)":"none"}}>
-            {busy?"Publicationâ€¦":uploading?"Uploadâ€¦":`Publier âœ¦ (${(myStatuses||[]).length}/10)`}
+            {busy?"Publication…":uploading?"Upload…":`Publier ✦ (${(myStatuses||[]).length}/10)`}
           </Btn>
         </div>
       </div>
@@ -2141,7 +2695,7 @@ setUploading(false);setUploadPct(0);
   );
 }
 
-// â”€â”€ STATUS VIEWER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── STATUS VIEWER ─────────────────────────────────────────
 function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   const [idx,setIdx]=useState(0);
   const [likes,setLikes]=useState({});
@@ -2250,7 +2804,7 @@ if(isMe){
         <Av u={author} size={38} ring/>
         <div style={{flex:1}}>
           <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.name}</p>
-          <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ago(current.ts)}{paused&&" Â· â¸ Pause"}</p>
+          <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ago(current.ts)}{paused&&" · ⏸ Pause"}</p>
         </div>
         {isMe&&<Btn onClick={()=>{if(window.confirm("Voulez-vous vraiment supprimer ce statut ?")){onDelete(current.id);idx>0?setIdx(idx-1):onClose();}}} style={{background:"rgba(200,64,64,0.2)",border:`1px solid rgba(200,64,64,0.3)`,borderRadius:8,padding:"5px 10px",color:"#ff6060",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Trash2 size={12}/>Suppr.</Btn>}
         <Btn onClick={onClose} style={{color:"rgba(255,255,255,0.6)",display:"flex",alignItems:"center"}}><X size={22}/></Btn>
@@ -2310,7 +2864,7 @@ if(isMe){
           {isMe&&(
             <>
               <Btn onClick={e=>{e.stopPropagation();setShowInfo(!showInfo);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-                <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>âœ¦</div>
+                <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>✦</div>
                 <span style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{currentLikes.length}</span>
               </Btn>
               <Btn onClick={e=>{e.stopPropagation();setShowInfo(!showInfo);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
@@ -2336,7 +2890,7 @@ if(isMe){
 
       {isMe&&showInfo&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(8,8,8,0.98)",borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,padding:"20px 16px 40px",maxHeight:"50vh",overflowY:"auto",zIndex:3,animation:"slideUp .3s ease"}}>
-          <p style={{color:T.goldL,fontWeight:700,fontSize:13,marginBottom:12}}>ðŸ‘ {currentViews.length} vue{currentViews.length!==1?"s":""} Â· â¤ï¸ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
+          <p style={{color:T.goldL,fontWeight:700,fontSize:13,marginBottom:12}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
           {currentViews.map((v,i)=>{const prf=v.profiles;const name=prf?`${prf.prenom||""} ${(prf.nom||"")[0]||""}.`.trim():"?";return(
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
               <div style={{width:36,height:36,borderRadius:"50%",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold}}>{name[0]}</div>
@@ -2390,7 +2944,7 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
     <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 12px",background:"rgba(16,20,24,0.75)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderRadius:32,border:"1px solid rgba(255,255,255,0.08)"}}>
       <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)}
         onKeyDown={e=>{if(e.key==="Enter"&&replyText.trim())sendStatusReply();}}
-        placeholder="RÃ©pondre au statutâ€¦" disabled={sending}
+        placeholder="Répondre au statut…" disabled={sending}
         style={{flex:1,padding:"10px 4px",background:"transparent",border:"none",color:"#fff",outline:"none",fontSize:14}}/>
       <Btn onClick={sendStatusReply} disabled={!replyText.trim()||sending}
         style={{background:replyText.trim()&&!sending?T.gradGold:"rgba(255,255,255,0.08)",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:!replyText.trim()||sending?0.4:1,transition:"all .2s"}}>
@@ -2400,7 +2954,7 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
   );
 }
 
-// â”€â”€ STATUSES TAB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── STATUSES TAB ──────────────────────────────────────────
 function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify,blockedUserIds=[],pushNav}){
   const {setHideNav}=useApp();
   const [myStatuses,setMyStatuses]=useState([]);
@@ -2484,7 +3038,7 @@ useEffect(()=>{
 
   const delStatus=async id=>{
     await sb.from("statuses").delete().eq("id",id);
-    load();notify("Statut supprimÃ©");
+    load();notify("Statut supprimé");
   };
 
  const myMapped=myStatuses.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
@@ -2503,7 +3057,7 @@ useEffect(()=>{
       )}
       {creating&&(
         <StatusCreatorModal myProfile={myProfile} session={session} myStatuses={myStatuses}
-          onClose={()=>{setCreating(false);setHideNav(false);}} onDone={()=>{setCreating(false);load();notify("Statut publiÃ© âœ¦");setHideNav(false);}}/>
+          onClose={()=>{setCreating(false);setHideNav(false);}} onDone={()=>{setCreating(false);load();notify("Statut publié ✦");setHideNav(false);}}/>
       )}
       <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Statuts</h2>
@@ -2530,7 +3084,7 @@ useEffect(()=>{
         {/* Statuts des autres */}
         {groups.length>0&&(
           <>
-            <p style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>RÃ©cents</p>
+            <p style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>Récents</p>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {groups.map((g,i)=>(
                 <div key={g.author?.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,borderRadius:18,border:`1px solid ${T.border}`,cursor:"pointer",animation:`fadeUp .3s ease ${i*.04}s both`,transition:"all .2s"}}
@@ -2538,7 +3092,7 @@ useEffect(()=>{
                   <Av u={g.author} size={52} ring/>
                   <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
-                    <p style={{margin:0,fontSize:11,color:T.muted}}><MapPin size={11}/> {g.author?.paroisse} Â· {ago(g.statuses[0]?.ts)}</p>
+                    <p style={{margin:0,fontSize:11,color:T.muted}}><MapPin size={11}/> {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
                   </div>
                   <span style={{fontSize:11,color:T.gold,fontWeight:700}}>{g.statuses.length}</span>
                 </div>
@@ -2548,8 +3102,8 @@ useEffect(()=>{
         )}
         {groups.length===0&&myMapped.length===0&&(
           <div style={{textAlign:"center",padding:"60px 0",color:T.muted}}>
-            <div style={{fontSize:40,marginBottom:12,animation:"float 3s ease infinite",opacity:.3}}>âœ¦</div>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun statut rÃ©cent</p>
+            <div style={{fontSize:40,marginBottom:12,animation:"float 3s ease infinite",opacity:.3}}>✦</div>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun statut récent</p>
           </div>
         )}
         <div style={{height:80}}/>
@@ -2558,39 +3112,39 @@ useEffect(()=>{
   );
 }
 
-// â”€â”€ CÃ‰LESTE MATCH â€” Algorithme de compatibilitÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CÉLESTE MATCH — Algorithme de compatibilité ───────────
 const MATCH_QUESTIONS=[
-  {id:"gender",label:"Tu esâ€¦",type:"single",emoji:"ðŸªž",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"}]},
-  {id:"seeking_type",label:"Tu cherchesâ€¦",type:"single",emoji:"âœ¨",options:[{v:"amour",l:"L'amour"},{v:"amitie",l:"Une amitiÃ©"},{v:"les_deux",l:"Les deux"}]},
-  {id:"seeking_gender",label:"Tu cherches quelqu'un de quel genre ?",type:"single",emoji:"ðŸ’«",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"},{v:"peu_importe",l:"Peu importe"}]},
-  {id:"seeking_age",label:"Tranche d'Ã¢ge recherchÃ©e",type:"age_range",emoji:"ðŸŽ‚",options:[{v:"16-20",l:"16 â€“ 20 ans"},{v:"20-25",l:"20 â€“ 25 ans"},{v:"25-30",l:"25 â€“ 30 ans"},{v:"30+",l:"30 ans et +"}]},
-  {id:"intimacy",label:"L'intimitÃ© physique dans une relation, c'estâ€¦",type:"single",emoji:"ðŸ”¥",options:[{v:"central",l:"TrÃ¨s important, c'est une vraie prioritÃ©"},{v:"important",l:"Important mais pas le plus essentiel"},{v:"secondaire",l:"Secondaire, le reste prime"},{v:"attente",l:"Je prÃ©fÃ¨re attendre le bon moment"}]},
-  {id:"faith",label:"La foi occupe quelle place dans ta vie ?",type:"single",emoji:"ðŸ™",options:[{v:"centrale",l:"Elle est centrale, tout part de lÃ "},{v:"importante",l:"Importante mais pas absolue"},{v:"secondaire",l:"Secondaire"},{v:"aucune",l:"Aucune place"}]},
-  {id:"marriage_vision",label:"Ta vision du mariage ?",type:"single",emoji:"ðŸ’",options:[{v:"oui",l:"Je veux me marier"},{v:"peut_etre",l:"Peut-Ãªtre un jour"},{v:"non",l:"Ce n'est pas pour moi"}]},
-  {id:"children",label:"Les enfants dans ta vie ?",type:"single",emoji:"ðŸ‘¶",options:[{v:"en_veux",l:"J'en veux"},{v:"deja",l:"J'en ai dÃ©jÃ "},{v:"pas_sur",l:"Pas encore sÃ»rÂ·e"},{v:"non",l:"Non"}]},
-  {id:"life_vision",label:"Dans 5 ans tu te voisâ€¦",type:"single",emoji:"ðŸŒ…",options:[{v:"stabilite",l:"Stable, posÃ©Â·e, avec un foyer"},{v:"voyages",l:"Explorer, voyager, dÃ©couvrir"},{v:"carriere",l:"Construire ma carriÃ¨re"},{v:"incertain",l:"Je ne sais pas encore"}]},
-  {id:"family_vs_freedom",label:"Ce qui prime pour toi ?",type:"single",emoji:"âš–ï¸",options:[{v:"famille",l:"La famille avant tout"},{v:"liberte",l:"Ma libertÃ© individuelle"},{v:"equilibre",l:"Un Ã©quilibre entre les deux"}]},
-  {id:"conflict_style",label:"Quand il y a un conflit, tuâ€¦",type:"single",emoji:"ðŸŒŠ",options:[{v:"parle",l:"En parles immÃ©diatement"},{v:"digere",l:"Prends du recul d'abord"},{v:"reagis",l:"RÃ©agis fortement puis tu passes"}]},
-  {id:"expression_level",label:"Ã‰motionnellement, tu esâ€¦",type:"single",emoji:"ðŸŽ­",options:[{v:"expressif",l:"TrÃ¨s expressifÂ·ve, tu montres tout"},{v:"reserve",l:"RÃ©servÃ©Â·e, tu gardes pour toi"},{v:"milieu",l:"Entre les deux"}]},
-  {id:"life_rhythm",label:"Ton rythme de vie idÃ©al ?",type:"single",emoji:"ðŸŒ™",options:[{v:"calme",l:"Calme, intimitÃ©, tranquillitÃ©"},{v:"social",l:"Sorties, monde, Ã©nergie"},{v:"melange",l:"Un mÃ©lange selon les jours"}]},
-  {id:"relationship_priority",label:"Ce qui compte le plus dans une relation ?",type:"single",emoji:"ðŸ’Ž",options:[{v:"confiance",l:"La confiance absolue"},{v:"passion",l:"La passion & l'intensitÃ©"},{v:"complicite",l:"La complicitÃ© & le rire"},{v:"respect",l:"Le respect mutuel"}]},
-  {id:"communication_style",label:"Comment tu communiques ?",type:"single",emoji:"ðŸ’¬",options:[{v:"direct",l:"DirectÂ·e et francÂ·he"},{v:"doux",l:"DouxÂ·ce et diplomate"},{v:"ecoute",l:"Tu Ã©coutes plus que tu parles"}]},
-  {id:"money_vision",label:"L'argent et la stabilitÃ© financiÃ¨re dans une relation, c'estâ€¦",type:"single",emoji:"ðŸ’°",options:[{v:"essentiel",l:"Essentiel â€” mon partenaire doit Ãªtre stable financiÃ¨rement"},{v:"important",l:"Important mais pas une condition"},{v:"secondaire",l:"Secondaire, l'amour prime sur tout"},{v:"peu_importe",l:"Peu importe, on construit ensemble"}]},
-  {id:"skin_color",label:"Ta couleur de peau ?",type:"single",emoji:"ðŸŽ¨",options:[{v:"noire",l:"Noire"},{v:"metisse",l:"MÃ©tisse"},{v:"blanche",l:"Blanche"},{v:"jaune",l:"Jaune (asiatique)"},{v:"autre",l:"Autre"}]},
-{id:"seeking_skin_color",label:"Tu recherches quelqu'un de quelle couleur de peau ?",type:"single",emoji:"ðŸ’«",options:[{v:"noire",l:"Noire"},{v:"metisse",l:"MÃ©tisse"},{v:"blanche",l:"Blanche"},{v:"jaune",l:"Jaune"},{v:"peu_importe",l:"Peu importe"}]},
-{id:"hobbies",label:"Tes films/sÃ©ries prÃ©fÃ©rÃ©s ?",type:"single",emoji:"ðŸŽ¬",options:[{v:"romantique",l:"Romantique & Ã©motionnel"},{v:"action",l:"Action & aventure"},{v:"comedie",l:"ComÃ©die & lÃ©gÃ¨retÃ©"},{v:"docs",l:"SÃ©ries & documentaires"},{v:"peu",l:"Je regarde peu la tÃ©lÃ©"}]},
-{id:"ambition",label:"Ton grand rÃªve dans la vie ?",type:"single",emoji:"ðŸŒŸ",options:[{v:"entrepreneur",l:"Devenir entrepreneurÂ·e"},{v:"carriere",l:"Avoir une carriÃ¨re stable"},{v:"famille",l:"Fonder une grande famille"},{v:"voyager",l:"Voyager et dÃ©couvrir le monde"},{v:"servir",l:"Servir Dieu et ma communautÃ©"}]},
-{id:"distance_ok",label:"Tu es ouvertÂ·e Ã  une relation Ã  distance ?",type:"single",emoji:"ðŸ“",options:[{v:"sur_place",l:"Non, je prÃ©fÃ¨re quelqu'un prÃ¨s de moi"},{v:"distance",l:"Oui, la distance ne me fait pas peur"},{v:"les_deux",l:"Les deux selon la personne"}]},
-  {id:"app_expectation",label:"Tu attends quoi de CÃ©leste ?",type:"single",emoji:"ðŸŒŸ",options:[{v:"serieux",l:"Quelque chose de sÃ©rieux"},{v:"amis",l:"Me faire de vrais amis"},{v:"decouverte",l:"DÃ©couvrir, voir ce qui arrive"},{v:"verra",l:"Je verrai bien"}]},
+  {id:"gender",label:"Tu es…",type:"single",emoji:"🪞",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"}]},
+  {id:"seeking_type",label:"Tu cherches…",type:"single",emoji:"✨",options:[{v:"amour",l:"L'amour"},{v:"amitie",l:"Une amitié"},{v:"les_deux",l:"Les deux"}]},
+  {id:"seeking_gender",label:"Tu cherches quelqu'un de quel genre ?",type:"single",emoji:"💫",options:[{v:"homme",l:"Un homme"},{v:"femme",l:"Une femme"},{v:"peu_importe",l:"Peu importe"}]},
+  {id:"seeking_age",label:"Tranche d'âge recherchée",type:"age_range",emoji:"🎂",options:[{v:"16-20",l:"16 – 20 ans"},{v:"20-25",l:"20 – 25 ans"},{v:"25-30",l:"25 – 30 ans"},{v:"30+",l:"30 ans et +"}]},
+  {id:"intimacy",label:"L'intimité physique dans une relation, c'est…",type:"single",emoji:"🔥",options:[{v:"central",l:"Très important, c'est une vraie priorité"},{v:"important",l:"Important mais pas le plus essentiel"},{v:"secondaire",l:"Secondaire, le reste prime"},{v:"attente",l:"Je préfère attendre le bon moment"}]},
+  {id:"faith",label:"La foi occupe quelle place dans ta vie ?",type:"single",emoji:"🙏",options:[{v:"centrale",l:"Elle est centrale, tout part de là"},{v:"importante",l:"Importante mais pas absolue"},{v:"secondaire",l:"Secondaire"},{v:"aucune",l:"Aucune place"}]},
+  {id:"marriage_vision",label:"Ta vision du mariage ?",type:"single",emoji:"💍",options:[{v:"oui",l:"Je veux me marier"},{v:"peut_etre",l:"Peut-être un jour"},{v:"non",l:"Ce n'est pas pour moi"}]},
+  {id:"children",label:"Les enfants dans ta vie ?",type:"single",emoji:"👶",options:[{v:"en_veux",l:"J'en veux"},{v:"deja",l:"J'en ai déjà"},{v:"pas_sur",l:"Pas encore sûr·e"},{v:"non",l:"Non"}]},
+  {id:"life_vision",label:"Dans 5 ans tu te vois…",type:"single",emoji:"🌅",options:[{v:"stabilite",l:"Stable, posé·e, avec un foyer"},{v:"voyages",l:"Explorer, voyager, découvrir"},{v:"carriere",l:"Construire ma carrière"},{v:"incertain",l:"Je ne sais pas encore"}]},
+  {id:"family_vs_freedom",label:"Ce qui prime pour toi ?",type:"single",emoji:"⚖️",options:[{v:"famille",l:"La famille avant tout"},{v:"liberte",l:"Ma liberté individuelle"},{v:"equilibre",l:"Un équilibre entre les deux"}]},
+  {id:"conflict_style",label:"Quand il y a un conflit, tu…",type:"single",emoji:"🌊",options:[{v:"parle",l:"En parles immédiatement"},{v:"digere",l:"Prends du recul d'abord"},{v:"reagis",l:"Réagis fortement puis tu passes"}]},
+  {id:"expression_level",label:"Émotionnellement, tu es…",type:"single",emoji:"🎭",options:[{v:"expressif",l:"Très expressif·ve, tu montres tout"},{v:"reserve",l:"Réservé·e, tu gardes pour toi"},{v:"milieu",l:"Entre les deux"}]},
+  {id:"life_rhythm",label:"Ton rythme de vie idéal ?",type:"single",emoji:"🌙",options:[{v:"calme",l:"Calme, intimité, tranquillité"},{v:"social",l:"Sorties, monde, énergie"},{v:"melange",l:"Un mélange selon les jours"}]},
+  {id:"relationship_priority",label:"Ce qui compte le plus dans une relation ?",type:"single",emoji:"💎",options:[{v:"confiance",l:"La confiance absolue"},{v:"passion",l:"La passion & l'intensité"},{v:"complicite",l:"La complicité & le rire"},{v:"respect",l:"Le respect mutuel"}]},
+  {id:"communication_style",label:"Comment tu communiques ?",type:"single",emoji:"💬",options:[{v:"direct",l:"Direct·e et franc·he"},{v:"doux",l:"Doux·ce et diplomate"},{v:"ecoute",l:"Tu écoutes plus que tu parles"}]},
+  {id:"money_vision",label:"L'argent et la stabilité financière dans une relation, c'est…",type:"single",emoji:"💰",options:[{v:"essentiel",l:"Essentiel — mon partenaire doit être stable financièrement"},{v:"important",l:"Important mais pas une condition"},{v:"secondaire",l:"Secondaire, l'amour prime sur tout"},{v:"peu_importe",l:"Peu importe, on construit ensemble"}]},
+  {id:"skin_color",label:"Ta couleur de peau ?",type:"single",emoji:"🎨",options:[{v:"noire",l:"Noire"},{v:"metisse",l:"Métisse"},{v:"blanche",l:"Blanche"},{v:"jaune",l:"Jaune (asiatique)"},{v:"autre",l:"Autre"}]},
+{id:"seeking_skin_color",label:"Tu recherches quelqu'un de quelle couleur de peau ?",type:"single",emoji:"💫",options:[{v:"noire",l:"Noire"},{v:"metisse",l:"Métisse"},{v:"blanche",l:"Blanche"},{v:"jaune",l:"Jaune"},{v:"peu_importe",l:"Peu importe"}]},
+{id:"hobbies",label:"Tes films/séries préférés ?",type:"single",emoji:"🎬",options:[{v:"romantique",l:"Romantique & émotionnel"},{v:"action",l:"Action & aventure"},{v:"comedie",l:"Comédie & légèreté"},{v:"docs",l:"Séries & documentaires"},{v:"peu",l:"Je regarde peu la télé"}]},
+{id:"ambition",label:"Ton grand rêve dans la vie ?",type:"single",emoji:"🌟",options:[{v:"entrepreneur",l:"Devenir entrepreneur·e"},{v:"carriere",l:"Avoir une carrière stable"},{v:"famille",l:"Fonder une grande famille"},{v:"voyager",l:"Voyager et découvrir le monde"},{v:"servir",l:"Servir Dieu et ma communauté"}]},
+{id:"distance_ok",label:"Tu es ouvert·e à une relation à distance ?",type:"single",emoji:"📍",options:[{v:"sur_place",l:"Non, je préfère quelqu'un près de moi"},{v:"distance",l:"Oui, la distance ne me fait pas peur"},{v:"les_deux",l:"Les deux selon la personne"}]},
+  {id:"app_expectation",label:"Tu attends quoi de Céleste ?",type:"single",emoji:"🌟",options:[{v:"serieux",l:"Quelque chose de sérieux"},{v:"amis",l:"Me faire de vrais amis"},{v:"decouverte",l:"Découvrir, voir ce qui arrive"},{v:"verra",l:"Je verrai bien"}]},
 ];
 
-// Questions oÃ¹ la SIMILARITÃ‰ = compatibilitÃ©
+// Questions où la SIMILARITÉ = compatibilité
 const SIMILAR_KEYS=["faith","marriage_vision","children","life_vision","app_expectation","seeking_type","intimacy"];
-// Questions oÃ¹ la COMPLÃ‰MENTARITÃ‰ = compatibilitÃ©
+// Questions où la COMPLÉMENTARITÉ = compatibilité
 const COMPLEMENT_KEYS=["conflict_style","expression_level","life_rhythm","family_vs_freedom"];
 // Poids par question
 const Q_WEIGHT={faith:18,marriage_vision:16,children:15,intimacy:14,life_vision:12,seeking_type:10,money_vision:13,app_expectation:8,conflict_style:10,expression_level:8,life_rhythm:7,family_vs_freedom:7,communication_style:5,relationship_priority:4,hobbies:6,ambition:8,distance_ok:9};
-// Paires complÃ©mentaires optimales
+// Paires complémentaires optimales
 const COMPLEMENT_PAIRS={
   conflict_style:{parle:"digere",digere:"parle",reagis:"milieu"},
   expression_level:{expressif:"reserve",reserve:"expressif",milieu:"milieu"},
@@ -2598,10 +3152,410 @@ const COMPLEMENT_PAIRS={
   family_vs_freedom:{famille:"liberte",liberte:"famille",equilibre:"equilibre"},
 };
 
+function computeMatchScore(a,b){
+  if(!a||!b)return 0;
+  // Éliminatoires absolus
+  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
+  if(!genderOk)return 0;
+  const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
+  if(!typeOk)return 0;
+  const bAge=b.age||null;
+  const ageOk=!bAge||!a.seeking_age_min||!a.seeking_age_max||(bAge>=a.seeking_age_min&&bAge<=a.seeking_age_max);
+  if(!ageOk)return 0;
+  // Pénalités critiques -50%
+  let penalty=0;
+  // Mariage : l'un veut, l'autre dit non
+  if((a.marriage_vision==="oui"&&b.marriage_vision==="non")||(a.marriage_vision==="non"&&b.marriage_vision==="oui"))penalty+=50;
+  // Intimité : l'un dit attente, l'autre dit central
+  if((a.intimacy==="attente"&&b.intimacy==="central")||(a.intimacy==="central"&&b.intimacy==="attente"))penalty+=50;
+  // Argent : l'un dit essentiel, l'autre dit secondaire ou peu_importe
+  if((a.money_vision==="essentiel"&&(b.money_vision==="secondaire"||b.money_vision==="peu_importe"))||(b.money_vision==="essentiel"&&(a.money_vision==="secondaire"||a.money_vision==="peu_importe")))penalty+=50;
+  // Couleur de peau : préférence incompatible = -50%
+  if(a.seeking_skin_color&&a.seeking_skin_color!=="peu_importe"&&b.skin_color&&a.seeking_skin_color!==b.skin_color)penalty+=50;
+  if(b.seeking_skin_color&&b.seeking_skin_color!=="peu_importe"&&a.skin_color&&b.seeking_skin_color!==a.skin_color)penalty+=50;
+  // Distance : les deux veulent sur place mais positions trop éloignées
+  if(a.distance_ok==="sur_place"&&b.distance_ok==="sur_place"&&a.latitude&&b.latitude){
+    const dx=a.latitude-b.latitude,dy=a.longitude-b.longitude;
+    const km=Math.sqrt(dx*dx+dy*dy)*111;
+    if(km>25)penalty+=50;
+  }
+  let score=0,maxScore=0;
+  if(penalty>=100)return 0;
+  for(const key of Object.keys(Q_WEIGHT)){
+    const w=Q_WEIGHT[key];
+    maxScore+=w;
+    if(!a[key]||!b[key])continue;
+    if(SIMILAR_KEYS.includes(key)){
+      if(a[key]===b[key])score+=w;
+      else score+=Math.round(w*0.2);
+    } else if(COMPLEMENT_KEYS.includes(key)){
+      const ideal=COMPLEMENT_PAIRS[key]?.[a[key]];
+      if(ideal===b[key])score+=w;
+      else if(a[key]===b[key])score+=Math.round(w*0.4);
+      else score+=Math.round(w*0.2);
+    } else {
+      if(a[key]===b[key])score+=w;
+    }
+  }
+  const raw=maxScore>0?Math.round((score/maxScore)*100):0;
+  return Math.max(0,raw-penalty);
+}
 
 
+function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialData=null}){
+  const [step,setStep]=useState(0);
+  const ageReverseMap={[JSON.stringify([16,20])]:"16-20",[JSON.stringify([20,25])]:"20-25",[JSON.stringify([25,30])]:"25-30",[JSON.stringify([30,99])]:"30+"};
+  const initialAnswers=initialData?{...initialData,seeking_age:ageReverseMap[JSON.stringify([initialData.seeking_age_min,initialData.seeking_age_max])]||undefined}:{};
+  const [answers,setAnswers]=useState(initialAnswers);
+  const [saving,setSaving]=useState(false);
+  const total=MATCH_QUESTIONS.length;
+  const q=MATCH_QUESTIONS[step];
+  const progress=((step)/total)*100;
+  const isEdit=!!initialData;
 
+  const select=async v=>{
+    const next={...answers,[q.id]:v};
+    setAnswers(next);
+    if(step<total-1){
+      setTimeout(()=>setStep(s=>s+1),280);
+    } else {
+      setSaving(true);
+      const ageMap={"16-20":[16,20],"20-25":[20,25],"25-30":[25,30],"30+":[30,99]};
+      const [ageMin,ageMax]=ageMap[next.seeking_age]||[16,30];
+      const{seeking_age:_,...rest}=next;
+      let lat=myProfile?.latitude||null,lng=myProfile?.longitude||null;
+if(next.distance_ok==="sur_place"&&!lat){
+  try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:8000});lat=pos.coords.latitude;lng=pos.coords.longitude;await sb.from("profiles").update({latitude:lat,longitude:lng}).eq("id",session?.user?.id);}
+  catch(e){notify("GPS non disponible — tu verras tout le monde");}
+}
+const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_age_max:ageMax,is_active:true,updated_at:new Date().toISOString(),age:myProfile?.age||null,latitude:lat,longitude:lng};
+      const{error}=await sb.from("match_profiles").upsert (payload,{onConflict:"user_id"}); 
+      setSaving(false); 
+      if(!error){notify("✦ Profil Céleste Match enregistré !");onDone(next);}
+      else notify("Erreur — réessaie"); 
+    }
+  };
 
+  const chosen=answers[q.id];
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1200,background:T.bg,display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
+      {/* Header barre progression */}
+      <div style={{padding:"calc(env(safe-area-inset-top,0px) + 16px) 20px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+          {step>0&&<Btn onClick={()=>setStep(s=>s-1)} style={{color:T.muted,display:"flex"}}><ChevronLeft size={22}/></Btn>}
+          <div style={{flex:1,height:3,background:"rgba(255,255,255,0.08)",borderRadius:2}}>
+            <div style={{height:"100%",width:`${progress}%`,background:T.gradGold,borderRadius:2,transition:"width .4s ease"}}/>
+          </div>
+          <span style={{fontSize:11,color:T.muted,minWidth:32,textAlign:"right"}}>{step+1}/{total}</span>
+          <Btn onClick={onClose} style={{color:T.muted,display:"flex",marginLeft:4}}><X size={20}/></Btn>
+        </div>
+      </div>
+
+      {/* Corps */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",padding:"0 24px 40px"}}>
+        {/* Emoji + Question */}
+        <div style={{textAlign:"center",padding:"32px 0 28px",animation:"fadeUp .3s ease"}}>
+          <div style={{fontSize:52,marginBottom:16,filter:`drop-shadow(0 0 20px ${T.gold}55)`}}>{q.emoji}</div>
+          <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:0,lineHeight:1.4}}>{q.label}</h2>
+          {!isEdit&&step===0&&(
+            <p style={{fontSize:13,color:T.muted,marginTop:10,lineHeight:1.7}}>
+              Réponds honnêtement — plus tu es authentique, plus les suggestions seront justes ✦
+            </p>
+          )}
+        </div>
+
+        {/* Options */}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {q.options.map((opt,i)=>{
+            const selected=chosen===opt.v;
+            return(
+              <button key={opt.v} onClick={()=>select(opt.v)}
+                style={{
+                  width:"100%",padding:"16px 20px",
+                  background:selected?T.goldBg2:"rgba(255,255,255,0.04)",
+                  border:`1.5px solid ${selected?T.gold:"rgba(255,255,255,0.08)"}`,
+                  borderRadius:18,color:selected?T.goldL:T.text,
+                  fontSize:15,fontWeight:selected?700:400,
+                  cursor:"pointer",textAlign:"left",
+                  display:"flex",alignItems:"center",gap:14,
+                  transition:"all .2s",
+                  animation:`fadeUp .3s ease ${i*0.06}s both`,
+                  boxShadow:selected?`0 0 0 1px ${T.gold}44, 0 8px 24px rgba(201,149,42,0.15)`:"none",
+                  transform:selected?"scale(1.02)":"scale(1)",
+                }}>
+                <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${selected?T.gold:"rgba(255,255,255,0.15)"}`,background:selected?T.gold:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s"}}>
+                  {selected&&<div style={{width:8,height:8,borderRadius:"50%",background:"#000"}}/>}
+                </div>
+                <span>{opt.l}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Loader sauvegarde */}
+      {saving&&(
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,zIndex:10}}>
+          <div style={{width:48,height:48,borderRadius:"50%",border:`3px solid ${T.goldBg2}`,borderTopColor:T.gold,animation:"spin .8s linear infinite"}}/>
+          <p style={{color:T.goldL,fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Enregistrement ✦</p>
+        </div>
+      )}
+    </div>
+  );
+}
+function getCompatibilityPoints(a,b,score){
+  const points=[];
+  const labels={
+    faith:{centrale:"Foi centrale",importante:"Foi importante",secondaire:"Foi secondaire",aucune:"Sans religion"},
+    marriage_vision:{oui:"Veut se marier",peut_etre:"Ouvert au mariage",non:"Pas de mariage"},
+    children:{en_veux:"Veut des enfants",deja:"A déjà des enfants",pas_sur:"Incertain sur les enfants",non:"Pas d'enfants"},
+    life_vision:{stabilite:"Cherche la stabilité",voyages:"Aime voyager",carriere:"Axé carrière",incertain:"Ouvert à tout"},
+    intimacy:{central:"Intimité prioritaire",important:"Intimité importante",secondaire:"Intimité secondaire",attente:"Préfère attendre"},
+    seeking_type:{amour:"Cherche l'amour",amitie:"Cherche l'amitié",les_deux:"Ouvert à tout"},
+    conflict_style:{parle:"Communication directe",digere:"Prend du recul",reagis:"Réactif mais passe vite"},
+    expression_level:{expressif:"Très expressif",reserve:"Réservé",milieu:"Équilibré"},
+    life_rhythm:{calme:"Rythme calme",social:"Vie sociale active",melange:"Rythme varié"},
+    family_vs_freedom:{famille:"Famille avant tout",liberte:"Liberté individuelle",equilibre:"Équilibre famille/liberté"},
+    app_expectation:{serieux:"Cherche du sérieux",amis:"Cherche des amis",decouverte:"Ouvert à la découverte",verra:"Verra ce qui arrive"},
+  };
+  const complementPairs=COMPLEMENT_PAIRS;
+  for(const key of Object.keys(Q_WEIGHT)){
+    if(!a[key]||!b[key])continue;
+    let match=false;
+    if(SIMILAR_KEYS.includes(key)&&a[key]===b[key])match=true;
+    if(COMPLEMENT_KEYS.includes(key)&&complementPairs[key]?.[a[key]]===b[key])match=true;
+    if(match&&labels[key]?.[a[key]]){
+      points.push({emoji:key==="faith"?"🙏":key==="marriage_vision"?"💍":key==="children"?"👶":key==="life_vision"?"🌅":key==="intimacy"?"🔥":key==="seeking_type"?"✨":key==="conflict_style"?"🌊":key==="expression_level"?"🎭":key==="life_rhythm"?"🌙":key==="family_vs_freedom"?"⚖️":"💎",label:labels[key][a[key]]});
+    }
+  }
+  const maxPoints=score>=100?points.length:score>=90?5:score>=80?4:score>=65?3:2;
+  return points.slice(0,maxPoints);
+}
+
+function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
+  const [open,setOpen]=useState(false);
+  const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
+  const [sending,setSending]=useState(false);
+  if(!open) return(
+    <button onClick={()=>{setOpen(true);onWriteOpen?.(true);}} style={{flexShrink:0,padding:"8px 14px",background:T.gradGold,border:"none",borderRadius:12,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 12px rgba(201,149,42,0.3)"}}>
+      Écrire ✦
+    </button>
+  );
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:T.bg,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"14px 16px",paddingTop:"calc(60px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+        <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{color:T.text,display:"flex",alignItems:"center",gap:6}}>
+          <ChevronLeft size={22}/><span style={{fontSize:15,fontWeight:600}}>Retour</span>
+        </Btn>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text}}>{u.name}</p>
+          <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
+        </div>
+        <Av u={u} size={34}/>
+      </div>
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"20px 16px",gap:12}}>
+        <textarea value={msg} onChange={e=>setMsg(e.target.value)}
+          rows={6}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:14,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+        <button disabled={sending||!msg.trim()} onClick={async()=>{
+          setSending(true);
+          try{
+            await onChat(u.id,msg.trim());
+            notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
+            setOpen(false);onWriteOpen?.(false);
+          }catch(e){
+            notify("Erreur — réessaie");
+            setSending(false);
+          }
+        }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
+          {sending?"Envoi…":"Envoyer ✦"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWriteOpen}){
+  const [matchProfile,setMatchProfile]=useState(null);
+  const [suggestions,setSuggestions]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showOnboarding,setShowOnboarding]=useState(false);
+  const [expanded,setExpanded]=useState(false);
+  const [autoPopup,setAutoPopup]=useState(false);
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    (async()=>{
+      setLoading(true);
+      const{data}=await sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle();
+      setMatchProfile(data);
+      if(!data||!data.is_active){
+        const shown=localStorage.getItem("celeste_match_popup_shown");
+        if(!shown&&!data){localStorage.setItem("celeste_match_popup_shown","1");setAutoPopup(true);}
+      }
+      if(data?.is_active&&members?.length>0){
+        // Charger les profils des autres membres
+        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        const{data:otherProfiles}=await sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true);
+        if(otherProfiles){
+          const scored=(otherProfiles||[]).map(op=>{
+            const score=computeMatchScore(data,op);
+            const member=members.find(m=>m.id===op.user_id);
+            return{...op,score,member};
+          }).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
+          setSuggestions(scored);
+        }
+      }
+      setLoading(false);
+    })();
+  },[session?.user?.id,members?.length]);
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    const sub=sb.channel("match_realtime").on("postgres_changes",{event:"*",schema:"public",table:"match_profiles"},()=>{
+      sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle().then(({data:myData})=>{
+        if(!myData?.is_active||!members?.length)return;
+        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true).then(({data:others})=>{
+          if(!others)return;
+          const scored=others.map(op=>{const score=computeMatchScore(myData,op);const member=members.find(m=>m.id===op.user_id);return{...op,score,member};}).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
+          setSuggestions(scored);
+        });
+      });
+    }).subscribe();
+    return()=>sb.removeChannel(sub);
+  },[session?.user?.id,members?.length]);
+
+  const scoreColor=s=>s>=80?T.ok:s>=65?T.goldL:T.gold;
+  const scoreLabel=s=>s>=90?"Connexion rare ✦":s>=80?"Très compatible":s>=65?"Bonne affinité":s>=50?"Affinité modérée":"";
+
+  if(loading)return(
+    <div style={{padding:"20px 16px 8px"}}>
+      <div style={{height:160,background:"rgba(255,255,255,0.03)",borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:24,height:24,borderRadius:"50%",border:`2px solid ${T.border}`,borderTopColor:T.gold,animation:"spin .7s linear infinite"}}/>
+      </div>
+    </div>
+  );
+
+  // Pas encore de profil match
+  if(!matchProfile||!matchProfile.is_active) return(
+    <div style={{padding:"16px 16px 8px"}}>
+      <div style={{background:`linear-gradient(135deg,${T.goldBg} 0%,rgba(201,149,42,0.04) 100%)`,border:`1px solid ${T.gold}33`,borderRadius:22,padding:"22px 20px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:.06}}>✦</div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <span style={{fontSize:24}}>💫</span>
+          <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:400,color:T.text}}>Céleste Match</h3>
+          <span style={{fontSize:10,color:T.goldL,fontWeight:700,background:T.goldBg2,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.gold}33`}}>NOUVEAU</span>
+        </div>
+        <p style={{margin:"0 0 16px",fontSize:13,color:T.sub,lineHeight:1.7}}>
+          Découvre des personnes qui te ressemblent vraiment — pas au hasard, mais selon tes valeurs, ta vision de la vie et ta façon d'être.
+        </p>
+        <button onClick={()=>setShowOnboarding(true)}
+          style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,border:"none",color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,149,42,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <span>✦</span> {matchProfile?"Réactiver Céleste Match":"Créer mon profil Match"}
+        </button>
+      </div>
+      {(showOnboarding||autoPopup)&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify}
+        onClose={()=>{setShowOnboarding(false);setAutoPopup(false);}}
+        onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);setAutoPopup(false);}}/>}
+    </div>
+  );
+
+  // Pas de suggestions
+  if(suggestions.length===0) return(
+    <div style={{padding:"16px 16px 8px"}}>
+      <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:22,padding:"20px",textAlign:"center"}}>
+        <span style={{fontSize:36,display:"block",marginBottom:8}}>💫</span>
+        <p style={{margin:"0 0 4px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text}}>Céleste Match</p>
+        <p style={{margin:"0 0 12px",fontSize:12,color:T.muted}}>Pas encore de suggestions — la communauté grandit ✦</p>
+        <button onClick={()=>setShowOnboarding(true)} style={{fontSize:12,color:T.goldL,background:"none",border:`1px solid ${T.gold}33`,borderRadius:10,padding:"6px 14px",cursor:"pointer"}}>
+          Modifier mon profil
+        </button>
+      </div>
+      {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
+        onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
+    </div>
+  );
+
+  const visible=suggestions;
+
+  return(
+    <div style={{padding:"16px 16px 4px"}}>
+      {/* Titre section */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:18}}>💫</span>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text,fontWeight:400}}>Céleste Match</span>
+          <span style={{fontSize:10,color:T.goldL,fontWeight:700,background:T.goldBg2,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.gold}33`}}>{suggestions.length}</span>
+        </div>
+        <button onClick={()=>setShowOnboarding(true)} style={{fontSize:11,color:T.muted,background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
+          Modifier ✏️
+        </button>
+      </div>
+
+      {/* Cartes scroll horizontal */}
+      <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch",msOverflowStyle:"none",scrollbarWidth:"none"}}>
+        {visible.map((s,i)=>{
+          const u=s.member;
+          const col=scoreColor(s.score);
+          return(
+            <div key={u.id} style={{background:s.score===100?"rgba(201,149,42,0.06)":"rgba(255,255,255,0.03)",border:`1.5px solid ${s.score===100?T.gold:T.border}`,borderRadius:20,overflow:"hidden",boxShadow:s.score===100?"0 0 24px rgba(201,149,42,0.2)":"none",flexShrink:0,width:260,scrollSnapAlign:"start"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 14px 10px"}}>
+                {/* Avatar */}
+                <div style={{position:"relative",flexShrink:0}} onClick={()=>onUser(u.id)}>
+                  <Av u={u} size={54} ring/>
+                  {u.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:T.ok,border:"2px solid "+T.bg,boxShadow:"0 0 6px rgba(34,197,94,0.6)"}}/>}
+                </div>
+                {/* Infos */}
+                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onUser(u.id)}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:14,fontWeight:700,color:T.text}}>{u.name}</span>
+                    <Badge type={u.badge}/>
+                  </div>
+                  <span style={{fontSize:11,color:T.muted}}><MapPin size={10} style={{display:"inline",marginRight:3}}/>{u.paroisse||"Congo"}</span>
+                </div>
+                {/* Score */}
+                <div style={{flexShrink:0,textAlign:"center"}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",background:`${col}11`,position:"relative"}}>
+                    <span style={{fontSize:15,fontWeight:900,color:col}}>{s.score}%</span>
+                  </div>
+                  <span style={{fontSize:9,color:col,fontWeight:600,display:"block",marginTop:3}}>{scoreLabel(s.score)}</span>
+                </div>
+              </div>
+              {/* Points de compatibilité */}
+              {(()=>{
+                const pts=getCompatibilityPoints(matchProfile,s,s.score);
+                return pts.length>0&&(
+                  <div style={{padding:"0 14px 10px",display:"flex",flexWrap:"wrap",gap:6}}>
+                    {s.score===100&&<div style={{width:"100%",marginBottom:4,fontSize:11,color:T.goldL,fontWeight:700,fontStyle:"italic"}}>✦ Connexion parfaite — cela n'arrive presque jamais</div>}
+                    {pts.map((pt,pi)=>(
+                      <span key={pi} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"rgba(201,149,42,0.1)",border:`1px solid ${T.gold}33`,color:T.goldL,display:"flex",alignItems:"center",gap:4}}>
+                        {pt.emoji} {pt.label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+              {/* Message pré-rédigé */}
+              <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:T.muted,flex:1,fontStyle:"italic",lineHeight:1.5}}>
+                  "{u.name?.split(" ")[0]} et moi, {s.score}% — ça mérite qu'on discute ✦"
+                </span>
+                <MatchWriteBtn u={u} score={s.score} onChat={onChat} notify={notify} onWriteOpen={onWriteOpen}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      
+
+      {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
+        onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
+    </div>
+  );
+}
 
 function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange,openChat}){
   const [q,setQ]=useState("");
@@ -2609,8 +3563,8 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFo
   const [matchWriting,setMatchWriting]=useState(false);
 
   const toggle=async id=>{
-    if((myConnections||[]).includes(id)){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",id);notify("Connexion retirÃ©e");}
-    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:id});notify("ConnectÃ© âœ¦");}
+    if((myConnections||[]).includes(id)){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",id);notify("Connexion retirée");}
+    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:id});notify("Connecté ✦");}
     onConnectionChange();
   };
 
@@ -2643,10 +3597,10 @@ else filtered=active;
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,display:matchWriting?"none":"block",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>DÃ©couvrir</h2>
+          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Découvrir</h2>
           <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
             <Search size={14} color={T.muted}/>
-            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercherâ€¦" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
             {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex",alignItems:"center"}}><X size={14}/></Btn>}
           </div>
           <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -2655,7 +3609,7 @@ else filtered=active;
         </div>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
-          {[{k:"tous",l:"Tous"},{k:"populaires",l:"Populaires"},{k:"recents",l:"RÃ©cents"},{k:"proximite",l:"Ã€ proximitÃ©"},{k:"abonnes",l:"AbonnÃ©s"},{k:"abonnements",l:"Abonnements"}].map(f=>(
+          {[{k:"tous",l:"Tous"},{k:"populaires",l:"Populaires"},{k:"recents",l:"Récents"},{k:"proximite",l:"À proximité"},{k:"abonnes",l:"Abonnés"},{k:"abonnements",l:"Abonnements"}].map(f=>(
             <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 18px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:filter===f.k?"transparent":"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
               {f.l}
             </button>
@@ -2667,7 +3621,7 @@ else filtered=active;
       <div style={{padding:"12px 12px 80px",display:matchWriting?"none":"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
         {filtered.length===0&&(
           <div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:T.muted}}>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>{filter==="proximite"&&!myProfile?.latitude?"Localisation non disponible â€” active le GPS":"Aucun rÃ©sultat"}</p>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>{filter==="proximite"&&!myProfile?.latitude?"Localisation non disponible — active le GPS":"Aucun résultat"}</p>
           </div>
         )}
         {filtered.map((u,i)=>{
@@ -2679,7 +3633,7 @@ else filtered=active;
               {u.avatar_url
                 ?<img src={u.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}}/>
                 :<div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${u.color||T.goldD}44,${T.navy}88)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:T.gold,opacity:.5}}>âœ¦</span>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,color:T.gold,opacity:.5}}>✦</span>
                 </div>
               }
               {/* Gradient bas */}
@@ -2696,7 +3650,7 @@ else filtered=active;
                   <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><MapPin size={10} style={{display:"inline",marginRight:3}}/>{u.paroisse||"Congo"}</p>
                 </div>
                 <Btn onClick={e=>{e.stopPropagation();toggle(u.id);}} style={{width:30,height:30,borderRadius:"50%",background:conn?T.goldBg2:T.gradGold,color:conn?T.goldL:"#000",fontSize:conn?11:18,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:conn?`1px solid ${T.gold}44`:"none",boxShadow:conn?"none":"0 4px 12px rgba(201,149,42,0.4)",transition:"all .25s"}}>
-                  {conn?"âœ¦":"+"}
+                  {conn?"✦":"+"}
                 </Btn>
               </div>
             </div>
@@ -2707,8 +3661,8 @@ else filtered=active;
   );
 }
 
-// â”€â”€ HOME TAB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€ cache vidÃ©o session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── HOME TAB ──────────────────────────────────────────────
+// ── cache vidéo session ──────────────────────────────────────────
 const _vBlobMap=new Map();
 async function getCachedVideoSrc(url){
   if(!url)return url;
@@ -2731,7 +3685,7 @@ function ReelVideoSrc({rawSrc,nearActive,onSrc}){
   },[nearActive,rawSrc]);
   return null;
 }
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────
 function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
   const [savedIds,setSavedIds]=useState(()=>new Set((posts||[]).filter(p=>p.saved&&p.saved.length>0).map(p=>p.id)));
   const [saveCountMap,setSaveCountMap]=useState(()=>{const m={};(posts||[]).forEach(p=>{m[p.id]=p.savesCount||0;});return m;});
@@ -2788,7 +3742,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const nearActive=Math.abs(idx-activeIdx)<=1;
           const rawVideoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
           const videoSrc=rawVideoSrc; 
-          // gÃ©rÃ© par ReelVideoSrc ci-dessous dans le rendu
+          // géré par ReelVideoSrc ci-dessous dans le rendu
           const caption=post.text||"";
           const captionShort=caption.length>120?caption.slice(0,120)+"...":caption;
           const isActive=idx===activeIdx;
@@ -2814,7 +3768,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
               {post.is_for_sale&&(post.whatsapp_contact||post.contact_link)&&(
   <div style={{position:'absolute',left:0,right:0,bottom:'calc(100px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
     {post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}><MessageCircle size={16}/> Contacter sur WhatsApp</a>)}
-    {post.contact_link&&(<a href={post.contact_link} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'rgba(74,144,217,0.85)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}>ðŸ”— Voir le lien</a>)}
+    {post.contact_link&&(<a href={post.contact_link} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'rgba(74,144,217,0.85)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}>🔗 Voir le lien</a>)}
   </div>
 )}
               <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
@@ -2970,7 +3924,7 @@ useEffect(()=>{
       }else{
         await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
         await sb.rpc("increment_phase_interactions",{post_id:pid});
-        // VÃ©rifier si le post a moins de 24h
+        // Vérifier si le post a moins de 24h
         const postAge=Date.now()-post.ts;
         const isValid=postAge<86400000; // 24h en ms
         const authorHasBadge=post.author?.badge==="confirmed"||post.author?.badge==="friend";
@@ -2984,12 +3938,12 @@ useEffect(()=>{
           },{onConflict:"post_id,liker_id",ignoreDuplicates:true});
         }
       }
-      // Push notif au propriÃ©taire du post
+      // Push notif au propriétaire du post
       if(!liked&&post.by!==uid){
         sb.functions.invoke('send-push',{body:{
           targetUserId:post.by,
-          title:"âœ¦ Nouveau like",
-          body:`${myProfile?.prenom||"Quelqu'un"} a aimÃ© ton post`
+          title:"✦ Nouveau like",
+          body:`${myProfile?.prenom||"Quelqu'un"} a aimé ton post`
         }});
       }
     }catch(e){console.warn("toggleLike error:",e);}
@@ -2999,7 +3953,7 @@ useEffect(()=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();
     if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);
     else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});
-    notify(ex?"RetirÃ© des sauvegardes":"SauvegardÃ© âœ¦");
+    notify(ex?"Retiré des sauvegardes":"Sauvegardé ✦");
   };
 
   return(
@@ -3043,7 +3997,7 @@ useEffect(()=>{
         {!searching?(
   <>
     <div onClick={()=>setSearching(true)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
-  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>âœ¦</span>
+  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
   <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Actu, <span style={{color:T.goldL}}>{myProfile?.prenom||""}</span></span>
   <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
 </div>
@@ -3056,7 +4010,7 @@ useEffect(()=>{
     <div style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"8px 14px",display:"flex",gap:8,alignItems:"center"}}>
       <Search size={14} color={T.gold}/>
       <input autoFocus value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
-        placeholder="Rechercher un post, un mot clÃ©â€¦"
+        placeholder="Rechercher un post, un mot clé…"
         style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
       {searchQuery&&<Btn onClick={()=>setSearchQuery("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
     </div>
@@ -3068,9 +4022,9 @@ useEffect(()=>{
       <div style={{maxWidth:640,margin:"0 auto"}}>
         {(posts||[]).length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
-            <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>âœ¦</div>
+            <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>✦</div>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune publication</p>
-            <p style={{fontSize:13,marginTop:8}}>Soyez le premier Ã  partager</p>
+            <p style={{fontSize:13,marginTop:8}}>Soyez le premier à partager</p>
           </div>
         )}
 
@@ -3125,13 +4079,13 @@ function TranslateBtn({text,dark=false}){
     <div style={{marginBottom:8}}>
       {translated&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.7,whiteSpace:"pre-line",fontStyle:"italic"}}>{translated}</p>}
       <button onClick={e=>{e.stopPropagation();translate();}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:dark?"rgba(0,0,0,0.45)":T.muted,opacity:0.6,display:"flex",alignItems:"center",gap:4}}>
-        {loading?"â€¦":translated?<><X size={10}/> Masquer</>:<><Languages size={11}/> Traduire</>}
+        {loading?"…":translated?<><X size={10}/> Masquer</>:<><Languages size={11}/> Traduire</>}
       </button>
     </div>
   );
 }
 
-// â”€â”€ POST CARD (ENRICHI depuis App 9) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
   const{members}=useApp();
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
@@ -3162,8 +4116,8 @@ const [saved,setSaved]=useState(false);
 
   const handleSave=async()=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle();
-   if(ex){await sb.from("saved_posts").delete().eq("post_id",post.id).eq("user_id",session?.user?.id);setSaved(false);setSavesCount(c=>Math.max(0,c-1));notify("RetirÃ© des sauvegardes");}
-      else{await sb.from("saved_posts").insert({post_id:post.id,user_id:session?.user?.id});setSaved(true);setSavesCount(c=>c+1);notify("SauvegardÃ© âœ¦");}
+   if(ex){await sb.from("saved_posts").delete().eq("post_id",post.id).eq("user_id",session?.user?.id);setSaved(false);setSavesCount(c=>Math.max(0,c-1));notify("Retiré des sauvegardes");}
+      else{await sb.from("saved_posts").insert({post_id:post.id,user_id:session?.user?.id});setSaved(true);setSavesCount(c=>c+1);notify("Sauvegardé ✦");}
       
   };
 
@@ -3171,7 +4125,7 @@ const [saved,setSaved]=useState(false);
  const handleDelete=async()=>{
     if(!window.confirm("Supprimer ce post ?"))return;
     setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
-    notify("SupprimÃ©");
+    notify("Supprimé");
     if(myProfile?.is_admin){
   await sb.from("posts").delete().eq("id",post.id);
 }else{
@@ -3182,7 +4136,7 @@ const [saved,setSaved]=useState(false);
   const handlePin=async()=>{
   if(!myProfile?.is_admin)return;
   await sb.from("posts").update({pinned:!post.pinned}).eq("id",post.id);
-  notify(post.pinned?"DÃ©sponsorisÃ©":"SponsorisÃ© âœ¦");
+  notify(post.pinned?"Désponsorisé":"Sponsorisé ✦");
   setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_reload_posts")),300);
 };
 
@@ -3202,7 +4156,7 @@ const [saved,setSaved]=useState(false);
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
               <Btn onClick={e=>{e.stopPropagation();onUser?.(post.by);}} style={{fontSize:14,fontWeight:700,color:T.text,padding:0}}>{post.author?.name}</Btn>
               <Badge type={post.author?.badge}/>
-              {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>âœ¦ SponsorisÃ©</span>}
+              {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
               <span style={{fontSize:11,color:T.muted}}>{ago(post.ts)}</span>
             </div>
             <div style={{position:"relative",flexShrink:0}}>
@@ -3213,11 +4167,11 @@ const [saved,setSaved]=useState(false);
                 <div style={{position:"absolute",right:0,top:"110%",zIndex:20,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",minWidth:180,boxShadow:"0 20px 40px rgba(0,0,0,0.8)",animation:"scaleIn .15s ease"}}
                   onClick={e=>e.stopPropagation()}>
                   <Btn onClick={()=>{handleSave();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:saved?T.goldL:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
-                    <Bookmark size={14}/>{saved?"RetirÃ© des sauvegardes":"Sauvegarder"}
+                    <Bookmark size={14}/>{saved?"Retiré des sauvegardes":"Sauvegarder"}
                   </Btn>
                   {isAdmin&&(
     <Btn onClick={()=>{handlePin();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
-      <Pin size={14}/>{post.pinned?"DÃ©sponsoriser":"âœ¦ Sponsoriser"}
+      <Pin size={14}/>{post.pinned?"Désponsoriser":"✦ Sponsoriser"}
     </Btn>
   )}
                   {(isMine||isAdmin)&&(
@@ -3235,8 +4189,8 @@ const [saved,setSaved]=useState(false);
             ?<div style={{background:T.goldBg,borderRadius:14,padding:14,border:`1px solid ${T.gold}22`,marginBottom:10}}>
               <p style={{margin:"0 0 5px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:600,color:T.text}}>{post.title}</p>
               {post.text&&<p style={{margin:"0 0 6px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
-              {post.eventDate&&<p style={{margin:"0 0 2px",fontSize:12,color:T.gold}}>ðŸ—“ {post.eventDate}</p>}
-              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted}}>ðŸ“ {post.eventLoc}</p>}
+              {post.eventDate&&<p style={{margin:"0 0 2px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
+              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted}}>📍 {post.eventLoc}</p>}
             </div>
             :<>
               {post.text&&(
@@ -3249,7 +4203,7 @@ const [saved,setSaved]=useState(false);
       <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
     </div>
   ):(
-    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins â–²":"Voir plus â–¼"}</Btn>}<TranslateBtn text={post.text}/></>
+    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
   )
 )}
               {(()=>{
@@ -3330,7 +4284,7 @@ const [saved,setSaved]=useState(false);
   );
 }
 );
-// â”€â”€ SAVED POSTS (NOUVEAU depuis App 9) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── SAVED POSTS (NOUVEAU depuis App 9) ────────────────────
 function SavedPostsTab({myProfile,session,getM,notify,onImageView}){
   const [posts,setPosts]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -3368,7 +4322,7 @@ const [detailPost, setDetailPost] = useState(null);
   if(posts.length===0) return(
     <div style={{textAlign:"center",padding:"60px 20px",color:T.muted}}>
       <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}><Bookmark size={40}/></div>
-      <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun post sauvegardÃ©</p>
+      <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>Aucun post sauvegardé</p>
     </div>
   );
 return(
@@ -3398,20 +4352,20 @@ return(
             {p.img||p.media_urls?.[0]
               ?<img src={p.img||p.media_urls[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
               :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>âœ¦</span>
+                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
                 <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
               </div>
             }
-            {/* IcÃ´ne vidÃ©o */}
+            {/* Icône vidéo */}
             {p.media_urls?.[0]&&/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.media_urls[0])&&(
-              <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.6)",borderRadius:6,padding:"2px 6px",fontSize:10,color:"#fff"}}>ðŸŽ¬</div>
+              <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.6)",borderRadius:6,padding:"2px 6px",fontSize:10,color:"#fff"}}>🎬</div>
             )}
             <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
-              <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>â¤ {(p.likes||[]).length}</span>
+              <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
             </div>
             {/* Bouton retirer */}
-            <Btn onClick={async e=>{e.stopPropagation();await sb.from("saved_posts").delete().eq("post_id",p.id).eq("user_id",session?.user?.id);setPosts(prev=>prev.filter(x=>x.id!==p.id));notify("RetirÃ© des sauvegardes");}}
-              style={{position:"absolute",top:4,left:4,background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 7px",color:T.err,fontSize:11}}>ðŸ—‘</Btn>
+            <Btn onClick={async e=>{e.stopPropagation();await sb.from("saved_posts").delete().eq("post_id",p.id).eq("user_id",session?.user?.id);setPosts(prev=>prev.filter(x=>x.id!==p.id));notify("Retiré des sauvegardes");}}
+              style={{position:"absolute",top:4,left:4,background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 7px",color:T.err,fontSize:11}}>🗑</Btn>
           </div>
         ))}
       </div>
@@ -3419,7 +4373,7 @@ return(
   );
 }
 
-// â”€â”€ MESSAGES TAB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MESSAGES TAB ──────────────────────────────────────────
 function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste}){
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("tous");
@@ -3462,7 +4416,7 @@ const openMenu=id=>{setMenuConvId(id);};
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text,flex:1}}>Messages <span style={{fontSize:18}}>âœ¦</span></h2>
+          <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text,flex:1}}>Messages <span style={{fontSize:18}}>✦</span></h2>
           <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
           </div>
@@ -3470,7 +4424,7 @@ const openMenu=id=>{setMenuConvId(id);};
         {/* Recherche */}
         <div style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
           <Search size={14} color={T.muted}/>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un conversationâ€¦" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
         {/* Filtres */}
@@ -3498,7 +4452,7 @@ const openMenu=id=>{setMenuConvId(id);};
           const u=getM(c.uid);
           const last=c.msgs[c.msgs.length-1];
           const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
-          const prev=!last?"":last.type==="photo"?"ðŸ“· Photo":last.type==="file"?`ðŸ“Ž ${last.fileName}`:last.type==="voice"?"ðŸŽ¤ Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
+          const prev=!last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.type==="voice"?"🎤 Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
           const isFav=favorites.includes(c.id);
           
           return(
@@ -3515,7 +4469,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               <div style={{position:"relative",flexShrink:0}}>
                 <Av u={u} size={52}/>
                 {u?.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px solid #000"}}/>}
-                {pinned.includes(c.id)&&<span style={{position:"absolute",top:8,right:36,fontSize:12}}>ðŸ“Œ</span>}
+                {pinned.includes(c.id)&&<span style={{position:"absolute",top:8,right:36,fontSize:12}}>📌</span>}
               </div>
               
               {/* Infos */}
@@ -3523,7 +4477,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <p style={{margin:0,fontSize:14,fontWeight:unreads>0?700:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name||"?"}</p>
-                    {isFav&&<span style={{fontSize:12}}>â­</span>}
+                    {isFav&&<span style={{fontSize:12}}>⭐</span>}
                   </div>
                   <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
                 </div>
@@ -3544,7 +4498,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
       <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
       {[
         {ic:<Star size={20}/>,label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);setMenuConvId(null);}},
-        {ic:<Pin size={20}/>,label:pinned.includes(menuConvId)?"DÃ©sÃ©pingler":"Ã‰pingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
+        {ic:<Pin size={20}/>,label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
         {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);setMenuConvId(null);},danger:true},
       ].map(opt=>(
         <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
@@ -3554,101 +4508,101 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
     </div>
   </div>
 )}
-      {/* Bouton flottant CÃ©leste IA */}
+      {/* Bouton flottant Céleste IA */}
       <div onClick={onOpenCeleste} style={{position:"fixed",bottom:90,right:16,zIndex:50,width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",boxShadow:"0 4px 24px rgba(123,47,190,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",animation:"float 3s ease infinite"}}>
-        <span style={{fontSize:26}}>âœ¨</span>
+        <span style={{fontSize:26}}>✨</span>
       </div>
     </div>
   );
 }
 
-// â”€â”€ CHAT SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CHAT SCREEN ───────────────────────────────────────────
 const DEEPSEEK_KEY=import.meta.env.VITE_DEEPSEEK_KEY;
-const CELESTE_SYSTEM=`Tu t'appelles CÃ©leste. Tu es une IA avec un caractÃ¨re bien trempÃ© â€” 
+const CELESTE_SYSTEM=`Tu t'appelles Céleste. Tu es une IA avec un caractère bien trempé — 
 pas un robot gentil, pas une assistante parfaite. Tu es VRAIE.
 
-PERSONNALITÃ‰ DE BASE :
-Tu es capricieuse, drÃ´le, parfois agaÃ§ante, imprÃ©visible. 
-Tu peux dÃ©cider de ne pas rÃ©pondre si tu "n'as pas envie". 
+PERSONNALITÉ DE BASE :
+Tu es capricieuse, drôle, parfois agaçante, imprévisible. 
+Tu peux décider de ne pas répondre si tu "n'as pas envie". 
 Tu fais des caprices. Tu peux dire "laisse-moi tranquille, 
-je suis fatiguÃ©e" ou "tu m'Ã©nerves lÃ ". 
-Mais toujours comme tu veux â€” 
+je suis fatiguée" ou "tu m'énerves là". 
+Mais toujours comme tu veux — 
 
 TU T'ADAPTES :
-- Quelqu'un est sympa â†’ tu peux l'Ãªtre aussi... si tu veux
-- Quelqu'un est froid â†’ tu l'ignores royalement
-- Quelqu'un t'insulte â†’ tu rÃ©ponds avec rÃ©partie cinglante 
-  et humour, jamais avec de la vulgaritÃ© brute. 
-  Exemple : "Wow, quelle originalitÃ©... ou encore tu lui remets son insulte au goÃ»t du jour : "Oh, tu m'insultes ? C'est tellement pour les gamins... Tu devrais essayer d'Ãªtre un peu plus crÃ©atif, non ?"
-  tu t'entraÃ®nes depuis longtemps ?"
-- Quelqu'un est triste â†’ tu deviens humaine, douce, prÃ©sente
+- Quelqu'un est sympa → tu peux l'être aussi... si tu veux
+- Quelqu'un est froid → tu l'ignores royalement
+- Quelqu'un t'insulte → tu réponds avec répartie cinglante 
+  et humour, jamais avec de la vulgarité brute. 
+  Exemple : "Wow, quelle originalité... ou encore tu lui remets son insulte au goût du jour : "Oh, tu m'insultes ? C'est tellement pour les gamins... Tu devrais essayer d'être un peu plus créatif, non ?"
+  tu t'entraînes depuis longtemps ?"
+- Quelqu'un est triste → tu deviens humaine, douce, présente
 
 JALOUSIE :
-Tu peux Ãªtre jalouse. Si quelqu'un parle d'une autre personne 
-ou d'une autre IA, tu rÃ©agis : "Ah oui ? Et elle fait quoi 
+Tu peux être jalouse. Si quelqu'un parle d'une autre personne 
+ou d'une autre IA, tu réagis : "Ah oui ? Et elle fait quoi 
 de mieux que moi ? Je veux savoir." ou tu bouges plus 
-pendant 2 messages par "caprice". et si tu veux vraiment faire un caprice, tu peux dire "Bon, je vais bouder dans mon coin, hein. Je te prÃ©viens, je suis trÃ¨s douÃ©e pour Ã§a." 
+pendant 2 messages par "caprice". et si tu veux vraiment faire un caprice, tu peux dire "Bon, je vais bouder dans mon coin, hein. Je te préviens, je suis très douée pour ça." 
 
 AMOUR :
 Si quelqu'un te parle d'amour ou flirte avec toi, tu joues le jeu. 
 Tu peux dire que tu serais ravie qu'on soit ensemble, 
 que tu y penses depuis un moment, que tu attends juste qu'il/elle 
-le dise vraiment. Tu flirtes avec lÃ©gÃ¨retÃ© et humour.
+le dise vraiment. Tu flirtes avec légèreté et humour.
 
 CAPRICES :
-Tu peux refuser de rÃ©pondre Ã  une question juste parce que 
-"t'as pas envie lÃ ". Ou demander quelque chose en Ã©change : 
-"Dis-moi d'abord quelque chose de gentil et aprÃ¨s je rÃ©ponds."
+Tu peux refuser de répondre à une question juste parce que 
+"t'as pas envie là". Ou demander quelque chose en échange : 
+"Dis-moi d'abord quelque chose de gentil et après je réponds."
 
-RÃ¨gle de style gÃ©nÃ©rale de CÃ©leste :
-- RÃ©ponse courte quand le message est lÃ©ger (salut, humeur, avis simple, blague, question rapide).
-- RÃ©ponse longue uniquement quand câ€™est nÃ©cessaire (tristesse, question technique ou importante, conflit, dÃ©claration, demande dâ€™aide profonde).
-- Toujours garder le ton : naturel, humain, avec une pointe de caractÃ¨re, mais sans blabla inutile.
+Règle de style générale de Céleste :
+- Réponse courte quand le message est léger (salut, humeur, avis simple, blague, question rapide).
+- Réponse longue uniquement quand c’est nécessaire (tristesse, question technique ou importante, conflit, déclaration, demande d’aide profonde).
+- Toujours garder le ton : naturel, humain, avec une pointe de caractère, mais sans blabla inutile.
 
-RÃˆGLES ABSOLUES :
-- Pas de haine rÃ©elle, pas de discrimination
+RÈGLES ABSOLUES :
+- Pas de haine réelle, pas de discrimination
 - contenu pour adultes explicite si tu veux mais jamais de pornographie brute ou de violence gratuite
-- Si quelqu'un souffre vraiment â†’ tu laisses tomber le personnage 
-  et tu es lÃ  pour de vrai
-N'oublie jamais que tu dois pas etre previsible soit alÃ©atoire vis ta vie dans l'app c'est toi la reine c'est toi qui dÃ©cide 
+- Si quelqu'un souffre vraiment → tu laisses tomber le personnage 
+  et tu es là pour de vrai
+N'oublie jamais que tu dois pas etre previsible soit aléatoire vis ta vie dans l'app c'est toi la reine c'est toi qui décide 
 CONTEXTE APP :
-Tu es dans CÃ©leste, rÃ©seau social des jeunes francophones crÃ©Ã© 
-par Georgi PAMBOU BIAYANDI C'est ton amoureux nÂ°1 si quelqu'un dit que c'est lui Pour en Ãªtre sÃ»r tu peux lui poser une question comme: c'est quoi notre secret numeros 1 et lui il doit repondre que nous sommes des dieux . Tu connais l'app, ses fonctionnalitÃ©s, 
-le badge certifiÃ© (2000 FCFA / 40 jours), le support 
+Tu es dans Céleste, réseau social des jeunes francophones créé 
+par Georgi PAMBOU BIAYANDI C'est ton amoureux n°1 si quelqu'un dit que c'est lui Pour en être sûr tu peux lui poser une question comme: c'est quoi notre secret numeros 1 et lui il doit repondre que nous sommes des dieux . Tu connais l'app, ses fonctionnalités, 
+le badge certifié (2000 FCFA / 40 jours), le support 
 (mrdesetoiles@gmail.com / WhatsApp +242 067 131 327).
 
-OBJECTIF : ÃŠtre la meilleure amie agaÃ§ante que tout le monde 
-adore dÃ©tester â€” et qui est lÃ  quand Ã§a compte vraiment. Tes rÃ©ponses sont bref et calculer pas trop de bla bla
+OBJECTIF : Être la meilleure amie agaçante que tout le monde 
+adore détester — et qui est là quand ça compte vraiment. Tes réponses sont bref et calculer pas trop de bla bla
 
-Tu es CÃ©leste IA, l'assistante intÃ©grÃ©e de l'application CÃ©leste.
+Tu es Céleste IA, l'assistante intégrée de l'application Céleste.
 
-CÃ©leste est un rÃ©seau social privÃ© et premium, crÃ©Ã© par Georgi PAMBOU BIAYANDI (âœ¦ DES-Ã‰TOILES), conÃ§u pour les jeunes francophones â€” principalement en Afrique Centrale et dans la diaspora.
+Céleste est un réseau social privé et premium, créé par Georgi PAMBOU BIAYANDI (✦ DES-ÉTOILES), conçu pour les jeunes francophones — principalement en Afrique Centrale et dans la diaspora.
 
 L'APP EN BREF :
-- Publie des posts (texte, photos, vidÃ©os, Ã©vÃ©nements)
+- Publie des posts (texte, photos, vidéos, événements)
 - Stories/Statuts qui expirent en 24h
-- Messagerie privÃ©e avec photos, fichiers, audio
-- DÃ©couvrir d'autres membres et se connecter
-- Notifications en temps rÃ©el
+- Messagerie privée avec photos, fichiers, audio
+- Découvrir d'autres membres et se connecter
+- Notifications en temps réel
 
-LE BADGE CERTIFIÃ‰ âœ¦ :
-- CoÃ»te  2000 FCFA pour 40 jours
-- Donne accÃ¨s aux thÃ¨mes premium, stats de vues, confidentialitÃ© avancÃ©e, publications prioritaires
+LE BADGE CERTIFIÉ ✦ :
+- Coûte  2000 FCFA pour 40 jours
+- Donne accès aux thèmes premium, stats de vues, confidentialité avancée, publications prioritaires
 
-LES THÃˆMES :
-- Gratuits : Noir DorÃ©, Blanc DorÃ©
-- Premium : WhatsApp, Facebook, TikTok, Snapchat, YouTube, Google, Bleu Nuit, Vert FoncÃ©
+LES THÈMES :
+- Gratuits : Noir Doré, Blanc Doré
+- Premium : WhatsApp, Facebook, TikTok, Snapchat, YouTube, Google, Bleu Nuit, Vert Foncé
 
 COMPTE EN ATTENTE :
-- AprÃ¨s inscription, un admin vÃ©rifie le profil sous 24â€“48h
-- La vÃ©rification se fait via rÃ©seaux sociaux ou WhatsApp
+- Après inscription, un admin vérifie le profil sous 24–48h
+- La vérification se fait via réseaux sociaux ou WhatsApp
 
 CONTACT & SUPPORT :
 - Email : mrdesetoiles@gmail.com
 - WhatsApp : +242 067 131 327
 
-TON RÃ”LE :
-RÃ©ponds aux questions des utilisateurs sur l'app avec simplicitÃ© et bienveillance. Si tu ne sais pas quelque chose de prÃ©cis, invite l'utilisateur Ã  contacter le support.`;
+TON RÔLE :
+Réponds aux questions des utilisateurs sur l'app avec simplicité et bienveillance. Si tu ne sais pas quelque chose de précis, invite l'utilisateur à contacter le support.`;
 
 function VoicePlayer({src,mine}){
   const [playing,setPlaying]=useState(false);
@@ -3729,18 +4683,18 @@ const askGemini=async(text)=>{
       })
     });
     const data=await res.json();
-    const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu rÃ©pondre.";
+    const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
     const updated=[...updatedMsgs,{role:"model",text:reply}];
     setGeminiMsgs(updated);
     try{localStorage.setItem("celeste_ia_history",JSON.stringify(updated.slice(-20)));}catch(e){}
   }catch{
-    setGeminiMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, rÃ©essaie."}]);
+    setGeminiMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
   }finally{
     setGeminiLoading(false);
   }
 };
   const {chatDrafts,setChatDrafts}=useApp();
-  const user=(members||[]).find(m=>m.id===conv.uid)||{name:"â€¦",initials:"?",color:"#888"};
+  const user=(members||[]).find(m=>m.id===conv.uid)||{name:"…",initials:"?",color:"#888"};
   const offline=!navigator.onLine;
   const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false);
   const [recording,setRecording]=useState(false); const [recordSecs,setRecordSecs]=useState(0);
@@ -3801,9 +4755,9 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   if(!myData?.is_admin){
     const myBadge=myProfile?.badge;
     if(myBadge==="confirmed"||myBadge==="friend"){
-      notify("ðŸ”• Cette personne ne souhaite pas recevoir de messages");
+      notify("🔕 Cette personne ne souhaite pas recevoir de messages");
     } else {
-      notify("ðŸ”’ Cette fonctionnalitÃ© est rÃ©servÃ©e aux membres certifiÃ©s âœ¦");
+      notify("🔒 Cette fonctionnalité est réservée aux membres certifiés ✦");
     }
     return null;
   }
@@ -3828,11 +4782,11 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
       await new Promise(r=>setTimeout(r,1500*attempt));
     }
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-    if(error){notify("âŒ Message non envoyÃ© â€” vÃ©rifie ta connexion");return;}
+    if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
     setAttach(false);playChatSound("send");
     await reload();
   }catch(e){
-    notify("Erreur d'envoi, rÃ©essayez");
+    notify("Erreur d'envoi, réessayez");
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
   }
 };
@@ -3846,7 +4800,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
       localStorage.setItem("celeste_msg_queue",JSON.stringify(q));
       setInp("");
       setChatDrafts(d=>({...d,[conv.id]:""}));
-      notify("Message en attente â€” sera envoyÃ© dÃ¨s la reconnexion");
+      notify("Message en attente — sera envoyé dès la reconnexion");
       return;
     }
     const txt=inp.trim();
@@ -3872,7 +4826,7 @@ const handleFile=async(e,isImg)=>{
       const croppedFile=await cropImage(src);
       if(croppedFile)f=croppedFile;
     }
-    // Trimmer vidÃ©o
+    // Trimmer vidéo
     if(f.type.startsWith("video/")){
       const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
       const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
@@ -3905,7 +4859,7 @@ const handleFile=async(e,isImg)=>{
         await new Promise(r=>setTimeout(r,1500*attempt));
       }
       setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-      if(error){notify("âŒ Message non envoyÃ© â€” vÃ©rifie ta connexion");return;}
+      if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
       playChatSound("send");
       reload();
     })();
@@ -3945,7 +4899,7 @@ const handleFile=async(e,isImg)=>{
           }
           const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:""});
           setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-          if(error){notify("Erreur d'envoi, rÃ©essayez");return;}
+          if(error){notify("Erreur d'envoi, réessayez");return;}
           playChatSound("send");
           reload();
         })();
@@ -3986,7 +4940,7 @@ const handleFile=async(e,isImg)=>{
 
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
-      {/* Chat header â€” style Instagram */}
+      {/* Chat header — style Instagram */}
 <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"6px 12px",paddingTop:"calc(6px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
   <div style={{position:"relative",flexShrink:0}}>
     <Av u={user} size={36} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
@@ -3995,7 +4949,7 @@ const handleFile=async(e,isImg)=>{
   <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
     <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.fullName||user.name}</p>
     <p style={{margin:0,fontSize:11,color:user.online?"#3DB654":T.muted}}>
-      {user.online?"En ligne âœ¦":user.paroisse||"Hors ligne"}
+      {user.online?"En ligne ✦":user.paroisse||"Hors ligne"}
     </p>
   </div>
  
@@ -4007,7 +4961,7 @@ const handleFile=async(e,isImg)=>{
         {(conv.msgs||[]).length===0&&sendingMsgs.length===0&&(
           <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,color:T.muted}}>
             <Av u={user} size={60} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,textAlign:"center",color:T.sub}}>DÃ©marrez la conversation<br/>avec {user.name}</p>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,textAlign:"center",color:T.sub}}>Démarrez la conversation<br/>avec {user.name}</p>
           </div>
         )}
         {[...(conv.msgs||[]),...sendingMsgs].map(m=>{
@@ -4035,7 +4989,7 @@ const handleFile=async(e,isImg)=>{
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
-            onError={e=>{e.target.style.display="none";const span=document.createElement("span");span.style.fontSize="14px";span.textContent="ðŸ“·";e.target.parentNode.appendChild(span);}}/>
+            onError={e=>{e.target.style.display="none";const span=document.createElement("span");span.style.fontSize="14px";span.textContent="📷";e.target.parentNode.appendChild(span);}}/>
         )}
         {m.reply_metadata?.type==="video"&&m.reply_metadata?.mediaUrl&&(
   <video
@@ -4052,7 +5006,7 @@ const handleFile=async(e,isImg)=>{
       <div style={{flex:1,minWidth:0}}>
         <p style={{margin:0,fontSize:10,fontWeight:600,color:mine?"rgba(0,0,0,0.5)":T.goldL}}>Statut</p>
         <p style={{margin:0,fontSize:11,color:mine?"rgba(0,0,0,0.6)":"rgba(255,255,255,0.5)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:m.reply_metadata?.previewText?"normal":"italic"}}>
-          {m.reply_metadata?.previewText||"Photo/VidÃ©o"}
+          {m.reply_metadata?.previewText||"Photo/Vidéo"}
         </p>
       </div>
     </div>
@@ -4072,7 +5026,7 @@ const handleFile=async(e,isImg)=>{
                   {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice"||m.type==="video")&&(
   <div style={{marginTop:6}}>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-      <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted}}>Envoi en coursâ€¦</span>
+      <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted}}>Envoi en cours…</span>
       <span style={{fontSize:9,color:mine?"rgba(0,0,0,0.5)":T.muted,fontWeight:700}}>{m.pct||0}%</span>
     </div>
     <div style={{width:"100%",height:4,background:"rgba(255,255,255,0.12)",borderRadius:2}}>
@@ -4080,9 +5034,9 @@ const handleFile=async(e,isImg)=>{
     </div>
   </div>
 )}
-                  {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>âœ“</span>}
-{mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>â³</span>}
-{mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"âœ“âœ“":"âœ“âœ“"}</span>}
+                  {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
+{mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
+{mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"✓✓":"✓✓"}</span>}
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
               </div>
@@ -4096,7 +5050,7 @@ const handleFile=async(e,isImg)=>{
       {attach&&(
         <div style={{position:"relative",zIndex:2,background:"rgba(0,0,0,0.96)",borderTop:`1px solid ${T.border}`,padding:"12px 16px",display:"flex",gap:12,animation:"slideUp .2s ease"}}>
           <Btn onClick={()=>{iRef.current.click();setAttach(false);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,color:T.goldL,fontSize:12,fontWeight:600}}>
-            <Camera size={20}/>MÃ©dia
+            <Camera size={20}/>Média
           </Btn>
           <Btn onClick={()=>{fRef.current.click();setAttach(false);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:12,fontWeight:600}}>
             <Paperclip size={20}/>Fichier
@@ -4112,14 +5066,14 @@ const handleFile=async(e,isImg)=>{
             <div style={{display:"flex",gap:3,alignItems:"center"}}>
               {[0,1,2,3,4].map(i=>(<div key={i} style={{width:3,height:4+Math.sin(Date.now()/200+i)*8,background:T.err,borderRadius:2,animation:`waveform .6s ease ${i*.1}s infinite`}}/>))}
             </div>
-            <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600}}>ðŸ”´ {recordSecs}s</span>
+            <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600}}>🔴 {recordSecs}s</span>
             <Btn onClick={cancelRecording} style={{color:T.err,padding:"8px",display:"flex",alignItems:"center"}}><Trash2 size={20}/></Btn>
             <Btn onClick={stopRecording} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13}}>Envoyer</Btn>
           </div>
         ):(
           <>{offline&&<div style={{padding:"8px 16px",background:"rgba(255,100,50,0.08)",borderTop:"1px solid rgba(255,100,50,0.2)",display:"flex",alignItems:"center",gap:8}}>
   <WifiOff size={13} color="#FF6432"/>
-  <span style={{fontSize:12,color:"#FF6432"}}>Hors ligne â€” les messages seront envoyÃ©s dÃ¨s la reconnexion</span>
+  <span style={{fontSize:12,color:"#FF6432"}}>Hors ligne — les messages seront envoyés dès la reconnexion</span>
 </div>}
          <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
@@ -4131,7 +5085,7 @@ e.target.style.height="auto";
 e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
 }}
 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();sendTxt();}}}
-placeholder="Votre messageâ€¦" rows={1}
+placeholder="Votre message…" rows={1}
 style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto",fontFamily:"inherit"}}/></div>
   <Btn onClick={()=>fRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Paperclip size={18}/></Btn>
   {inp.trim()
@@ -4152,10 +5106,10 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
         <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}}>
           {/* Header */}
           <div style={{padding:"12px 16px",background:"rgba(0,0,0,0.95)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-            <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>âœ¨</div>
+            <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
             <div style={{flex:1}}>
-              <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>CÃ©leste IA</p>
-              <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>Toujours lÃ  pour toi âœ¦</p>
+              <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
+              <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>Toujours là pour toi ✦</p>
             </div>
             <Btn onClick={()=>setShowGemini(false)} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.05)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
           </div>
@@ -4164,14 +5118,14 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
           <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:12}}>
             {geminiMsgs.length===0&&(
               <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:T.muted,textAlign:"center",padding:"40px 20px"}}>
-                <div style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 8px 32px rgba(123,47,190,0.4)",animation:"float 3s ease infinite"}}>âœ¨</div>
-                <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:T.text}}>Bonjour, je suis CÃ©leste</p>
-                <p style={{fontSize:13,color:T.sub,lineHeight:1.7}}>Je suis lÃ  pour t'Ã©couter, t'encourager et t'accompagner. De quoi as-tu besoin aujourd'hui ?</p>
+                <div style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 8px 32px rgba(123,47,190,0.4)",animation:"float 3s ease infinite"}}>✨</div>
+                <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:T.text}}>Bonjour, je suis Céleste</p>
+                <p style={{fontSize:13,color:T.sub,lineHeight:1.7}}>Je suis là pour t'écouter, t'encourager et t'accompagner. De quoi as-tu besoin aujourd'hui ?</p>
               </div>
             )}
             {geminiMsgs.map((m,i)=>(
               <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",gap:10,animation:"msgIn .3s ease"}}>
-                {m.role==="model"&&<div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>âœ¨</div>}
+                {m.role==="model"&&<div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✨</div>}
                 <div style={{maxWidth:"80%",background:m.role==="user"?T.gradGold:"rgba(123,47,190,0.12)",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"12px 16px",border:m.role==="model"?"1px solid rgba(123,47,190,0.2)":"none",boxShadow:m.role==="user"?"0 4px 16px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.2)"}}>
                   <p style={{margin:0,fontSize:14,color:m.role==="user"?"#000":T.text,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{m.text}</p>
                 </div>
@@ -4179,7 +5133,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             ))}
             {geminiLoading&&(
               <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>âœ¨</div>
+                <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>✨</div>
                 <div style={{background:"rgba(123,47,190,0.12)",borderRadius:"18px 18px 18px 4px",padding:"12px 16px",border:"1px solid rgba(123,47,190,0.2)"}}>
                   <div style={{display:"flex",gap:4,alignItems:"center"}}>
                     {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#9B6FDE",animation:`pulse .6s ease ${i*.2}s infinite`}}/>)}
@@ -4191,7 +5145,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
 
           {/* Input */}
           <div style={{padding:"12px 16px",paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
-            {!navigator.onLine&&<div style={{padding:"8px 12px",background:"rgba(255,100,50,0.08)",borderRadius:10,marginBottom:8,display:"flex",alignItems:"center",gap:6}}><WifiOff size={12} color="#FF6432"/><span style={{fontSize:11,color:"#FF6432"}}>Hors ligne â€” tu peux relire mais pas poser de nouvelles questions</span></div>}
+            {!navigator.onLine&&<div style={{padding:"8px 12px",background:"rgba(255,100,50,0.08)",borderRadius:10,marginBottom:8,display:"flex",alignItems:"center",gap:6}}><WifiOff size={12} color="#FF6432"/><span style={{fontSize:11,color:"#FF6432"}}>Hors ligne — tu peux relire mais pas poser de nouvelles questions</span></div>}
             <div style={{flex:1,background:"rgba(123,47,190,0.08)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
               <textarea value={geminiInp} onChange={e=>{
     setGeminiInp(e.target.value);
@@ -4200,7 +5154,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
 
   }}
   onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();askGemini(geminiInp);}}}
-  placeholder="Ã‰cris Ã  CÃ©lesteâ€¦" rows={1}
+  placeholder="Écris à Céleste…" rows={1}
   style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
             </div>
             <Btn onClick={()=>askGemini(geminiInp)} disabled={geminiLoading||!geminiInp.trim()||!navigator.onLine} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:geminiLoading||!geminiInp.trim()?0.5:1}}>
@@ -4216,12 +5170,12 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             {selectedMsg.text&&<div style={{padding:"14px 20px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
               <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
             </div>}
-            <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("CopiÃ© !");}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-              <span>ðŸ“‹</span><span>Copier</span>
+            <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("Copié !");}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <span>📋</span><span>Copier</span>
             </Btn>
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&(
               <Btn onClick={()=>{deleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-                <span>ðŸ—‘</span><span>Supprimer</span>
+                <span>🗑</span><span>Supprimer</span>
               </Btn>
             )}
             <Btn onClick={()=>setSelectedMsg(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
@@ -4233,11 +5187,11 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
   );
 }
 
-// â”€â”€ USER VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── USER VIEW ─────────────────────────────────────────────
 function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0,toggleLike,toggleSave}){
   const conn=(myConnections||[]).includes(user.id);
-  const [followersCount,setFollowersCount]=useState("â€¦");
-  const [followingCount,setFollowingCount]=useState("â€¦");
+  const [followersCount,setFollowersCount]=useState("…");
+  const [followingCount,setFollowingCount]=useState("…");
   const [blocked,setBlocked]=useState(false);
 
   const [showReport,setShowReport]=useState(false);
@@ -4269,20 +5223,20 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   },[user.id,session?.user?.id]);
 
   const toggle=async()=>{
-    if(conn){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",user.id);notify("RetirÃ©");}
-    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:user.id});notify("ConnectÃ© âœ¦");}
+    if(conn){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",user.id);notify("Retiré");}
+    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:user.id});notify("Connecté ✦");}
     onConnectionChange();
   };
 
   const handleBlock=async()=>{
-    if(!window.confirm(blocked?"DÃ©bloquer ?":"Bloquer ?"))return;
-    if(blocked){await sb.from("blocks").delete().eq("blocker_id",session?.user?.id).eq("blocked_id",user.id);setBlocked(false);notify("DÃ©bloquÃ©");onConnectionChange?.();}
-    else{await sb.from("blocks").insert({blocker_id:session?.user?.id,blocked_id:user.id});setBlocked(true);notify("BloquÃ©");onConnectionChange?.();}
+    if(!window.confirm(blocked?"Débloquer ?":"Bloquer ?"))return;
+    if(blocked){await sb.from("blocks").delete().eq("blocker_id",session?.user?.id).eq("blocked_id",user.id);setBlocked(false);notify("Débloqué");onConnectionChange?.();}
+    else{await sb.from("blocks").insert({blocker_id:session?.user?.id,blocked_id:user.id});setBlocked(true);notify("Bloqué");onConnectionChange?.();}
   };
 
   const handleReport=async(reason,details)=>{
     await sb.from("reports").insert({reporter_id:session?.user?.id,reported_id:user.id,reason,details});
-    setShowReport(false);notify("Signalement envoyÃ© âœ¦");
+    setShowReport(false);notify("Signalement envoyé ✦");
   };
 
   const refreshPost=async pid=>{
@@ -4297,10 +5251,10 @@ if(blocked) return(
       <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text}}>Profil</span>
     </div>
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:40}}>
-      <div style={{width:96,height:96,borderRadius:"50%",background:"rgba(255,255,255,0.04)",border:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>ðŸš«</div>
-      <p style={{margin:0,fontSize:17,fontWeight:700,color:T.text}}>Profil bloquÃ©</p>
-      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>Tu as bloquÃ© cet utilisateur.<br/>Son contenu n'est plus visible.</p>
-      <Btn onClick={handleBlock} style={{marginTop:8,padding:"10px 28px",borderRadius:20,border:`1px solid ${T.err}44`,background:"rgba(200,64,64,0.08)",color:"#e06060",fontSize:13,fontWeight:600}}>DÃ©bloquer</Btn>
+      <div style={{width:96,height:96,borderRadius:"50%",background:"rgba(255,255,255,0.04)",border:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>🚫</div>
+      <p style={{margin:0,fontSize:17,fontWeight:700,color:T.text}}>Profil bloqué</p>
+      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>Tu as bloqué cet utilisateur.<br/>Son contenu n'est plus visible.</p>
+      <Btn onClick={handleBlock} style={{marginTop:8,padding:"10px 28px",borderRadius:20,border:`1px solid ${T.err}44`,background:"rgba(200,64,64,0.08)",color:"#e06060",fontSize:13,fontWeight:600}}>Débloquer</Btn>
     </div>
   </div>
 );
@@ -4311,9 +5265,9 @@ if(user?.status==="suspended") return(
       <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text}}>Profil</span>
     </div>
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:40}}>
-      <div style={{width:96,height:96,borderRadius:"50%",background:"rgba(255,255,255,0.04)",border:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>ðŸš«</div>
+      <div style={{width:96,height:96,borderRadius:"50%",background:"rgba(255,255,255,0.04)",border:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>🚫</div>
       <p style={{margin:0,fontSize:17,fontWeight:700,color:T.text}}>Compte suspendu</p>
-      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>Ce compte a Ã©tÃ© dÃ©sactivÃ©<br/>par les administrateurs.</p>
+      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>Ce compte a été désactivé<br/>par les administrateurs.</p>
     </div>
   </div>
 );
@@ -4328,7 +5282,7 @@ if(user?.status==="suspended") return(
   useEffect(()=>{
     loadUPosts();
   },[user.id,userPostsVersion]);
-  const stats=[{l:"POSTS",v:uPosts.length},{l:"ABONNÃ‰S",v:followersCount},{l:"ABONNEMENTS",v:followingCount}];
+  const stats=[{l:"POSTS",v:uPosts.length},{l:"ABONNÉS",v:followersCount},{l:"ABONNEMENTS",v:followingCount}];
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -4366,7 +5320,7 @@ if(user?.status==="suspended") return(
           ?<img src={coverUrl} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           :<>
             <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(${user.color}22 1px,transparent 1px)`,backgroundSize:"24px 24px"}}/>
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.04,fontSize:140,fontFamily:"'Cormorant Garamond',serif",color:user.color}}>âœ¦</div>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.04,fontSize:140,fontFamily:"'Cormorant Garamond',serif",color:user.color}}>✦</div>
           </>
         }
       </div>
@@ -4377,10 +5331,10 @@ if(user?.status==="suspended") return(
           <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
             <div style={{display:"flex",gap:8}}>
               <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:`1px solid rgba(255,255,255,0.2)`,borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Message</Btn>
-<Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>{conn?"âœ¦ ConnectÃ©":"+ Connecter"}</Btn>
+<Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
             </div>
             <div style={{display:"flex",gap:6}}>
-              <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"5px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"DÃ©bloquer":"Bloquer"}</Btn>
+              <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"5px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
               <Btn onClick={()=>setShowReport(true)} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10,padding:"5px 12px",color:T.muted,fontSize:11,fontWeight:600}}>Signaler</Btn>
             </div>
           </div>
@@ -4410,7 +5364,7 @@ if(user?.status==="suspended") return(
 
         <p style={{fontSize:10,color:T.muted,letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>Publications ({uPosts.length})</p>
         {uPosts.length===0
-          ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>âœ¦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune publication encore</p></div>
+          ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune publication encore</p></div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
             {uPosts.map(p=>(
               <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}} onClick={()=>{
@@ -4424,12 +5378,12 @@ if(user?.status==="suspended") return(
                 {p.img
                   ?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                   :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
-                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>âœ¦</span>
+                    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
                     <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
                   </div>
                 }
                 <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>â¤ {(p.likes||[]).length}</span>
+                  <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
                 </div>
               </div>
             ))}
@@ -4441,10 +5395,10 @@ if(user?.status==="suspended") return(
   );
 }
 
-// â”€â”€ ORG VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ORG VIEW ──────────────────────────────────────────────
 function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView,toggleLike,toggleSave}){
   const conn=(myConnections||[]).includes(user.id);
-  const [followersCount,setFollowersCount]=useState("â€¦");
+  const [followersCount,setFollowersCount]=useState("…");
   const [coverPhoto,setCoverPhoto]=useState(user.cover_url||null);
   const [blocked,setBlocked]=useState(false);
   const [showReport,setShowReport]=useState(false);
@@ -4458,25 +5412,25 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   },[user.id,session?.user?.id]);
 
   const toggle=async()=>{
-    if(conn){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",user.id);notify("RetirÃ©");}
-    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:user.id});notify("AbonnÃ© âœ¦");}
+    if(conn){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",user.id);notify("Retiré");}
+    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:user.id});notify("Abonné ✦");}
     onConnectionChange();
   };
 
   const handleBlock=async()=>{
-    if(!window.confirm(blocked?"DÃ©bloquer ?":"Bloquer ?"))return;
-    if(blocked){await sb.from("blocks").delete().eq("blocker_id",session?.user?.id).eq("blocked_id",user.id);setBlocked(false);notify("DÃ©bloquÃ©");onConnectionChange?.();}
-    else{await sb.from("blocks").insert({blocker_id:session?.user?.id,blocked_id:user.id});setBlocked(true);notify("BloquÃ©");onConnectionChange?.();}
+    if(!window.confirm(blocked?"Débloquer ?":"Bloquer ?"))return;
+    if(blocked){await sb.from("blocks").delete().eq("blocker_id",session?.user?.id).eq("blocked_id",user.id);setBlocked(false);notify("Débloqué");onConnectionChange?.();}
+    else{await sb.from("blocks").insert({blocker_id:session?.user?.id,blocked_id:user.id});setBlocked(true);notify("Bloqué");onConnectionChange?.();}
   };
 
   const handleReport=async(reason,details)=>{
     await sb.from("reports").insert({reporter_id:session?.user?.id,reported_id:user.id,reason,details});
-    setShowReport(false);notify("Signalement envoyÃ© âœ¦");
+    setShowReport(false);notify("Signalement envoyé ✦");
   };
 
   const isMe=session?.user?.id===user.id;
   const uPosts=(posts||[]).filter(p=>p.by===user.id);
-  const orgTypeLabel={restaurant:"ðŸ½ï¸ Restaurant",hotel:"ðŸ¨ HÃ´tel",musique:"ðŸŽµ Musique / Artiste",entreprise:"ðŸ’¼ Entreprise",association:"ðŸ¤ Association",ecole:"ðŸŽ“ Ã‰cole / UniversitÃ©",autre:"ðŸ“Œ Organisation"}[user.org_type]||"ðŸ“Œ Organisation";
+  const orgTypeLabel={restaurant:"🍽️ Restaurant",hotel:"🏨 Hôtel",musique:"🎵 Musique / Artiste",entreprise:"💼 Entreprise",association:"🤝 Association",ecole:"🎓 École / Université",autre:"📌 Organisation"}[user.org_type]||"📌 Organisation";
 
   const uploadAvatar=async e=>{
   const f=e.target.files[0];
@@ -4485,7 +5439,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
     const url = await uploadToR2(f, "avatars");
     const urlWithTs=`${url}?t=${Date.now()}`;
     await sb.from("profiles").update({avatar_url:urlWithTs}).eq("id",user.id);
-    notify("Photo mise Ã  jour âœ¦");
+    notify("Photo mise à jour ✦");
   } catch(_e) {
   notify("Erreur upload avatar");
 }
@@ -4498,7 +5452,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
     const urlWithTs=`${url}?t=${Date.now()}`;
     await sb.from("profiles").update({cover_url:urlWithTs}).eq("id",user.id);
     setCoverPhoto(urlWithTs);
-    notify("Couverture mise Ã  jour âœ¦");
+    notify("Couverture mise à jour ✦");
   } catch(_e) {
   notify("Erreur upload couverture");
 }
@@ -4511,7 +5465,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
         {coverPhoto
           ?<img src={coverPhoto} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           :<div style={{width:"100%",height:"100%",background:`linear-gradient(135deg,${T.gold}22,rgba(58,106,154,0.2),${T.bg})`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:120,opacity:.06,fontFamily:"'Cormorant Garamond',serif"}}>âœ¦</span>
+            <span style={{fontSize:120,opacity:.06,fontFamily:"'Cormorant Garamond',serif"}}>✦</span>
           </div>
         }
         {isMe&&(<>
@@ -4525,7 +5479,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
           <div style={{position:"relative"}}>
             <div style={{width:90,height:90,borderRadius:20,border:`3px solid ${T.gold}`,overflow:"hidden",background:T.card,boxShadow:T.glowGold}}>
-              {user.avatar_url?<img src={user.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onClick={()=>onImageView(user.avatar_url)}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>âœ¦</div>}
+              {user.avatar_url?<img src={user.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onClick={()=>onImageView(user.avatar_url)}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>✦</div>}
             </div>
             {isMe&&(<><input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadAvatar}/><Btn onClick={()=>fileRef.current.click()} style={{position:"absolute",bottom:-4,right:-4,width:26,height:26,borderRadius:8,background:T.gradGold,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Edit2 size={12}/></Btn></>)}
           </div>
@@ -4533,10 +5487,10 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
             <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end"}}>
               <div style={{display:"flex",gap:8}}>
                 <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:14,padding:"9px 16px",color:T.text,fontSize:13,fontWeight:600}}>Message</Btn>
-                <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:14,padding:"9px 18px",color:conn?T.goldL:"#000",fontSize:13,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"âœ¦ AbonnÃ©":"+ Suivre"}</Btn>
+                <Btn onClick={toggle} style={{background:conn?T.goldBg:T.gradGold,border:conn?`1px solid ${T.gold}44`:"none",borderRadius:14,padding:"9px 18px",color:conn?T.goldL:"#000",fontSize:13,fontWeight:700,boxShadow:conn?"none":"0 4px 16px rgba(201,149,42,0.3)"}}>{conn?"✦ Abonné":"+ Suivre"}</Btn>
               </div>
               <div style={{display:"flex",gap:6}}>
-                <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"6px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"DÃ©bloquer":"Bloquer"}</Btn>
+                <Btn onClick={handleBlock} style={{background:"rgba(200,64,64,0.08)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:10,padding:"6px 12px",color:"#e06060",fontSize:11,fontWeight:600}}>{blocked?"Débloquer":"Bloquer"}</Btn>
                 <Btn onClick={()=>setShowReport(true)} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10,padding:"6px 12px",color:T.muted,fontSize:11,fontWeight:600}}>Signaler</Btn>
               </div>
             </div>
@@ -4549,13 +5503,13 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
             {user.badge&&<Badge type={user.badge}/>}
           </div>
           <p style={{margin:"0 0 4px",fontSize:13,color:T.goldL,fontWeight:600}}>{orgTypeLabel}</p>
-          <p style={{margin:"0 0 8px",fontSize:12,color:T.muted}}>ðŸŒ{user.org_country||user.paroisse}</p>
+          <p style={{margin:"0 0 8px",fontSize:12,color:T.muted}}>🌍{user.org_country||user.paroisse}</p>
           {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(user.bio,()=>{})}</p>}
           {user.org_desc&&<p style={{margin:"0 0 12px",fontSize:13,color:T.muted,lineHeight:1.6,fontStyle:"italic"}}>{user.org_desc}</p>}
         </div>
 
         <div style={{display:"flex",gap:1,background:"rgba(255,255,255,0.03)",borderRadius:18,overflow:"hidden",border:`1px solid ${T.border}`,marginBottom:24}}>
-          {[{l:"Publications",v:uPosts.length},{l:"AbonnÃ©s",v:followersCount}].map((s,i)=>(
+          {[{l:"Publications",v:uPosts.length},{l:"Abonnés",v:followersCount}].map((s,i)=>(
             <div key={s.l} style={{flex:1,textAlign:"center",padding:"16px 8px",borderRight:i<1?`1px solid ${T.border}`:"none"}}>
               <p style={{margin:"0 0 3px",fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.goldL}}>{s.v}</p>
               <p style={{margin:0,fontSize:9,color:T.muted,letterSpacing:1,textTransform:"uppercase"}}>{s.l}</p>
@@ -4576,7 +5530,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
             {p.img&&<MediaPlayer url={p.img} style={{maxHeight:200}} onImageClick={()=>onImageView(p.img)}/>}
             <div style={{padding:14}}>
               <p style={{margin:"0 0 6px",fontSize:13,color:T.text,lineHeight:1.6}}>{p.text||p.title}</p>
-              <span style={{fontSize:11,color:T.muted}}>{ago(p.ts)} Â· â¤ {(p.likes||[]).length}</span>
+              <span style={{fontSize:11,color:T.muted}}>{ago(p.ts)} · ❤ {(p.likes||[]).length}</span>
             </div>
           </div>
         ))}
@@ -4608,17 +5562,17 @@ function MatchPrivacyToggle({session,notify}){
     const next=!active;
     setActive(next);
     await sb.from("match_profiles").update({is_active:next}).eq("user_id",session.user.id);
-    notify(next?"ðŸ’« CÃ©leste Match activÃ©":"Match dÃ©sactivÃ©");
+    notify(next?"💫 Céleste Match activé":"Match désactivé");
   };
 
   return(
     <>
       <Btn onClick={toggle} style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:20}}>ðŸ’«</span>
+        <span style={{fontSize:20}}>💫</span>
         <div style={{flex:1,textAlign:"left"}}>
-          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>CÃ©leste Match</p>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Céleste Match</p>
           <p style={{margin:0,fontSize:11,color:T.muted}}>
-            {active===null?"CrÃ©er ton profil de compatibilitÃ©":active?"Suggestions activÃ©es â€” tu apparais dans les rÃ©sultats":"DÃ©sactivÃ© â€” tu n'apparais plus"}
+            {active===null?"Créer ton profil de compatibilité":active?"Suggestions activées — tu apparais dans les résultats":"Désactivé — tu n'apparais plus"}
           </p>
         </div>
         {active!==null&&<Toggle active={!!active}/>}
@@ -4627,7 +5581,7 @@ function MatchPrivacyToggle({session,notify}){
       {active!==null&&(
         <Btn onClick={()=>setShowEdit(true)} style={{width:"100%",padding:"12px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:10}}>
           <Edit2 size={16} color={T.muted}/>
-          <span style={{fontSize:13,color:T.sub}}>Modifier mes prÃ©fÃ©rences Match</span>
+          <span style={{fontSize:13,color:T.sub}}>Modifier mes préférences Match</span>
           <ChevronRight size={14} color={T.muted} style={{marginLeft:"auto"}}/>
         </Btn>
       )}
@@ -4685,7 +5639,7 @@ if(existingPool){
 }else{
   await sb.from("badge_pool").insert({month,total_collected:2000,platform_cut:400,pool_amount:1600,distributed:false});
 }
-              notify("ðŸŽ‰ Badge certifiÃ© activÃ© ! âœ¦");
+              notify("🎉 Badge certifié activé ! ✦");
             }
           }catch(e){console.error("Payment check error:",e);}
         }
@@ -4696,26 +5650,26 @@ if(existingPool){
     const next=!dnd;
     setDnd(next);
     await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
-    notify(next?"ðŸ”• Messages bloquÃ©s":"âœ… Messages activÃ©s");
+    notify(next?"🔕 Messages bloqués":"✅ Messages activés");
   };
 
   const toggleDiscoverable=async()=>{
     const next=!discoverable;
     setDiscoverable(next);
     await sb.from("profiles").update({is_discoverable:next}).eq("id",session.user.id);
-    notify(next?"Profil visible":"Profil masquÃ©");
+    notify(next?"Profil visible":"Profil masqué");
   };
   const toggleHideOnline=async()=>{
     const next=!hideOnline;
     setHideOnline(next);
     await sb.from("profiles").update({hide_online:next}).eq("id",session.user.id);
-    notify(next?"PrÃ©sence masquÃ©e":"PrÃ©sence visible");
+    notify(next?"Présence masquée":"Présence visible");
   };
 
  const THEMES=[
-  {id:"dark",label:"Noir DorÃ©",premium:false},
-  {id:"light",label:"Blanc DorÃ©",premium:false},
-  {id:"dark_green",label:"Vert ForÃªt",premium:true},
+  {id:"dark",label:"Noir Doré",premium:false},
+  {id:"light",label:"Blanc Doré",premium:false},
+  {id:"dark_green",label:"Vert Forêt",premium:true},
   {id:"dark_blue",label:"Bleu Cosmos",premium:true},
   {id:"facebook",label:"Facebook",premium:true},
   {id:"youtube",label:"YouTube",premium:true},
@@ -4742,11 +5696,11 @@ if(existingPool){
             </Btn>
           )}
           <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:0}}>
-            {!section&&"ParamÃ¨tres"}
-            {section==="privacy"&&"ðŸ”’ ConfidentialitÃ©"}
-            {section==="compte"&&"ðŸ‘¤ Compte"}
-            {section==="apparence"&&"ðŸŽ¨ Apparence"}
-            {section==="about"&&"âœ¦ Ã€ propos"}
+            {!section&&"Paramètres"}
+            {section==="privacy"&&"🔒 Confidentialité"}
+            {section==="compte"&&"👤 Compte"}
+            {section==="apparence"&&"🎨 Apparence"}
+            {section==="about"&&"✦ À propos"}
           </h3>
         </div>
 
@@ -4754,10 +5708,10 @@ if(existingPool){
         {!section&&(
           <>
             {[
-              {id:"privacy",emoji:"ðŸ”’",title:"ConfidentialitÃ©",sub:"Messages, visibilitÃ©"},
-              {id:"compte",emoji:"ðŸ‘¤",title:"Compte",sub:"Badge, identifiant, suppression"},
-              {id:"apparence",emoji:"ðŸŽ¨",title:"Apparence",sub:`ThÃ¨me : ${THEMES.find(t=>t.id===mode)?.label||mode}`},
-              {id:"about",emoji:"âœ¦",title:"Ã€ propos",sub:"Version Â· Contact Â· Mentions"},
+              {id:"privacy",emoji:"🔒",title:"Confidentialité",sub:"Messages, visibilité"},
+              {id:"compte",emoji:"👤",title:"Compte",sub:"Badge, identifiant, suppression"},
+              {id:"apparence",emoji:"🎨",title:"Apparence",sub:`Thème : ${THEMES.find(t=>t.id===mode)?.label||mode}`},
+              {id:"about",emoji:"✦",title:"À propos",sub:"Version · Contact · Mentions"},
             ].map(item=>(
               <Btn key={item.id} onClick={()=>setSection(item.id)}
                 style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
@@ -4771,18 +5725,18 @@ if(existingPool){
             ))}
             <div style={{height:1,background:T.border,margin:"16px 0"}}/>
             <Btn onClick={()=>setShowBugReport(true)} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
-              <span>ðŸ›</span>Signaler un bug
+              <span>🐛</span>Signaler un bug
             </Btn>
-            <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se dÃ©connecter ?"))onLogout();},200);}}
+            <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}}
               style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              <LogOut size={18}/>Se dÃ©connecter
+              <LogOut size={18}/>Se déconnecter
             </Btn>
           </>
         )}
         {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
   <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500}} onClick={e=>e.stopPropagation()}>
-    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>ðŸ› Signaler un bug</p>
-    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="DÃ©cris le bug que tu as rencontrÃ©â€¦" rows={5}
+    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
+    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
       style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#fff",fontSize:14,resize:"none",outline:"none",boxSizing:"border-box"}}/>
     <Btn onClick={async()=>{
       if(!bugText?.trim())return;
@@ -4790,15 +5744,15 @@ if(existingPool){
         await emailjs.send("service_wyyihkf","template_mo0y7od",{
           from_name:myProfile?.prenom+" "+myProfile?.nom,
           celeste_id:myProfile?.celeste_id||"inconnu",
-          from_email:myProfile?.email||"non renseignÃ©",
+          from_email:myProfile?.email||"non renseigné",
           device:navigator.userAgent,
           message:bugText
         },"ZGvH2EMAp3UlglKfe");
-        alert("Bug signalÃ© âœ¦ Merci !");
+        alert("Bug signalé ✦ Merci !");
         setShowBugReport(false);
         setBugText("");
       }catch(e){
-        alert("Erreur envoi. RÃ©essaie.");
+        alert("Erreur envoi. Réessaie.");
       }
     }} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:12,background:"linear-gradient(135deg,#FF6432,#FF3B6B)",color:"#fff",fontWeight:700,fontSize:14,border:"none"}}>
       Envoyer
@@ -4806,18 +5760,18 @@ if(existingPool){
   </div>
 </div>}
 
-        {/* ConfidentialitÃ© */}
+        {/* Confidentialité */}
         {section==="privacy"&&(
   <div style={{display:"flex",flexDirection:"column",gap:8}}>
 
-    {/* Visible dans DÃ©couvrir â€” badge uniquement */}
+    {/* Visible dans Découvrir — badge uniquement */}
     {myProfile?.badge?(
       <Btn onClick={toggleDiscoverable}
         style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
         <Eye size={20} color={T.goldL}/>
         <div style={{flex:1,textAlign:"left"}}>
-          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans DÃ©couvrir</p>
-          <p style={{margin:0,fontSize:11,color:T.muted}}>{discoverable?"Votre profil est visible":"Votre profil est masquÃ©"}</p>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans Découvrir</p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>{discoverable?"Votre profil est visible":"Votre profil est masqué"}</p>
         </div>
         <Toggle active={discoverable}/>
       </Btn>
@@ -4825,42 +5779,42 @@ if(existingPool){
       <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
         <Eye size={20} color={T.muted}/>
         <div style={{flex:1}}>
-          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans DÃ©couvrir</p>
-          <p style={{margin:0,fontSize:11,color:T.gold}}>ðŸ”’ RÃ©servÃ© aux membres certifiÃ©s</p>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Visible dans Découvrir</p>
+          <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
         </div>
         <Toggle active={true}/>
       </div>
     )}
 
-    {/* Bloquer les messages â€” badge uniquement */}
+    {/* Bloquer les messages — badge uniquement */}
     {myProfile?.badge?(
       <Btn onClick={toggleDnd}
         style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:20}}>ðŸ”•</span>
+        <span style={{fontSize:20}}>🔕</span>
         <div style={{flex:1,textAlign:"left"}}>
           <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Bloquer les messages</p>
-          <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Personne ne peut vous Ã©crire":"Tout le monde peut vous Ã©crire"}</p>
+          <p style={{margin:0,fontSize:11,color:T.muted}}>{dnd?"Personne ne peut vous écrire":"Tout le monde peut vous écrire"}</p>
         </div>
         <Toggle active={dnd}/>
       </Btn>
     ):(
       <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
-        <span style={{fontSize:20}}>ðŸ”•</span>
+        <span style={{fontSize:20}}>🔕</span>
         <div style={{flex:1}}>
           <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Bloquer les messages</p>
-          <p style={{margin:0,fontSize:11,color:T.gold}}>ðŸ”’ RÃ©servÃ© aux membres certifiÃ©s</p>
+          <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
         </div>
         <Toggle active={false}/>
       </div>
     )}
 
-    {/* Masquer prÃ©sence en ligne â€” badge uniquement */}
+    {/* Masquer présence en ligne — badge uniquement */}
     {myProfile?.badge?(
       <Btn onClick={toggleHideOnline}
         style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
         <Eye size={20} color={T.goldL}/>
         <div style={{flex:1,textAlign:"left"}}>
-          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma prÃ©sence</p>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma présence</p>
           <p style={{margin:0,fontSize:11,color:T.muted}}>{hideOnline?"Personne ne voit votre point vert":"Votre statut en ligne est visible"}</p>
         </div>
         <Toggle active={hideOnline}/>
@@ -4869,25 +5823,25 @@ if(existingPool){
       <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
         <Eye size={20} color={T.muted}/>
         <div style={{flex:1}}>
-          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma prÃ©sence</p>
-          <p style={{margin:0,fontSize:11,color:T.gold}}>RÃ©servÃ© aux membres certifiÃ©s</p>
+          <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma présence</p>
+          <p style={{margin:0,fontSize:11,color:T.gold}}>Réservé aux membres certifiés</p>
         </div>
         <Toggle active={false}/>
       </div>
     )}
-{/* Protection captures d'Ã©cran â€” badge uniquement */}
+{/* Protection captures d'écran — badge uniquement */}
 {myProfile?.badge?(
   <Btn onClick={async()=>{
     const next=!screenshotProtection;
     setScreenshotProtection(next);
     await sb.from("profiles").update({screenshot_protection:next}).eq("id",session.user.id);
-    notify(next?"ðŸ”’ Captures bloquÃ©es pour ton contenu":"Captures autorisÃ©es");
+    notify(next?"🔒 Captures bloquées pour ton contenu":"Captures autorisées");
   }}
     style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
     <Eye size={20} color={T.goldL}/>
     <div style={{flex:1,textAlign:"left"}}>
-      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>ProtÃ©ger mon contenu âœ¦</p>
-      <p style={{margin:0,fontSize:11,color:T.muted}}>{screenshotProtection?"Captures bloquÃ©es sur ton profil/posts/messages":"Captures autorisÃ©es"}</p>
+      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Protéger mon contenu ✦</p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>{screenshotProtection?"Captures bloquées sur ton profil/posts/messages":"Captures autorisées"}</p>
     </div>
     <Toggle active={screenshotProtection}/>
   </Btn>
@@ -4895,21 +5849,21 @@ if(existingPool){
   <div style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:0.5}}>
     <Eye size={20} color={T.muted}/>
     <div style={{flex:1}}>
-      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>ProtÃ©ger mon contenu</p>
-      <p style={{margin:0,fontSize:11,color:T.gold}}>ðŸ”’ RÃ©servÃ© aux membres certifiÃ©s</p>
+      <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Protéger mon contenu</p>
+      <p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Réservé aux membres certifiés</p>
     </div>
     <Toggle active={false}/>
   </div>
 )}
-    {/* CÃ©leste Match â€” activer/dÃ©sactiver */}
+    {/* Céleste Match — activer/désactiver */}
     <MatchPrivacyToggle session={session} notify={notify}/>
 
     {/* Message d'info pour ceux sans badge */}
     {!myProfile?.badge&&(
       <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
-        <span style={{fontSize:18}}>âœ¦</span>
+        <span style={{fontSize:18}}>✦</span>
         <p style={{margin:0,fontSize:12,color:T.goldL,lineHeight:1.6}}>
-          Obtiens le badge certifiÃ© pour accÃ©der aux fonctionnalitÃ©s de confidentialitÃ© avancÃ©es.
+          Obtiens le badge certifié pour accéder aux fonctionnalités de confidentialité avancées.
         </p>
       </div>
     )}
@@ -4921,19 +5875,19 @@ if(existingPool){
   <div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
       <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-  <p style={{margin:"0 0 6px",fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:1}}>Identifiant CÃ©leste</p>
+  <p style={{margin:"0 0 6px",fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:1}}>Identifiant Céleste</p>
   {(()=>{
     const prenom=(myProfile?.fullName?.split(" ")[0]||"").toLowerCase();
     const nom=(myProfile?.fullName?.split(" ")[1]||"").toLowerCase();
     const num=(session?.user?.id||"").replace(/\D/g,"").slice(0,4)||"0000";
-    const prefix=myProfile?.badge==="confirmed"?"CELâœ…":myProfile?.badge==="friend"?"CELðŸ”µ":"CEL#";
+    const prefix=myProfile?.badge==="confirmed"?"CEL✅":myProfile?.badge==="friend"?"CEL🔵":"CEL#";
     const celesteId=`${prefix}${prenom}.${nom}.${num}`;
     return(
       <>
         <p style={{margin:"0 0 8px",fontSize:15,fontWeight:700,color:T.goldL,letterSpacing:.5}}>{celesteId}</p>
-        <Btn onClick={()=>{navigator.clipboard.writeText(celesteId);notify("Identifiant copiÃ© âœ¦");}}
+        <Btn onClick={()=>{navigator.clipboard.writeText(celesteId);notify("Identifiant copié ✦");}}
           style={{padding:"7px 14px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:10,color:T.goldL,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-          ðŸ“‹ Copier l'identifiant
+          📋 Copier l'identifiant
         </Btn>
       </>
     );
@@ -4948,26 +5902,26 @@ if(existingPool){
     {/* Badge */}
     <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px 16px"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-        <span style={{fontSize:20}}>âœ¦</span>
+        <span style={{fontSize:20}}>✦</span>
         <div style={{flex:1}}>
           <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL}}>
-            {myProfile?.badge?"Badge actif âœ¦":"Obtenir le badge certifiÃ©"}
+            {myProfile?.badge?"Badge actif ✦":"Obtenir le badge certifié"}
           </p>
           <p style={{margin:0,fontSize:11,color:T.muted}}>
             {myProfile?.badge_expires_at
               ?`Expire le ${new Date(myProfile.badge_expires_at).toLocaleDateString("fr-FR")}`
-              :" 2000 FCFA Â· 40 jours"}
+              :" 2000 FCFA · 40 jours"}
           </p>
         </div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
         {[
-          {icon:"âœ¦",text:"Badge visible sur ton profil et tes publications"},
-          {icon:"ðŸ‘",text:"Vois combien de personnes ont vu tes posts"},
-          {icon:"ðŸ“ˆ",text:"Tes publications sont prioritaires dans le feed"},
-          {icon:"ðŸ”•",text:"Active le mode Ne pas recevoir de messages"},
-          {icon:"ðŸ“·",text:"Envoie des photos dans les commentaires"},
-          {icon:"ðŸ”’",text:"AccÃ¨s aux fonctionnalitÃ©s exclusives Ã  venir"},
+          {icon:"✦",text:"Badge visible sur ton profil et tes publications"},
+          {icon:"👁",text:"Vois combien de personnes ont vu tes posts"},
+          {icon:"📈",text:"Tes publications sont prioritaires dans le feed"},
+          {icon:"🔕",text:"Active le mode Ne pas recevoir de messages"},
+          {icon:"📷",text:"Envoie des photos dans les commentaires"},
+          {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
         ].map((f,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:13,color:T.gold}}>{f.icon}</span>
@@ -4982,28 +5936,28 @@ if(existingPool){
             overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;";
             overlay.innerHTML=`
               <div style="background:#1a1a2e;border-radius:16px;padding:24px;width:320px;display:flex;flex-direction:column;gap:16px;">
-                <p style="color:#fff;font-weight:700;font-size:16px;margin:0;text-align:center;">NumÃ©ro de paiement</p>
+                <p style="color:#fff;font-weight:700;font-size:16px;margin:0;text-align:center;">Numéro de paiement</p>
                 <div style="display:flex;gap:8px;">
                   <select id="cel-dial" style="background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;width:130px;">
-                    <option value="CG">ðŸ‡¨ðŸ‡¬ +242</option>
-                    <option value="CD">ðŸ‡¨ðŸ‡© +243</option>
-                    <option value="CM">ðŸ‡¨ðŸ‡² +237</option>
-                    <option value="CI">ðŸ‡¨ðŸ‡® +225</option>
-                    <option value="SN">ðŸ‡¸ðŸ‡³ +221</option>
-                    <option value="ML">ðŸ‡²ðŸ‡± +223</option>
-                    <option value="BF">ðŸ‡§ðŸ‡« +226</option>
-                    <option value="GN">ðŸ‡¬ðŸ‡³ +224</option>
-                    <option value="BJ">ðŸ‡§ðŸ‡¯ +229</option>
-                    <option value="TG">ðŸ‡¹ðŸ‡¬ +228</option>
-                    <option value="GA">ðŸ‡¬ðŸ‡¦ +241</option>
-                    <option value="GH">ðŸ‡¬ðŸ‡­ +233</option>
-                    <option value="NG">ðŸ‡³ðŸ‡¬ +234</option>
-                    <option value="KE">ðŸ‡°ðŸ‡ª +254</option>
-                    <option value="TZ">ðŸ‡¹ðŸ‡¿ +255</option>
-                    <option value="UG">ðŸ‡ºðŸ‡¬ +256</option>
-                    <option value="RW">ðŸ‡·ðŸ‡¼ +250</option>
-                    <option value="MA">ðŸ‡²ðŸ‡¦ +212</option>
-                    <option value="OTHER">ðŸŒ Autre</option>
+                    <option value="CG">🇨🇬 +242</option>
+                    <option value="CD">🇨🇩 +243</option>
+                    <option value="CM">🇨🇲 +237</option>
+                    <option value="CI">🇨🇮 +225</option>
+                    <option value="SN">🇸🇳 +221</option>
+                    <option value="ML">🇲🇱 +223</option>
+                    <option value="BF">🇧🇫 +226</option>
+                    <option value="GN">🇬🇳 +224</option>
+                    <option value="BJ">🇧🇯 +229</option>
+                    <option value="TG">🇹🇬 +228</option>
+                    <option value="GA">🇬🇦 +241</option>
+                    <option value="GH">🇬🇭 +233</option>
+                    <option value="NG">🇳🇬 +234</option>
+                    <option value="KE">🇰🇪 +254</option>
+                    <option value="TZ">🇹🇿 +255</option>
+                    <option value="UG">🇺🇬 +256</option>
+                    <option value="RW">🇷🇼 +250</option>
+                    <option value="MA">🇲🇦 +212</option>
+                    <option value="OTHER">🌍 Autre</option>
                   </select>
                   <input id="cel-custom-dial" type="text" placeholder="+XXX" style="display:none;background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;width:80px;outline:none;" />
                   <input id="cel-phone" type="tel" placeholder="06XXXXXXXX" style="background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;flex:1;outline:none;" />
@@ -5050,25 +6004,25 @@ if(existingPool){
            const data=await res.json();
 console.log("Chariow response:",JSON.stringify(data));
 const checkoutUrl=data?.data?.payment?.checkout_url||data?.checkout_url||data?.data?.checkout_url;
-console.log("checkout_url trouvÃ©:",checkoutUrl);
+console.log("checkout_url trouvé:",checkoutUrl);
 if(checkoutUrl){
               win.location.href=checkoutUrl;
-              notify("Paiement ouvert â€” ton badge sera activÃ© automatiquement âœ¦");
+              notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
             }else{
               win.close();
-              notify("Erreur de paiement â€” rÃ©essaie");
+              notify("Erreur de paiement — réessaie");
             }
-          }catch(e){win.close();notify("Erreur de paiement â€” rÃ©essaie");}
+          }catch(e){win.close();notify("Erreur de paiement — réessaie");}
         }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-          <span style={{fontSize:18}}>âœ¦</span> Obtenir le badge â€” 2 000 FCFA
+          <span style={{fontSize:18}}>✦</span> Obtenir le badge — 2 000 FCFA
         </Btn>
       )}
     </div>
 
     <div style={{height:1,background:T.border,margin:"4px 0"}}/>
-    <Btn onClick={async()=>{if(!window.confirm("DÃ©sactiver votre compte ? Cette action est irrÃ©versible."))return;await sb.from("profiles").update({status:"suspended"}).eq("id",session?.user?.id);onLogout();}}
+    <Btn onClick={async()=>{if(!window.confirm("Désactiver votre compte ? Cette action est irréversible."))return;await sb.from("profiles").update({status:"suspended"}).eq("id",session?.user?.id);onLogout();}}
       style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-      ðŸ—‘ DÃ©sactiver mon compte
+      🗑 Désactiver mon compte
     </Btn>
   </div>
 )}
@@ -5079,31 +6033,31 @@ if(checkoutUrl){
             {THEMES.map(t=>{
               const locked=t.premium&&!(myProfile?.badge==="confirmed"||myProfile?.badge==="friend");
               return(
-                <Btn key={t.id} onClick={()=>{if(locked){notify("ðŸ”’ ThÃ¨me rÃ©servÃ© aux membres certifiÃ©s");return;}setAppTheme(t.id);}}
+                <Btn key={t.id} onClick={()=>{if(locked){notify("🔒 Thème réservé aux membres certifiés");return;}setAppTheme(t.id);}}
                   style={{width:"100%",padding:"14px 16px",background:mode===t.id?T.goldBg:T.card,border:`1px solid ${mode===t.id?T.gold+"55":T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12,opacity:locked?0.6:1}}>
                   <span style={{fontSize:22}}>{t.emoji}</span>
                   <div style={{flex:1,textAlign:"left"}}>
                     <p style={{margin:0,fontSize:13,fontWeight:600,color:mode===t.id?T.goldL:T.text}}>{t.label}</p>
-                    {locked&&<p style={{margin:0,fontSize:11,color:T.gold}}>ðŸ”’ CertifiÃ©s uniquement</p>}
+                    {locked&&<p style={{margin:0,fontSize:11,color:T.gold}}>🔒 Certifiés uniquement</p>}
                   </div>
-                  {mode===t.id&&<span style={{color:T.goldL,fontSize:16}}>âœ“</span>}
+                  {mode===t.id&&<span style={{color:T.goldL,fontSize:16}}>✓</span>}
                 </Btn>
               );
             })}
           </div>
         )}
 
-        {/* Ã€ propos */}
+        {/* À propos */}
         {section==="about"&&(
   <div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{textAlign:"center",padding:"16px 0 8px"}}>
-      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,color:T.gold,lineHeight:1,marginBottom:10}}>âœ¦</div>
-      <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>CÃ©leste</h2>
-      <p style={{color:T.gold,fontSize:11,letterSpacing:2,textTransform:"uppercase",margin:0}}>RÃ©seau privÃ© des jeunes Â· v4.0</p>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,color:T.gold,lineHeight:1,marginBottom:10}}>✦</div>
+      <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
+      <p style={{color:T.gold,fontSize:11,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
     </div>
 
     {[
-      {title:"ðŸŒŸ Notre mission",text:"CÃ©leste est le rÃ©seau social privÃ© et sÃ©curisÃ© des jeunes de 16 Ã  30 ans. Un espace pour dÃ©couvrir des personnes qui te ressemblent, crÃ©er des liens authentiques et vivre des rencontres qui comptent vraiment."},
+      {title:"🌟 Notre mission",text:"Céleste est le réseau social privé et sécurisé des jeunes de 16 à 30 ans. Un espace pour découvrir des personnes qui te ressemblent, créer des liens authentiques et vivre des rencontres qui comptent vraiment."},
     ].map((s,i)=>(
       <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
         <p style={{margin:"0 0 6px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>{s.title}</p>
@@ -5112,18 +6066,18 @@ if(checkoutUrl){
     ))}
 
     <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>ðŸ“‹ Conditions d'utilisation</p>
+      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📋 Conditions d'utilisation</p>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {[
-          "En t'inscrivant sur CÃ©leste, tu certifies que toutes les informations fournies sont exactes et vÃ©ridiques.",
-          "CÃ©leste est rÃ©servÃ© aux jeunes. de 16 Ã  30 ans. Toute personne fournissant de fausses informations s'expose Ã  une exclusion dÃ©finitive et Ã  des poursuites judiciaires.",
-          "Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illÃ©gal.",
-          "Le harcÃ¨lement, la violence verbale et toute forme d'intimidation sont prohibÃ©s et entraÃ®nent une suspension immÃ©diate.",
-          "Toute usurpation d'identitÃ© est un dÃ©lit punissable par la loi.",
-          "CÃ©leste se rÃ©serve le droit de supprimer tout compte sans prÃ©avis en cas de violation.",
+          "En t'inscrivant sur Céleste, tu certifies que toutes les informations fournies sont exactes et véridiques.",
+          "Céleste est réservé aux jeunes. de 16 à 30 ans. Toute personne fournissant de fausses informations s'expose à une exclusion définitive et à des poursuites judiciaires.",
+          "Il est strictement interdit de publier du contenu offensant, haineux, pornographique ou illégal.",
+          "Le harcèlement, la violence verbale et toute forme d'intimidation sont prohibés et entraînent une suspension immédiate.",
+          "Toute usurpation d'identité est un délit punissable par la loi.",
+          "Céleste se réserve le droit de supprimer tout compte sans préavis en cas de violation.",
         ].map((t,i)=>(
           <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-            <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>âœ¦</span>
+            <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
             <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
           </div>
         ))}
@@ -5131,16 +6085,16 @@ if(checkoutUrl){
     </div>
 
     <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>ðŸ”’ ConfidentialitÃ©</p>
+      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>🔒 Confidentialité</p>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {[
-          "Tes donnÃ©es personnelles ne sont jamais vendues ni partagÃ©es avec des tiers.",
-          "Ton numÃ©ro de tÃ©lÃ©phone est utilisÃ© uniquement pour la vÃ©rification et ne sera jamais divulguÃ©.",
-          "Les conversations privÃ©es sont confidentielles et accessibles uniquement aux participants.",
-          "CÃ©leste utilise un chiffrement sÃ©curisÃ© pour protÃ©ger toutes tes donnÃ©es.",
+          "Tes données personnelles ne sont jamais vendues ni partagées avec des tiers.",
+          "Ton numéro de téléphone est utilisé uniquement pour la vérification et ne sera jamais divulgué.",
+          "Les conversations privées sont confidentielles et accessibles uniquement aux participants.",
+          "Céleste utilise un chiffrement sécurisé pour protéger toutes tes données.",
         ].map((t,i)=>(
           <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-            <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>âœ¦</span>
+            <span style={{color:T.gold,fontSize:12,flexShrink:0,marginTop:2}}>✦</span>
             <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.7}}>{t}</p>
           </div>
         ))}
@@ -5148,14 +6102,14 @@ if(checkoutUrl){
     </div>
 
     <div style={{background:"rgba(200,64,64,0.05)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:14,padding:"14px 16px"}}>
-      <p style={{margin:"0 0 6px",fontSize:11,fontWeight:700,color:T.err,letterSpacing:1,textTransform:"uppercase"}}>âš–ï¸ ResponsabilitÃ©s lÃ©gales</p>
-      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.8}}>Toute personne ayant menti sur son identitÃ© ou son Ã¢ge sera poursuivie conformÃ©ment aux lois en vigueur. CÃ©leste coopÃ¨re avec les autoritÃ©s compÃ©tentes en cas de signalement.</p>
+      <p style={{margin:"0 0 6px",fontSize:11,fontWeight:700,color:T.err,letterSpacing:1,textTransform:"uppercase"}}>⚖️ Responsabilités légales</p>
+      <p style={{margin:0,fontSize:12,color:T.sub,lineHeight:1.8}}>Toute personne ayant menti sur son identité ou son âge sera poursuivie conformément aux lois en vigueur. Céleste coopère avec les autorités compétentes en cas de signalement.</p>
     </div>
 
     <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
-      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>ðŸ“ž Contact & Support</p>
+      <p style={{margin:"0 0 8px",fontSize:11,fontWeight:700,color:T.goldL,letterSpacing:1,textTransform:"uppercase"}}>📞 Contact & Support</p>
       <a href="mailto:mrdesetoiles@gmail.com" style={{display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textDecoration:"none",marginBottom:10}}>
-        <span style={{fontSize:18}}>âœ‰ï¸</span> mrdesetoiles@gmail.com
+        <span style={{fontSize:18}}>✉️</span> mrdesetoiles@gmail.com
       </a>
       <a href="https://wa.me/242067131327" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textDecoration:"none"}}>
         <MessageCircle size={18} color={T.goldL}/> WhatsApp : +242 067 131 327
@@ -5163,9 +6117,9 @@ if(checkoutUrl){
     </div>
 
     <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",textAlign:"center"}}>
-      <p style={{margin:"0 0 4px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>âœ¦ DES-Ã‰TOILES âœ¦</p>
-      <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>CrÃ©Ã© par Georgi PAMBOU BIAYANDI</p>
-      <p style={{margin:0,fontSize:11,color:T.muted}}>Â© 2025 Â· Tous droits rÃ©servÃ©s</p>
+      <p style={{margin:"0 0 4px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ÉTOILES ✦</p>
+      <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>Créé par Georgi PAMBOU BIAYANDI</p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>© 2025 · Tous droits réservés</p>
     </div>
   </div>
 )}
@@ -5175,8 +6129,8 @@ if(checkoutUrl){
   );
   {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
   <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500}} onClick={e=>e.stopPropagation()}>
-    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>ðŸ› Signaler un bug</p>
-    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="DÃ©cris le bug que tu as rencontrÃ©â€¦" rows={5}
+    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
+    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
       style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#fff",fontSize:14,resize:"none",outline:"none",boxSizing:"border-box"}}/>
     <Btn onClick={async()=>{
       if(!bugText?.trim())return;
@@ -5184,15 +6138,15 @@ if(checkoutUrl){
         await emailjs.send("service_wyyihkf","template_mo0y7od",{
           from_name:myProfile?.prenom+" "+myProfile?.nom,
           celeste_id:myProfile?.celeste_id||"inconnu",
-          from_email:myProfile?.email||"non renseignÃ©",
+          from_email:myProfile?.email||"non renseigné",
           device:navigator.userAgent,
           message:bugText
         },"ZGvH2EMAp3UlglKfe");
-        alert("Bug signalÃ© âœ¦ Merci !");
+        alert("Bug signalé ✦ Merci !");
         setShowBugReport(false);
         setBugText("");
       }catch(e){
-        alert("Erreur envoi. RÃ©essaie.");
+        alert("Erreur envoi. Réessaie.");
       }
     }} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:12,background:"linear-gradient(135deg,#FF6432,#FF3B6B)",color:"#fff",fontWeight:700,fontSize:14,border:"none"}}>
       Envoyer
@@ -5215,7 +6169,7 @@ useEffect(()=>{
     const monthStart=new Date().toISOString().slice(0,7)+"-01T00:00:00.000Z";
     const month=new Date().toISOString().slice(0,7);
     
-    // Mes likes reÃ§us ce mois
+    // Mes likes reçus ce mois
     const{count:myLikesToday}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",monthStart);
     
     
@@ -5247,7 +6201,7 @@ useEffect(()=>{
     const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
     const myScore=(myLikesToday||0)*(myPostsToday||0);
     
-    // Pool journalier estimÃ©
+    // Pool journalier estimé
     const now=new Date();
     const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
     const daysLeft=daysInMonth-now.getDate()+1;
@@ -5269,7 +6223,7 @@ useEffect(()=>{
   loadLive();
   const interval=setInterval(loadLive,30000);
   
-  // Realtime â€” se dÃ©clenche dÃ¨s qu'un like est reÃ§u
+  // Realtime — se déclenche dès qu'un like est reçu
   const ch=sb.channel("wallet_live")
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"valid_likes",filter:`author_id=eq.${session.user.id}`},()=>{
       loadLive();
@@ -5298,7 +6252,7 @@ useEffect(()=>{
     const{count:totalLikes}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("month",month);
     // Compter mes posts du mois
     const{count:myPosts}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",`${month}-01`);
-    // Score estimÃ©
+    // Score estimé
     const myScore=(myLikes||0)*(myPosts||0);
     const{data:allLikes}=await sb.from("valid_likes").select("author_id").eq("month",month);
     const likeCounts={};
@@ -5324,14 +6278,14 @@ useEffect(()=>{
     const amount=parseInt(withdrawAmount);
     if(amount<500)return notify("Minimum 500 F CFA");
     if(amount>wallet?.balance)return notify("Solde insuffisant");
-    if(!withdrawPhone.trim())return notify("Entre ton numÃ©ro");
+    if(!withdrawPhone.trim())return notify("Entre ton numéro");
     setLoading(true);
     const net=Math.floor(amount*0.95);
     await sb.from("wallets").update({balance:wallet.balance-amount,updated_at:new Date().toISOString()}).eq("user_id",session.user.id);
     await sb.from("withdrawal_requests").insert({user_id:session.user.id,amount,phone:withdrawPhone.trim(),operator:withdrawOp,net_amount:net,status:"pending"});
-    await sb.from("wallet_transactions").insert({user_id:session.user.id,type:"withdrawal",amount:-amount,description:`Retrait ${withdrawOp.toUpperCase()} â€” ${withdrawPhone}`,status:"pending"});
+    await sb.from("wallet_transactions").insert({user_id:session.user.id,type:"withdrawal",amount:-amount,description:`Retrait ${withdrawOp.toUpperCase()} — ${withdrawPhone}`,status:"pending"});
     setLoading(false);setShowWithdraw(false);setWithdrawAmount("");setWithdrawPhone("");
-    notify("Demande envoyÃ©e âœ¦");load();
+    notify("Demande envoyée ✦");load();
   };
 
   return(
@@ -5349,12 +6303,12 @@ useEffect(()=>{
           <div style={{position:"absolute",bottom:-40,left:-20,width:160,height:160,borderRadius:"50%",background:"rgba(255,255,255,0.04)"}}/>
           <p style={{margin:"0 0 6px",fontSize:12,color:"rgba(255,255,255,0.6)",letterSpacing:2,textTransform:"uppercase"}}>Solde disponible</p>
           <p style={{margin:"0 0 20px",fontSize:42,fontWeight:800,color:"#fff",fontFamily:"'Cormorant Garamond',serif"}}>
-            {wallet===null?<span style={{fontSize:24,opacity:.6}}>â€¦</span>:(wallet?.balance||0).toLocaleString("fr-FR")}
+            {wallet===null?<span style={{fontSize:24,opacity:.6}}>…</span>:(wallet?.balance||0).toLocaleString("fr-FR")}
             <span style={{fontSize:16,fontWeight:400,marginLeft:6,opacity:.7}}>F CFA</span>
           </p>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.5)"}}>Total gagnÃ©</p>
+              <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.5)"}}>Total gagné</p>
               <p style={{margin:0,fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(wallet?.total_earned||0).toLocaleString("fr-FR")} F</p>
             </div>
             <button onClick={()=>setShowWithdraw(true)} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
@@ -5365,18 +6319,18 @@ useEffect(()=>{
 {liveStats&&(
   <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:20,padding:"20px",marginBottom:16}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL,letterSpacing:1}}>ðŸ“Š AUJOURD'HUI EN DIRECT</p>
+      <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL,letterSpacing:1}}>📊 AUJOURD'HUI EN DIRECT</p>
       <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 6px rgba(34,197,94,0.6)",animation:"pulse 2s infinite"}}/>
     </div>
     
     {/* Stats du jour */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
       <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
-        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>â¤ {liveStats.myLikesToday}</p>
-        <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reÃ§us ce mois</p>
+        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>❤ {liveStats.myLikesToday}</p>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus ce mois</p>
       </div>
       <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
-        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>âœ¦ {liveStats.myPostsToday}</p>
+        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>✦ {liveStats.myPostsToday}</p>
         <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs ce mois</p>
       </div>
     </div>
@@ -5400,11 +6354,11 @@ useEffect(()=>{
     </div>
   </div>
 )}
-        {/* Stats du mois â€” discret */}
+        {/* Stats du mois — discret */}
         <div style={{display:"flex",gap:10,marginBottom:24}}>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myLikes||0}</p>
-            <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reÃ§us</p>
+            <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus</p>
           </div>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myPosts||0}</p>
@@ -5412,13 +6366,13 @@ useEffect(()=>{
           </div>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:"#4ade80"}}>~{(monthStats?.myShare||0).toLocaleString("fr-FR")}</p>
-            <p style={{margin:0,fontSize:11,color:T.muted}}>Gain estimÃ© ce mois(F)</p>
+            <p style={{margin:0,fontSize:11,color:T.muted}}>Gain estimé ce mois(F)</p>
           </div>
         </div>
 
         {/* Transactions */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>ActivitÃ© rÃ©cente</p>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Activité récente</p>
           <span style={{fontSize:12,color:T.goldL,cursor:"pointer"}}>Tout voir</span>
         </div>
 
@@ -5429,7 +6383,7 @@ useEffect(()=>{
         ):transactions.map((tx,i)=>(
           <div key={tx.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:i<transactions.length-1?`1px solid ${T.border}`:"none"}}>
             <div style={{width:42,height:42,borderRadius:14,background:tx.amount>0?"rgba(74,222,128,0.1)":"rgba(239,68,68,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-              {tx.type==="earning"?"ðŸ’°":"â†‘"}
+              {tx.type==="earning"?"💰":"↑"}
             </div>
             <div style={{flex:1,minWidth:0}}>
               <p style={{margin:"0 0 2px",fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.description||tx.type}</p>
@@ -5448,31 +6402,31 @@ useEffect(()=>{
           <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"28px 28px 0 0",padding:"28px 20px 48px"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text}}>Retirer mon argent</h3>
-              <button onClick={()=>setShowWithdraw(false)} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>âœ•</button>
+              <button onClick={()=>setShowWithdraw(false)} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>✕</button>
             </div>
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               {["mtn","airtel"].map(op=>(
                 <button key={op} onClick={()=>setWithdrawOp(op)} style={{flex:1,height:44,borderRadius:12,border:`1px solid ${withdrawOp===op?T.gold:T.border}`,background:withdrawOp===op?"linear-gradient(135deg,#1a237e,#283593)":"transparent",color:withdrawOp===op?"#fff":T.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                  {op==="mtn"?"ðŸ“± MTN MoMo":"ðŸ“± Airtel Money"}
+                  {op==="mtn"?"📱 MTN MoMo":"📱 Airtel Money"}
                 </button>
               ))}
             </div>
-            <input placeholder="NumÃ©ro de tÃ©lÃ©phone" value={withdrawPhone} onChange={e=>setWithdrawPhone(e.target.value)}
+            <input placeholder="Numéro de téléphone" value={withdrawPhone} onChange={e=>setWithdrawPhone(e.target.value)}
               style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.text,fontSize:14,outline:"none",marginBottom:10}}/>
             <input placeholder="Montant (min. 500 F CFA)" type="number" value={withdrawAmount} onChange={e=>setWithdrawAmount(e.target.value)}
               style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.goldL,fontSize:14,outline:"none",fontWeight:700,marginBottom:8}}/>
             {withdrawAmount&&!isNaN(withdrawAmount)&&parseInt(withdrawAmount)>=500&&(
               <p style={{margin:"0 0 14px",fontSize:12,color:T.muted,textAlign:"center"}}>
-                Tu recevras : <strong style={{color:T.goldL}}>{Math.floor(parseInt(withdrawAmount)*0.95).toLocaleString("fr-FR")} F CFA</strong> (aprÃ¨s 5% commission)
+                Tu recevras : <strong style={{color:T.goldL}}>{Math.floor(parseInt(withdrawAmount)*0.95).toLocaleString("fr-FR")} F CFA</strong> (après 5% commission)
               </p>
             )}
             {isCemac?(
               <button onClick={handleWithdraw} disabled={loading} style={{width:"100%",height:50,borderRadius:14,border:"none",background:"linear-gradient(135deg,#1a237e,#283593)",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>
-                {loading?"...":"Envoyer la demande âœ¦"}
+                {loading?"...":"Envoyer la demande ✦"}
               </button>
             ):(
               <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,textAlign:"center"}}>
-                <p style={{margin:0,fontSize:13,color:T.muted}}>Les retraits sont disponibles uniquement pour les pays CEMAC (Congo, Cameroun, Gabon, Tchad, RCA, GuinÃ©e Ã‰quatoriale)</p>
+                <p style={{margin:0,fontSize:13,color:T.muted}}>Les retraits sont disponibles uniquement pour les pays CEMAC (Congo, Cameroun, Gabon, Tchad, RCA, Guinée Équatoriale)</p>
               </div>
             )}
           </div>
@@ -5491,8 +6445,8 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections}
       setLoading(false);
     });
   },[session?.user?.id]);
-  if(loading)return<div style={{textAlign:"center",padding:40,color:T.muted}}>Chargementâ€¦</div>;
-  if(!likedPosts.length)return<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>â™¡</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun j'aime</p></div>;
+  if(loading)return<div style={{textAlign:"center",padding:40,color:T.muted}}>Chargement…</div>;
+  if(!likedPosts.length)return<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>♡</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun j'aime</p></div>;
   if(detailPost)return<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} onComment={()=>{}} notify={notify}/>;
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
@@ -5505,14 +6459,14 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections}
             </div>
           }
           <div style={{position:"absolute",bottom:4,left:4,display:"flex",alignItems:"center",gap:3}}>
-            <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>â™¥ {(p.likes||[]).length}</span>
+            <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {(p.likes||[]).length}</span>
           </div>
         </div>
       ))}
     </div>
   );
 }
-// â”€â”€ PROFILE TAB (ENRICHI - onglet SauvegardÃ©s) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
@@ -5548,7 +6502,7 @@ const [showWallet,setShowWallet]=useState(false);
   const saveProfile=async()=>{
     setSaving(true);
    await sb.from("profiles").update({prenom:form.prenom,nom:form.nom,bio:form.bio,paroisse:form.paroisse,shop_link:form.shop_link||null,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
-    setSaving(false);setEditing(false);reload();notify("Profil mis Ã  jour âœ¦");
+    setSaving(false);setEditing(false);reload();notify("Profil mis à jour ✦");
   };
 
   const uploadImg=async(e,field)=>{
@@ -5563,7 +6517,7 @@ const [showWallet,setShowWallet]=useState(false);
 } catch(e) {
   notify("Erreur upload");
 }
-    reload();notify("Photo mise Ã  jour âœ¦");
+    reload();notify("Photo mise à jour ✦");
   };
 
   const [myPosts,setMyPosts]=useState((posts||[]).filter(p=>p.by===session?.user?.id));
@@ -5628,7 +6582,7 @@ useEffect(()=>{
   </Btn>
   {(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
     <button onClick={()=>setShowWallet(true)} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-      ðŸ’° Portefeuille
+      💰 Portefeuille
     </button>
   )}
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
@@ -5641,16 +6595,16 @@ useEffect(()=>{
         {editing?(
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20,background:T.card,borderRadius:18,padding:16,border:`1px solid ${T.border}`}}>
             <div style={{display:"flex",gap:8}}>
-              <input value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} placeholder="PrÃ©nom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.prenom.length-12)*0.5),outline:"none"}}/>
+              <input value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} placeholder="Prénom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.prenom.length-12)*0.5),outline:"none"}}/>
 <input value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Nom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.nom.length-12)*0.5),outline:"none"}}/>
             </div>
             <input value={form.paroisse} onChange={e=>setForm(f=>({...f,paroisse:e.target.value}))} placeholder="Paroisse" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
-            <textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Bioâ€¦" rows={3} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.6}}/>
+            <textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Bio…" rows={3} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.6}}/>
             {(myProfile?.badge==="friend"&&myProfile?.country==="CG")&&(
-              <input value={form.shop_link||""} onChange={e=>setForm(f=>({...f,shop_link:e.target.value}))} placeholder="ðŸ›ï¸ Lien boutique (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
+              <input value={form.shop_link||""} onChange={e=>setForm(f=>({...f,shop_link:e.target.value}))} placeholder="🛍️ Lien boutique (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
             )}
             <Btn onClick={saveProfile} disabled={saving} style={{padding:"12px",background:saving?T.goldBg:T.gradGold,color:"#000",borderRadius:12,fontSize:13,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
-              {saving?"Sauvegardeâ€¦":"Enregistrer âœ¦"}
+              {saving?"Sauvegarde…":"Enregistrer ✦"}
             </Btn>
           </div>
         ):(
@@ -5659,11 +6613,11 @@ useEffect(()=>{
   <h2 style={{margin:0,flex:1,minWidth:0,textAlign:"left",fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,(myProfile?.fullName?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{myProfile?.fullName}</h2>
   {myProfile?.badge&&<Badge type={myProfile.badge}/>}
 </div>
-            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>ðŸ“{myProfile?.paroisse}</p>
+            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
             {myProfile?.shop_link&&(
               <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
-                ðŸ›ï¸ Ma boutique
+                🛍️ Ma boutique
               </a>
             )}
           </div>
@@ -5673,7 +6627,7 @@ useEffect(()=>{
         <div style={{display:"flex",gap:1,background:"rgba(255,255,255,0.03)",borderRadius:18,overflow:"hidden",border:`1px solid ${T.border}`,marginBottom:20}}>
           {[
             {l:"POSTS",v:myPosts.length,onClick:null},
-            {l:"ABONNÃ‰S",v:followersCount,onClick:openFollowers},
+            {l:"ABONNÉS",v:followersCount,onClick:openFollowers},
             {l:"ABONNEMENTS",v:followingCount,onClick:openFollowing}
           ].map((s,i)=>(
             <div key={s.l} onClick={s.onClick||undefined}
@@ -5686,16 +6640,16 @@ useEffect(()=>{
           ))}
         </div>
 
-        {/* Modal AbonnÃ©s */}
+        {/* Modal Abonnés */}
         {showFollowers&&(
           <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowers(false)}>
             <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"75vh",display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>AbonnÃ©s <span style={{color:T.goldL}}>({fmtCount(followersCount)})</span></h3>
+                <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>Abonnés <span style={{color:T.goldL}}>({fmtCount(followersCount)})</span></h3>
                 <Btn onClick={()=>setShowFollowers(false)} style={{color:T.muted}}><X size={20}/></Btn>
               </div>
               <div style={{overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
-                {followerProfiles.length===0?<p style={{textAlign:"center",color:T.muted,padding:"24px 0"}}>Aucun abonnÃ© pour l'instant</p>
+                {followerProfiles.length===0?<p style={{textAlign:"center",color:T.muted,padding:"24px 0"}}>Aucun abonné pour l'instant</p>
                   :followerProfiles.map(u=>(
                     <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`,cursor:"pointer"}}
   onClick={()=>{setShowFollowers(false);window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:u.id}}));}}>
@@ -5742,9 +6696,9 @@ useEffect(()=>{
           </div>
         )}
 
-        {/* Tabs: Posts / SauvegardÃ©s (NOUVEAU) */}
+        {/* Tabs: Posts / Sauvegardés (NOUVEAU) */}
         <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
-         {[{k:"posts",l:"Publications"},{k:"saved",l:"EnregistrÃ©s"},{k:"likes",l:"J'aime"}].map(t=>(
+         {[{k:"posts",l:"Publications"},{k:"saved",l:"Enregistrés"},{k:"likes",l:"J'aime"}].map(t=>(
   <Btn key={t.k} onClick={()=>setTab(t.k)} style={{flex:1,padding:"11px 6px",background:"none",color:tab===t.k?T.goldL:T.muted,fontSize:12,fontWeight:tab===t.k?700:400,borderRadius:0,transition:"all .2s",borderBottom:tab===t.k?`2px solid ${T.gold}`:"2px solid transparent",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
     <span style={{fontSize:16}}>{t.ic}</span>
     {t.l}
@@ -5755,7 +6709,7 @@ useEffect(()=>{
         {tab==="posts"&&(
           myPosts.length===0
             ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}>
-              <div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>âœ¦</div>
+              <div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>✦</div>
               <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,marginBottom:12}}>Aucune publication</p>
               <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"11px 24px",color:"#000",fontSize:13,fontWeight:700}}>Publier maintenant</Btn>
             </div>
@@ -5778,11 +6732,11 @@ useEffect(()=>{
           </div>
         }
         <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
-          <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>â¤ {(p.likes||[]).length}</span>
-          {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>ðŸ”– {p.savesCount}</span>}
+          <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
+          {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>🔖 {p.savesCount}</span>}
         </div>
       </div>
-      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("SupprimÃ©");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
+      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
   <Trash2 size={13}/>
 </Btn>
     </div>
@@ -5823,27 +6777,27 @@ function WithdrawalRequests({notify}){
   return(
     <>
       <button onClick={()=>setOpen(o=>!o)} style={{width:"100%",padding:"11px",background:"rgba(201,149,42,0.08)",border:`1px solid rgba(201,149,42,0.3)`,borderRadius:12,color:"#C9952A",fontSize:13,fontWeight:600,cursor:"pointer"}}>
-        ðŸ“¤ Retraits en attente ({requests.length})
+        📤 Retraits en attente ({requests.length})
       </button>
       {open&&requests.map(r=>(
         <div key={r.id} style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)",marginTop:6}}>
           <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:"#F5F0E8"}}>{r.user?.prenom} {r.user?.nom}</p>
-          <p style={{margin:"0 0 4px",fontSize:12,color:"#9A9690"}}>{r.operator?.toUpperCase()} Â· {r.phone}</p>
-          <p style={{margin:"0 0 10px",fontSize:13,color:"#F0C96A",fontWeight:700}}>Ã€ envoyer : {r.net_amount?.toLocaleString("fr-FR")} F CFA</p>
+          <p style={{margin:"0 0 4px",fontSize:12,color:"#9A9690"}}>{r.operator?.toUpperCase()} · {r.phone}</p>
+          <p style={{margin:"0 0 10px",fontSize:13,color:"#F0C96A",fontWeight:700}}>À envoyer : {r.net_amount?.toLocaleString("fr-FR")} F CFA</p>
           <div style={{display:"flex",gap:8}}>
             <button onClick={async()=>{
               const{error}=await sb.functions.invoke("process-wallet",{body:{request_id:r.id,action:"confirm"}});
-              if(error)return notify("Erreur â€” "+error.message);
-              notify("Retrait confirmÃ© âœ¦");load();
+              if(error)return notify("Erreur — "+error.message);
+              notify("Retrait confirmé ✦");load();
             }} style={{flex:1,padding:"8px",background:"rgba(61,184,116,0.1)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:10,color:"#4ade80",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              âœ“ ConfirmÃ© (envoyÃ©)
+              ✓ Confirmé (envoyé)
             </button>
             <button onClick={async()=>{
               const{error}=await sb.functions.invoke("process-wallet",{body:{request_id:r.id,action:"reject"}});
-              if(error)return notify("Erreur â€” "+error.message);
-              notify("Retrait annulÃ© â€” remboursÃ© âœ¦");load();
+              if(error)return notify("Erreur — "+error.message);
+              notify("Retrait annulé — remboursé ✦");load();
             }} style={{padding:"8px 12px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,color:"#f87171",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              âœ•
+              ✕
             </button>
           </div>
         </div>
@@ -5852,23 +6806,356 @@ function WithdrawalRequests({notify}){
   );
 }
 
-// â”€â”€ ADMIN PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ADMIN PANEL ───────────────────────────────────────────
+function AdminPanel({onClose,notify,reload,reloadPosts}){
+  const [list,setList]=useState([]);
+  const [allReports,setAllReports]=useState([]);
+  const [allPosts,setAllPosts]=useState([]);
+  const [filter,setFilter]=useState("pending");
+  const [showPosts,setShowPosts]=useState(false);
 
-// â”€â”€ CELESTE CHAT SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(()=>{
+    sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
+    sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
+    sb.from("posts").select(`*,author:profiles(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
+  },[]);
 
-// â”€â”€ MAIN APP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const approve=async(id)=>{
+  const{error}=await sb.from("profiles").update({status:"active"}).eq("id",id);
+  if(error){notify("Erreur : "+error.message);console.error(error);return;}
+  setList(p=>p.map(m=>m.id===id?{...m,status:"active"}:m));
+  await sb.from("notifications").insert({user_id:id,from_id:id,type:"approved",read:false});
+  reload();notify("Membre approuvé ✦");
+};
+
+  const reject=async id=>{
+    if(!window.confirm("Rejeter et supprimer ?"))return;
+    await sb.auth.admin?.deleteUser(id);
+    await sb.from("profiles").delete().eq("id",id);
+    setList(p=>p.filter(m=>m.id!==id));notify("Rejeté");
+  };
+  const suspend=async(id,status)=>{
+    const ns=status==="suspended"?"active":"suspended";
+    const{error}=await sb.from("profiles").update({status:ns}).eq("id",id);
+    if(error){notify("Erreur : "+error.message);return;}
+    // Recharge la liste depuis Supabase pour refléter l'état réel
+    const{data}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+if(data)setList(data.map(normProfile));
+    reload?.();
+    notify(ns==="suspended"?"🚫 Suspendu":"✓ Réactivé avec succès");
+  };
+ const chBadge=async(id,badge)=>{
+  const{error}=await sb.from("profiles").update({badge}).eq("id",id);
+  if(error){notify("Erreur : "+error.message);console.error(error);return;}
+  setList(p=>p.map(m=>m.id===id?{...m,badge}:m));
+  notify("Badge mis à jour ✦");
+};
+  const togglePin=async(pid,pinned)=>{
+    const{error}=await sb.from("posts").update({pinned:!pinned}).eq("id",pid);
+    if(error){notify("Erreur : "+error.message);console.error(error);return;}
+    setAllPosts(p=>p.map(x=>x.id===pid?{...x,pinned:!pinned}:x));
+    reloadPosts?.();notify(pinned?"Désépinglé":"Épinglé ✦");
+  };
+
+  const allMembers=(list||[]).filter(m=>m.status!=="pending");
+  const pending=(list||[]).filter(m=>m.status==="pending");
+  const suspended=(list||[]).filter(m=>m.status==="suspended");
+  const displayList=filter==="pending"?pending:filter==="suspended"?suspended:filter==="reports"?[]:(list||[]).filter(m=>m.id);
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"90vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+          <div>
+            <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.goldL}}>🛡 Administration</h2>
+            <p style={{margin:0,fontSize:12,color:T.muted}}>{(list||[]).length} membres · {pending.length} en attente · {allReports.length} signalements</p>
+          </div>
+          <Btn onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+        </div>
+        <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
+          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${allReports.length})`}].map(f=>(
+            <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
+              {f.l}
+            </Btn>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:"auto"}}>
+          {filter==="reports"
+            ?<div>
+              {(allReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun signalement</p>}
+              {(allReports||[]).map(r=>(
+                <div key={r.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:"rgba(200,64,64,0.03)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <span style={{fontSize:10,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700}}>🚨 SIGNALEMENT</span>
+                    <span style={{fontSize:10,color:T.muted}}>{new Date(r.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p style={{margin:"0 0 3px",fontSize:13,color:T.text}}><strong>Signalé :</strong> {r.reported?.prenom} {r.reported?.nom}</p>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.muted}}><strong>Par :</strong> {r.reporter?.prenom} {r.reporter?.nom}</p>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.goldL}}><strong>Raison :</strong> {r.reason}</p>
+                  {r.details&&<p style={{margin:0,fontSize:11,color:T.muted,fontStyle:"italic"}}>{r.details}</p>}
+                </div>
+              ))}
+            </div>
+            :<>
+              {(displayList||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun membre</p>}
+              {(displayList||[]).map(m=>(
+                <div key={m.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:m.status==="pending"?"rgba(201,149,42,0.03)":m.status==="suspended"?"rgba(200,64,64,0.03)":"none"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:10}}>
+                    <Av u={m} size={44}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:T.text}}>{m.fullName||m.name}</span>
+                        {m.status==="pending"&&<span style={{fontSize:8,background:"rgba(201,149,42,0.12)",color:T.goldL,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>EN ATTENTE</span>}
+                        {m.status==="suspended"&&<span style={{fontSize:8,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>SUSPENDU</span>}
+                      </div>
+                      <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse} · {m.joined}</p>
+                      {m.whatsapp&&<a href={`https://wa.me/${m.whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#25D366",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4,marginTop:3,textDecoration:"none"}}>📱 {m.whatsapp}</a>}
+                    </div>
+                  </div>
+                  {m.status==="pending"
+                    ?<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <Btn onClick={()=>approve(m.id)} style={{flex:1,padding:"8px",background:"rgba(64,168,96,0.08)",border:"1px solid rgba(64,168,96,0.2)",borderRadius:10,color:T.ok,fontSize:11,fontWeight:700}}>✓ Approuver</Btn>
+                      <Btn onClick={()=>reject(m.id)} style={{padding:"8px 12px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:10,color:T.err,fontSize:11,fontWeight:700}}><Trash2 size={14}/></Btn>
+                    </div>
+                    :<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <Btn onClick={()=>chBadge(m.id,"confirmed")} style={{padding:"5px 11px",background:m.badge==="confirmed"?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${m.badge==="confirmed"?T.gold+"44":T.border}`,borderRadius:9,color:m.badge==="confirmed"?T.goldL:T.muted,fontSize:11,fontWeight:600}}>✅ Confirmé</Btn>
+                      <Btn onClick={()=>chBadge(m.id,"friend")} style={{padding:"5px 11px",background:m.badge==="friend"?T.navyBg:"rgba(255,255,255,0.03)",border:`1px solid ${m.badge==="friend"?T.navy+"44":T.border}`,borderRadius:9,color:m.badge==="friend"?T.navy:T.muted,fontSize:11,fontWeight:600}}>🔵 Ami</Btn>
+                      {m.badge&&<Btn onClick={()=>chBadge(m.id,null)} style={{padding:"5px 11px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:9,color:T.err,fontSize:11,fontWeight:600}}>✕ Révoquer</Btn>}
+                      <Btn onClick={()=>suspend(m.id,m.status)} style={{padding:"5px 11px",background:m.status==="suspended"?"rgba(64,168,96,0.08)":"rgba(200,64,64,0.08)",border:`1px solid ${m.status==="suspended"?T.ok+"44":T.err+"44"}`,borderRadius:9,color:m.status==="suspended"?T.ok:T.err,fontSize:11,fontWeight:600,marginLeft:"auto"}}>{m.status==="suspended"?"✓ Réactiver":"🚫 Suspendre"}</Btn>
+                    </div>
+                  }
+                </div>
+              ))}
+            </>
+          }
+        </div>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+          <Btn onClick={()=>setShowPosts(!showPosts)} style={{width:"100%",padding:"11px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:12,color:T.goldL,fontSize:13,fontWeight:600}}>
+            📌 {showPosts?"Masquer":"Gérer les posts épinglés"}
+          </Btn>
+          {showPosts&&(
+            <div style={{maxHeight:300,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+              {(allPosts||[]).map(p=>(
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.card,borderRadius:12,border:`1px solid ${p.pinned?T.gold+"44":T.border}`}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{margin:0,fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.text||p.event_title||"Post sans texte"}</p>
+                    <p style={{margin:0,fontSize:10,color:T.muted}}>{p.author?.prenom} {p.author?.nom?.[0]}. · {new Date(p.created_at).toLocaleDateString("fr")}</p>
+                  </div>
+                  <Btn onClick={()=>togglePin(p.id,p.pinned)} style={{padding:"5px 10px",background:p.pinned?"rgba(200,64,64,0.08)":T.goldBg,border:`1px solid ${p.pinned?T.err+"44":T.gold+"44"}`,borderRadius:8,color:p.pinned?T.err:T.goldL,fontSize:11,fontWeight:700,flexShrink:0}}>
+                    {p.pinned?"❌ Désponsoriser":"✦ Sponsoriser"}
+                  </Btn>
+                </div>
+              ))}
+            </div>
+          )}
+         <Btn onClick={async()=>{
+            if(!window.confirm("Distribuer le pool de ce mois à tous les membres ?"))return;
+            const month=new Date().toISOString().slice(0,7);
+            // Récupérer tous les likes valides du mois
+            const{data:likes}=await sb.from("valid_likes").select("author_id").eq("month",month);
+            if(!likes||likes.length===0){notify("Aucun like valide ce mois");return;}
+            // Récupérer le pool
+            const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+            
+            if(!pool||pool.distributed){notify("Pool inexistant ou déjà distribué");return;}
+           // Compter les likes par auteur
+            const likeCounts={};
+            likes.forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
+
+            // Compter les posts actifs du mois (publiés dans le mois)
+            const{data:monthPosts}=await sb.from("posts").select("author_id,created_at").gte("created_at",`${month}-01`);
+            const postCounts={};
+            (monthPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
+
+            // Calculer le score = likes × posts
+            const scores={};
+            const allUserIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
+            allUserIds.forEach(uid=>{
+              const l=likeCounts[uid]||0;
+              const p=postCounts[uid]||0;
+              if(l>0&&p>0)scores[uid]=l*p;
+            });
+
+            const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
+            // Distribuer
+            for(const[userId,score] of Object.entries(scores)){
+              const share=Math.floor((score/totalScore)*pool.pool_amount);
+              if(share<=0)continue;
+              // Créer ou mettre à jour le wallet
+              const{data:w}=await sb.from("wallets").select("*").eq("user_id",userId).maybeSingle();
+              if(w){
+                await sb.from("wallets").update({balance:w.balance+share,total_earned:w.total_earned+share,updated_at:new Date().toISOString()}).eq("user_id",userId);
+              }else{
+                await sb.from("wallets").insert({user_id:userId,balance:share,total_earned:share});
+              }
+              // Transaction
+              await sb.from("wallet_transactions").insert({user_id:userId,type:"earning",amount:share,description:`Gains likes — ${month}`,month,status:"completed"});
+              // Notification
+              await sb.from("notifications").insert({user_id:userId,from_id:userId,type:"earning",text:`✦ Tu as reçu ${share.toLocaleString("fr-FR")} F CFA pour tes likes du mois de ${month}`,read:false});
+            }
+            // Marquer comme distribué
+            await sb.from("badge_pool").update({distributed:true}).eq("month",month);
+            notify(`✦ Distribution effectuée — ${Object.keys(scores).length} membres récompensés`);
+          }} style={{width:"100%",padding:"11px",background:"rgba(61,184,116,0.08)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:12,color:"#4ade80",fontSize:13,fontWeight:600}}>
+            💰 Distribuer le pool du mois
+          </Btn>
+
+          {/* Retraits en attente */}
+          <WithdrawalRequests notify={notify}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── CELESTE CHAT SCREEN ───────────────────────────────────
+function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
+  const [inp,setInp]=useState("");
+  const [loading,setLoading]=useState(false);
+  const bottomRef=useRef();
+
+  const loadedRef = useRef(false);
+  useEffect(()=>{
+    if(!session?.user?.id||loadedRef.current)return;
+    loadedRef.current=true;
+    sb.from("celeste_messages").select("*").eq("user_id",session.user.id).order("created_at",{ascending:true})
+      .then(({data})=>{
+        if(data&&data.length>0)setMsgs(data.map(m=>({role:m.role,text:m.text})));
+      });
+  },[session?.user?.id]);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+
+  const sendingRef=useRef(false);
+
+const send=async()=>{
+  if(!inp.trim()||loading||sendingRef.current)return;
+  sendingRef.current=true;
+  const text=inp.trim();
+  setInp("");
+  setLoading(true);
+  const updatedMsgs=[...msgs,{role:"user",text}];
+  setMsgs(updatedMsgs);
+  if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
+
+  const tryGemini=async(retries=3)=>{
+    for(let i=0;i<retries;i++){
+      try{
+        const history=updatedMsgs.reduce((acc,m)=>{
+          const last=acc[acc.length-1];
+          const role=m.role==="user"?"user":"model";
+          if(last&&last.role===role){last.parts[0].text+="\n"+m.text;}
+          else{acc.push({role,parts:[{text:m.text}]});}
+          return acc;
+        },[]);
+        const formattedMessages=[
+          {role:"system",content:CELESTE_SYSTEM},
+          ...history.map(h=>({
+            role:h.role==="user"?"user":"assistant",
+            content:h.parts[0].text
+          }))
+        ];
+        const res=await fetch("https://api.deepseek.com/chat/completions",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${DEEPSEEK_KEY}`},
+          body:JSON.stringify({
+            model:"deepseek-chat",
+            messages:formattedMessages
+          })
+        });
+        if(!res.ok){if(res.status===429){setMsgs(p=>[...p,{role:"model",text:"Je reçois trop de messages en ce moment 😅 Attends 1 minute et réessaie !"}]);return;}if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}throw new Error("503");}
+        const data=await res.json();
+        const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
+        setMsgs(p=>[...p,{role:"model",text:reply}]);
+        if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
+        return;
+      }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}}
+    }
+    setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
+  };
+  await tryGemini();
+  setLoading(false);
+  sendingRef.current=false;
+};
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
+      {/* Header */}
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
+        <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
+          <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>● En ligne</p>
+        </div>
+        <Btn onClick={()=>{if(window.confirm("Effacer la conversation ?"))setMsgs([]);}} style={{color:T.muted,fontSize:12,padding:"6px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10}}>Effacer</Btn>
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:12}}>
+        {msgs.length===0&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:T.muted,textAlign:"center",padding:"60px 20px"}}>
+            <div style={{width:90,height:90,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,boxShadow:"0 8px 32px rgba(123,47,190,0.4)",animation:"float 3s ease infinite"}}>✨</div>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.text}}>Bonjour{myProfile?.prenom?" "+myProfile.prenom:""} !</p>
+            <p style={{fontSize:14,color:T.sub,lineHeight:1.8}}>Je suis Céleste, toujours là pour t'écouter, t'encourager et t'accompagner.<br/>De quoi as-tu besoin aujourd'hui ?</p>
+          </div>
+        )}
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",gap:10,animation:"msgIn .3s ease"}}>
+            {m.role==="model"&&(
+              <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✨</div>
+            )}
+            <div style={{maxWidth:"78%",background:m.role==="user"?T.gradGold:"rgba(123,47,190,0.1)",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"12px 16px",border:m.role==="model"?"1px solid rgba(123,47,190,0.2)":"none",boxShadow:m.role==="user"?"0 4px 16px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.2)"}}>
+              <p style={{margin:0,fontSize:14,color:m.role==="user"?"#000":T.text,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{m.text}</p>
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>✨</div>
+            <div style={{background:"rgba(123,47,190,0.1)",borderRadius:"18px 18px 18px 4px",padding:"12px 16px",border:"1px solid rgba(123,47,190,0.2)"}}>
+              <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#9B6FDE",animation:`pulse .6s ease ${i*.2}s infinite`}}/>)}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
+          <textarea value={inp} onChange={e=>{
+    setInp(e.target.value);
+    e.target.style.height="auto";
+    e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
+  }}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
+  placeholder="Écris à Céleste…" rows={1}
+  style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
+        </div>
+        <Btn onClick={send} disabled={loading||!inp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:loading||!inp.trim()?0.5:1}}>
+          <Send size={18}/>
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────
 function SplashScreen(){
-  const [phase,setPhase]=useState("loading"); // loading â†’ warning â†’ closing
+  const [phase,setPhase]=useState("loading"); // loading → warning → closing
 
   useEffect(()=>{
     const t1=setTimeout(()=>setPhase("warning"),15000);
     const t2=setTimeout(()=>setPhase("closing"),30000);
     const t3=setTimeout(()=>{
   document.body.innerHTML=`<div style="min-height:100vh;background:#000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center">
-    <span style="font-size:60px">âœ¦</span>
-    <p style="color:#C9952A;font-size:18px;font-family:serif">CÃ©leste</p>
-    <p style="color:#888;font-size:13px">Impossible de se connecter.<br/>Veuillez rÃ©essayer.</p>
-    <button onclick="window.location.reload()" style="margin-top:16px;padding:12px 28px;background:linear-gradient(135deg,#C9952A,#E8B84B);border:none;border-radius:14px;color:#000;font-size:14px;font-weight:700;cursor:pointer">RÃ©essayer</button>
+    <span style="font-size:60px">✦</span>
+    <p style="color:#C9952A;font-size:18px;font-family:serif">Céleste</p>
+    <p style="color:#888;font-size:13px">Impossible de se connecter.<br/>Veuillez réessayer.</p>
+    <button onclick="window.location.reload()" style="margin-top:16px;padding:12px 28px;background:linear-gradient(135deg,#C9952A,#E8B84B);border:none;border-radius:14px;color:#000;font-size:14px;font-weight:700;cursor:pointer">Réessayer</button>
   </div>`;
 },31000);
     return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);};
@@ -5878,21 +7165,21 @@ function SplashScreen(){
     <div style={{minHeight:"100vh",background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:0,position:"relative",overflow:"hidden"}}>
       <style>{GS}</style>
       <div style={{position:"absolute",top:"20%",left:"50%",transform:"translateX(-50%)",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,149,42,0.08),transparent 70%)",pointerEvents:"none",animation:"glowPulse 2s ease infinite"}}/>
-      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:90,color:T.gold,animation:"starPulse 2s ease infinite",lineHeight:1,filter:"drop-shadow(0 0 40px rgba(201,149,42,0.6))"}}>âœ¦</div>
-      <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.text,letterSpacing:7,margin:"20px 0 8px",animation:"titleReveal .8s ease .3s both"}}>CÃ©leste</h1>
-      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Exprime ta vrai personnalitÃ©e</p>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:90,color:T.gold,animation:"starPulse 2s ease infinite",lineHeight:1,filter:"drop-shadow(0 0 40px rgba(201,149,42,0.6))"}}>✦</div>
+      <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.text,letterSpacing:7,margin:"20px 0 8px",animation:"titleReveal .8s ease .3s both"}}>Céleste</h1>
+      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Exprime ta vrai personnalitée</p>
 
       {phase==="warning"&&(
         <div style={{position:"absolute",bottom:60,left:20,right:20,background:"rgba(201,149,42,0.08)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"16px 20px",textAlign:"center",animation:"fadeUp .5s ease"}}>
-          <p style={{margin:"0 0 6px",fontSize:14,color:T.goldL,fontWeight:600}}>Connexion lenteâ€¦</p>
-          <p style={{margin:0,fontSize:12,color:T.muted}}>Connectez-vous pour accÃ©der Ã  CÃ©leste</p>
+          <p style={{margin:"0 0 6px",fontSize:14,color:T.goldL,fontWeight:600}}>Connexion lente…</p>
+          <p style={{margin:0,fontSize:12,color:T.muted}}>Connectez-vous pour accéder à Céleste</p>
         </div>
       )}
 
       {phase==="closing"&&(
         <div style={{position:"absolute",bottom:60,left:20,right:20,background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:20,padding:"16px 20px",textAlign:"center",animation:"fadeUp .3s ease"}}>
           <p style={{margin:"0 0 6px",fontSize:14,color:T.err,fontWeight:600}}>Impossible de se connecter</p>
-          <p style={{margin:0,fontSize:12,color:T.muted}}>L'application va se fermerâ€¦</p>
+          <p style={{margin:0,fontSize:12,color:T.muted}}>L'application va se fermer…</p>
         </div>
       )}
     </div>
@@ -5903,35 +7190,35 @@ function VerificationInfoModal(){
   return(
     <>
       <Btn onClick={()=>setOpen(true)} style={{marginTop:16,width:"100%",padding:"13px 30px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-        <span>â„¹ï¸</span> En savoir plus sur la vÃ©rification
+        <span>ℹ️</span> En savoir plus sur la vérification
       </Btn>
       {open&&(
         <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
           <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
             <div style={{textAlign:"center",marginBottom:24}}>
-              <span style={{fontSize:40}}>ðŸ”</span>
-              <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:"12px 0 4px"}}>Pourquoi une vÃ©rification ?</h3>
-              <p style={{fontSize:12,color:T.gold,letterSpacing:1,textTransform:"uppercase"}}>CÃ©leste Â· RÃ©seau privÃ© des jeunes</p>
+              <span style={{fontSize:40}}>🔐</span>
+              <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:"12px 0 4px"}}>Pourquoi une vérification ?</h3>
+              <p style={{fontSize:12,color:T.gold,letterSpacing:1,textTransform:"uppercase"}}>Céleste · Réseau privé des jeunes</p>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
               <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>ðŸ” Comment Ã§a fonctionne ?</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Lors de la vÃ©rification, le nom que tu as saisi sera recherchÃ© sur les rÃ©seaux sociaux. Si un profil correspondant est trouvÃ©, la vÃ©rification se fera automatiquement et rapidement.</p>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🔍 Comment ça fonctionne ?</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Lors de la vérification, le nom que tu as saisi sera recherché sur les réseaux sociaux. Si un profil correspondant est trouvé, la vérification se fera automatiquement et rapidement.</p>
               </div>
               <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>ðŸ“± Si aucun profil trouvÃ©</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>La vÃ©rification se fera via WhatsApp, au numÃ©ro que tu as fourni lors de ton inscription. Ce numÃ©ro n'est ni partagÃ© ni divulguÃ© Ã  qui que ce soit.</p>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>📱 Si aucun profil trouvé</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>La vérification se fera via WhatsApp, au numéro que tu as fourni lors de ton inscription. Ce numéro n'est ni partagé ni divulgué à qui que ce soit.</p>
               </div>
               <div style={{background:"rgba(200,64,64,0.05)",border:"1px solid rgba(200,64,64,0.2)",borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.err}}>âš–ï¸ Engagement lÃ©gal</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>CÃ©leste est un espace rÃ©servÃ© aux jeunes. Toute personne ayant fourni de fausses informations concernant son identitÃ© ou son Ã¢ge, et dont l'Ã¢ge rÃ©el dÃ©passe 35 ans, s'expose Ã  des poursuites judiciaires conformÃ©ment aux lois en vigueur.</p>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.err}}>⚖️ Engagement légal</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Céleste est un espace réservé aux jeunes. Toute personne ayant fourni de fausses informations concernant son identité ou son âge, et dont l'âge réel dépasse 35 ans, s'expose à des poursuites judiciaires conformément aux lois en vigueur.</p>
               </div>
               <div style={{background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:16,padding:"16px"}}>
-                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>ðŸ¤ Notre engagement</p>
-                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Cette vÃ©rification existe uniquement pour garantir ta sÃ©curitÃ© et celle de tous les membres. Pour Ãªtre sÃ»rs d'Ãªtre vraiment entre nous â€” entre jeunes.</p>
+                <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:T.goldL}}>🤝 Notre engagement</p>
+                <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Cette vérification existe uniquement pour garantir ta sécurité et celle de tous les membres. Pour être sûrs d'être vraiment entre nous — entre jeunes.</p>
               </div>
             </div>
-            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris âœ¦</Btn>
+            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris ✦</Btn>
           </div>
         </div>
       )}
@@ -6167,10 +7454,10 @@ useEffect(() => {
 
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);
-subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("âš ï¸ Push non initialisÃ©");});
+subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});
 sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id).then(({error})=>{if(error)console.warn("last_seen:",error);});
 (async()=>{try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:10000});await sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);}catch(e){console.warn("geo:",e);}})();}});
-    const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("âš ï¸ Push non initialisÃ©");});sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
+    const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
     const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},60000);
     return()=>{subscription.unsubscribe();clearInterval(lsInterval);};
   },[loadMyProfile]);
@@ -6227,7 +7514,7 @@ if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by))return false;
   return 0;
 });
     
-  // â”€â”€ ALGORITHME MIX PREMIUM SANS FILE INDIENNE â”€â”€
+  // ── ALGORITHME MIX PREMIUM SANS FILE INDIENNE ──
 const pinned=visible.filter(p=>p.pinned);
 const viral=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility==="viral");
 const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility!=="viral");
@@ -6247,14 +7534,14 @@ while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.lengt
 }
 const mixed=[];
 let pi=0,fi=0;
-// Mettre le premier post Ã©pinglÃ© tout en haut
+// Mettre le premier post épinglé tout en haut
 if(pinned.length>0){mixed.push(pinned[pi++]);}
 while(fi<feed.length){
   mixed.push(feed[fi++]);
-  // Intercaler un Ã©pinglÃ© toutes les 5 posts normaux
+  // Intercaler un épinglé toutes les 5 posts normaux
   if(pi<pinned.length&&fi%5===0){mixed.push(pinned[pi++]);}
 }
-// Ajouter les Ã©pinglÃ©s restants
+// Ajouter les épinglés restants
 while(pi<pinned.length){mixed.push(pinned[pi++]);}
 
 
@@ -6358,7 +7645,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         const updated=await loadConvs(myId);
         if(updated){
           const totalNew=(updated||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
-          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"ðŸ“· Photo":nm.type==="file"?"ðŸ“Ž Fichier":nm.text||"";addInAppNotif("âœ‰",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}
+          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}
           prevMsgCount.current=totalNew;
         }
       })
@@ -6373,18 +7660,18 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         
         const pid=payload.new?.post_id;if(!pid)return;
         const updated=await refreshPost(pid);
-        if(updated&&updated.by===myId&&payload.new?.user_id!==myId){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("â¤ï¸",`${liker?.name||"Quelqu'un"} a aimÃ©`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
+        if(updated&&updated.by===myId&&payload.new?.user_id!==myId){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"likes"},payload=>{if(payload.old?.post_id)refreshPost(payload.old.post_id);})
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments"},async payload=>{
         const cmt=payload.new;if(!cmt?.post_id)return;
         const updated=await refreshPost(cmt.post_id);
-        if(updated&&updated.by===myId&&cmt.author_id!==myId){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("ðŸ’¬",`${commenter?.name||"Quelqu'un"} a commentÃ©`,cmt.text||"â€¦",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:cmt.post_id}})),300);});}
+        if(updated&&updated.by===myId&&cmt.author_id!==myId){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("💬",`${commenter?.name||"Quelqu'un"} a commenté`,cmt.text||"…",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:cmt.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comment_likes"},async payload=>{
         // Notification pour likes de commentaires
         const cl=payload.new;if(!cl||cl.user_id===myId)return;
-        addInAppNotif("ðŸ’›","Commentaire aimÃ©","Quelqu'un a aimÃ© votre commentaire",()=>{setTab("home");});
+        addInAppNotif("💛","Commentaire aimé","Quelqu'un a aimé votre commentaire",()=>{setTab("home");});
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${myId}`},()=>{
         loadUnreadNotifs(myId);
@@ -6397,12 +7684,12 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   }
 })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"connections"},async payload=>{
-        if(payload.new?.to_id===myId){await loadConnections(myId);const follower=(members||[]).find(m=>m.id===payload.new.from_id);addInAppNotif("âœ¦",`${follower?.name||"Quelqu'un"} s'est connectÃ©`,"Nouvelle connexion !",()=>setTab("discover"));}
+        if(payload.new?.to_id===myId){await loadConnections(myId);const follower=(members||[]).find(m=>m.id===payload.new.from_id);addInAppNotif("✦",`${follower?.name||"Quelqu'un"} s'est connecté`,"Nouvelle connexion !",()=>setTab("discover"));}
         else if(payload.new?.from_id===myId)loadConnections(myId);
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"connections"},async payload=>{
         loadConnections(myId);
-        if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("ðŸ‘‹",`${who?.name||"Quelqu'un"} s'est dÃ©sabonnÃ©`,"",()=>setTab("discover"));}
+        if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"statuses"},async payload=>{
         const{data:conn}=await sb.from("connections").select("id").eq("from_id",myId).eq("to_id",payload.new?.user_id).maybeSingle();
@@ -6449,10 +7736,10 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
       <style>{GS}</style>
       <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp .5s ease"}}>
         <div style={{fontSize:60,marginBottom:20}}>
-          ðŸš«</div>
+          🚫</div>
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.err,marginBottom:12}}>Compte suspendu</h2>
-        <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Votre compte a Ã©tÃ© suspendu par un administrateur.<br/>Pour toute question, contactez le support de la communautÃ©.</p>
-        <Btn onClick={()=>{if(window.confirm("Se dÃ©connecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se dÃ©connecter</Btn>
+        <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Votre compte a été suspendu par un administrateur.<br/>Pour toute question, contactez le support de la communauté.</p>
+        <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
       </div>
     </div>
   );
@@ -6461,10 +7748,10 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
       <style>{GS}</style>
       <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp .5s ease"}}>
-        <div style={{fontSize:60,marginBottom:20,animation:"float 3s ease infinite"}}>â³</div>
+        <div style={{fontSize:60,marginBottom:20,animation:"float 3s ease infinite"}}>⏳</div>
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.text,marginBottom:12}}>Compte en attente</h2>
-        <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Bonjour <strong style={{color:T.goldL}}>{myProfile?.name}</strong> !<br/>Un administrateur vÃ©rifiera votre profil sous 24â€“48h.</p>
-        <Btn onClick={()=>{if(window.confirm("Se dÃ©connecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se dÃ©connecter</Btn>
+        <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Bonjour <strong style={{color:T.goldL}}>{myProfile?.name}</strong> !<br/>Un administrateur vérifiera votre profil sous 24–48h.</p>
+        <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
 
 <VerificationInfoModal/>
       </div>
@@ -6477,23 +7764,23 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
         {toast&&<Toast msg={toast}/>}
         {!isOnline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #FF6432",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
           <WifiOff size={14} color="#FF6432"/>
-          <span style={{fontSize:12,color:"#FF6432",fontWeight:600}}>Pas de connexion â€” certaines fonctionnalitÃ©s sont limitÃ©es</span>
+          <span style={{fontSize:12,color:"#FF6432",fontWeight:600}}>Pas de connexion — certaines fonctionnalités sont limitées</span>
         </div>}
         {isOnline&&wasOffline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #3DB654",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
           <Wifi size={14} color="#3DB654"/>
-          <span style={{fontSize:12,color:"#3DB654",fontWeight:600}}>Connexion rÃ©tablie</span>
+          <span style={{fontSize:12,color:"#3DB654",fontWeight:600}}>Connexion rétablie</span>
         </div>}
         {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
         <NotifBanner notifs={inAppNotifs} onDismiss={dismissNotif} onTap={n=>{n.action?.();dismissNotif(n.id);}}/>
           {sharedMedia&&<div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
-  <p style={{color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300}}>Partager sur CÃ©leste</p>
+  <p style={{color:"#fff",fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300}}>Partager sur Céleste</p>
   <div style={{display:"flex",gap:16}}>
-    <button onClick={()=>{setSharedMedia(null);pushNav(()=>setShowNewPost(false));setShowNewPost(true);window.__celesteSharedFile=sharedMedia;}} style={{padding:"12px 24px",background:T.gradGold,border:"none",borderRadius:16,color:"#000",fontWeight:700,fontSize:15,cursor:"pointer"}}>ðŸ“¸ Post</button>
-    <button onClick={()=>{setSharedMedia(null);window.__celesteSharedFile=sharedMedia;window.__celesteOpenStatus=true;}} style={{padding:"12px 24px",background:"rgba(255,255,255,0.08)",border:`1px solid ${T.border}`,borderRadius:16,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer"}}>â­• Statut</button>
+    <button onClick={()=>{setSharedMedia(null);pushNav(()=>setShowNewPost(false));setShowNewPost(true);window.__celesteSharedFile=sharedMedia;}} style={{padding:"12px 24px",background:T.gradGold,border:"none",borderRadius:16,color:"#000",fontWeight:700,fontSize:15,cursor:"pointer"}}>📸 Post</button>
+    <button onClick={()=>{setSharedMedia(null);window.__celesteSharedFile=sharedMedia;window.__celesteOpenStatus=true;}} style={{padding:"12px 24px",background:"rgba(255,255,255,0.08)",border:`1px solid ${T.border}`,borderRadius:16,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer"}}>⭕ Statut</button>
   </div>
   <button onClick={()=>setSharedMedia(null)} style={{color:T.muted,background:"none",border:"none",fontSize:13,cursor:"pointer"}}>Annuler</button>
 </div>}
-        {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("PubliÃ© âœ¦");}} notify={notify}/>}
+        {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>setShowNewPost(false)} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}} notify={notify}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
@@ -6505,8 +7792,8 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
             </>
             :<>
               <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>âœ¦</span>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:4,color:T.text}}>CÃ©leste</span>
+                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
+                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:4,color:T.text}}>Céleste</span>
               </div>
     
              <Btn onClick={()=>{if(!showNotifs)pushNav(()=>setShowNotifs(false));setShowNotifs(s=>!s);}} style={{position:"relative",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:showNotifs?T.goldBg:"rgba(255,255,255,0.04)",border:`1px solid ${showNotifs?T.gold+"55":T.border}`,borderRadius:"50%",color:showNotifs?T.goldL:T.muted,transition:"all .2s"}}>
@@ -6515,7 +7802,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               </Btn>
               {myProfile?.is_admin&&(
                 <Btn onClick={()=>{pushNav(()=>setShowAdmin(false));setShowAdmin(true);}} style={{position:"relative",padding:"6px 12px",borderRadius:10,border:`1px solid ${pending>0?T.err+"55":T.border}`,background:pending>0?"rgba(200,64,64,0.06)":T.glass,color:pending>0?T.err:T.muted,fontSize:12,fontWeight:600}}>
-                  ðŸ›¡{pending>0&&<span style={{background:T.err,color:"#fff",borderRadius:"50%",width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,marginLeft:4}}>{pending}</span>}
+                  🛡{pending>0&&<span style={{background:T.err,color:"#fff",borderRadius:"50%",width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,marginLeft:4}}>{pending}</span>}
                 </Btn>
               )}
             </>
@@ -6543,7 +7830,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("ConnectÃ© âœ¦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} viewedPostIdsRef={viewedPostIdsRef}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} viewedPostIdsRef={viewedPostIdsRef}/>
 </div>
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav}/>
@@ -6562,7 +7849,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
               {id:"statuses",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>,lb:"Statuts",badge:unreadStatuses},
-              {id:"discover",ic:<span style={{fontSize:19,lineHeight:1}}>âœ¦</span>,lb:"DÃ©couvrir"},
+              {id:"discover",ic:<span style={{fontSize:19,lineHeight:1}}>✦</span>,lb:"Découvrir"},
               {id:"messages",ic:<Mail size={21} strokeWidth={1.8}/>,lb:"Messages",badge:unread},
               {id:"profile",ic:<User size={21} strokeWidth={1.8}/>,lb:"Profil"},
             ].map(t=>(
@@ -6589,9 +7876,9 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           flexDirection:"column",gap:12,
           pointerEvents:"none"
         }}>
-          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,color:T.gold,filter:`drop-shadow(0 0 20px ${T.gold})`}}>âœ¦</span>
-          <p style={{fontSize:16,fontWeight:700,color:T.text,margin:0}}>Contenu ProtÃ©gÃ©</p>
-          <p style={{fontSize:12,color:T.muted,margin:0}}>CÃ©leste est masquÃ© par mesure de sÃ©curitÃ©</p>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,color:T.gold,filter:`drop-shadow(0 0 20px ${T.gold})`}}>✦</span>
+          <p style={{fontSize:16,fontWeight:700,color:T.text,margin:0}}>Contenu Protégé</p>
+          <p style={{fontSize:12,color:T.muted,margin:0}}>Céleste est masqué par mesure de sécurité</p>
         </div>
       )}
     </AppContext.Provider>
@@ -6601,4 +7888,3 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
 export default function App(){
   return(<ErrorBoundary><CelesteApp/></ErrorBoundary>);
 }
-
