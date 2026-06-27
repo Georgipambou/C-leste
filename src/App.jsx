@@ -3337,7 +3337,7 @@ function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
   );
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:T.bg,display:"flex",flexDirection:"column"}}>
-      <div style={{padding:"14px 16px",paddingTop:"calc(14px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+      <div style={{padding:"14px 16px",paddingTop:"calc(60px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{color:T.text,display:"flex",alignItems:"center",gap:6}}>
           <ChevronLeft size={22}/><span style={{fontSize:15,fontWeight:600}}>Retour</span>
         </Btn>
