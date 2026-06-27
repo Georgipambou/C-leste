@@ -7457,7 +7457,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   
 
   const loadMembers=useCallback(async()=>{
-  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,joined_at,created_at").neq("status","pending");
+  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,joined_at").neq("status","pending");
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
