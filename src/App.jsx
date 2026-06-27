@@ -2678,9 +2678,7 @@ setUploading(false);setUploadPct(0);
           :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>
         }
         <div style={{display:"flex",gap:8,marginTop:8}}>
-          {trimming&&<button onClick={()=>{trimAbortRef.current=true;setTrimming(false);}} style={{width:"100%",padding:"12px",background:"rgba(255,100,50,0.1)",border:"1px solid rgba(255,100,50,0.3)",borderRadius:12,color:"#FF6432",fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:8}}>
-          Annuler
-        </button>}
+         
           <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
           <Btn onClick={submit} disabled={!canAdd||busy||uploading} style={{flex:2,padding:"14px",background:canAdd&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.04)",color:canAdd&&!busy&&!uploading?"#000":T.muted,borderRadius:14,fontSize:14,fontWeight:700,transition:"all .25s",boxShadow:canAdd&&!busy&&!uploading?"0 8px 24px rgba(201,149,42,0.3)":"none"}}>
             {busy?"Publication…":uploading?"Upload…":`Publier ✦ (${(myStatuses||[]).length}/10)`}
