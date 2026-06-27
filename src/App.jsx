@@ -3336,34 +3336,34 @@ function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
     </button>
   );
   return(
-    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",padding:"0 0 env(safe-area-inset-bottom,0px)"}} onClick={()=>setOpen(false)}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%"}}>
-        <div style={{width:"100%",background:T.card,borderRadius:"24px 24px 0 0",padding:"20px 16px 24px",display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-            <Av u={u} size={36}/>
-            <div>
-              <p style={{margin:0,fontSize:13,fontWeight:700,color:T.text}}>{u.name}</p>
-              <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
-            </div>
-            <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{marginLeft:"auto",color:T.muted,display:"flex"}}><X size={18}/></Btn>
-          </div>
-          <textarea value={msg} onChange={e=>setMsg(e.target.value)}
-            rows={4}
-            style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:13,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-          <button disabled={sending||!msg.trim()} onClick={async()=>{
-            setSending(true);
-            try{
-              await onChat(u.id,msg.trim());
-              notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
-              setOpen(false);onWriteOpen?.(false);
-          }catch(e){
-              notify("Erreur — réessaie");
-              setSending(false);
-            }
-          }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
-            {sending?"Envoi…":"Envoyer ✦"}
-          </button>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:T.bg,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"14px 16px",paddingTop:"calc(14px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+        <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{color:T.text,display:"flex",alignItems:"center",gap:6}}>
+          <ChevronLeft size={22}/><span style={{fontSize:15,fontWeight:600}}>Retour</span>
+        </Btn>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text}}>{u.name}</p>
+          <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
         </div>
+        <Av u={u} size={34}/>
+      </div>
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"20px 16px",gap:12}}>
+        <textarea value={msg} onChange={e=>setMsg(e.target.value)}
+          rows={6}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:14,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+        <button disabled={sending||!msg.trim()} onClick={async()=>{
+          setSending(true);
+          try{
+            await onChat(u.id,msg.trim());
+            notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
+            setOpen(false);onWriteOpen?.(false);
+          }catch(e){
+            notify("Erreur — réessaie");
+            setSending(false);
+          }
+        }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
+          {sending?"Envoi…":"Envoyer ✦"}
+        </button>
       </div>
     </div>
   );
@@ -3588,7 +3588,7 @@ else filtered=active;
         }}
       />
       {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,display:matchWriting?"none":"block",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
           <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Découvrir</h2>
           <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center"}}>
