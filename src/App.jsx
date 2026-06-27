@@ -2951,7 +2951,6 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
 // ── STATUSES TAB ──────────────────────────────────────────
 function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify,blockedUserIds=[],pushNav}){
   const {setHideNav}=useApp();
-  const [groups,setGroups]=useState([]);
   const [myStatuses,setMyStatuses]=useState([]);
   const [groups,setGroups]=useState(()=>{try{const c=localStorage.getItem("celeste_statuts_cache");return c?JSON.parse(c):[];}catch(e){return[];}});
   const [viewing,setViewing]=useState(null);
@@ -3173,14 +3172,8 @@ function computeMatchScore(a,b){
     const km=Math.sqrt(dx*dx+dy*dy)*111;
     if(km>25)penalty+=50;
   }
-  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
-  if(!genderOk)return 0;
-  const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
-  if(!typeOk)return 0;
-  const bAge=b.age||null;
-  const ageOk=!bAge||!a.seeking_age_min||!a.seeking_age_max||(bAge>=a.seeking_age_min&&bAge<=a.seeking_age_max);
-  if(!ageOk)return 0;
   let score=0,maxScore=0;
+  if(penalty>=100)return 0;let score=0,maxScore=0;
   if(penalty>=100)return 0;
   for(const key of Object.keys(Q_WEIGHT)){
     const w=Q_WEIGHT[key];
