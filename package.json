@@ -22,6 +22,8 @@
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@fontsource/cormorant-garamond": "^5.2.11",
+    "@fontsource/space-grotesk": "^5.2.10",
     "@onesignal/capacitor-plugin": "^1.0.5",
     "@supabase/supabase-js": "^2.106.0",
     "lucide-react": "^1.16.0",
