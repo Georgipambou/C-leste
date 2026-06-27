@@ -2989,43 +2989,43 @@ useEffect(()=>{
     const groups=Array.from(map.values());
     setGroups(groups);
     try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(groups));}catch(e){}
+    return{me,groups};
   },[session?.user?.id]);
 
   useEffect(()=>{load();},[load]);
 
 useEffect(()=>{
   const handler=async e=>{
-    console.log("celeste_open_status reçu",e.detail);
     const{statusId,userId}=e.detail;
+    const result=await load();
+    if(!result)return;
+    const{me,groups:freshGroups}=result;
     if(userId&&!statusId){
-      await load();
-      setGroups(prev=>{
-        const g=prev.find(gr=>gr.author?.id===userId);
-        if(g){Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing(g);setHideNav(true);});}
-        return prev;
-      });
+      const g=freshGroups.find(gr=>gr.author?.id===userId);
+      if(g){
+        pushNav(()=>{setViewing(null);setHideNav(false);});
+        setViewing(g);
+        setHideNav(true);
+      }
       return;
     }
-    await load();
-    setMyStatuses(prevMy=>{
-      const foundMine=prevMy.find(s=>s.id===statusId);
-      if(foundMine){
-        const myMappedNow=prevMy.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
-        Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing({author:myProfile,statuses:myMappedNow});setHideNav(true);});
-        return prevMy;
+    const foundMine=me.find(s=>s.id===statusId);
+    if(foundMine){
+      const myMappedNow=me.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
+      pushNav(()=>{setViewing(null);setHideNav(false);});
+      setViewing({author:myProfile,statuses:myMappedNow});
+      setHideNav(true);
+      return;
+    }
+    for(const g of freshGroups){
+      const found=g.statuses.find(s=>s.id===statusId);
+      if(found){
+        pushNav(()=>{setViewing(null);setHideNav(false);});
+        setViewing(g);
+        setHideNav(true);
+        break;
       }
-      setGroups(prev=>{
-        for(const g of prev){
-          const found=g.statuses.find(s=>s.id===statusId);
-          if(found){
-            Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing(g);setHideNav(true);});
-            break;
-          }
-        }
-        return prev;
-      });
-      return prevMy;
-    });
+    }
   };
   window.addEventListener("celeste_open_status",handler);
   return()=>window.removeEventListener("celeste_open_status",handler);
