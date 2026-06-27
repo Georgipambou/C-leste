@@ -32,7 +32,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -589,6 +589,7 @@ const GS = `
   /* ── ANIMATIONS PREMIUM ── */
   @keyframes spin{to{transform:rotate(360deg);}}
   @keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
+  @keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}v
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
   @keyframes slideUp{from{transform:translateY(100%);opacity:0;}to{transform:none;opacity:1;}}
   @keyframes slideIn{from{transform:translateX(100%);opacity:0;}to{transform:none;opacity:1;}}
@@ -1093,11 +1094,10 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
       if(!ffmpegRef.current){
         const ff=new FFmpeg();
         ff.on("progress",({progress})=>setTrimProgress(Math.round(progress*100)));
-        const baseURL="https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
-        await ff.load({
-          coreURL:await toBlobURL(`${baseURL}/ffmpeg-core.js`,"text/javascript"),
-          wasmURL:await toBlobURL(`${baseURL}/ffmpeg-core.wasm`,"application/wasm"),
-        });
+       await ff.load({
+  coreURL:await toBlobURL(`${window.location.origin}/ffmpeg-core.js`,"text/javascript"),
+  wasmURL:await toBlobURL(`${window.location.origin}/ffmpeg-core.wasm`,"application/wasm"),
+});
         ffmpegRef.current=ff;
       }
       const ff=ffmpegRef.current;
@@ -2541,7 +2541,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 // ── STATUS CREATOR ────────────────────────────────────────
 function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
   const [type,setType]=useState("text"); const [text,setText]=useState("");
-  const [preview,setPreview]=useState(null); const [mediaUrl,setMediaUrl]=useState(null);
+  const [preview,setPreview]=useState(null); const [mediaUrl,setMediaUrl]=useState(null); const [trimmedFile,setTrimmedFile]=useState(null);
  const [uploading,setUploading]=useState(false); const [busy,setBusy]=useState(false);
 const [uploadPct,setUploadPct]=useState(0);
 
@@ -2580,6 +2580,7 @@ const handlePick=async e=>{
       setStatusTrimSrc(null);
       if(!trimData)return;
       setPreview(trimData.src);
+      setTrimmedFile(trimData.file||f);
       setUploading(true);
       try{
   const publicUrl=await uploadToR2(trimData.file||f,"statuses",pct=>setUploadPct(pct));
@@ -2638,7 +2639,10 @@ setUploading(false);setUploadPct(0);
         </div>
         {type==="photo"&&(preview
           ?<div style={{position:"relative",marginBottom:12}}>
-            <MediaPlayer url={preview} style={{borderRadius:16,maxHeight:280}}/>
+            {preview&&preview.startsWith("blob:")
+  ?<video src={preview} controls playsInline style={{width:"100%",borderRadius:16,maxHeight:280,objectFit:"contain",background:"#000"}}/>
+  :<MediaPlayer url={preview} style={{borderRadius:16,maxHeight:280}}/>
+}
             {uploading&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}>
   <div style={{width:120,height:5,background:"rgba(255,255,255,0.15)",borderRadius:3,overflow:"hidden"}}>
     <div style={{height:"100%",width:`${uploadPct}%`,background:T.gradGold,borderRadius:3,transition:"width 0.2s ease"}}/>
@@ -2949,6 +2953,7 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
   const {setHideNav}=useApp();
   const [groups,setGroups]=useState([]);
   const [myStatuses,setMyStatuses]=useState([]);
+  const [groups,setGroups]=useState(()=>{try{const c=localStorage.getItem("celeste_statuts_cache");return c?JSON.parse(c):[];}catch(e){return[];}});
   const [viewing,setViewing]=useState(null);
   const [creating,setCreating]=useState(false);
 useEffect(()=>{
@@ -2981,14 +2986,25 @@ useEffect(()=>{
      const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null};
       map.get(key).statuses.push(mapped);
     });
-    setGroups(Array.from(map.values()));
+    const groups=Array.from(map.values());
+    setGroups(groups);
+    try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(groups));}catch(e){}
   },[session?.user?.id]);
 
   useEffect(()=>{load();},[load]);
 
 useEffect(()=>{
   const handler=async e=>{
-    const{statusId}=e.detail;
+    const{statusId,userId}=e.detail;
+    if(userId&&!statusId){
+      await load();
+      setGroups(prev=>{
+        const g=prev.find(gr=>gr.author?.id===userId);
+        if(g){Promise.resolve().then(()=>{pushNav(()=>{setViewing(null);setHideNav(false);});setViewing(g);setHideNav(true);});}
+        return prev;
+      });
+      return;
+    }
     await load();
     setMyStatuses(prevMy=>{
       const foundMine=prevMy.find(s=>s.id===statusId);
@@ -3107,6 +3123,12 @@ const MATCH_QUESTIONS=[
   {id:"life_rhythm",label:"Ton rythme de vie idéal ?",type:"single",emoji:"🌙",options:[{v:"calme",l:"Calme, intimité, tranquillité"},{v:"social",l:"Sorties, monde, énergie"},{v:"melange",l:"Un mélange selon les jours"}]},
   {id:"relationship_priority",label:"Ce qui compte le plus dans une relation ?",type:"single",emoji:"💎",options:[{v:"confiance",l:"La confiance absolue"},{v:"passion",l:"La passion & l'intensité"},{v:"complicite",l:"La complicité & le rire"},{v:"respect",l:"Le respect mutuel"}]},
   {id:"communication_style",label:"Comment tu communiques ?",type:"single",emoji:"💬",options:[{v:"direct",l:"Direct·e et franc·he"},{v:"doux",l:"Doux·ce et diplomate"},{v:"ecoute",l:"Tu écoutes plus que tu parles"}]},
+  {id:"money_vision",label:"L'argent et la stabilité financière dans une relation, c'est…",type:"single",emoji:"💰",options:[{v:"essentiel",l:"Essentiel — mon partenaire doit être stable financièrement"},{v:"important",l:"Important mais pas une condition"},{v:"secondaire",l:"Secondaire, l'amour prime sur tout"},{v:"peu_importe",l:"Peu importe, on construit ensemble"}]},
+  {id:"skin_color",label:"Ta couleur de peau ?",type:"single",emoji:"🎨",options:[{v:"noire",l:"Noire"},{v:"metisse",l:"Métisse"},{v:"blanche",l:"Blanche"},{v:"jaune",l:"Jaune (asiatique)"},{v:"autre",l:"Autre"}]},
+{id:"seeking_skin_color",label:"Tu recherches quelqu'un de quelle couleur de peau ?",type:"single",emoji:"💫",options:[{v:"noire",l:"Noire"},{v:"metisse",l:"Métisse"},{v:"blanche",l:"Blanche"},{v:"jaune",l:"Jaune"},{v:"peu_importe",l:"Peu importe"}]},
+{id:"hobbies",label:"Tes films/séries préférés ?",type:"single",emoji:"🎬",options:[{v:"romantique",l:"Romantique & émotionnel"},{v:"action",l:"Action & aventure"},{v:"comedie",l:"Comédie & légèreté"},{v:"docs",l:"Séries & documentaires"},{v:"peu",l:"Je regarde peu la télé"}]},
+{id:"ambition",label:"Ton grand rêve dans la vie ?",type:"single",emoji:"🌟",options:[{v:"entrepreneur",l:"Devenir entrepreneur·e"},{v:"carriere",l:"Avoir une carrière stable"},{v:"famille",l:"Fonder une grande famille"},{v:"voyager",l:"Voyager et découvrir le monde"},{v:"servir",l:"Servir Dieu et ma communauté"}]},
+{id:"distance_ok",label:"Tu es ouvert·e à une relation à distance ?",type:"single",emoji:"📍",options:[{v:"sur_place",l:"Non, je préfère quelqu'un près de moi"},{v:"distance",l:"Oui, la distance ne me fait pas peur"},{v:"les_deux",l:"Les deux selon la personne"}]},
   {id:"app_expectation",label:"Tu attends quoi de Céleste ?",type:"single",emoji:"🌟",options:[{v:"serieux",l:"Quelque chose de sérieux"},{v:"amis",l:"Me faire de vrais amis"},{v:"decouverte",l:"Découvrir, voir ce qui arrive"},{v:"verra",l:"Je verrai bien"}]},
 ];
 
@@ -3115,7 +3137,7 @@ const SIMILAR_KEYS=["faith","marriage_vision","children","life_vision","app_expe
 // Questions où la COMPLÉMENTARITÉ = compatibilité
 const COMPLEMENT_KEYS=["conflict_style","expression_level","life_rhythm","family_vs_freedom"];
 // Poids par question
-const Q_WEIGHT={faith:18,marriage_vision:16,children:15,intimacy:14,life_vision:12,seeking_type:10,app_expectation:8,conflict_style:10,expression_level:8,life_rhythm:7,family_vs_freedom:7,communication_style:5,relationship_priority:4};
+const Q_WEIGHT={faith:18,marriage_vision:16,children:15,intimacy:14,life_vision:12,seeking_type:10,money_vision:13,app_expectation:8,conflict_style:10,expression_level:8,life_rhythm:7,family_vs_freedom:7,communication_style:5,relationship_priority:4,hobbies:6,ambition:8,distance_ok:9};
 // Paires complémentaires optimales
 const COMPLEMENT_PAIRS={
   conflict_style:{parle:"digere",digere:"parle",reagis:"milieu"},
@@ -3126,7 +3148,31 @@ const COMPLEMENT_PAIRS={
 
 function computeMatchScore(a,b){
   if(!a||!b)return 0;
-  // Éliminatoires
+  // Éliminatoires absolus
+  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
+  if(!genderOk)return 0;
+  const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
+  if(!typeOk)return 0;
+  const bAge=b.age||null;
+  const ageOk=!bAge||!a.seeking_age_min||!a.seeking_age_max||(bAge>=a.seeking_age_min&&bAge<=a.seeking_age_max);
+  if(!ageOk)return 0;
+  // Pénalités critiques -50%
+  let penalty=0;
+  // Mariage : l'un veut, l'autre dit non
+  if((a.marriage_vision==="oui"&&b.marriage_vision==="non")||(a.marriage_vision==="non"&&b.marriage_vision==="oui"))penalty+=50;
+  // Intimité : l'un dit attente, l'autre dit central
+  if((a.intimacy==="attente"&&b.intimacy==="central")||(a.intimacy==="central"&&b.intimacy==="attente"))penalty+=50;
+  // Argent : l'un dit essentiel, l'autre dit secondaire ou peu_importe
+  if((a.money_vision==="essentiel"&&(b.money_vision==="secondaire"||b.money_vision==="peu_importe"))||(b.money_vision==="essentiel"&&(a.money_vision==="secondaire"||a.money_vision==="peu_importe")))penalty+=50;
+  // Couleur de peau : préférence incompatible = -50%
+  if(a.seeking_skin_color&&a.seeking_skin_color!=="peu_importe"&&b.skin_color&&a.seeking_skin_color!==b.skin_color)penalty+=50;
+  if(b.seeking_skin_color&&b.seeking_skin_color!=="peu_importe"&&a.skin_color&&b.seeking_skin_color!==a.skin_color)penalty+=50;
+  // Distance : les deux veulent sur place mais positions trop éloignées
+  if(a.distance_ok==="sur_place"&&b.distance_ok==="sur_place"&&a.latitude&&b.latitude){
+    const dx=a.latitude-b.latitude,dy=a.longitude-b.longitude;
+    const km=Math.sqrt(dx*dx+dy*dy)*111;
+    if(km>25)penalty+=50;
+  }
   const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
   if(!genderOk)return 0;
   const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
@@ -3135,6 +3181,7 @@ function computeMatchScore(a,b){
   const ageOk=!bAge||!a.seeking_age_min||!a.seeking_age_max||(bAge>=a.seeking_age_min&&bAge<=a.seeking_age_max);
   if(!ageOk)return 0;
   let score=0,maxScore=0;
+  if(penalty>=100)return 0;
   for(const key of Object.keys(Q_WEIGHT)){
     const w=Q_WEIGHT[key];
     maxScore+=w;
@@ -3151,8 +3198,10 @@ function computeMatchScore(a,b){
       if(a[key]===b[key])score+=w;
     }
   }
-  return maxScore>0?Math.round((score/maxScore)*100):0;
+  const raw=maxScore>0?Math.round((score/maxScore)*100):0;
+  return Math.max(0,raw-penalty);
 }
+
 
 function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialData=null}){
   const [step,setStep]=useState(0);
@@ -3175,11 +3224,16 @@ function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialDa
       const ageMap={"16-20":[16,20],"20-25":[20,25],"25-30":[25,30],"30+":[30,99]};
       const [ageMin,ageMax]=ageMap[next.seeking_age]||[16,30];
       const{seeking_age:_,...rest}=next;
-      const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_age_max:ageMax,is_active:true,updated_at:new Date().toISOString()};
-      const{error}=await sb.from("match_profiles").upsert(payload,{onConflict:"user_id"});
-      setSaving(false);
+      let lat=myProfile?.latitude||null,lng=myProfile?.longitude||null;
+if(next.distance_ok==="sur_place"&&!lat){
+  try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:8000});lat=pos.coords.latitude;lng=pos.coords.longitude;await sb.from("profiles").update({latitude:lat,longitude:lng}).eq("id",session?.user?.id);}
+  catch(e){notify("GPS non disponible — tu verras tout le monde");}
+}
+const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_age_max:ageMax,is_active:true,updated_at:new Date().toISOString(),age:myProfile?.age||null,latitude:lat,longitude:lng};
+      const{error}=await sb.from("match_profiles").upsert (payload,{onConflict:"user_id"}); 
+      setSaving(false); 
       if(!error){notify("✦ Profil Céleste Match enregistré !");onDone(next);}
-      else notify("Erreur — réessaie");
+      else notify("Erreur — réessaie"); 
     }
   };
 
@@ -3423,7 +3477,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
     </div>
   );
 
-  const visible=expanded?suggestions:suggestions.slice(0,3);
+  const visible=suggestions;
 
   return(
     <div style={{padding:"16px 16px 4px"}}>
@@ -3439,13 +3493,13 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
         </button>
       </div>
 
-      {/* Cartes */}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {/* Cartes scroll horizontal */}
+      <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch",msOverflowStyle:"none",scrollbarWidth:"none"}}>
         {visible.map((s,i)=>{
           const u=s.member;
           const col=scoreColor(s.score);
           return(
-            <div key={u.id} style={{background:s.score===100?"rgba(201,149,42,0.06)":"rgba(255,255,255,0.03)",border:`1.5px solid ${s.score===100?T.gold:T.border}`,borderRadius:20,overflow:"hidden",animation:`fadeUp .35s ease ${i*.08}s both`,boxShadow:s.score===100?"0 0 24px rgba(201,149,42,0.2)":"none"}}>
+            <div key={u.id} style={{background:s.score===100?"rgba(201,149,42,0.06)":"rgba(255,255,255,0.03)",border:`1.5px solid ${s.score===100?T.gold:T.border}`,borderRadius:20,overflow:"hidden",boxShadow:s.score===100?"0 0 24px rgba(201,149,42,0.2)":"none",flexShrink:0,width:260,scrollSnapAlign:"start"}}>
               <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 14px 10px"}}>
                 {/* Avatar */}
                 <div style={{position:"relative",flexShrink:0}} onClick={()=>onUser(u.id)}>
@@ -3494,13 +3548,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify}){
         })}
       </div>
 
-      {/* Voir plus / moins */}
-      {suggestions.length>3&&(
-        <button onClick={()=>setExpanded(e=>!e)}
-          style={{width:"100%",marginTop:10,padding:"10px",background:"none",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-          {expanded?<><ChevronLeft size={14} style={{transform:"rotate(90deg)"}}/> Voir moins</>:<><ChevronRight size={14} style={{transform:"rotate(90deg)"}}/> Voir {suggestions.length-3} de plus</>}
-        </button>
-      )}
+      
 
       {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
         onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
@@ -3673,7 +3721,9 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
   useEffect(()=>{const activeVideo=videoRefs.current[activeIdx];
   if(activeVideo&&!reelsModalOpen){activeVideo.currentTime=0;activeVideo.play().catch(()=>{});setPausedMap(p=>({...p,[activeIdx]:false}));}
   else if(activeVideo&&reelsModalOpen){activeVideo.pause();}
-  Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)!==activeIdx){v.pause();v.currentTime=0;}});
+  Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)!==activeIdx){v.pause();v.currentTime=0;if(Math.abs(Number(i)-activeIdx)>2){v.src="";}}}); 
+  const next=videoRefs.current[activeIdx+1];
+  if(next&&next.readyState<3)next.load();
   },[activeIdx]);
   useEffect(()=>()=>{
     Object.values(videoRefs.current).forEach(v=>{if(v){v.pause();v.src="";}});
@@ -3687,7 +3737,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
         {posts.map((post,idx)=>{
           const livePost=(posts||[]).find(p=>p.id===post.id)||post;
           const liked=(livePost.likes||[]).some(l=>(l.user_id||l)===uid);
-          const nearActive=Math.abs(idx-activeIdx)<=2;
+          const nearActive=Math.abs(idx-activeIdx)<=1;
           const rawVideoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
           const videoSrc=rawVideoSrc; 
           // géré par ReelVideoSrc ci-dessous dans le rendu
@@ -3701,7 +3751,7 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
           const isMe=post.by===uid;
           return(<div key={post.id} ref={el=>itemRefs.current[idx]=el} data-idx={idx} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}} onTouchStart={()=>{setShowControls(true);clearTimeout(window._rctimer);window._rctimer=setTimeout(()=>setShowControls(false),2500);}}>
             <ReelVideoSrc rawSrc={rawVideoSrc} nearActive={nearActive} onSrc={src=>{const v=videoRefs.current[idx];if(v&&src!==v.src)v.src=src;}}/>
-              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline autoPlay webkit-playsinline="true" preload="auto" style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
+              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={isActive?"auto":"metadata"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
               {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
               {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
@@ -3745,9 +3795,25 @@ function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myP
     </div>
   );
 }
-
+function SkeletonPost(){
+  return(
+    <div style={{background:"rgba(255,255,255,0.03)",borderRadius:20,padding:16,marginBottom:12,border:"1px solid rgba(255,255,255,0.06)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <div style={{width:40,height:40,borderRadius:"50%",background:"rgba(255,255,255,0.07)",animation:"shimmer 1.5s infinite"}}/>
+        <div style={{flex:1}}>
+          <div style={{height:10,width:"40%",borderRadius:6,background:"rgba(255,255,255,0.07)",animation:"shimmer 1.5s infinite",marginBottom:6}}/>
+          <div style={{height:8,width:"25%",borderRadius:6,background:"rgba(255,255,255,0.04)",animation:"shimmer 1.5s infinite"}}/>
+        </div>
+      </div>
+      <div style={{height:8,width:"90%",borderRadius:6,background:"rgba(255,255,255,0.07)",animation:"shimmer 1.5s infinite",marginBottom:8}}/>
+      <div style={{height:8,width:"70%",borderRadius:6,background:"rgba(255,255,255,0.05)",animation:"shimmer 1.5s infinite",marginBottom:12}}/>
+      <div style={{height:180,borderRadius:14,background:"rgba(255,255,255,0.05)",animation:"shimmer 1.5s infinite"}}/>
+    </div>
+  );
+}
 
 function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,viewedPostIdsRef}){
+
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
 const [reelsCommentPost,setReelsCommentPost]=useState(null);
@@ -3810,8 +3876,25 @@ useEffect(()=>{
       const{postId,commentId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id)").eq("id",postId).single();
-      if(data)setDetailPost({...data,_targetCommentId:commentId||null});
+      const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      if(data){
+        const mapped={
+          id:data.id,by:data.author_id,
+          author:normProfile(data.author||{}),
+          type:data.type,text:data.text||"",
+          img:data.img_url||null,
+          media_urls:data.media_urls||[],
+          likes:(data.likes||[]).map(l=>l.user_id),
+          comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),
+          ts:new Date(data.created_at).getTime(),
+          pinned:data.pinned||false,
+          text_background:data.text_background||null,
+          is_for_sale:data.is_for_sale||false,
+          whatsapp_contact:data.whatsapp_contact||null,
+          _targetCommentId:commentId||null
+        };
+        setDetailPost(mapped);
+      }
     };
     window.addEventListener("celeste_open_post",handler);
     return()=>window.removeEventListener("celeste_open_post",handler);
@@ -4259,6 +4342,7 @@ return(
         />
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
+        {!navigator.onLine&&posts.length===0&&[1,2,3].map(i=><SkeletonPost key={i}/>)}
         {posts.map((p,i)=>(
           <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}
             onClick={()=>setDetailPost(p)}>
@@ -4567,7 +4651,7 @@ const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
 const [videoTrimSrc,setVideoTrimSrc]=useState(null);
-const [geminiMsgs,setGeminiMsgs]=useState([]);
+const [geminiMsgs,setGeminiMsgs]=useState(()=>{try{const c=localStorage.getItem("celeste_ia_history");return c?JSON.parse(c):[];}catch(e){return[];}});
 const [geminiInp,setGeminiInp]=useState("");
 const [geminiLoading,setGeminiLoading]=useState(false);
 
@@ -4597,7 +4681,9 @@ const askGemini=async(text)=>{
     });
     const data=await res.json();
     const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
-    setGeminiMsgs(p=>[...p,{role:"model",text:reply}]);
+    const updated=[...updatedMsgs,{role:"model",text:reply}];
+    setGeminiMsgs(updated);
+    try{localStorage.setItem("celeste_ia_history",JSON.stringify(updated.slice(-20)));}catch(e){}
   }catch{
     setGeminiMsgs(p=>[...p,{role:"model",text:"Une erreur est survenue, réessaie."}]);
   }finally{
@@ -4606,6 +4692,7 @@ const askGemini=async(text)=>{
 };
   const {chatDrafts,setChatDrafts}=useApp();
   const user=(members||[]).find(m=>m.id===conv.uid)||{name:"…",initials:"?",color:"#888"};
+  const offline=!navigator.onLine;
   const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false);
   const [recording,setRecording]=useState(false); const [recordSecs,setRecordSecs]=useState(0);
   const [bgPhoto,setBgPhoto]=useState(null);
@@ -4693,7 +4780,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     }
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
     if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
-    setInp("");setChatDrafts(d=>({...d,[conv.id]:""}));setAttach(false);playChatSound("send");
+    setAttach(false);playChatSound("send");
     await reload();
   }catch(e){
     notify("Erreur d'envoi, réessayez");
@@ -4704,8 +4791,20 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   const [sending,setSending]=useState(false);
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
+    if(!navigator.onLine){
+      const q=JSON.parse(localStorage.getItem("celeste_msg_queue")||"[]");
+      q.push({convId:conv.id,text:inp.trim(),ts:Date.now()});
+      localStorage.setItem("celeste_msg_queue",JSON.stringify(q));
+      setInp("");
+      setChatDrafts(d=>({...d,[conv.id]:""}));
+      notify("Message en attente — sera envoyé dès la reconnexion");
+      return;
+    }
+    const txt=inp.trim();
+    setInp("");
+    setChatDrafts(d=>({...d,[conv.id]:""}));
     setSending(true);
-    try{await sendMsg({type:"text",text:inp.trim()});}finally{setSending(false);}
+    try{await sendMsg({type:"text",text:txt});}finally{setSending(false);}
   };
 
 const cropImage=src=>new Promise(resolve=>{
@@ -4840,7 +4939,11 @@ const handleFile=async(e,isImg)=>{
 
       {/* Chat header — style Instagram */}
 <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"6px 12px",paddingTop:"calc(6px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-  <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
+  <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={()=>{
+    const userId=user.id;
+    window.__celesteSetTab?.("statuses");
+    setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{userId}})),400);
+  }}>
     <Av u={user} size={36}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
   </div>
@@ -4968,6 +5071,10 @@ const handleFile=async(e,isImg)=>{
             <Btn onClick={stopRecording} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13}}>Envoyer</Btn>
           </div>
         ):(
+          <>{offline&&<div style={{padding:"8px 16px",background:"rgba(255,100,50,0.08)",borderTop:"1px solid rgba(255,100,50,0.2)",display:"flex",alignItems:"center",gap:8}}>
+  <WifiOff size={13} color="#FF6432"/>
+  <span style={{fontSize:12,color:"#FF6432"}}>Hors ligne — les messages seront envoyés dès la reconnexion</span>
+</div>}
          <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
   <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
@@ -4990,6 +5097,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
     </Btn>
   }
 </div>
+        </>
         )}
         
 
@@ -5037,17 +5145,19 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
 
           {/* Input */}
           <div style={{padding:"12px 16px",paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))",background:"rgba(0,0,0,0.95)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+            {!navigator.onLine&&<div style={{padding:"8px 12px",background:"rgba(255,100,50,0.08)",borderRadius:10,marginBottom:8,display:"flex",alignItems:"center",gap:6}}><WifiOff size={12} color="#FF6432"/><span style={{fontSize:11,color:"#FF6432"}}>Hors ligne — tu peux relire mais pas poser de nouvelles questions</span></div>}
             <div style={{flex:1,background:"rgba(123,47,190,0.08)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
               <textarea value={geminiInp} onChange={e=>{
     setGeminiInp(e.target.value);
     e.target.style.height="auto";
     e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
+
   }}
   onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();askGemini(geminiInp);}}}
   placeholder="Écris à Céleste…" rows={1}
   style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
             </div>
-            <Btn onClick={()=>askGemini(geminiInp)} disabled={geminiLoading||!geminiInp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:geminiLoading||!geminiInp.trim()?0.5:1}}>
+            <Btn onClick={()=>askGemini(geminiInp)} disabled={geminiLoading||!geminiInp.trim()||!navigator.onLine} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:geminiLoading||!geminiInp.trim()?0.5:1}}>
               <Send size={18}/>
             </Btn>
           </div>
@@ -7123,13 +7233,41 @@ function CelesteApp(){
   const [myProfile,setMyProfile]=useState(null);
   const [isPending,setIsPending]=useState(false);
   const [members,setMembers]=useState([]);
-  const [posts,setPosts]=useState([]);
-  const [convs,setConvs]=useState([]);
+  const [posts,setPosts]=useState(()=>{try{const c=localStorage.getItem("celeste_posts_cache");return c?JSON.parse(c):[];}catch(e){return[];}});
+  const [convs,setConvs]=useState(()=>{try{const c=localStorage.getItem("celeste_convs_cache");return c?JSON.parse(c):[];}catch(e){return[];}});
   const [myConnections,setMyConnections]=useState([]);
   const [myFollowers,setMyFollowers]=useState([]);
   const [blockedUserIds,setBlockedUserIds]=useState([]);
   const [chatDrafts,setChatDrafts]=useState({});
   const [tab,setTab]=useState("home");
+ const [isOnline,setIsOnline]=useState(navigator.onLine);
+  const [wasOffline,setWasOffline]=useState(false);
+  useEffect(()=>{
+    const on=async()=>{
+      setIsOnline(true);
+      setWasOffline(true);
+      setTimeout(()=>setWasOffline(false),3000);
+      if(session?.user?.id){
+        loadMembers();
+        loadPosts(1);
+        loadConvs(session.user.id);
+        try{
+          const q=JSON.parse(localStorage.getItem("celeste_msg_queue")||"[]");
+          if(q.length>0){
+            for(const m of q){
+              await sb.from("messages").insert({conv_id:m.convId,sender_id:session.user.id,type:"text",text:m.text,created_at:new Date(m.ts).toISOString()});
+            }
+            localStorage.removeItem("celeste_msg_queue");
+            loadConvs(session.user.id);
+          }
+        }catch(e){}
+      }
+    };
+    const off=()=>setIsOnline(false);
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[session?.user?.id]);
   const checkShared=async()=>{
   try{
     const{url}=await CapApp.getLaunchUrl()||{};
@@ -7143,6 +7281,54 @@ function CelesteApp(){
 checkShared();
 CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
   useEffect(()=>{window.__celesteSetTab=setTab;return()=>{delete window.__celesteSetTab;};},[]);
+  useEffect(()=>{
+    const handler=e=>{
+      const{convId}=e.detail||{};
+      if(!convId)return;
+      loadConvs(session?.user?.id).then(list=>{
+        const found=(list||[]).find(c=>c.id===convId);
+        if(found){
+          setTab("messages");
+          pushNav(()=>setOpenConvId(null));
+          setOpenConvId(convId);
+        }
+      });
+    };
+    window.addEventListener("celeste_open_conv",handler);
+    return()=>window.removeEventListener("celeste_open_conv",handler);
+  },[session?.user?.id]);
+  useEffect(()=>{
+    const handler=async e=>{
+      const{postId,commentId}=e.detail||{};
+      if(!postId)return;
+      setTab("home");
+      setTimeout(async()=>{
+        const post=(posts||[]).find(p=>p.id===postId);
+        if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
+        const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+        if(data){
+          const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,_targetCommentId:commentId||null};
+          setDetailPost(mapped);
+        }
+      },300);
+    };
+    window.addEventListener("celeste_open_post",handler);
+    return()=>window.removeEventListener("celeste_open_post",handler);
+  },[posts]);
+  useEffect(()=>{
+    window.__celesteOpenChat=(convId,uid)=>{
+      if(convId){
+        loadConvs(session?.user?.id).then(()=>{
+          pushNav(()=>setOpenConvId(null));
+          setOpenConvId(convId);
+          setTab("messages");
+        });
+      } else if(uid){
+        openChat(uid);
+      }
+    };
+    return()=>{delete window.__celesteOpenChat;};
+  },[session?.user?.id,convs]);
   const [openConvId,setOpenConvId]=useState(null);
   const [openUserId,setOpenUserId]=useState(null);
   const [openUser,setOpenUser]=useState(null);
@@ -7361,6 +7547,7 @@ if(page===1){
   const order=mixed2.map(p=>p.id);
   postOrderRef.current=order;
   setPosts(mixed2);
+  try{localStorage.setItem("celeste_posts_cache",JSON.stringify(mixed2.slice(0,20)));}catch(e){}
 }else{
  
   const filtered=mixed.filter(p=>!seenPostIdsRef.current.has(p.id));
@@ -7397,7 +7584,9 @@ return updated;
       const blocked=new Set((blockedData||[]).map(b=>b.blocked_id));
       const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
-      setConvs(filtered);return filtered;
+      setConvs(filtered);
+      try{localStorage.setItem("celeste_convs_cache",JSON.stringify(filtered));}catch(e){}
+      return filtered;
     }return null;
   },[]);
 useEffect(()=>{
@@ -7434,7 +7623,15 @@ useEffect(()=>{
     const myId=session.user.id;
     const handleOpenUser=e=>{pushNav(()=>setOpenUserId(null));setOpenUserId(e.detail.uid);};
 window.addEventListener("celeste_open_user",handleOpenUser);
-    const handleOpenConv=e=>{pushNav(()=>setOpenConvId(null));setTab("messages");setOpenConvId(e.detail.convId);};
+    const handleOpenConv=e=>{
+      const convId=e.detail?.convId;
+      if(!convId)return;
+      loadConvs(session?.user?.id).then(()=>{
+        pushNav(()=>setOpenConvId(null));
+        setTab("messages");
+        setOpenConvId(convId);
+      });
+    };
     window.addEventListener("celeste_open_conv",handleOpenConv);
     const ch=sb.channel("celeste_rt")
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},async payload=>{
@@ -7559,6 +7756,14 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
       <div style={{display:"flex",flexDirection:"column",height:"100svh",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
         <style>{GS}</style>
         {toast&&<Toast msg={toast}/>}
+        {!isOnline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #FF6432",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
+          <WifiOff size={14} color="#FF6432"/>
+          <span style={{fontSize:12,color:"#FF6432",fontWeight:600}}>Pas de connexion — certaines fonctionnalités sont limitées</span>
+        </div>}
+        {isOnline&&wasOffline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #3DB654",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
+          <Wifi size={14} color="#3DB654"/>
+          <span style={{fontSize:12,color:"#3DB654",fontWeight:600}}>Connexion rétablie</span>
+        </div>}
         {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
         <NotifBanner notifs={inAppNotifs} onDismiss={dismissNotif} onTap={n=>{n.action?.();dismissNotif(n.id);}}/>
           {sharedMedia&&<div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>

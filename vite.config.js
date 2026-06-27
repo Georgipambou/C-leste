@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { compression } from 'vite-plugin-compression2'
 
 export default defineConfig({
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  },
   server: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
