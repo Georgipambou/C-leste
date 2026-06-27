@@ -4938,7 +4938,7 @@ const handleFile=async(e,isImg)=>{
   <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={()=>{
     const userId=user.id;
     window.__celesteSetTab?.("statuses");
-    setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{userId}})),400);
+setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{userId}})),800);
   }}>
     <Av u={user} size={36}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
@@ -4982,7 +4982,7 @@ const handleFile=async(e,isImg)=>{
                 }}>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
-    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
+    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),800);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
