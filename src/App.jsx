@@ -49,7 +49,7 @@ import CelesteChatScreen from "./components/CelesteChatScreen";
 import VideoTrimModal from "./components/VideoTrimModal";
 import CommentsSection from "./components/CommentsSection";
 import PostDetailModal from "./components/PostDetailModal";
-import MatchComponents from "./components/MatchComponents";
+import { computeMatchScore, MatchOnboardingModal, getCompatibilityPoints, MatchWriteBtn, MatchSuggestions } from "./components/MatchComponents";
 // Mémoïsation pour éviter les re-renders inutiles
 const MemoFeed = React.memo(({children}) => children);
 
