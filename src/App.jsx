@@ -4786,7 +4786,6 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
     if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
     setAttach(false);playChatSound("send");
-    await reload();
   }catch(e){
     notify("Erreur d'envoi, réessayez");
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
