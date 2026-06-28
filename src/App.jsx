@@ -2050,7 +2050,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
         </div>
 
        {/* Texte */}
-        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p><TranslateBtn text={comment.text}/></>}
+        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username||`${u.prenom||""} ${u.nom||""}`.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,"")));if(m){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{if(data?.length){const match=data.find(u=>u.prenom?.toLowerCase()===username)||(data[0]);if(match?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:match.id}}));}});})})}</p><TranslateBtn text={comment.text}/></>}
 {comment.media_url&&(
   <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
     <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
@@ -4622,6 +4622,8 @@ L'APP EN BREF :
 LE BADGE CERTIFIÉ ✦ :
 - Coûte  2000 FCFA pour 40 jours
 - Donne accès aux thèmes premium, stats de vues, confidentialité avancée, publications prioritaires
+- Permet de générer des gains quotidiens grâce à tes posts et likes reçus
+
 
 LES THÈMES :
 - Gratuits : Noir Doré, Blanc Doré
@@ -5973,6 +5975,7 @@ if(existingPool){
           {icon:"🔕",text:"Active le mode Ne pas recevoir de messages"},
           {icon:"📷",text:"Envoie des photos dans les commentaires"},
           {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
+          {icon:"💰",text:"Génère des gains quotidiens grâce à tes posts et likes reçus"},
         ].map((f,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:13,color:T.gold}}>{f.icon}</span>
