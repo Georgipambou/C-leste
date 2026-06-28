@@ -783,13 +783,7 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
   const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
   const showRing=ring||!!_statusId;
-  const handleStatusCapture=e=>{
-    if(_statusId){
-      e.stopPropagation();
-      window.__celesteSetTab&&window.__celesteSetTab("statuses");
-      setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})),350);
-    }
-  };
+  const handleStatusCapture=e=>{};
   return(
     <div onClick={onClick} onClickCapture={handleStatusCapture} style={{position:"relative",flexShrink:0,width:size,height:size,cursor:onClick?"pointer":"default"}}>
       {showRing && (
@@ -2915,10 +2909,13 @@ if(isMe){
 
       {isMe&&showInfo&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(8,8,8,0.98)",borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,padding:"20px 16px 40px",maxHeight:"50vh",overflowY:"auto",zIndex:3,animation:"slideUp .3s ease"}}>
-          <p style={{color:T.goldL,fontWeight:700,fontSize:13,marginBottom:12}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <p style={{color:T.goldL,fontWeight:700,fontSize:13,margin:0}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
+            <Btn onClick={e=>{e.stopPropagation();setShowInfo(false);}} style={{color:"rgba(255,255,255,0.4)",display:"flex",alignItems:"center",padding:4}}><X size={18}/></Btn>
+          </div>
           {currentViews.map((v,i)=>{const prf=v.profiles;const name=prf?`${prf.prenom||""} ${(prf.nom||"")[0]||""}.`.trim():"?";return(
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:prf?.id?"pointer":"default"}}
-              onClick={()=>{if(prf?.id){setShowInfo(false);window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:prf.id}}));}}}>
+              onClick={()=>{if(prf?.id){setShowInfo(false);onClose();window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:prf.id}}));}}}>
               <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold,flexShrink:0}}>
                 {prf?.avatar_url?<img src={prf.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span>{name[0]}</span>}
               </div>
@@ -3082,6 +3079,7 @@ useEffect(()=>{
           onDelete={delStatus}
           onClose={()=>{setViewing(null);load();setHideNav(false);}}
           session={session}
+          onOpenUser={uid=>{setViewing(null);setHideNav(false);window.dispatchEvent(new CustomEvent("celeste_open_user_main",{detail:{uid}}));}}
         />
       )}
       {creating&&(
