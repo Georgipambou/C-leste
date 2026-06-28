@@ -442,7 +442,7 @@ const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#5
 const colorFor = id => PALETTE[(id?.charCodeAt(0)||0)%PALETTE.length];
 const renderTextWithMentions = (text, onMentionClick) => {
   if (!text) return "";
-  const parts = text.split(/(https?:\/\/[^\s]+|@[a-zA-Z0-9_]+)/g);
+  const parts = text.split(/(https?:\/\/[^\s]+|@[a-zA-Z0-9_àâäéèêëîïôöùûüç_]+)/gi);
   return parts.map((part, i) => {
     if (/^https?:\/\//.test(part)) {
       return (
@@ -454,10 +454,29 @@ const renderTextWithMentions = (text, onMentionClick) => {
       );
     }
     if (part.startsWith("@")) {
+      const username=part.substring(1).toLowerCase();
       return (
         <span key={i}
-          onClick={(e) => { e.stopPropagation(); onMentionClick(part.substring(1)); }}
-          style={{ color: T.goldL, fontWeight: "600", cursor: "pointer" }}>
+          onClick={(e)=>{
+            e.stopPropagation();
+            e.preventDefault();
+            // 1. Chercher dans members (cache local)
+            const m=(window.__celesteMembers||[]).find(u=>
+              u.prenom?.toLowerCase()===username||
+              `${u.prenom||""} ${u.nom||""}`.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,""))||
+              u.name?.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,""))
+            );
+            if(m?.id){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}
+            // 2. Fallback : chercher dans Supabase
+            sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{
+              if(data?.length){
+                const match=data.find(u=>u.prenom?.toLowerCase()===username||(u.prenom?.toLowerCase()||"")+(u.nom?.toLowerCase()||"")===username);
+                const uid=(match||data[0])?.id;
+                if(uid)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid}}));
+              }
+            });
+          }}
+          style={{color:T.goldL,fontWeight:"600",cursor:"pointer"}}>
           {part}
         </span>
       );
@@ -1088,9 +1107,15 @@ function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
     setTrimProgress(0);
     try{
       const v=videoRef.current;
+      if(typeof v.captureStream!=="function"&&typeof v.mozCaptureStream!=="function"){
+        onDone({src:videoSrc,start,end,file:null});
+        setTrimming(false);
+        return;
+      }
+      if(typeof v.captureStream!=="function"&&typeof v.mozCaptureStream!=="function"){onDone({src:videoSrc,start,end,file:null});setTrimming(false);return;}
       v.currentTime=start;
       await new Promise(res=>v.addEventListener("seeked",res,{once:true}));
-      const stream=v.captureStream();
+      const stream=v.captureStream?v.captureStream():v.mozCaptureStream();
       const chunks=[];
       const mimeType=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")?"video/webm;codecs=vp8,opus":"video/webm";
       const recorder=new MediaRecorder(stream,{mimeType});
@@ -1764,7 +1789,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
               <Av u={m} size={32}/>
               <div>
                 <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{m.fullName||m.name}</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={11}/>{m.paroisse}</p>
               </div>
               {m.badge&&<Badge type={m.badge}/>}
             </div>
@@ -2157,7 +2182,7 @@ useEffect(()=>{
                 <p style={{margin:"0 0 6px",fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:600,color:T.text}}>{post.title}</p>
                 {post.text&&<p style={{margin:"0 0 8px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
                 {post.eventDate&&<p style={{margin:"0 0 3px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
-                {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub}}>📍 {post.eventLoc}</p>}
+                {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
               </div>
               :<>
               {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
@@ -2165,7 +2190,7 @@ useEffect(()=>{
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
   return(
-    <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+   <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
       onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
 onTouchEnd={e=>{
   if(swipeStartRef.current===null)return;
@@ -2174,7 +2199,7 @@ onTouchEnd={e=>{
   if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
   swipeStartRef.current=null;
 }}>
-      {!fromReel&&<MediaPlayer url={allMedia[slideIdx]} onImageClick={setViewImg}/>}
+      {!fromReel&&(()=>{const url=allMedia[slideIdx];const isVid=url&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video"));if(isVid)return(<video key={url} src={url} controls autoPlay playsInline loop style={{width:"100%",borderRadius:14,maxHeight:380,display:"block",background:"#000",objectFit:"contain"}}/>);return <MediaPlayer url={url} onImageClick={setViewImg}/>;})()}
       {allMedia.length>1&&(
         <>
           <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
@@ -2892,13 +2917,14 @@ if(isMe){
         <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(8,8,8,0.98)",borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,padding:"20px 16px 40px",maxHeight:"50vh",overflowY:"auto",zIndex:3,animation:"slideUp .3s ease"}}>
           <p style={{color:T.goldL,fontWeight:700,fontSize:13,marginBottom:12}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
           {currentViews.map((v,i)=>{const prf=v.profiles;const name=prf?`${prf.prenom||""} ${(prf.nom||"")[0]||""}.`.trim():"?";return(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold}}>
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:prf?.id?"pointer":"default"}}
+              onClick={()=>{if(prf?.id){setShowInfo(false);window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:prf.id}}));}}}>
+              <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold,flexShrink:0}}>
                 {prf?.avatar_url?<img src={prf.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span>{name[0]}</span>}
               </div>
-              <span style={{color:T.text,fontSize:13}}>{name}</span>
-              {prf?.badge&&<span style={{fontSize:12,marginLeft:4}}>{prf.badge}</span>}
-              {currentLikes.includes(v.viewer_id)&&<Heart size={14} fill="currentColor" style={{color:T.gold,marginLeft:"auto"}}/>}
+              <span style={{color:T.text,fontSize:13,flex:1}}>{name}</span>
+              {prf?.badge&&<Badge type={prf.badge}/>}
+              {currentLikes.includes(v.viewer_id)&&<Heart size={14} fill="currentColor" style={{color:T.gold,marginLeft:4}}/>}
             </div>
           );})}
         </div>
@@ -3415,6 +3441,13 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
   },[session?.user?.id,members?.length]);
 
   useEffect(()=>{
+    // Anti-capture : activer si au moins une suggestion visible a screenshot_protection
+    const hasProtected=suggestions.some(s=>s.member?.screenshot_protection);
+    if(hasProtected)enableScreenProtection();else disableScreenProtection();
+    return()=>disableScreenProtection();
+  },[suggestions]);
+
+  useEffect(()=>{
     if(!session?.user?.id)return;
     const sub=sb.channel("match_realtime").on("postgres_changes",{event:"*",schema:"public",table:"match_profiles"},()=>{
       sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle().then(({data:myData})=>{
@@ -3880,7 +3913,7 @@ useEffect(()=>{
     const handler=async e=>{
       const{postId,commentId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
-      if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
+      if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
       const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
         const mapped={
@@ -3898,7 +3931,7 @@ useEffect(()=>{
           whatsapp_contact:data.whatsapp_contact||null,
           _targetCommentId:commentId||null
         };
-        setDetailPost(mapped);
+        pushNav(()=>setDetailPost(null));setDetailPost(mapped);
       }
     };
     window.addEventListener("celeste_open_post",handler);
@@ -4193,7 +4226,7 @@ const [saved,setSaved]=useState(false);
               <p style={{margin:"0 0 5px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:600,color:T.text}}>{post.title}</p>
               {post.text&&<p style={{margin:"0 0 6px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
               {post.eventDate&&<p style={{margin:"0 0 2px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
-              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted}}>📍 {post.eventLoc}</p>}
+              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
             </div>
             :<>
               {post.text&&(
@@ -4427,7 +4460,7 @@ const openMenu=id=>{setMenuConvId(id);};
         {/* Recherche */}
         <div style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
           <Search size={14} color={T.muted}/>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher une conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
         {/* Filtres */}
@@ -4711,15 +4744,34 @@ const askGemini=async(text)=>{
   },[conv.id]);
 
   useEffect(()=>{
-    const ch=sb.channel(`chat_${conv.id}`)
-  .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
-    const nm=payload.new;
-    if(nm.sender_id!==session?.user?.id){playChatSound("receive");}
-    reload();
-  })
-  .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
-  .subscribe();
-    return()=>{sb.removeChannel(ch);disableScreenProtection();};
+    let ch;
+    let retryTimer;
+    const subscribe=()=>{
+      if(ch){try{sb.removeChannel(ch);}catch(_){}}
+      ch=sb.channel(`chat_${conv.id}_${Date.now()}`)
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
+          const nm=payload.new;
+          if(nm.sender_id!==session?.user?.id){playChatSound("receive");}
+          reload();
+        })
+        .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
+        .subscribe((status)=>{
+          if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
+            clearTimeout(retryTimer);
+            retryTimer=setTimeout(subscribe,3000);
+          }
+        });
+    };
+    subscribe();
+    // Rechargement sur reprise de connexion réseau
+    const onOnline=()=>{reload();subscribe();};
+    window.addEventListener("online",onOnline);
+    return()=>{
+      clearTimeout(retryTimer);
+      try{sb.removeChannel(ch);}catch(_){}
+      window.removeEventListener("online",onOnline);
+      disableScreenProtection();
+    };
   },[conv.id,reload]);
 
   const lastMsgId=conv.msgs[conv.msgs.length-1]?.id;
@@ -6521,15 +6573,18 @@ const [showWallet,setShowWallet]=useState(false);
     reload();notify("Photo mise à jour ✦");
   };
 
-  const [myPosts,setMyPosts]=useState((posts||[]).filter(p=>p.by===session?.user?.id));
+  const [myPosts,setMyPosts]=useState([]);
+const [myPostsLoading,setMyPostsLoading]=useState(true);
 useEffect(()=>{
   if(!session?.user?.id)return;
-  sb.from("posts").select("*,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).then(({data})=>{
+  setMyPostsLoading(true);
+  sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,pinned,text_background,visibility,created_at,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data)setMyPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null})));
+    setMyPostsLoading(false);
   });
 },[session?.user?.id, userPostsVersion]);
-  const followersCount=(myFollowers||[]).length;
-  const followingCount=(myConnections||[]).length;
+  const followersCount=useMemo(()=>(myFollowers||[]).length,[myFollowers]);
+  const followingCount=useMemo(()=>(myConnections||[]).length,[myConnections]);
   const [detailPost, setDetailPost] = useState(null);
   const [userReelsIndex,setUserReelsIndex]=useState(null);
   const refreshPost=async pid=>{
@@ -6614,7 +6669,7 @@ useEffect(()=>{
   <h2 style={{margin:0,flex:1,minWidth:0,textAlign:"left",fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,(myProfile?.fullName?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{myProfile?.fullName}</h2>
   {myProfile?.badge&&<Badge type={myProfile.badge}/>}
 </div>
-            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
+            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={13}/>{myProfile?.paroisse}</p>
            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
             {myProfile?.shop_link&&(
               <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
@@ -6909,7 +6964,7 @@ if(data)setList(data.map(normProfile));
                         {m.status==="pending"&&<span style={{fontSize:8,background:"rgba(201,149,42,0.12)",color:T.goldL,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>EN ATTENTE</span>}
                         {m.status==="suspended"&&<span style={{fontSize:8,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>SUSPENDU</span>}
                       </div>
-                      <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse} · {m.joined}</p>
+                      <p style={{margin:0,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={11}/>{m.paroisse} · {m.joined}</p>
                       {m.whatsapp&&<a href={`https://wa.me/${m.whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#25D366",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4,marginTop:3,textDecoration:"none"}}>📱 {m.whatsapp}</a>}
                     </div>
                   </div>
@@ -7310,11 +7365,11 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
       setTab("home");
       setTimeout(async()=>{
         const post=(posts||[]).find(p=>p.id===postId);
-        if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
+        if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
         const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
         if(data){
           const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,_targetCommentId:commentId||null};
-          setDetailPost(mapped);
+          pushNav(()=>setDetailPost(null));setDetailPost(mapped);
         }
       },300);
     };
@@ -7422,7 +7477,7 @@ useEffect(() => {
     CapApp.minimizeApp();
   });
 
-  return () => { handler.then?.(h=>h.remove()).catch(()=>{})||handler.remove?.(); };
+  return () => { Promise.resolve(handler).then(h=>h?.remove()).catch(()=>{}); };
 }, [viewImg, tab]);
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
   const myId=session?.user?.id;
@@ -7470,7 +7525,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
     (conns||[]).forEach(c=>{counts[c.to_id]=(counts[c.to_id]||0)+1;});
-    setMembers(data.map(p=>normProfile({...p,followersCount:counts[p.id]||0})));
+    const normed=data.map(p=>normProfile({...p,followersCount:counts[p.id]||0}));window.__celesteMembers=normed;setMembers(normed);
   }
 },[]);
 
@@ -7844,7 +7899,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav}/>
               </div>
-              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
+              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
