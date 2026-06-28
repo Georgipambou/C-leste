@@ -3017,10 +3017,10 @@ useEffect(()=>{
      const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null};
       map.get(key).statuses.push(mapped);
     });
-    const groups=Array.from(map.values());
-    setGroups(groups);
-    try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(groups));}catch(e){}
-    return{me,groups};
+    const freshGroups=Array.from(map.values());
+    setGroups(prev=>freshGroups.length>0?freshGroups:prev);
+    try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(freshGroups));}catch(e){}
+    return{me,groups:freshGroups};
   },[session?.user?.id,myConnections]);
 
   useEffect(()=>{load();},[load]);
