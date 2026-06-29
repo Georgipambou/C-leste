@@ -221,8 +221,10 @@ export default function ReelsViewer({
   const handleTap = useCallback((idx, post, e) => {
     const now  = Date.now();
     const last = lastTapRef.current[idx] || 0;
+    // Annule le simple tap en attente
+    clearTimeout(window[`_tap_${idx}`]);
     if (now - last < 320) {
-      // Double tap
+      // Double tap confirmé → like + cœur
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -231,8 +233,8 @@ export default function ReelsViewer({
       const liked = (post.likes || []).some(l => (l.user_id || l) === uid);
       if (!liked) toggleLike(post.id);
     } else {
-      // Simple tap → pause/play
-      togglePause(idx);
+      // Premier tap → attend 320ms pour voir si un 2e tap arrive
+      window[`_tap_${idx}`] = setTimeout(() => togglePause(idx), 320);
     }
     lastTapRef.current[idx] = now;
   }, [toggleLike, togglePause, uid]);
