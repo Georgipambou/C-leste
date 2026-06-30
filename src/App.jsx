@@ -22,6 +22,16 @@
  */
 
 import {
+  groupMessagesByDay, DayDivider,
+  QUICK_REACTIONS, toggleReaction, ReactionPicker, ReactionBar,
+  useDoubleTap, HeartBurst,
+  ReplyComposerBar, MessageReplyQuote,
+  useTypingIndicator, TypingIndicator,
+  editMessage, EditedBadge,
+  ChatSearchBar, filterMessagesByQuery
+} from "./ChatExtras";
+
+import {
   useState, useRef, useEffect, useCallback, useMemo, memo, createContext, useContext
 } from "react";
 import {
@@ -32,7 +42,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Search
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -606,6 +616,13 @@ const GS = `
   select option{background:#111;color:${T.text};}
 
   /* ── ANIMATIONS PREMIUM ── */
+  @keyframes popIn { from{transform:scale(.7);opacity:0;} to{transform:scale(1);opacity:1;} }
+@keyframes heartBurst {
+  0%{transform:scale(0.3);opacity:0;}
+  30%{transform:scale(1.2);opacity:1;}
+  60%{transform:scale(1);opacity:1;}
+  100%{transform:scale(1);opacity:0;}
+}
   @keyframes spin{to{transform:rotate(360deg);}}
   @keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
   @keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}v
@@ -4737,6 +4754,17 @@ const askGemini=async(text)=>{
   const [bgPhoto,setBgPhoto]=useState(null);
   const [sendingMsgs,setSendingMsgs]=useState([]);
   const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef();
+const [replyTo,setReplyTo]=useState(null);
+const [showReactionPicker,setShowReactionPicker]=useState(null); // id du message ciblé
+const [burstMsgId,setBurstMsgId]=useState(null);
+const [editingMsg,setEditingMsg]=useState(null);
+const [searchOpen,setSearchOpen]=useState(false);
+const [searchQuery,setSearchQuery]=useState("");
+const {peerTyping,notifyTyping}=useTypingIndicator(sb,conv.id,session);
+const doubleTap=useDoubleTap(m=>{
+  toggleReaction(sb,m.id,session?.user?.id,"❤️",m.reactions).then(()=>reload());
+  setBurstMsgId(m.id); setTimeout(()=>setBurstMsgId(null),600);
+});
   const mediaRecRef=useRef(); const timerRef=useRef(); const isFirstLoad=useRef(true);
 
   useEffect(()=>{
@@ -4847,6 +4875,12 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   const [sending,setSending]=useState(false);
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
+    if(editingMsg){
+      const txt=inp.trim();
+      setInp(""); setChatDrafts(d=>({...d,[conv.id]:""})); setEditingMsg(null);
+      await editMessage(sb,editingMsg.id,txt); reload();
+      return;
+    }
     if(!navigator.onLine){
       const q=JSON.parse(localStorage.getItem("celeste_msg_queue")||"[]");
       q.push({convId:conv.id,text:inp.trim(),ts:Date.now()});
@@ -4860,7 +4894,8 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setInp("");
     setChatDrafts(d=>({...d,[conv.id]:""}));
     setSending(true);
-    try{await sendMsg({type:"text",text:txt});}finally{setSending(false);}
+    const replyPayload=replyTo?{reply_to_id:replyTo.id,reply_to_text:replyTo.text||"",reply_to_author:replyTo.authorName||""}:{};
+    try{await sendMsg({type:"text",text:txt,...replyPayload});}finally{setSending(false);setReplyTo(null);}
   };
 
 const cropImage=src=>new Promise(resolve=>{
@@ -5007,7 +5042,10 @@ const handleFile=async(e,isImg)=>{
   </div>
  
   <Btn onClick={()=>bgRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Image size={20}/></Btn>
+  <Btn onClick={()=>setSearchOpen(s=>!s)} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Search size={20}/></Btn>
 </div>
+{peerTyping&&<TypingIndicator T={T} userName={user.name}/>}
+{searchOpen&&<ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={()=>{setSearchOpen(false);setSearchQuery("");}} resultCount={filterMessagesByQuery(conv.msgs,searchQuery).length}/>}
 
       {/* Messages */}
       <div style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
@@ -5017,14 +5055,16 @@ const handleFile=async(e,isImg)=>{
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,textAlign:"center",color:T.sub}}>Démarrez la conversation<br/>avec {user.name}</p>
           </div>
         )}
-        {[...(conv.msgs||[]),...sendingMsgs].map(m=>{
+        {groupMessagesByDay(filterMessagesByQuery([...(conv.msgs||[]),...sendingMsgs],searchQuery)).map(m=>{
+  if(m._divider) return <DayDivider key={m.key} label={m.label} T={T}/>;
           const mine=m.f==="me"||m.f===session?.user?.id;
           const isSending=!!m.sending;
           const isRead=!!m.read;
           return(
             <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
-              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s"}}
+              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}
+  onClick={doubleTap}
   onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
   onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
   onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
@@ -5036,6 +5076,8 @@ const handleFile=async(e,isImg)=>{
                   border:mine?"none":`1px solid ${T.border}`,
                   boxShadow:mine?"0 4px 20px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.3)"
                 }}>
+                  <HeartBurst show={burstMsgId===m.id}/>
+                  <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>{}}/>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
     <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.dispatchEvent(new CustomEvent("celeste_close_conv"));window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
@@ -5072,8 +5114,9 @@ const handleFile=async(e,isImg)=>{
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
 {m.type==="video"&&(m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>}
-                  {m.text&&<><p style={{margin:0,fontSize:14,color:"#fff",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}</p><TranslateBtn text={m.text} dark={mine}/></>}
+                  {m.text&&<><p style={{margin:0,fontSize:14,color:"#fff",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
+                <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
                   {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice"||m.type==="video")&&(
@@ -5112,6 +5155,7 @@ const handleFile=async(e,isImg)=>{
         </div>
       )}
 
+      <ReplyComposerBar replyTo={replyTo} T={T} onCancel={()=>setReplyTo(null)}/>
       {/* Input */}
       <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
         {recording?(
@@ -5133,6 +5177,7 @@ const handleFile=async(e,isImg)=>{
   <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
     <textarea value={inp} onChange={e=>{
 setInp(e.target.value);
+notifyTyping();
 setChatDrafts(d=>({...d,[conv.id]:e.target.value}));
 e.target.style.height="auto";
 e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
@@ -5223,6 +5268,17 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             {selectedMsg.text&&<div style={{padding:"14px 20px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
               <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
             </div>}
+            <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text,authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <span>↩️</span><span>Répondre</span>
+            </Btn>
+            <Btn onClick={()=>{setShowReactionPicker(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <span>😀</span><span>Réagir</span>
+            </Btn>
+            {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&selectedMsg.text&&(
+              <Btn onClick={()=>{setEditingMsg(selectedMsg);setInp(selectedMsg.text);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+                <span>✏️</span><span>Modifier</span>
+              </Btn>
+            )}
             <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("Copié !");}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <span>📋</span><span>Copier</span>
             </Btn>
@@ -5234,6 +5290,13 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             <Btn onClick={()=>setSelectedMsg(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
           </div>
         </div>
+      )}
+      {showReactionPicker&&(
+        <ReactionPicker T={T} onClose={()=>setShowReactionPicker(null)}
+          onSelect={emoji=>{
+            const target=[...(conv.msgs||[])].find(m=>m.id===showReactionPicker);
+            toggleReaction(sb,showReactionPicker,session?.user?.id,emoji,target?.reactions).then(()=>reload());
+          }}/>
       )}
       </div>
     </div>
