@@ -96,9 +96,14 @@ export default function CameraStudioModal({ onClose, onDone }) {
 
   // ── Photo ──────────────────────────────────────────────
   const takePhoto = () => {
-    canvasRef.current?.toBlob(b => {
-      finish(b, URL.createObjectURL(b), false);
-    }, "image/jpeg", 0.95);
+    const canvas = canvasRef.current;
+    if (!canvas) { console.error("Canvas null"); return; }
+    try {
+      canvas.toBlob(b => {
+        if (!b) { console.error("Blob null"); return; }
+        finish(b, URL.createObjectURL(b), false);
+      }, "image/jpeg", 0.95);
+    } catch(e) { console.error("takePhoto error", e); }
   };
 
   // ── Vidéo ──────────────────────────────────────────────
@@ -424,7 +429,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
 
                 {/* Déclencheur central */}
                 {!recording
-                  ? <button onPointerDown={takePhoto}
+                  ? <button onClick={takePhoto}
                       style={{width:74,height:74,borderRadius:"50%",
                         background:"#fff",border:"4px solid rgba(255,255,255,0.35)",
                         cursor:"pointer",flexShrink:0,
