@@ -1429,7 +1429,6 @@ function AuthScreen({mode,setMode,onSuccess}){
   const [orgCountry,setOrgCountry]=useState(""); const [orgDesc,setOrgDesc]=useState("");
   const [email,setEmail]=useState(""); const [pw,setPw]=useState("");
   const [showPw,setShowPw]=useState(false); const [busy,setBusy]=useState(false);
-const [showCameraStudio,setShowCameraStudio]=useState(false);
   const [err,setErr]=useState("");
 
   const reset=()=>{setPrenom("");setNom("");setParoisse("");setPhone("");setWhatsapp("");setOrgName("");setOrgType("");setOrgCountry("");setOrgDesc("");setEmail("");setPw("");setErr("");};
@@ -2263,6 +2262,7 @@ const [uploadPct,setUploadPct]=useState(0);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
 const [videoTrimSrc,setVideoTrimSrc]=useState(null);
+const [showCameraStudio,setShowCameraStudio]=useState(false);
 const [evTitle,setEvTitle]=useState("");
 const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
 const [busy,setBusy]=useState(false);
