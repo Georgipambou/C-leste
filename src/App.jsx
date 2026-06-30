@@ -55,6 +55,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
 import EasyCrop from "react-easy-crop";
 import ReelsViewer from "./ReelsViewer";
+import CameraStudioModal from "./CameraStudioModal";
 // Mémoïsation pour éviter les re-renders inutiles
 const MemoFeed = React.memo(({children}) => children);
 
@@ -1428,6 +1429,7 @@ function AuthScreen({mode,setMode,onSuccess}){
   const [orgCountry,setOrgCountry]=useState(""); const [orgDesc,setOrgDesc]=useState("");
   const [email,setEmail]=useState(""); const [pw,setPw]=useState("");
   const [showPw,setShowPw]=useState(false); const [busy,setBusy]=useState(false);
+const [showCameraStudio,setShowCameraStudio]=useState(false);
   const [err,setErr]=useState("");
 
   const reset=()=>{setPrenom("");setNom("");setParoisse("");setPhone("");setWhatsapp("");setOrgName("");setOrgType("");setOrgCountry("");setOrgDesc("");setEmail("");setPw("");setErr("");};
@@ -2394,7 +2396,15 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
     onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
   />
 )}
-    <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+    {showCameraStudio&&<CameraStudioModal
+  onClose={()=>setShowCameraStudio(false)}
+  onDone={({file,type:mtype})=>{
+    setShowCameraStudio(false);
+    const fakeEvent={target:{files:[file]}};
+    handlePick(fakeEvent);
+  }}
+/>}
+<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
       <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePick}/>
 <input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
@@ -2569,6 +2579,10 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
         <button onClick={()=>{setType("event");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="event"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
+        </button>
+        <button onClick={()=>setShowCameraStudio(true)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+          <Camera size={22}/>
+          <span style={{fontSize:9,letterSpacing:.5}}>Caméra</span>
         </button>
         <button onClick={()=>setType("text")} style={{background:"none",border:"none",cursor:"pointer",color:type==="text"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <span style={{fontSize:18}}>✍</span>
