@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Céleste — Version Premium 4.0 (FUSION)
  * Design: Noir absolu · Gold vibrant · Glassmorphism · Animations cinématiques
  * Base: Céleste v3 (src_src_App_4.jsx) + nouvelles fonctionnalités App 9
@@ -54,14 +54,7 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
 import EasyCrop from "react-easy-crop";
-import AdminPanel from "./components/AdminPanel";
-import CelesteChatScreen from "./components/CelesteChatScreen";
-import VideoTrimModal from "./components/VideoTrimModal";
-import CommentsSection from "./components/CommentsSection";
-import PostDetailModal from "./components/PostDetailModal";
-import { computeMatchScore, MatchOnboardingModal, getCompatibilityPoints, MatchWriteBtn, MatchSuggestions } from "./components/MatchComponents";
-import "@fontsource/cormorant-garamond";
-import "@fontsource/space-grotesk";
+import ReelsViewer from "./ReelsViewer";
 // Mémoïsation pour éviter les re-renders inutiles
 const MemoFeed = React.memo(({children}) => children);
 
@@ -89,10 +82,11 @@ const enableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScre
 const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.disable();}catch(e){}};
 
 // ── CONTEXTE GLOBAL ───────────────────────────────────────
-import { AppContext, useApp } from "./AppContext";
+const AppContext = createContext(null);
+const useApp = () => useContext(AppContext);
 
 // ── PALETTE PREMIUM ───────────────────────────────────────
-export const getThemePalette = (mode) => {
+const getThemePalette = (mode) => {
  
   // ─── FACEBOOK — Azur institutionnel ────────────────────────────────────────
   // Blanc pur · Bleu confiance · Netteté maximale · Ombres légères
@@ -459,7 +453,7 @@ const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#5
 const colorFor = id => PALETTE[(id?.charCodeAt(0)||0)%PALETTE.length];
 const renderTextWithMentions = (text, onMentionClick) => {
   if (!text) return "";
-  const parts = text.split(/(https?:\/\/[^\s]+|@[a-zA-Z0-9_]+)/g);
+  const parts = text.split(/(https?:\/\/[^\s]+|@[a-zA-Z0-9_àâäéèêëîïôöùûüç_]+)/gi);
   return parts.map((part, i) => {
     if (/^https?:\/\//.test(part)) {
       return (
@@ -471,10 +465,29 @@ const renderTextWithMentions = (text, onMentionClick) => {
       );
     }
     if (part.startsWith("@")) {
+      const username=part.substring(1).toLowerCase();
       return (
         <span key={i}
-          onClick={(e) => { e.stopPropagation(); onMentionClick(part.substring(1)); }}
-          style={{ color: T.goldL, fontWeight: "600", cursor: "pointer" }}>
+          onClick={(e)=>{
+            e.stopPropagation();
+            e.preventDefault();
+            // 1. Chercher dans members (cache local)
+            const m=(window.__celesteMembers||[]).find(u=>
+              u.prenom?.toLowerCase()===username||
+              `${u.prenom||""} ${u.nom||""}`.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,""))||
+              u.name?.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,""))
+            );
+            if(m?.id){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}
+            // 2. Fallback : chercher dans Supabase
+            sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{
+              if(data?.length){
+                const match=data.find(u=>u.prenom?.toLowerCase()===username||(u.prenom?.toLowerCase()||"")+(u.nom?.toLowerCase()||"")===username);
+                const uid=(match||data[0])?.id;
+                if(uid)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid}}));
+              }
+            });
+          }}
+          style={{color:T.goldL,fontWeight:"600",cursor:"pointer"}}>
           {part}
         </span>
       );
@@ -555,9 +568,9 @@ const sendPushNotif=async(title,body)=>{
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const GS = `
-  
+  @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
-
+@font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @media(prefers-reduced-motion:reduce){*{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
   
   *, *::before, *::after {
@@ -788,13 +801,7 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
   const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
   const showRing=ring||!!_statusId;
-  const handleStatusCapture=e=>{
-    if(_statusId){
-      e.stopPropagation();
-      window.__celesteSetTab&&window.__celesteSetTab("statuses");
-      setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})),350);
-    }
-  };
+  const handleStatusCapture=e=>{};
   return(
     <div onClick={onClick} onClickCapture={handleStatusCapture} style={{position:"relative",flexShrink:0,width:size,height:size,cursor:onClick?"pointer":"default"}}>
       {showRing && (
@@ -1071,6 +1078,138 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideo
 });
 
 // ── VIDEO TRIM MODAL ──────────────────────────────────────
+function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
+  const videoRef=useRef();
+  const [duration,setDuration]=useState(0);
+  const [start,setStart]=useState(0);
+  const [end,setEnd]=useState(0);
+  const [playing,setPlaying]=useState(false);
+  const [currentTime,setCurrentTime]=useState(0);
+  const [trimming,setTrimming]=useState(false);
+  const [trimProgress,setTrimProgress]=useState(0);
+  const MAX=maxDuration;
+  const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+
+  useEffect(()=>{
+    const v=videoRef.current;if(!v)return;
+    const onLoaded=()=>{const d=Math.min(v.duration,MAX);setDuration(v.duration);setEnd(d);};
+    v.addEventListener("loadedmetadata",onLoaded);
+    v.addEventListener("timeupdate",()=>setCurrentTime(v.currentTime));
+    return()=>{v.removeEventListener("loadedmetadata",onLoaded);};
+  },[]);
+
+  useEffect(()=>{
+    const v=videoRef.current;if(!v)return;
+    if(currentTime>=end){v.pause();v.currentTime=start;setPlaying(false);}
+  },[currentTime,end,start]);
+
+  const togglePlay=()=>{
+    const v=videoRef.current;
+    if(playing){v.pause();setPlaying(false);}
+    else{v.currentTime=start;v.play();setPlaying(true);}
+  };
+
+  const handleValidate=async()=>{
+    if(trimming)return;
+    if(start<0.5&&end>=duration-0.5){
+      onDone({src:videoSrc,start:0,end:duration,file:null});
+      return;
+    }
+    setTrimming(true);
+    setTrimProgress(0);
+    try{
+      const v=videoRef.current;
+      if(typeof v.captureStream!=="function"&&typeof v.mozCaptureStream!=="function"){
+        onDone({src:videoSrc,start,end,file:null});
+        setTrimming(false);
+        return;
+      }
+      if(typeof v.captureStream!=="function"&&typeof v.mozCaptureStream!=="function"){onDone({src:videoSrc,start,end,file:null});setTrimming(false);return;}
+      v.currentTime=start;
+      await new Promise(res=>v.addEventListener("seeked",res,{once:true}));
+      const stream=v.captureStream?v.captureStream():v.mozCaptureStream();
+      const chunks=[];
+      const mimeType=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")?"video/webm;codecs=vp8,opus":"video/webm";
+      const recorder=new MediaRecorder(stream,{mimeType});
+      recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+      recorder.start(100);
+      v.play();
+      const trimDuration=(end-start)*1000;
+      const startedAt=Date.now();
+      const interval=setInterval(()=>{
+        const elapsed=Date.now()-startedAt;
+        setTrimProgress(Math.min(99,Math.round((elapsed/trimDuration)*100)));
+      },100);
+      await new Promise(res=>{
+        setTimeout(()=>{
+          clearInterval(interval);
+          recorder.stop();
+          v.pause();
+          res();
+        },trimDuration);
+      });
+      await new Promise(res=>recorder.addEventListener("stop",res,{once:true}));
+      setTrimProgress(100);
+      const blob=new Blob(chunks,{type:mimeType});
+      const trimmedFile=new File([blob],"trimmed.webm",{type:"video/webm"});
+      const trimmedSrc=URL.createObjectURL(blob);
+      onDone({src:trimmedSrc,start:0,end:end-start,file:trimmedFile});
+    }catch(e){
+      console.error("Trim error:",e);
+      onDone({src:videoSrc,start,end,file:null});
+    }finally{
+      setTrimming(false);
+    }
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"12px 20px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>Annuler</button>
+        <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Couper la vidéo</p>
+        <button onClick={handleValidate} disabled={trimming} style={{background:"none",border:"none",color:trimming?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:trimming?"default":"pointer",padding:"4px 0"}}>
+          {trimming?`Traitement ${trimProgress}%`:"Valider ✦"}
+        </button>
+      </div>
+
+      {trimming&&(
+        <div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+          <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid rgba(201,149,42,0.2)",borderTopColor:"#C9952A",animation:"spin .8s linear infinite"}}/>
+          <p style={{margin:0,color:"#C9952A",fontSize:16,fontWeight:700,letterSpacing:1}}>✦ Découpe en cours</p>
+          <p style={{margin:"4px 0 0",color:"rgba(255,255,255,0.4)",fontSize:12}}>Ne ferme pas l'application</p>
+          <div style={{width:200,height:4,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
+            <div style={{height:"100%",width:`${trimProgress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.2s"}}/>
+          </div>
+          <p style={{margin:0,color:"rgba(255,255,255,0.4)",fontSize:12}}>{trimProgress}%</p>
+        </div>
+      )}
+
+      <div style={{height:"45vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",position:"relative",flexShrink:0}}>
+        <video ref={videoRef} src={videoSrc} playsInline style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
+        <button onClick={togglePlay} style={{position:"absolute",width:56,height:56,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"2px solid rgba(255,255,255,0.3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:22}}>
+          {playing?"⏸":"▶"}
+        </button>
+      </div>
+
+      <div style={{background:"rgba(0,0,0,0.95)",padding:"20px 20px calc(20px + env(safe-area-inset-bottom,0px))",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Début : {fmt(start)}</span>
+          <span style={{fontSize:12,color:"#C9952A",fontWeight:700}}>Durée : {fmt(end-start)}</span>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Fin : {fmt(end)}</span>
+        </div>
+        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>DÉBUT</p>
+        <input type="range" min={0} max={duration} step={0.1} value={start}
+          onChange={e=>{const v=Number(e.target.value);if(v<end-1){setStart(v);videoRef.current.currentTime=v;}}}
+          style={{width:"100%",accentColor:"#C9952A",marginBottom:14}}/>
+        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>FIN</p>
+        <input type="range" min={0} max={Math.min(duration,MAX)} step={0.1} value={end}
+          onChange={e=>{const v=Number(e.target.value);if(v>start+1){setEnd(v);videoRef.current.currentTime=v;}}}
+          style={{width:"100%",accentColor:"#C9952A",marginBottom:12}}/>
+        <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>Maximum {MAX} secondes</p>
+      </div>
+    </div>
+  );
+}
 
 // ── IMAGE CROP MODAL ──────────────────────────────────────
 function ImageCropModal({imageSrc,onClose,onDone}){
@@ -1662,7 +1801,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
               <Av u={m} size={32}/>
               <div>
                 <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{m.fullName||m.name}</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>📍 {m.paroisse}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={11}/>{m.paroisse}</p>
               </div>
               {m.badge&&<Badge type={m.badge}/>}
             </div>
@@ -1673,10 +1812,445 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   );
 }
 // ── COMMENTS SECTION ─────────────────────────────────────
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId}){
+ const {setHideNav,members}=useApp();
+ const [comments,setComments]=useState([]);
+  const [loadingCmts,setLoadingCmts]=useState(true);
+  const [hasMoreCmts,setHasMoreCmts]=useState(false);
+  const [cmtPage,setCmtPage]=useState(1);
+  const [text,setText]=useState("");
+  const [posting,setPosting]=useState(false);
+  const [mediaFile,setMediaFile]=useState(null);
+  const [mediaPreview,setMediaPreview]=useState(null);
+const mentionedIdsRef=useRef([]);
+  const textareaRef=useRef(null);
+  const imgRef=useRef(null);
+
+  useEffect(()=>{
+    const ta=textareaRef.current;
+    if(ta){ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,140)+"px";}
+  },[text]);
+
+ const load=useCallback(async(page=1)=>{
+    setLoadingCmts(true);
+   const from=(page-1)*30,to=from+29;
+    const{data}=await sb.from("comments")
+      .select("id,post_id,author_id,text,media_url,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
+      .eq("post_id",postId)
+      .order("created_at",{ascending:true})
+      .range(from,to);
+    if(page===1)setComments(data||[]);
+    else setComments(prev=>[...prev,...(data||[])]);
+    onCountChange?.((data||[]).length);
+    setLoadingCmts(false);
+    setHasMoreCmts((data||[]).length===30);
+  },[postId,onCountChange]);
+
+  useEffect(()=>{load(1);setCmtPage(1);},[load]);
+  const targetRef=useRef(null);
+useEffect(()=>{
+  if(targetRef.current){
+    setTimeout(()=>{
+      targetRef.current?.scrollIntoView({behavior:"smooth",block:"center"});
+    },400);
+  }
+},[comments]);
+
+  useEffect(()=>{
+    const ch=sb.channel(`comments-${postId}-${Math.random()}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},load)
+      .subscribe();
+    return()=>sb.removeChannel(ch);
+  },[postId,load]);
+
+  const submit=async()=>{
+    if((!text.trim()&&!mediaFile)||posting)return;
+    setPosting(true);
+    const trimmed=text.trim();
+    let mediaUrl=null;
+    if(mediaFile){
+     try {
+  mediaUrl = await uploadToR2(mediaFile, "comments");
+} catch(e) {
+  console.error("Erreur upload commentaire:", e);
+}
+    }
+   const uid=(await sb.auth.getUser())?.data?.user?.id;
+const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
+    if(!error){
+      await sb.rpc("increment_phase_interactions",{post_id:postId});
+      setText("");
+      setMediaFile(null);
+      setMediaPreview(null);
+      load();
+      // Notifier l'auteur du post
+const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
+if(postData?.author_id&&postData.author_id!==uid){
+  await sb.from("notifications").insert({
+    user_id:postData.author_id,
+    from_id:uid,
+    type:"comment",
+    post_id:postId,
+    read:false
+  });
+}
+      
+      const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
+const myPrenom=getM?.(uid)?.prenom||"Quelqu'un";
+for(const mentionedId of uniqueIds){
+  try{
+    await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
+    sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myPrenom} t'a mentionné dans un commentaire`}});
+  }catch(e){
+    console.error("Erreur notification mention:",e);
+  }
+}
+mentionedIdsRef.current=[];
+    }
+    setPosting(false);
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
+      {loadingCmts&&<div style={{display:"flex",justifyContent:"center",padding:"16px 0"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>}
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {comments.map(c=>(
+  <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
+    style={{borderRadius:12,transition:"background .5s",
+      background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load} members={members}/>
+  </div>
+))}
+    
+      </div>
+     {mediaPreview&&(
+        <div style={{position:"relative",marginBottom:6}}>
+          <img src={mediaPreview} alt="" style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius:14}}/>
+          <Btn onClick={()=>{setMediaPreview(null);setMediaFile(null);}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:26,height:26,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={12}/></Btn>
+        </div>
+      )}
+      {hasMoreCmts&&<Btn onClick={()=>{const next=cmtPage+1;setCmtPage(next);load(next);}} style={{width:"100%",padding:"10px 0",color:T.muted,fontSize:12,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
+  Voir plus de commentaires
+  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
+</Btn>}
+
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)",position:"sticky",bottom:0,zIndex:10}}>
+        <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+          const f=e.target.files[0];if(!f)return;
+          const compressed=await compressImage(f);
+          const r=new FileReader();r.onload=ev=>setMediaPreview(ev.target.result);r.readAsDataURL(compressed);
+          setMediaFile(compressed);
+          e.target.value="";
+        }}/>
+        <Btn onClick={()=>imgRef.current.click()} style={{color:mediaFile?T.goldL:T.muted,padding:"4px",display:"flex",alignItems:"center",flexShrink:0,transition:"color .2s"}}>
+          <Camera size={18}/>
+        </Btn>
+        <MentionInput
+          value={text}
+          onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
+          placeholder="Ajouter un commentaire..."
+          members={members||[]}
+          onFocus={()=>setHideNav(true)}
+          onBlur={()=>setHideNav(false)}
+        />
+        <Btn onClick={submit} disabled={posting||(!text.trim()&&!mediaFile)} style={{background:(text.trim()||mediaFile)?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:(text.trim()||mediaFile)?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",flexShrink:0,marginBottom:2}}>
+          <Send size={13} style={{transform:"translateX(0.5px)"}}/>
+        </Btn>
+      </div>
+    </div>
+  );
+}
 
 // ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
+function CommentItem({comment,sessionUserId,getM,onChange,members}){
+  const [likes,setLikes]=useState(0);
+  const [liked,setLiked]=useState(false);
+  const [replies,setReplies]=useState([]);
+  const [showReplies,setShowReplies]=useState(false);
+  const [replyText,setReplyText]=useState("");
+  const [replying,setReplying]=useState(false);
+  const isMine=comment.author_id===sessionUserId;
+  const author=comment.author?normProfile(comment.author):getM(comment.author_id);
+
+  const loadMeta=useCallback(async()=>{
+    const[{count:lc},{data:ml},{data:rep}]=await Promise.all([
+      sb.from("comment_likes").select("*",{count:"exact",head:true}).eq("comment_id",comment.id),
+      sb.from("comment_likes").select("id").eq("comment_id",comment.id).eq("user_id",sessionUserId).maybeSingle(),
+      sb.from("comment_replies").select("*, author:profiles(*)").eq("parent_comment_id",comment.id).order("created_at"),
+    ]);
+    setLikes(lc||0);setLiked(!!ml);setReplies(rep||[]);
+  },[comment.id,sessionUserId]);
+
+  useEffect(()=>{loadMeta();},[loadMeta]);
+
+  const toggleLike=async()=>{
+    if(liked){
+      await sb.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",sessionUserId);
+      setLiked(false);setLikes(l=>l-1);
+    } else {
+      await sb.from("comment_likes").insert({comment_id:comment.id,user_id:sessionUserId});
+      setLiked(true);setLikes(l=>l+1);
+      // Notifier l'auteur du commentaire
+      if(comment.author_id&&comment.author_id!==sessionUserId){
+        await sb.from("notifications").insert({
+          user_id:comment.author_id,
+          from_id:sessionUserId,
+          type:"comment_like",
+          post_id:comment.post_id||null,
+          comment_id:comment.id,
+          read:false
+        });
+      }
+    }
+  };
+
+  const submitReply=async()=>{
+    if(!replyText.trim())return;
+    const text=replyText.trim();
+    setReplyText("");setReplying(false);
+    await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text});
+    // Notifier l'auteur du commentaire
+    if(comment.author_id&&comment.author_id!==sessionUserId){
+      await sb.from("notifications").insert({
+        user_id:comment.author_id,
+        from_id:sessionUserId,
+        type:"reply",
+        post_id:comment.post_id||null,
+        comment_id:comment.id,
+        read:false
+      });
+    }
+    loadMeta();setShowReplies(true);
+  };
+
+  const [showCmtMenu,setShowCmtMenu]=useState(false);
+  const del=async()=>{
+    setShowCmtMenu(false);
+    if(!window.confirm("Supprimer ?"))return;
+    await sb.from("comments").delete().eq("id",comment.id);
+    onChange?.();
+  };
+  const copy=()=>{
+    navigator.clipboard?.writeText(comment.text||"");
+    setShowCmtMenu(false);
+  };
+
+  return(
+    <div style={{display:"flex",gap:10,paddingBottom:4}}>
+      {/* Colonne gauche : avatar + ligne verticale */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+        <Av u={author} size={36} onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:author?.id}}))}/>
+        {(replies.length>0||replying)&&(
+          <div style={{width:2,flex:1,minHeight:16,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:4}}/>
+        )}
+      </div>
+
+      {/* Colonne droite : contenu */}
+      <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{author?.name||"?"}</span>
+            <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
+          </div>
+          {(isMine||comment.text)&&(
+            <div style={{position:"relative"}}>
+              <Btn onClick={()=>setShowCmtMenu(m=>!m)} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
+              {showCmtMenu&&(
+                <div style={{position:"absolute",right:0,top:24,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:6,zIndex:50,minWidth:140,boxShadow:"0 8px 30px rgba(0,0,0,0.4)"}}>
+                  {comment.text&&<Btn onClick={copy} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,color:T.text,fontSize:13,textAlign:"left"}}>📋 Copier</Btn>}
+                  {isMine&&<Btn onClick={del} style={{width:"100%",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,color:T.err,fontSize:13,textAlign:"left"}}>🗑 Supprimer</Btn>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+       {/* Texte */}
+        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username||`${u.prenom||""} ${u.nom||""}`.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,"")));if(m){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{if(data?.length){const match=data.find(u=>u.prenom?.toLowerCase()===username)||(data[0]);if(match?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:match.id}}));}});})}</p><TranslateBtn text={comment.text}/></>}
+{comment.media_url&&(
+  <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
+    <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
+  </div>
+)}
+
+        {/* Actions style Threads */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
+          <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            {likes>0&&<span>{likes}</span>}
+          </Btn>
+          <Btn onClick={()=>setReplying(r=>!r)} style={{display:"flex",alignItems:"center",gap:5,color:T.muted,fontSize:12}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            {replies.length>0&&<span>{replies.length}</span>}
+          </Btn>
+        </div>
+
+        {/* Champ réponse */}
+        {replying&&(
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
+            <textarea autoFocus rows={1} value={replyText}
+              onChange={e=>{setReplyText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,100)+"px";}}
+              placeholder={`Répondre à ${author?.name||""}…`}
+              style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:16,padding:"8px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.4,maxHeight:100,fontFamily:"inherit"}}/>
+            <Btn onClick={submitReply} disabled={!replyText.trim()} style={{background:replyText.trim()?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:32,height:32,color:replyText.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Send size={13}/>
+            </Btn>
+          </div>
+        )}
+
+        {/* Réponses */}
+        {replies.length>0&&(
+          <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:12,color:T.muted,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:16,height:1,background:T.muted,borderRadius:1}}/>
+            {showReplies?`Masquer les réponses`:`Voir ${replies.length} réponse${replies.length>1?"s":""}`}
+          </Btn>
+        )}
+
+        {showReplies&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:8}}>
+            {replies.map(r=>{
+              const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
+              const isMyReply=r.author_id===sessionUserId;
+              return(
+                <div key={r.id} style={{display:"flex",gap:10}}>
+                  <Av u={ra} size={28}/>
+                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                      <span style={{fontSize:12,fontWeight:700,color:T.text}}>{ra.name}</span>
+                      <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
+                      {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
+                    </div>
+                    <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word"}}>{r.text}</p>
+                    <TranslateBtn text={r.text}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
+function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800,fromReel=false}){
+const {members}=useApp();
+useEffect(()=>{
+  if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+  const ch=sb.channel(`privacy_post_${post?.by}-${Math.random()}`)
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${post?.by}`},payload=>{
+      if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+    })
+    .subscribe();
+  return()=>{sb.removeChannel(ch);disableScreenProtection();};
+},[post?.by]);
+const [viewImg,setViewImg]=useState(null);
+const [openCeleste,setOpenCeleste]=useState(false);
+const [celesteMsgs,setCelesteMsgs]=useState([]);
+const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
+const [views,setViews]=useState(0);
+const [slideIdx,setSlideIdx]=useState(0);
+
+useEffect(()=>{
+  if(!post?.id||!session?.user?.id)return;
+  sb.from("post_views").upsert(
+    {post_id:post.id,viewer_id:session.user.id},
+    {onConflict:"post_id,viewer_id",ignoreDuplicates:true}
+  ).then(()=>{
+    sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+      .then(({count})=>setViews(count||0));
+  });
+},[post?.id,session?.user?.id]);
+
+  const swipeStartRef=useRef(null);
+  const bottomRef=useRef();
+  const auth=post.author||getM(post.by);
+  const liked=(post.likes||[]).includes(session?.user?.id);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[]);
+
+  return(
+    <>
+      {viewImg&&<ImageViewer url={viewImg} onClose={()=>setViewImg(null)}/>}
+      <div style={{position:"fixed",inset:0,zIndex:zIndex,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+        onClick={e=>e.target===e.currentTarget&&onClose()}>
+        <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",boxShadow:"0 -20px 60px rgba(0,0,0,0.8)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <Av u={auth} size={38}/>
+              <div>
+                <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{auth?.name}</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>{ago(post.ts)}</p>
+              </div>
+            </div>
+            <Btn onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+          </div>
+          <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
+            {post.type==="event"
+              ?<div style={{margin:"12px 0",background:T.goldBg,borderRadius:16,padding:16,border:`1px solid ${T.gold}22`}}>
+                <p style={{margin:"0 0 6px",fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:600,color:T.text}}>{post.title}</p>
+                {post.text&&<p style={{margin:"0 0 8px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
+                {post.eventDate&&<p style={{margin:"0 0 3px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
+                {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
+              </div>
+              :<>
+              {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
+  {(()=>{
+  const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
+  if(allMedia.length===0)return null;
+  return(
+   <div style={{position:"relative",borderRadius:16,overflow:"hidden",marginBottom:10}}
+      onTouchStart={e=>{swipeStartRef.current=e.touches[0].clientX;}}
+onTouchEnd={e=>{
+  if(swipeStartRef.current===null)return;
+  const diff=swipeStartRef.current-e.changedTouches[0].clientX;
+  if(diff>50&&slideIdx<allMedia.length-1)setSlideIdx(i=>i+1);
+  if(diff<-50&&slideIdx>0)setSlideIdx(i=>i-1);
+  swipeStartRef.current=null;
+}}>
+      {!fromReel&&(()=>{const url=allMedia[slideIdx];const isVid=url&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video"));if(isVid)return(<video key={url} src={url} controls autoPlay playsInline loop style={{width:"100%",borderRadius:14,maxHeight:380,display:"block",background:"#000",objectFit:"contain"}}/>);return <MediaPlayer url={url} onImageClick={setViewImg}/>;})()}
+      {allMedia.length>1&&(
+        <>
+          <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+            {allMedia.map((_,i)=><div key={i} onClick={()=>setSlideIdx(i)} style={{width:i===slideIdx?16:6,height:6,borderRadius:3,background:i===slideIdx?"#fff":"rgba(255,255,255,0.4)",transition:"width .2s",cursor:"pointer"}}/>)}
+          </div>
+          <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#fff",fontWeight:700}}>{slideIdx+1}/{allMedia.length}</div>
+        </>
+      )}
+    </div>
+  );
+})()}
+              </>
+            }
+            <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 0",borderTop:`1px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,margin:"10px 0"}}>
+              <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:6,color:liked?T.gold:T.sub,fontSize:13,fontWeight:600,transition:"all .2s"}}>
+  <Heart size={18} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
+  {(post.likes||[]).length}
+</Btn>
+<span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
+{(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
+  <span style={{color:T.sub,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
+    <Eye size={14}/>{views}
+  </span>
+)}
+            </div>
+            <CommentsSection
+  postId={post.id}
+  sessionUserId={session?.user?.id}
+  getM={getM}
+  onCountChange={setCmtCount}
+  targetCommentId={post._targetCommentId||null}
+/>
+            <div ref={bottomRef}/>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 function NewPostModal({myProfile,session,onClose,onPost,notify}){
 const [type,setType]=useState("text"); const [text,setText]=useState("");
@@ -2199,7 +2773,7 @@ if(isMe){
   sb.from("status_views").select("viewer_id").eq("status_id",current.id).then(async({data})=>{
     if(!data||data.length===0){setViews(v=>({...v,[current.id]:[]}));return;}
     const ids=data.map(d=>d.viewer_id);
-    const{data:profiles}=await sb.from("profiles").select("id,prenom,nom,avatar_url").in("id",ids);
+    const{data:profiles}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge").in("id",ids);
     const merged=data.map(d=>({viewer_id:d.viewer_id,profiles:(profiles||[]).find(p=>p.id===d.viewer_id)||null}));
     setViews(v=>({...v,[current.id]:merged}));
   });
@@ -2266,7 +2840,7 @@ if(isMe){
       <div style={{position:"absolute",top:"calc(env(safe-area-inset-top,16px) + 12px)",left:16,right:16,zIndex:2,display:"flex",alignItems:"center",gap:10,marginTop:8,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
         <Av u={author} size={38} ring/>
         <div style={{flex:1}}>
-          <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.name}</p>
+          <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>{author?.prenom} {author?.nom?.[0]?author.nom[0]+".":""}</p>
           <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ago(current.ts)}{paused&&" · ⏸ Pause"}</p>
         </div>
         {isMe&&<Btn onClick={()=>{if(window.confirm("Voulez-vous vraiment supprimer ce statut ?")){onDelete(current.id);idx>0?setIdx(idx-1):onClose();}}} style={{background:"rgba(200,64,64,0.2)",border:`1px solid rgba(200,64,64,0.3)`,borderRadius:8,padding:"5px 10px",color:"#ff6060",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Trash2 size={12}/>Suppr.</Btn>}
@@ -2353,12 +2927,19 @@ if(isMe){
 
       {isMe&&showInfo&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(8,8,8,0.98)",borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,padding:"20px 16px 40px",maxHeight:"50vh",overflowY:"auto",zIndex:3,animation:"slideUp .3s ease"}}>
-          <p style={{color:T.goldL,fontWeight:700,fontSize:13,marginBottom:12}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <p style={{color:T.goldL,fontWeight:700,fontSize:13,margin:0}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
+            <Btn onClick={e=>{e.stopPropagation();setShowInfo(false);}} style={{color:"rgba(255,255,255,0.4)",display:"flex",alignItems:"center",padding:4}}><X size={18}/></Btn>
+          </div>
           {currentViews.map((v,i)=>{const prf=v.profiles;const name=prf?`${prf.prenom||""} ${(prf.nom||"")[0]||""}.`.trim():"?";return(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:36,height:36,borderRadius:"50%",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold}}>{name[0]}</div>
-              <span style={{color:T.text,fontSize:13}}>{name}</span>
-              {currentLikes.includes(v.viewer_id)&&<Heart size={14} fill="currentColor" style={{color:T.gold,marginLeft:"auto"}}/>}
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:prf?.id?"pointer":"default"}}
+              onClick={()=>{if(prf?.id){setShowInfo(false);onClose();window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:prf.id}}));}}}>
+              <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:T.goldBg2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:T.gold,flexShrink:0}}>
+                {prf?.avatar_url?<img src={prf.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span>{name[0]}</span>}
+              </div>
+              <span style={{color:T.text,fontSize:13,flex:1}}>{name}</span>
+              {prf?.badge&&<Badge type={prf.badge}/>}
+              {currentLikes.includes(v.viewer_id)&&<Heart size={14} fill="currentColor" style={{color:T.gold,marginLeft:4}}/>}
             </div>
           );})}
         </div>
@@ -2454,11 +3035,11 @@ useEffect(()=>{
      const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null};
       map.get(key).statuses.push(mapped);
     });
-    const groups=Array.from(map.values());
-    setGroups(groups);
-    try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(groups));}catch(e){}
-    return{me,groups};
-  },[session?.user?.id]);
+    const freshGroups=Array.from(map.values());
+    setGroups(prev=>freshGroups.length>0?freshGroups:prev);
+    try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(freshGroups));}catch(e){}
+    return{me,groups:freshGroups};
+  },[session?.user?.id,myConnections]);
 
   useEffect(()=>{load();},[load]);
 
@@ -2516,6 +3097,7 @@ useEffect(()=>{
           onDelete={delStatus}
           onClose={()=>{setViewing(null);load();setHideNav(false);}}
           session={session}
+          onOpenUser={uid=>{setViewing(null);setHideNav(false);window.dispatchEvent(new CustomEvent("celeste_open_user_main",{detail:{uid}}));}}
         />
       )}
       {creating&&(
@@ -2615,10 +3197,417 @@ const COMPLEMENT_PAIRS={
   family_vs_freedom:{famille:"liberte",liberte:"famille",equilibre:"equilibre"},
 };
 
+function computeMatchScore(a,b){
+  if(!a||!b)return 0;
+  // Éliminatoires absolus
+  const genderOk=a.seeking_gender==="peu_importe"||b.seeking_gender==="peu_importe"||(a.seeking_gender===b.gender&&b.seeking_gender===a.gender);
+  if(!genderOk)return 0;
+  const typeOk=(a.seeking_type==="les_deux"||b.seeking_type==="les_deux")||(a.seeking_type===b.seeking_type);
+  if(!typeOk)return 0;
+  const bAge=b.age||null;
+  const ageOk=!bAge||!a.seeking_age_min||!a.seeking_age_max||(bAge>=a.seeking_age_min&&bAge<=a.seeking_age_max);
+  if(!ageOk)return 0;
+  // Pénalités critiques -50%
+  let penalty=0;
+  // Mariage : l'un veut, l'autre dit non
+  if((a.marriage_vision==="oui"&&b.marriage_vision==="non")||(a.marriage_vision==="non"&&b.marriage_vision==="oui"))penalty+=50;
+  // Intimité : l'un dit attente, l'autre dit central
+  if((a.intimacy==="attente"&&b.intimacy==="central")||(a.intimacy==="central"&&b.intimacy==="attente"))penalty+=50;
+  // Argent : l'un dit essentiel, l'autre dit secondaire ou peu_importe
+  if((a.money_vision==="essentiel"&&(b.money_vision==="secondaire"||b.money_vision==="peu_importe"))||(b.money_vision==="essentiel"&&(a.money_vision==="secondaire"||a.money_vision==="peu_importe")))penalty+=50;
+  // Couleur de peau : préférence incompatible = -50%
+  if(a.seeking_skin_color&&a.seeking_skin_color!=="peu_importe"&&b.skin_color&&a.seeking_skin_color!==b.skin_color)penalty+=50;
+  if(b.seeking_skin_color&&b.seeking_skin_color!=="peu_importe"&&a.skin_color&&b.seeking_skin_color!==a.skin_color)penalty+=50;
+  // Distance : les deux veulent sur place mais positions trop éloignées
+  if(a.distance_ok==="sur_place"&&b.distance_ok==="sur_place"&&a.latitude&&b.latitude){
+    const dx=a.latitude-b.latitude,dy=a.longitude-b.longitude;
+    const km=Math.sqrt(dx*dx+dy*dy)*111;
+    if(km>25)penalty+=50;
+  }
+  let score=0,maxScore=0;
+  if(penalty>=100)return 0;
+  for(const key of Object.keys(Q_WEIGHT)){
+    const w=Q_WEIGHT[key];
+    maxScore+=w;
+    if(!a[key]||!b[key])continue;
+    if(SIMILAR_KEYS.includes(key)){
+      if(a[key]===b[key])score+=w;
+      else score+=Math.round(w*0.2);
+    } else if(COMPLEMENT_KEYS.includes(key)){
+      const ideal=COMPLEMENT_PAIRS[key]?.[a[key]];
+      if(ideal===b[key])score+=w;
+      else if(a[key]===b[key])score+=Math.round(w*0.4);
+      else score+=Math.round(w*0.2);
+    } else {
+      if(a[key]===b[key])score+=w;
+    }
+  }
+  const raw=maxScore>0?Math.round((score/maxScore)*100):0;
+  return Math.max(0,raw-penalty);
+}
 
 
+function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialData=null}){
+  const [step,setStep]=useState(0);
+  const ageReverseMap={[JSON.stringify([16,20])]:"16-20",[JSON.stringify([20,25])]:"20-25",[JSON.stringify([25,30])]:"25-30",[JSON.stringify([30,99])]:"30+"};
+  const initialAnswers=initialData?{...initialData,seeking_age:ageReverseMap[JSON.stringify([initialData.seeking_age_min,initialData.seeking_age_max])]||undefined}:{};
+  const [answers,setAnswers]=useState(initialAnswers);
+  const [saving,setSaving]=useState(false);
+  const total=MATCH_QUESTIONS.length;
+  const q=MATCH_QUESTIONS[step];
+  const progress=((step)/total)*100;
+  const isEdit=!!initialData;
 
+  const select=async v=>{
+    const next={...answers,[q.id]:v};
+    setAnswers(next);
+    if(step<total-1){
+      setTimeout(()=>setStep(s=>s+1),280);
+    } else {
+      setSaving(true);
+      const ageMap={"16-20":[16,20],"20-25":[20,25],"25-30":[25,30],"30+":[30,99]};
+      const [ageMin,ageMax]=ageMap[next.seeking_age]||[16,30];
+      const{seeking_age:_,...rest}=next;
+      let lat=myProfile?.latitude||null,lng=myProfile?.longitude||null;
+if(next.distance_ok==="sur_place"&&!lat){
+  try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:8000});lat=pos.coords.latitude;lng=pos.coords.longitude;await sb.from("profiles").update({latitude:lat,longitude:lng}).eq("id",session?.user?.id);}
+  catch(e){notify("GPS non disponible — tu verras tout le monde");}
+}
+const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_age_max:ageMax,is_active:true,updated_at:new Date().toISOString(),age:myProfile?.age||null,latitude:lat,longitude:lng};
+      const{error}=await sb.from("match_profiles").upsert (payload,{onConflict:"user_id"}); 
+      setSaving(false); 
+      if(!error){notify("✦ Profil Céleste Match enregistré !");onDone(next);}
+      else notify("Erreur — réessaie"); 
+    }
+  };
 
+  const chosen=answers[q.id];
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1200,background:T.bg,display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
+      {/* Header barre progression */}
+      <div style={{padding:"calc(env(safe-area-inset-top,0px) + 16px) 20px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+          {step>0&&<Btn onClick={()=>setStep(s=>s-1)} style={{color:T.muted,display:"flex"}}><ChevronLeft size={22}/></Btn>}
+          <div style={{flex:1,height:3,background:"rgba(255,255,255,0.08)",borderRadius:2}}>
+            <div style={{height:"100%",width:`${progress}%`,background:T.gradGold,borderRadius:2,transition:"width .4s ease"}}/>
+          </div>
+          <span style={{fontSize:11,color:T.muted,minWidth:32,textAlign:"right"}}>{step+1}/{total}</span>
+          <Btn onClick={onClose} style={{color:T.muted,display:"flex",marginLeft:4}}><X size={20}/></Btn>
+        </div>
+      </div>
+
+      {/* Corps */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",padding:"0 24px 40px"}}>
+        {/* Emoji + Question */}
+        <div style={{textAlign:"center",padding:"32px 0 28px",animation:"fadeUp .3s ease"}}>
+          <div style={{fontSize:52,marginBottom:16,filter:`drop-shadow(0 0 20px ${T.gold}55)`}}>{q.emoji}</div>
+          <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:0,lineHeight:1.4}}>{q.label}</h2>
+          {!isEdit&&step===0&&(
+            <p style={{fontSize:13,color:T.muted,marginTop:10,lineHeight:1.7}}>
+              Réponds honnêtement — plus tu es authentique, plus les suggestions seront justes ✦
+            </p>
+          )}
+        </div>
+
+        {/* Options */}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {q.options.map((opt,i)=>{
+            const selected=chosen===opt.v;
+            return(
+              <button key={opt.v} onClick={()=>select(opt.v)}
+                style={{
+                  width:"100%",padding:"16px 20px",
+                  background:selected?T.goldBg2:"rgba(255,255,255,0.04)",
+                  border:`1.5px solid ${selected?T.gold:"rgba(255,255,255,0.08)"}`,
+                  borderRadius:18,color:selected?T.goldL:T.text,
+                  fontSize:15,fontWeight:selected?700:400,
+                  cursor:"pointer",textAlign:"left",
+                  display:"flex",alignItems:"center",gap:14,
+                  transition:"all .2s",
+                  animation:`fadeUp .3s ease ${i*0.06}s both`,
+                  boxShadow:selected?`0 0 0 1px ${T.gold}44, 0 8px 24px rgba(201,149,42,0.15)`:"none",
+                  transform:selected?"scale(1.02)":"scale(1)",
+                }}>
+                <div style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${selected?T.gold:"rgba(255,255,255,0.15)"}`,background:selected?T.gold:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s"}}>
+                  {selected&&<div style={{width:8,height:8,borderRadius:"50%",background:"#000"}}/>}
+                </div>
+                <span>{opt.l}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Loader sauvegarde */}
+      {saving&&(
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,zIndex:10}}>
+          <div style={{width:48,height:48,borderRadius:"50%",border:`3px solid ${T.goldBg2}`,borderTopColor:T.gold,animation:"spin .8s linear infinite"}}/>
+          <p style={{color:T.goldL,fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Enregistrement ✦</p>
+        </div>
+      )}
+    </div>
+  );
+}
+function getCompatibilityPoints(a,b,score){
+  const points=[];
+  const labels={
+    faith:{centrale:"Foi centrale",importante:"Foi importante",secondaire:"Foi secondaire",aucune:"Sans religion"},
+    marriage_vision:{oui:"Veut se marier",peut_etre:"Ouvert au mariage",non:"Pas de mariage"},
+    children:{en_veux:"Veut des enfants",deja:"A déjà des enfants",pas_sur:"Incertain sur les enfants",non:"Pas d'enfants"},
+    life_vision:{stabilite:"Cherche la stabilité",voyages:"Aime voyager",carriere:"Axé carrière",incertain:"Ouvert à tout"},
+    intimacy:{central:"Intimité prioritaire",important:"Intimité importante",secondaire:"Intimité secondaire",attente:"Préfère attendre"},
+    seeking_type:{amour:"Cherche l'amour",amitie:"Cherche l'amitié",les_deux:"Ouvert à tout"},
+    conflict_style:{parle:"Communication directe",digere:"Prend du recul",reagis:"Réactif mais passe vite"},
+    expression_level:{expressif:"Très expressif",reserve:"Réservé",milieu:"Équilibré"},
+    life_rhythm:{calme:"Rythme calme",social:"Vie sociale active",melange:"Rythme varié"},
+    family_vs_freedom:{famille:"Famille avant tout",liberte:"Liberté individuelle",equilibre:"Équilibre famille/liberté"},
+    app_expectation:{serieux:"Cherche du sérieux",amis:"Cherche des amis",decouverte:"Ouvert à la découverte",verra:"Verra ce qui arrive"},
+  };
+  const complementPairs=COMPLEMENT_PAIRS;
+  for(const key of Object.keys(Q_WEIGHT)){
+    if(!a[key]||!b[key])continue;
+    let match=false;
+    if(SIMILAR_KEYS.includes(key)&&a[key]===b[key])match=true;
+    if(COMPLEMENT_KEYS.includes(key)&&complementPairs[key]?.[a[key]]===b[key])match=true;
+    if(match&&labels[key]?.[a[key]]){
+      points.push({emoji:key==="faith"?"🙏":key==="marriage_vision"?"💍":key==="children"?"👶":key==="life_vision"?"🌅":key==="intimacy"?"🔥":key==="seeking_type"?"✨":key==="conflict_style"?"🌊":key==="expression_level"?"🎭":key==="life_rhythm"?"🌙":key==="family_vs_freedom"?"⚖️":"💎",label:labels[key][a[key]]});
+    }
+  }
+  const maxPoints=score>=100?points.length:score>=90?5:score>=80?4:score>=65?3:2;
+  return points.slice(0,maxPoints);
+}
+
+function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
+  const [open,setOpen]=useState(false);
+  const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
+  const [sending,setSending]=useState(false);
+  if(!open) return(
+    <button onClick={()=>{setOpen(true);onWriteOpen?.(true);}} style={{flexShrink:0,padding:"8px 14px",background:T.gradGold,border:"none",borderRadius:12,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 12px rgba(201,149,42,0.3)"}}>
+      Écrire ✦
+    </button>
+  );
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:T.bg,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"14px 16px",paddingTop:"calc(60px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+        <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{color:T.text,display:"flex",alignItems:"center",gap:6}}>
+          <ChevronLeft size={22}/><span style={{fontSize:15,fontWeight:600}}>Retour</span>
+        </Btn>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text}}>{u.name}</p>
+          <p style={{margin:0,fontSize:11,color:T.goldL}}>Compatibilité {score}% ✦</p>
+        </div>
+        <Av u={u} size={34}/>
+      </div>
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"20px 16px",gap:12}}>
+        <textarea value={msg} onChange={e=>setMsg(e.target.value)}
+          rows={6}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:14,padding:"12px",color:T.text,fontSize:14,lineHeight:1.6,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+        <button disabled={sending||!msg.trim()} onClick={async()=>{
+          setSending(true);
+          try{
+            await onChat(u.id,msg.trim());
+            notify(`Message envoyé à ${u.name?.split(" ")[0]} ✦`);
+            setOpen(false);onWriteOpen?.(false);
+          }catch(e){
+            notify("Erreur — réessaie");
+            setSending(false);
+          }
+        }} style={{width:"100%",padding:"14px",background:sending?"rgba(201,149,42,0.4)":T.gradGold,border:"none",borderRadius:14,color:"#000",fontSize:14,fontWeight:700,cursor:sending?"default":"pointer"}}>
+          {sending?"Envoi…":"Envoyer ✦"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWriteOpen}){
+  const [matchProfile,setMatchProfile]=useState(null);
+  const [suggestions,setSuggestions]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showOnboarding,setShowOnboarding]=useState(false);
+  const [expanded,setExpanded]=useState(false);
+  const [autoPopup,setAutoPopup]=useState(false);
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    (async()=>{
+      setLoading(true);
+      const{data}=await sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle();
+      setMatchProfile(data);
+      if(!data||!data.is_active){
+        const shown=localStorage.getItem("celeste_match_popup_shown");
+        if(!shown&&!data){localStorage.setItem("celeste_match_popup_shown","1");setAutoPopup(true);}
+      }
+      if(data?.is_active&&members?.length>0){
+        // Charger les profils des autres membres
+        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        const{data:otherProfiles}=await sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true);
+        if(otherProfiles){
+          const scored=(otherProfiles||[]).map(op=>{
+            const score=computeMatchScore(data,op);
+            const member=members.find(m=>m.id===op.user_id);
+            return{...op,score,member};
+          }).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
+          setSuggestions(scored);
+        }
+      }
+      setLoading(false);
+    })();
+  },[session?.user?.id,members?.length]);
+
+  useEffect(()=>{
+    // Anti-capture : activer si au moins une suggestion visible a screenshot_protection
+    const hasProtected=suggestions.some(s=>s.member?.screenshot_protection);
+    if(hasProtected)enableScreenProtection();else disableScreenProtection();
+    return()=>disableScreenProtection();
+  },[suggestions]);
+
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    const sub=sb.channel("match_realtime").on("postgres_changes",{event:"*",schema:"public",table:"match_profiles"},()=>{
+      sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle().then(({data:myData})=>{
+        if(!myData?.is_active||!members?.length)return;
+        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true).then(({data:others})=>{
+          if(!others)return;
+          const scored=others.map(op=>{const score=computeMatchScore(myData,op);const member=members.find(m=>m.id===op.user_id);return{...op,score,member};}).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
+          setSuggestions(scored);
+        });
+      });
+    }).subscribe();
+    return()=>sb.removeChannel(sub);
+  },[session?.user?.id,members?.length]);
+
+  const scoreColor=s=>s>=80?T.ok:s>=65?T.goldL:T.gold;
+  const scoreLabel=s=>s>=90?"Connexion rare ✦":s>=80?"Très compatible":s>=65?"Bonne affinité":s>=50?"Affinité modérée":"";
+
+  if(loading)return(
+    <div style={{padding:"20px 16px 8px"}}>
+      <div style={{height:160,background:"rgba(255,255,255,0.03)",borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:24,height:24,borderRadius:"50%",border:`2px solid ${T.border}`,borderTopColor:T.gold,animation:"spin .7s linear infinite"}}/>
+      </div>
+    </div>
+  );
+
+  // Pas encore de profil match
+  if(!matchProfile||!matchProfile.is_active) return(
+    <div style={{padding:"16px 16px 8px"}}>
+      <div style={{background:`linear-gradient(135deg,${T.goldBg} 0%,rgba(201,149,42,0.04) 100%)`,border:`1px solid ${T.gold}33`,borderRadius:22,padding:"22px 20px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:.06}}>✦</div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <span style={{fontSize:24}}>💫</span>
+          <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:400,color:T.text}}>Céleste Match</h3>
+          <span style={{fontSize:10,color:T.goldL,fontWeight:700,background:T.goldBg2,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.gold}33`}}>NOUVEAU</span>
+        </div>
+        <p style={{margin:"0 0 16px",fontSize:13,color:T.sub,lineHeight:1.7}}>
+          Découvre des personnes qui te ressemblent vraiment — pas au hasard, mais selon tes valeurs, ta vision de la vie et ta façon d'être.
+        </p>
+        <button onClick={()=>setShowOnboarding(true)}
+          style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,border:"none",color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,149,42,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <span>✦</span> {matchProfile?"Réactiver Céleste Match":"Créer mon profil Match"}
+        </button>
+      </div>
+      {(showOnboarding||autoPopup)&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify}
+        onClose={()=>{setShowOnboarding(false);setAutoPopup(false);}}
+        onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);setAutoPopup(false);}}/>}
+    </div>
+  );
+
+  // Pas de suggestions
+  if(suggestions.length===0) return(
+    <div style={{padding:"16px 16px 8px"}}>
+      <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:22,padding:"20px",textAlign:"center"}}>
+        <span style={{fontSize:36,display:"block",marginBottom:8}}>💫</span>
+        <p style={{margin:"0 0 4px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text}}>Céleste Match</p>
+        <p style={{margin:"0 0 12px",fontSize:12,color:T.muted}}>Pas encore de suggestions — la communauté grandit ✦</p>
+        <button onClick={()=>setShowOnboarding(true)} style={{fontSize:12,color:T.goldL,background:"none",border:`1px solid ${T.gold}33`,borderRadius:10,padding:"6px 14px",cursor:"pointer"}}>
+          Modifier mon profil
+        </button>
+      </div>
+      {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
+        onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
+    </div>
+  );
+
+  const visible=suggestions;
+
+  return(
+    <div style={{padding:"16px 16px 4px"}}>
+      {/* Titre section */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:18}}>💫</span>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text,fontWeight:400}}>Céleste Match</span>
+          <span style={{fontSize:10,color:T.goldL,fontWeight:700,background:T.goldBg2,padding:"2px 8px",borderRadius:20,border:`1px solid ${T.gold}33`}}>{suggestions.length}</span>
+        </div>
+        <button onClick={()=>setShowOnboarding(true)} style={{fontSize:11,color:T.muted,background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>
+          Modifier ✏️
+        </button>
+      </div>
+
+      {/* Cartes scroll horizontal */}
+      <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch",msOverflowStyle:"none",scrollbarWidth:"none"}}>
+        {visible.map((s,i)=>{
+          const u=s.member;
+          const col=scoreColor(s.score);
+          return(
+            <div key={u.id} style={{background:s.score===100?"rgba(201,149,42,0.06)":"rgba(255,255,255,0.03)",border:`1.5px solid ${s.score===100?T.gold:T.border}`,borderRadius:20,overflow:"hidden",boxShadow:s.score===100?"0 0 24px rgba(201,149,42,0.2)":"none",flexShrink:0,width:260,scrollSnapAlign:"start"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 14px 10px"}}>
+                {/* Avatar */}
+                <div style={{position:"relative",flexShrink:0}} onClick={()=>onUser(u.id)}>
+                  <Av u={u} size={54} ring/>
+                  {u.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:T.ok,border:"2px solid "+T.bg,boxShadow:"0 0 6px rgba(34,197,94,0.6)"}}/>}
+                </div>
+                {/* Infos */}
+                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onUser(u.id)}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span style={{fontSize:14,fontWeight:700,color:T.text}}>{u.name}</span>
+                    <Badge type={u.badge}/>
+                  </div>
+                  <span style={{fontSize:11,color:T.muted}}><MapPin size={10} style={{display:"inline",marginRight:3}}/>{u.paroisse||"Congo"}</span>
+                </div>
+                {/* Score */}
+                <div style={{flexShrink:0,textAlign:"center"}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",background:`${col}11`,position:"relative"}}>
+                    <span style={{fontSize:15,fontWeight:900,color:col}}>{s.score}%</span>
+                  </div>
+                  <span style={{fontSize:9,color:col,fontWeight:600,display:"block",marginTop:3}}>{scoreLabel(s.score)}</span>
+                </div>
+              </div>
+              {/* Points de compatibilité */}
+              {(()=>{
+                const pts=getCompatibilityPoints(matchProfile,s,s.score);
+                return pts.length>0&&(
+                  <div style={{padding:"0 14px 10px",display:"flex",flexWrap:"wrap",gap:6}}>
+                    {s.score===100&&<div style={{width:"100%",marginBottom:4,fontSize:11,color:T.goldL,fontWeight:700,fontStyle:"italic"}}>✦ Connexion parfaite — cela n'arrive presque jamais</div>}
+                    {pts.map((pt,pi)=>(
+                      <span key={pi} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"rgba(201,149,42,0.1)",border:`1px solid ${T.gold}33`,color:T.goldL,display:"flex",alignItems:"center",gap:4}}>
+                        {pt.emoji} {pt.label}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+              {/* Message pré-rédigé */}
+              <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:T.muted,flex:1,fontStyle:"italic",lineHeight:1.5}}>
+                  "{u.name?.split(" ")[0]} et moi, {s.score}% — ça mérite qu'on discute ✦"
+                </span>
+                <MatchWriteBtn u={u} score={s.score} onChat={onChat} notify={notify} onWriteOpen={onWriteOpen}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      
+
+      {showOnboarding&&<MatchOnboardingModal myProfile={myProfile} session={session} notify={notify} initialData={matchProfile}
+        onClose={()=>setShowOnboarding(false)} onDone={data=>{setMatchProfile({...data,is_active:true});setShowOnboarding(false);}}/>}
+    </div>
+  );
+}
 
 function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange,openChat}){
   const [q,setQ]=useState("");
@@ -2724,142 +3713,6 @@ else filtered=active;
   );
 }
 
-// ── HOME TAB ──────────────────────────────────────────────
-// ── cache vidéo session ──────────────────────────────────────────
-const _vBlobMap=new Map();
-async function getCachedVideoSrc(url){
-  if(!url)return url;
-  if(_vBlobMap.has(url))return _vBlobMap.get(url);
-  try{
-    const cache=await caches.open('celeste-videos');
-    let resp=await cache.match(url);
-    if(!resp){resp=await fetch(url);if(!resp.ok)throw new Error('fetch fail');await cache.put(url,resp.clone());}
-    const blob=await resp.blob();
-    const blobUrl=URL.createObjectURL(blob);
-    _vBlobMap.set(url,blobUrl);
-    return blobUrl;
-  }catch(e){console.warn('video cache:',e);return url;}
-}
-
-function ReelVideoSrc({rawSrc,nearActive,onSrc}){
-  useEffect(()=>{
-    if(nearActive&&rawSrc){getCachedVideoSrc(rawSrc).then(onSrc);}
-    else{onSrc(rawSrc);}
-  },[nearActive,rawSrc]);
-  return null;
-}
-// ─────────────────────────────────────────────────────────────────
-function ReelsViewer({posts,startIndex,onClose,toggleLike,toggleSave,session,myProfile,notify,onUser,onOpenComments,myConnections,onConnect}){
-  const [savedIds,setSavedIds]=useState(()=>new Set((posts||[]).filter(p=>p.saved&&p.saved.length>0).map(p=>p.id)));
-  const [saveCountMap,setSaveCountMap]=useState(()=>{const m={};(posts||[]).forEach(p=>{m[p.id]=p.savesCount||0;});return m;});
-  const [activeIdx,setActiveIdx]=useState(startIndex);
-  const [expandedCaption,setExpandedCaption]=useState(false);
-  const [pausedMap,setPausedMap]=useState({});
-  const [reelsModalOpen,setReelsModalOpen]=useState(false);
-  const [loadingMap,setLoadingMap]=useState({});
-  const [progressMap,setProgressMap]=useState({});
-  const [showControls,setShowControls]=useState(false);
-  const containerRef=useRef(null);
-  const videoRefs=useRef({});
-  const scrollTimeout=useRef(null);
-  const itemRefs=useRef({});
-  const uid=session?.user?.id;
-  useEffect(()=>{
-  const post=posts[activeIdx];
-  if(post?.author?.screenshot_protection)enableScreenProtection();
-  else disableScreenProtection();
-  return()=>disableScreenProtection();
-},[activeIdx,posts]);
-  useEffect(()=>{const el=containerRef.current;if(el)el.scrollTo({top:startIndex*window.innerHeight,behavior:"auto"});},[]);
-  useEffect(()=>{
-  const observer=new IntersectionObserver(entries=>{
-    entries.forEach(entry=>{
-      if(entry.isIntersecting){
-        const idx=Number(entry.target.dataset.idx);
-        if(idx!==activeIdx){setActiveIdx(idx);setExpandedCaption(false);}
-      }
-    });
-  },{threshold:0.6});
-  Object.entries(itemRefs.current).forEach(([,el])=>{if(el)observer.observe(el);});
-  return()=>observer.disconnect();
-},[posts]);
-  useEffect(()=>{const activeVideo=videoRefs.current[activeIdx];
-  if(activeVideo&&!reelsModalOpen){activeVideo.currentTime=0;activeVideo.play().catch(()=>{});setPausedMap(p=>({...p,[activeIdx]:false}));}
-  else if(activeVideo&&reelsModalOpen){activeVideo.pause();}
-  Object.entries(videoRefs.current).forEach(([i,v])=>{if(!v)return;if(Number(i)!==activeIdx){v.pause();v.currentTime=0;if(Math.abs(Number(i)-activeIdx)>2){v.src="";}}}); 
-  const next=videoRefs.current[activeIdx+1];
-  if(next&&next.readyState<3)next.load();
-  },[activeIdx]);
-  useEffect(()=>()=>{
-    Object.values(videoRefs.current).forEach(v=>{if(v){v.pause();v.src="";}});
-  },[]);
-  const togglePause=(idx)=>{const v=videoRefs.current[idx];if(!v)return;if(v.paused){v.play().catch(()=>{});setPausedMap(p=>({...p,[idx]:false}));}else{v.pause();setPausedMap(p=>({...p,[idx]:true}));}};
-  const seekVideo=(idx,e)=>{const v=videoRefs.current[idx];if(!v||!v.duration)return;const rect=e.currentTarget.getBoundingClientRect();v.currentTime=((e.clientX-rect.left)/rect.width)*v.duration;};
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:1200,background:"#000"}}>
-      <button onClick={onClose} style={{position:"absolute",top:"calc(14px + env(safe-area-inset-top,0px))",left:14,zIndex:10,background:"rgba(0,0,0,0.45)",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",cursor:"pointer"}}><X size={20}/></button>
-      <div ref={containerRef} style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
-        {posts.map((post,idx)=>{
-          const livePost=(posts||[]).find(p=>p.id===post.id)||post;
-          const liked=(livePost.likes||[]).some(l=>(l.user_id||l)===uid);
-          const nearActive=Math.abs(idx-activeIdx)<=1;
-          const rawVideoSrc=(post.media_urls||[]).find(u=>(u||"").match(/\.(mp4|mov|webm)/i))||post.img;
-          const videoSrc=rawVideoSrc; 
-          // géré par ReelVideoSrc ci-dessous dans le rendu
-          const caption=post.text||"";
-          const captionShort=caption.length>120?caption.slice(0,120)+"...":caption;
-          const isActive=idx===activeIdx;
-          const isPaused=pausedMap[idx]||false;
-          const isLoading=loadingMap[idx]||false;
-          const progress=progressMap[idx]||0;
-          const isConnected=myConnections?.includes(post.by);
-          const isMe=post.by===uid;
-          return(<div key={post.id} ref={el=>itemRefs.current[idx]=el} data-idx={idx} style={{height:"100vh",width:"100%",scrollSnapAlign:"start",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",flexShrink:0,overflow:"hidden"}} onTouchStart={()=>{setShowControls(true);clearTimeout(window._rctimer);window._rctimer=setTimeout(()=>setShowControls(false),2500);}}>
-            <ReelVideoSrc rawSrc={rawVideoSrc} nearActive={nearActive} onSrc={src=>{const v=videoRefs.current[idx];if(v&&src!==v.src)v.src=src;}}/>
-              {nearActive&&videoSrc&&(<video ref={el=>{videoRefs.current[idx]=el;}} src={videoSrc} loop playsInline webkit-playsinline="true" preload={isActive?"auto":"metadata"} style={{width:"100%",height:"100%",objectFit:"contain",position:"absolute",inset:0,background:"#000"}} onClick={()=>togglePause(idx)} onWaiting={()=>setLoadingMap(p=>({...p,[idx]:true}))} onCanPlay={()=>setLoadingMap(p=>({...p,[idx]:false}))} onPlaying={()=>setLoadingMap(p=>({...p,[idx]:false}))} onTimeUpdate={e=>{const v=e.target;if(v.duration)setProgressMap(p=>({...p,[idx]:(v.currentTime/v.duration)*100}));}}/>)}
-              {isActive&&isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.2)",borderTopColor:"#fff",animation:"spin 0.8s linear infinite"}}/></div>)}
-              {isActive&&isPaused&&!isLoading&&(<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:3,pointerEvents:"none"}}><div style={{background:"rgba(0,0,0,0.5)",borderRadius:"50%",width:60,height:60,display:"flex",alignItems:"center",justifyContent:"center"}}><Play size={26} color="#fff" style={{marginLeft:4}}/></div></div>)}
-              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)",pointerEvents:"none"}}/>
-              <div onTouchStart={e=>{const v=videoRefs.current[idx];if(v)v._seekStart={x:e.touches[0].clientX,t:v.currentTime};}} onTouchMove={e=>{const v=videoRefs.current[idx];if(!v||!v._seekStart||!v.duration)return;const dx=e.touches[0].clientX-v._seekStart.x;const dt=(dx/window.innerWidth)*v.duration;v.currentTime=Math.max(0,Math.min(v.duration,v._seekStart.t+dt));}} onClick={e=>seekVideo(idx,e)} style={{position:"absolute",bottom:"calc(env(safe-area-inset-bottom,0px) + 56px)",left:0,right:0,height:5,background:"rgba(255,255,255,0.25)",zIndex:5,cursor:"pointer",opacity:showControls?1:0,transition:"opacity 0.3s ease"}}><div style={{height:"100%",width:`${progress}%`,background:"rgba(255,255,255,0.75)",borderRadius:3,transition:"width 0.05s linear"}}/></div>
-              <div style={{position:"absolute",left:14,right:80,bottom:"calc(160px + env(safe-area-inset-bottom,0px))",color:"#fff",zIndex:2}}>
-                <div onClick={()=>onUser?.(post.by)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
-                  <span style={{fontWeight:700,fontSize:15}}>{post.author?.fullName||post.author?.name||""}</span>
-                  <Badge type={post.author?.badge}/>
-                </div>
-                {caption.length>0&&(<p style={{margin:0,fontSize:13,lineHeight:1.5,color:"rgba(255,255,255,0.92)",textAlign:"left"}}>{isActive&&expandedCaption?caption:captionShort}{caption.length>120&&isActive&&(<span onClick={()=>setExpandedCaption(e=>!e)} style={{color:"#C9952A",cursor:"pointer",marginLeft:4,fontWeight:600}}>{expandedCaption?" moins":" plus"}</span>)}</p>)}
-              </div>
-              {post.is_for_sale&&(post.whatsapp_contact||post.contact_link)&&(
-  <div style={{position:'absolute',left:0,right:0,bottom:'calc(100px + env(safe-area-inset-bottom,0px))',zIndex:4,display:'flex',flexDirection:'column',gap:6,padding:'0 0 6px'}}>
-    {post.whatsapp_contact&&(<a href={'https://wa.me/'+post.whatsapp_contact.replace(/\D/g,'')} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'linear-gradient(135deg,#25D366,#128C7E)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}><MessageCircle size={16}/> Contacter sur WhatsApp</a>)}
-    {post.contact_link&&(<a href={post.contact_link} target='_blank' rel='noreferrer' style={{margin:'0 12px',background:'rgba(74,144,217,0.85)',padding:'10px 20px',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',fontWeight:700,fontSize:13,textDecoration:'none'}}>🔗 Voir le lien</a>)}
-  </div>
-)}
-              <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:22,zIndex:2}}>
-                  <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-  <div onClick={()=>onUser?.(post.by)} style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,0.2)",overflow:"hidden",border:"2px solid #fff",cursor:"pointer"}}>{post.author?.avatar_url&&<img src={post.author.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} alt=""/>}</div>
-  {!isMe&&!isConnected&&(<button onClick={()=>onConnect?.(post.by)} style={{background:"#ff2d55",border:"2px solid #fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0,color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>+</button>)}
-</div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <button onClick={()=>toggleLike(post.id)} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Heart size={32} fill={liked?"#ff2d55":"none"} color={liked?"#ff2d55":"#fff"}/></button>
-                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.likes||[]).length}</span>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <button onClick={()=>{setReelsModalOpen(true);onOpenComments(post,()=>setReelsModalOpen(false));}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><MessageCircle size={30} color="#fff"/></button>
-                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{(post.comments||[]).length}</span>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <button onClick={()=>{const alreadySaved=savedIds.has(post.id);setSavedIds(prev=>{const n=new Set(prev);alreadySaved?n.delete(post.id):n.add(post.id);return n;});setSaveCountMap(prev=>({...prev,[post.id]:Math.max(0,(prev[post.id]||0)+(alreadySaved?-1:1))}));toggleSave(post.id);}} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",padding:0}}><Bookmark size={28} fill={savedIds.has(post.id)?"#C9952A":"none"} color={savedIds.has(post.id)?"#C9952A":"#fff"}/></button>
-                  <span style={{fontSize:12,fontWeight:600,color:"#fff"}}>{saveCountMap[post.id]??post.savesCount??0}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg);}} div::-webkit-scrollbar{display:none;}`}</style>
-    </div>
-  );
-}
 function SkeletonPost(){
   return(
     <div style={{background:"rgba(255,255,255,0.03)",borderRadius:20,padding:16,marginBottom:12,border:"1px solid rgba(255,255,255,0.06)"}}>
@@ -2940,7 +3793,7 @@ useEffect(()=>{
     const handler=async e=>{
       const{postId,commentId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
-      if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
+      if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
       const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
         const mapped={
@@ -2958,7 +3811,7 @@ useEffect(()=>{
           whatsapp_contact:data.whatsapp_contact||null,
           _targetCommentId:commentId||null
         };
-        setDetailPost(mapped);
+        pushNav(()=>setDetailPost(null));setDetailPost(mapped);
       }
     };
     window.addEventListener("celeste_open_post",handler);
@@ -3253,7 +4106,7 @@ const [saved,setSaved]=useState(false);
               <p style={{margin:"0 0 5px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:600,color:T.text}}>{post.title}</p>
               {post.text&&<p style={{margin:"0 0 6px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
               {post.eventDate&&<p style={{margin:"0 0 2px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
-              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted}}>📍 {post.eventLoc}</p>}
+              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
             </div>
             :<>
               {post.text&&(
@@ -3266,7 +4119,7 @@ const [saved,setSaved]=useState(false);
       <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
     </div>
   ):(
-    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||u.name?.toLowerCase().startsWith(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
+    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
   )
 )}
               {(()=>{
@@ -3487,7 +4340,7 @@ const openMenu=id=>{setMenuConvId(id);};
         {/* Recherche */}
         <div style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
           <Search size={14} color={T.muted}/>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher une conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
         {/* Filtres */}
@@ -3651,6 +4504,8 @@ L'APP EN BREF :
 LE BADGE CERTIFIÉ ✦ :
 - Coûte  2000 FCFA pour 40 jours
 - Donne accès aux thèmes premium, stats de vues, confidentialité avancée, publications prioritaires
+- Permet de générer des gains quotidiens grâce à tes posts et likes reçus
+
 
 LES THÈMES :
 - Gratuits : Noir Doré, Blanc Doré
@@ -3782,16 +4637,34 @@ const doubleTap=useDoubleTap(m=>{
   },[conv.id]);
 
   useEffect(()=>{
-    const ch=sb.channel(`chat_${conv.id}`)
-  .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
-    const nm=payload.new;
-    if(nm.sender_id!==session?.user?.id){
-      playChatSound("receive");reload();
-    }
-  })
-  .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
-  .subscribe();
-    return()=>{sb.removeChannel(ch);disableScreenProtection();};
+    let ch;
+    let retryTimer;
+    const subscribe=()=>{
+      if(ch){try{sb.removeChannel(ch);}catch(_){}}
+      ch=sb.channel(`chat_${conv.id}_${Date.now()}`)
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
+          const nm=payload.new;
+          if(nm.sender_id!==session?.user?.id){playChatSound("receive");}
+          reload();
+        })
+        .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
+        .subscribe((status)=>{
+          if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
+            clearTimeout(retryTimer);
+            retryTimer=setTimeout(subscribe,3000);
+          }
+        });
+    };
+    subscribe();
+    // Rechargement sur reprise de connexion réseau
+    const onOnline=()=>{reload();subscribe();};
+    window.addEventListener("online",onOnline);
+    return()=>{
+      clearTimeout(retryTimer);
+      try{sb.removeChannel(ch);}catch(_){}
+      window.removeEventListener("online",onOnline);
+      disableScreenProtection();
+    };
   },[conv.id,reload]);
 
   const lastMsgId=conv.msgs[conv.msgs.length-1]?.id;
@@ -3858,7 +4731,6 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
     if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
     setAttach(false);playChatSound("send");
-    await reload();
   }catch(e){
     notify("Erreur d'envoi, réessayez");
     setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
@@ -5031,6 +5903,7 @@ if(existingPool){
           {icon:"🔕",text:"Active le mode Ne pas recevoir de messages"},
           {icon:"📷",text:"Envoie des photos dans les commentaires"},
           {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
+          {icon:"💰",text:"Génère des gains quotidiens grâce à tes posts et likes reçus"},
         ].map((f,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:13,color:T.gold}}>{f.icon}</span>
@@ -5629,15 +6502,18 @@ const [showWallet,setShowWallet]=useState(false);
     reload();notify("Photo mise à jour ✦");
   };
 
-  const [myPosts,setMyPosts]=useState((posts||[]).filter(p=>p.by===session?.user?.id));
+  const [myPosts,setMyPosts]=useState([]);
+const [myPostsLoading,setMyPostsLoading]=useState(true);
 useEffect(()=>{
   if(!session?.user?.id)return;
-  sb.from("posts").select("*,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).then(({data})=>{
+  setMyPostsLoading(true);
+  sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,pinned,text_background,visibility,created_at,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data)setMyPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null})));
+    setMyPostsLoading(false);
   });
 },[session?.user?.id, userPostsVersion]);
-  const followersCount=(myFollowers||[]).length;
-  const followingCount=(myConnections||[]).length;
+  const followersCount=useMemo(()=>(myFollowers||[]).length,[myFollowers]);
+  const followingCount=useMemo(()=>(myConnections||[]).length,[myConnections]);
   const [detailPost, setDetailPost] = useState(null);
   const [userReelsIndex,setUserReelsIndex]=useState(null);
   const refreshPost=async pid=>{
@@ -5722,7 +6598,7 @@ useEffect(()=>{
   <h2 style={{margin:0,flex:1,minWidth:0,textAlign:"left",fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(15,26-Math.max(0,(myProfile?.fullName?.length||0)-15)*0.8),fontWeight:400,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{myProfile?.fullName}</h2>
   {myProfile?.badge&&<Badge type={myProfile.badge}/>}
 </div>
-            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted}}>📍{myProfile?.paroisse}</p>
+            <p style={{margin:"0 0 6px",fontSize:13,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={13}/>{myProfile?.paroisse}</p>
            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
             {myProfile?.shop_link&&(
               <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
@@ -5916,8 +6792,341 @@ function WithdrawalRequests({notify}){
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────
+function AdminPanel({onClose,notify,reload,reloadPosts}){
+  const [list,setList]=useState([]);
+  const [allReports,setAllReports]=useState([]);
+  const [allPosts,setAllPosts]=useState([]);
+  const [filter,setFilter]=useState("pending");
+  const [showPosts,setShowPosts]=useState(false);
+
+  useEffect(()=>{
+    sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
+    sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
+    sb.from("posts").select(`*,author:profiles(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
+  },[]);
+
+  const approve=async(id)=>{
+  const{error}=await sb.from("profiles").update({status:"active"}).eq("id",id);
+  if(error){notify("Erreur : "+error.message);console.error(error);return;}
+  setList(p=>p.map(m=>m.id===id?{...m,status:"active"}:m));
+  await sb.from("notifications").insert({user_id:id,from_id:id,type:"approved",read:false});
+  reload();notify("Membre approuvé ✦");
+};
+
+  const reject=async id=>{
+    if(!window.confirm("Rejeter et supprimer ?"))return;
+    await sb.auth.admin?.deleteUser(id);
+    await sb.from("profiles").delete().eq("id",id);
+    setList(p=>p.filter(m=>m.id!==id));notify("Rejeté");
+  };
+  const suspend=async(id,status)=>{
+    const ns=status==="suspended"?"active":"suspended";
+    const{error}=await sb.from("profiles").update({status:ns}).eq("id",id);
+    if(error){notify("Erreur : "+error.message);return;}
+    // Recharge la liste depuis Supabase pour refléter l'état réel
+    const{data}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+if(data)setList(data.map(normProfile));
+    reload?.();
+    notify(ns==="suspended"?"🚫 Suspendu":"✓ Réactivé avec succès");
+  };
+ const chBadge=async(id,badge)=>{
+  const{error}=await sb.from("profiles").update({badge}).eq("id",id);
+  if(error){notify("Erreur : "+error.message);console.error(error);return;}
+  setList(p=>p.map(m=>m.id===id?{...m,badge}:m));
+  notify("Badge mis à jour ✦");
+};
+  const togglePin=async(pid,pinned)=>{
+    const{error}=await sb.from("posts").update({pinned:!pinned}).eq("id",pid);
+    if(error){notify("Erreur : "+error.message);console.error(error);return;}
+    setAllPosts(p=>p.map(x=>x.id===pid?{...x,pinned:!pinned}:x));
+    reloadPosts?.();notify(pinned?"Désépinglé":"Épinglé ✦");
+  };
+
+  const allMembers=(list||[]).filter(m=>m.status!=="pending");
+  const pending=(list||[]).filter(m=>m.status==="pending");
+  const suspended=(list||[]).filter(m=>m.status==="suspended");
+  const displayList=filter==="pending"?pending:filter==="suspended"?suspended:filter==="reports"?[]:(list||[]).filter(m=>m.id);
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"90vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+          <div>
+            <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.goldL}}>🛡 Administration</h2>
+            <p style={{margin:0,fontSize:12,color:T.muted}}>{(list||[]).length} membres · {pending.length} en attente · {allReports.length} signalements</p>
+          </div>
+          <Btn onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+        </div>
+        <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
+          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${allReports.length})`}].map(f=>(
+            <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
+              {f.l}
+            </Btn>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:"auto"}}>
+          {filter==="reports"
+            ?<div>
+              {(allReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun signalement</p>}
+              {(allReports||[]).map(r=>(
+                <div key={r.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:"rgba(200,64,64,0.03)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <span style={{fontSize:10,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700}}>🚨 SIGNALEMENT</span>
+                    <span style={{fontSize:10,color:T.muted}}>{new Date(r.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p style={{margin:"0 0 3px",fontSize:13,color:T.text}}><strong>Signalé :</strong> {r.reported?.prenom} {r.reported?.nom}</p>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.muted}}><strong>Par :</strong> {r.reporter?.prenom} {r.reporter?.nom}</p>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.goldL}}><strong>Raison :</strong> {r.reason}</p>
+                  {r.details&&<p style={{margin:0,fontSize:11,color:T.muted,fontStyle:"italic"}}>{r.details}</p>}
+                </div>
+              ))}
+            </div>
+            :<>
+              {(displayList||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun membre</p>}
+              {(displayList||[]).map(m=>(
+                <div key={m.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:m.status==="pending"?"rgba(201,149,42,0.03)":m.status==="suspended"?"rgba(200,64,64,0.03)":"none"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:10}}>
+                    <Av u={m} size={44}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:T.text}}>{m.fullName||m.name}</span>
+                        {m.status==="pending"&&<span style={{fontSize:8,background:"rgba(201,149,42,0.12)",color:T.goldL,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>EN ATTENTE</span>}
+                        {m.status==="suspended"&&<span style={{fontSize:8,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700,letterSpacing:.5}}>SUSPENDU</span>}
+                      </div>
+                      <p style={{margin:0,fontSize:11,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={11}/>{m.paroisse} · {m.joined}</p>
+                      {m.whatsapp&&<a href={`https://wa.me/${m.whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#25D366",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4,marginTop:3,textDecoration:"none"}}>📱 {m.whatsapp}</a>}
+                    </div>
+                  </div>
+                  {m.status==="pending"
+                    ?<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <Btn onClick={()=>approve(m.id)} style={{flex:1,padding:"8px",background:"rgba(64,168,96,0.08)",border:"1px solid rgba(64,168,96,0.2)",borderRadius:10,color:T.ok,fontSize:11,fontWeight:700}}>✓ Approuver</Btn>
+                      <Btn onClick={()=>reject(m.id)} style={{padding:"8px 12px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:10,color:T.err,fontSize:11,fontWeight:700}}><Trash2 size={14}/></Btn>
+                    </div>
+                    :<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <Btn onClick={()=>chBadge(m.id,"confirmed")} style={{padding:"5px 11px",background:m.badge==="confirmed"?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${m.badge==="confirmed"?T.gold+"44":T.border}`,borderRadius:9,color:m.badge==="confirmed"?T.goldL:T.muted,fontSize:11,fontWeight:600}}>✅ Confirmé</Btn>
+                      <Btn onClick={()=>chBadge(m.id,"friend")} style={{padding:"5px 11px",background:m.badge==="friend"?T.navyBg:"rgba(255,255,255,0.03)",border:`1px solid ${m.badge==="friend"?T.navy+"44":T.border}`,borderRadius:9,color:m.badge==="friend"?T.navy:T.muted,fontSize:11,fontWeight:600}}>🔵 Ami</Btn>
+                      {m.badge&&<Btn onClick={()=>chBadge(m.id,null)} style={{padding:"5px 11px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:9,color:T.err,fontSize:11,fontWeight:600}}>✕ Révoquer</Btn>}
+                      <Btn onClick={()=>suspend(m.id,m.status)} style={{padding:"5px 11px",background:m.status==="suspended"?"rgba(64,168,96,0.08)":"rgba(200,64,64,0.08)",border:`1px solid ${m.status==="suspended"?T.ok+"44":T.err+"44"}`,borderRadius:9,color:m.status==="suspended"?T.ok:T.err,fontSize:11,fontWeight:600,marginLeft:"auto"}}>{m.status==="suspended"?"✓ Réactiver":"🚫 Suspendre"}</Btn>
+                    </div>
+                  }
+                </div>
+              ))}
+            </>
+          }
+        </div>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+          <Btn onClick={()=>setShowPosts(!showPosts)} style={{width:"100%",padding:"11px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:12,color:T.goldL,fontSize:13,fontWeight:600}}>
+            📌 {showPosts?"Masquer":"Gérer les posts épinglés"}
+          </Btn>
+          {showPosts&&(
+            <div style={{maxHeight:300,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+              {(allPosts||[]).map(p=>(
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.card,borderRadius:12,border:`1px solid ${p.pinned?T.gold+"44":T.border}`}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{margin:0,fontSize:12,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.text||p.event_title||"Post sans texte"}</p>
+                    <p style={{margin:0,fontSize:10,color:T.muted}}>{p.author?.prenom} {p.author?.nom?.[0]}. · {new Date(p.created_at).toLocaleDateString("fr")}</p>
+                  </div>
+                  <Btn onClick={()=>togglePin(p.id,p.pinned)} style={{padding:"5px 10px",background:p.pinned?"rgba(200,64,64,0.08)":T.goldBg,border:`1px solid ${p.pinned?T.err+"44":T.gold+"44"}`,borderRadius:8,color:p.pinned?T.err:T.goldL,fontSize:11,fontWeight:700,flexShrink:0}}>
+                    {p.pinned?"❌ Désponsoriser":"✦ Sponsoriser"}
+                  </Btn>
+                </div>
+              ))}
+            </div>
+          )}
+         <Btn onClick={async()=>{
+            if(!window.confirm("Distribuer le pool de ce mois à tous les membres ?"))return;
+            const month=new Date().toISOString().slice(0,7);
+            // Récupérer tous les likes valides du mois
+            const{data:likes}=await sb.from("valid_likes").select("author_id").eq("month",month);
+            if(!likes||likes.length===0){notify("Aucun like valide ce mois");return;}
+            // Récupérer le pool
+            const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
+            
+            if(!pool||pool.distributed){notify("Pool inexistant ou déjà distribué");return;}
+           // Compter les likes par auteur
+            const likeCounts={};
+            likes.forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
+
+            // Compter les posts actifs du mois (publiés dans le mois)
+            const{data:monthPosts}=await sb.from("posts").select("author_id,created_at").gte("created_at",`${month}-01`);
+            const postCounts={};
+            (monthPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
+
+            // Calculer le score = likes × posts
+            const scores={};
+            const allUserIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
+            allUserIds.forEach(uid=>{
+              const l=likeCounts[uid]||0;
+              const p=postCounts[uid]||0;
+              if(l>0&&p>0)scores[uid]=l*p;
+            });
+
+            const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
+            // Distribuer
+            for(const[userId,score] of Object.entries(scores)){
+              const share=Math.floor((score/totalScore)*pool.pool_amount);
+              if(share<=0)continue;
+              // Créer ou mettre à jour le wallet
+              const{data:w}=await sb.from("wallets").select("*").eq("user_id",userId).maybeSingle();
+              if(w){
+                await sb.from("wallets").update({balance:w.balance+share,total_earned:w.total_earned+share,updated_at:new Date().toISOString()}).eq("user_id",userId);
+              }else{
+                await sb.from("wallets").insert({user_id:userId,balance:share,total_earned:share});
+              }
+              // Transaction
+              await sb.from("wallet_transactions").insert({user_id:userId,type:"earning",amount:share,description:`Gains likes — ${month}`,month,status:"completed"});
+              // Notification
+              await sb.from("notifications").insert({user_id:userId,from_id:userId,type:"earning",text:`✦ Tu as reçu ${share.toLocaleString("fr-FR")} F CFA pour tes likes du mois de ${month}`,read:false});
+            }
+            // Marquer comme distribué
+            await sb.from("badge_pool").update({distributed:true}).eq("month",month);
+            notify(`✦ Distribution effectuée — ${Object.keys(scores).length} membres récompensés`);
+          }} style={{width:"100%",padding:"11px",background:"rgba(61,184,116,0.08)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:12,color:"#4ade80",fontSize:13,fontWeight:600}}>
+            💰 Distribuer le pool du mois
+          </Btn>
+
+          {/* Retraits en attente */}
+          <WithdrawalRequests notify={notify}/>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── CELESTE CHAT SCREEN ───────────────────────────────────
+function CelesteChatScreen({msgs,setMsgs,onClose,myProfile,session}){
+  const [inp,setInp]=useState("");
+  const [loading,setLoading]=useState(false);
+  const bottomRef=useRef();
+
+  const loadedRef = useRef(false);
+  useEffect(()=>{
+    if(!session?.user?.id||loadedRef.current)return;
+    loadedRef.current=true;
+    sb.from("celeste_messages").select("*").eq("user_id",session.user.id).order("created_at",{ascending:true})
+      .then(({data})=>{
+        if(data&&data.length>0)setMsgs(data.map(m=>({role:m.role,text:m.text})));
+      });
+  },[session?.user?.id]);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+
+  const sendingRef=useRef(false);
+
+const send=async()=>{
+  if(!inp.trim()||loading||sendingRef.current)return;
+  sendingRef.current=true;
+  const text=inp.trim();
+  setInp("");
+  setLoading(true);
+  const updatedMsgs=[...msgs,{role:"user",text}];
+  setMsgs(updatedMsgs);
+  if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"user",text});
+
+  const tryGemini=async(retries=3)=>{
+    for(let i=0;i<retries;i++){
+      try{
+        const history=updatedMsgs.reduce((acc,m)=>{
+          const last=acc[acc.length-1];
+          const role=m.role==="user"?"user":"model";
+          if(last&&last.role===role){last.parts[0].text+="\n"+m.text;}
+          else{acc.push({role,parts:[{text:m.text}]});}
+          return acc;
+        },[]);
+        const formattedMessages=[
+          {role:"system",content:CELESTE_SYSTEM},
+          ...history.map(h=>({
+            role:h.role==="user"?"user":"assistant",
+            content:h.parts[0].text
+          }))
+        ];
+        const res=await fetch("https://api.deepseek.com/chat/completions",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${DEEPSEEK_KEY}`},
+          body:JSON.stringify({
+            model:"deepseek-chat",
+            messages:formattedMessages
+          })
+        });
+        if(!res.ok){if(res.status===429){setMsgs(p=>[...p,{role:"model",text:"Je reçois trop de messages en ce moment 😅 Attends 1 minute et réessaie !"}]);return;}if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}throw new Error("503");}
+        const data=await res.json();
+        const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
+        setMsgs(p=>[...p,{role:"model",text:reply}]);
+        if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
+        return;
+      }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}}
+    }
+    setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
+  };
+  await tryGemini();
+  setLoading(false);
+  sendingRef.current=false;
+};
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
+      {/* Header */}
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
+        <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}>✨</div>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
+          <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>● En ligne</p>
+        </div>
+        <Btn onClick={()=>{if(window.confirm("Effacer la conversation ?"))setMsgs([]);}} style={{color:T.muted,fontSize:12,padding:"6px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10}}>Effacer</Btn>
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:12}}>
+        {msgs.length===0&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:T.muted,textAlign:"center",padding:"60px 20px"}}>
+            <div style={{width:90,height:90,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,boxShadow:"0 8px 32px rgba(123,47,190,0.4)",animation:"float 3s ease infinite"}}>✨</div>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.text}}>Bonjour{myProfile?.prenom?" "+myProfile.prenom:""} !</p>
+            <p style={{fontSize:14,color:T.sub,lineHeight:1.8}}>Je suis Céleste, toujours là pour t'écouter, t'encourager et t'accompagner.<br/>De quoi as-tu besoin aujourd'hui ?</p>
+          </div>
+        )}
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",gap:10,animation:"msgIn .3s ease"}}>
+            {m.role==="model"&&(
+              <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✨</div>
+            )}
+            <div style={{maxWidth:"78%",background:m.role==="user"?T.gradGold:"rgba(123,47,190,0.1)",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"12px 16px",border:m.role==="model"?"1px solid rgba(123,47,190,0.2)":"none",boxShadow:m.role==="user"?"0 4px 16px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.2)"}}>
+              <p style={{margin:0,fontSize:14,color:m.role==="user"?"#000":T.text,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{m.text}</p>
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>✨</div>
+            <div style={{background:"rgba(123,47,190,0.1)",borderRadius:"18px 18px 18px 4px",padding:"12px 16px",border:"1px solid rgba(123,47,190,0.2)"}}>
+              <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#9B6FDE",animation:`pulse .6s ease ${i*.2}s infinite`}}/>)}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
+          <textarea value={inp} onChange={e=>{
+    setInp(e.target.value);
+    e.target.style.height="auto";
+    e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
+  }}
+  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();send();}}}
+  placeholder="Écris à Céleste…" rows={1}
+  style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto"}}/>
+        </div>
+        <Btn onClick={send} disabled={loading||!inp.trim()} style={{background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",borderRadius:"50%",width:42,height:42,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 16px rgba(123,47,190,0.4)",opacity:loading||!inp.trim()?0.5:1}}>
+          <Send size={18}/>
+        </Btn>
+      </div>
+    </div>
+  );
+}
 
 // ── MAIN APP ──────────────────────────────────────────────
 function SplashScreen(){
@@ -6085,11 +7294,11 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
       setTab("home");
       setTimeout(async()=>{
         const post=(posts||[]).find(p=>p.id===postId);
-        if(post){setDetailPost({...post,_targetCommentId:commentId||null});return;}
+        if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
         const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
         if(data){
           const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,_targetCommentId:commentId||null};
-          setDetailPost(mapped);
+          pushNav(()=>setDetailPost(null));setDetailPost(mapped);
         }
       },300);
     };
@@ -6197,7 +7406,7 @@ useEffect(() => {
     CapApp.minimizeApp();
   });
 
-  return () => { handler.then?.(h=>h.remove()).catch(()=>{})||handler.remove?.(); };
+  return () => { Promise.resolve(handler).then(h=>h?.remove()).catch(()=>{}); };
 }, [viewImg, tab]);
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
   const myId=session?.user?.id;
@@ -6245,7 +7454,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
     (conns||[]).forEach(c=>{counts[c.to_id]=(counts[c.to_id]||0)+1;});
-    setMembers(data.map(p=>normProfile({...p,followersCount:counts[p.id]||0})));
+    const normed=data.map(p=>normProfile({...p,followersCount:counts[p.id]||0}));window.__celesteMembers=normed;setMembers(normed);
   }
 },[]);
 
@@ -6417,7 +7626,15 @@ window.addEventListener("celeste_open_user",handleOpenUser);
     window.addEventListener("celeste_open_conv",handleOpenConv);
     const ch=sb.channel("celeste_rt")
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},async payload=>{
-        const nm=payload.new;if(nm.sender_id===myId){loadConvs(myId);return;}
+        const nm=payload.new;
+        setConvs(prev=>(prev||[]).map(cv=>{
+          if(cv.id!==nm.conv_id)return cv;
+          const alreadyExists=(cv.msgs||[]).some(m=>m.id===nm.id);
+          if(alreadyExists)return cv;
+          const newMsg={id:nm.id,f:nm.sender_id===myId?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:nm.reply_metadata||null};
+          return{...cv,msgs:[...(cv.msgs||[]),newMsg]};
+        }));
+        if(nm.sender_id===myId)return;
         const updated=await loadConvs(myId);
         if(updated){
           const totalNew=(updated||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
@@ -6611,7 +7828,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav}/>
               </div>
-              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={setOpenUserId} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
+              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
