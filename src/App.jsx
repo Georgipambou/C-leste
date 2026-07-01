@@ -2305,7 +2305,17 @@ const handlePick=async e=>{
         const croppedFile=await cropImage(src);
         file=croppedFile||await compressImage(f);
       }
-      if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo max 50MB");continue;}
+      if(f.type.startsWith("video/")&&f.size>75*1024*1024){alert("Vidéo trop volumineuse (max 75MB)");continue;}
+      if(f.type.startsWith("video/")&&f._fromCamera){
+        const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+        setPreviews(p=>[...p,{url:src,type:"video"}]);
+        setType("photo");
+        setUploading(true);setUploadPct(0);
+try{const publicUrl=await uploadToR2(f,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
+catch(err){console.error(err);}
+finally{setUploading(false);setUploadPct(0);}
+continue;
+      }
       if(f.type.startsWith("video/")){
         const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
         const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
@@ -2405,6 +2415,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
   onClose={()=>setShowCameraStudio(false)}
   onDone={({file,type:mtype})=>{
     setShowCameraStudio(false);
+    file._fromCamera=true;
     const fakeEvent={target:{files:[file]}};
     handlePick(fakeEvent);
   }}
@@ -4012,7 +4023,7 @@ function TranslateBtn({text,dark=false}){
   };
   return(
     <div style={{marginBottom:8}}>
-      {translated&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.7,whiteSpace:"pre-line",fontStyle:"italic"}}>{translated}</p>}
+      {translated&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.7,whiteSpace:"pre-line",wordBreak:"break-word",overflowWrap:"break-word",fontStyle:"italic"}}>{translated}</p>}
       <button onClick={e=>{e.stopPropagation();translate();}} style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:dark?"rgba(0,0,0,0.45)":T.muted,opacity:0.6,display:"flex",alignItems:"center",gap:4}}>
         {loading?"…":translated?<><X size={10}/> Masquer</>:<><Languages size={11}/> Traduire</>}
       </button>
@@ -4715,6 +4726,8 @@ const doubleTap=useDoubleTap(m=>{
   },[conv.uid]);
   
  const ensureConv=async()=>{
+    const{data:blockRows}=await sb.from("blocks").select("blocker_id,blocked_id").or(`and(blocker_id.eq.${session?.user?.id},blocked_id.eq.${conv.uid}),and(blocker_id.eq.${conv.uid},blocked_id.eq.${session?.user?.id})`);
+    if(blockRows&&blockRows.length>0){notify("🚫 Impossible d'envoyer ce message");return null;}
     const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge,screenshot_protection").eq("id",conv.uid).single();
 if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
     if(targetProfile?.no_messages){
@@ -5206,8 +5219,8 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   const [followersCount,setFollowersCount]=useState("…");
   const [followingCount,setFollowingCount]=useState("…");
   const [blocked,setBlocked]=useState(false);
-
-  const [showReport,setShowReport]=useState(false);
+  const [blockedByOther,setBlockedByOther]=useState(false);
+   const [showReport,setShowReport]=useState(false);
   const [detailPost,setDetailPost]=useState(null);
   const [coverUrl,setCoverUrl]=useState(user.cover_url||null);
   const [avatarUrl,setAvatarUrl]=useState(user.avatar_url||null);
@@ -5232,7 +5245,10 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
       sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id),
       sb.from("connections").select("id",{count:"exact",head:true}).eq("from_id",user.id),
     ]).then(([{count:fc},{count:fg}])=>{setFollowersCount(fc||0);setFollowingCount(fg||0);});
-    sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).maybeSingle().then(({data})=>{if(data)setBlocked(true);}); 
+    sb.from("blocks").select("blocker_id,blocked_id").or(`and(blocker_id.eq.${session?.user?.id},blocked_id.eq.${user.id}),and(blocker_id.eq.${user.id},blocked_id.eq.${session?.user?.id})`).then(({data})=>{
+      setBlocked((data||[]).some(b=>b.blocker_id===session?.user?.id));
+      setBlockedByOther((data||[]).some(b=>b.blocker_id===user.id));
+    }); 
   },[user.id,session?.user?.id]);
 
   const toggle=async()=>{
@@ -5257,7 +5273,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
-if(blocked) return(
+if(blocked||blockedByOther) return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
     <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
       <Btn onClick={()=>onBack?.()} style={{color:T.muted,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -5265,9 +5281,9 @@ if(blocked) return(
     </div>
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:40}}>
       <div style={{width:96,height:96,borderRadius:"50%",background:"rgba(255,255,255,0.04)",border:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>🚫</div>
-      <p style={{margin:0,fontSize:17,fontWeight:700,color:T.text}}>Profil bloqué</p>
-      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>Tu as bloqué cet utilisateur.<br/>Son contenu n'est plus visible.</p>
-      <Btn onClick={handleBlock} style={{marginTop:8,padding:"10px 28px",borderRadius:20,border:`1px solid ${T.err}44`,background:"rgba(200,64,64,0.08)",color:"#e06060",fontSize:13,fontWeight:600}}>Débloquer</Btn>
+      <p style={{margin:0,fontSize:17,fontWeight:700,color:T.text}}>{blocked?"Profil bloqué":"Profil non disponible"}</p>
+      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>{blocked?<>Tu as bloqué cet utilisateur.<br/>Son contenu n'est plus visible.</>:"Ce profil n'est pas disponible."}</p>
+      {blocked&&<Btn onClick={handleBlock} style={{marginTop:8,padding:"10px 28px",borderRadius:20,border:`1px solid ${T.err}44`,background:"rgba(200,64,64,0.08)",color:"#e06060",fontSize:13,fontWeight:600}}>Débloquer</Btn>}
     </div>
   </div>
 );
@@ -5414,6 +5430,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const [followersCount,setFollowersCount]=useState("…");
   const [coverPhoto,setCoverPhoto]=useState(user.cover_url||null);
   const [blocked,setBlocked]=useState(false);
+  const [blockedByOther,setBlockedByOther]=useState(false);
   const [showReport,setShowReport]=useState(false);
   const [detailPost,setDetailPost]=useState(null);
   const [userReelsIndex,setUserReelsIndex]=useState(null);
@@ -5421,7 +5438,10 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 
   useEffect(()=>{
     sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id).then(({count})=>setFollowersCount(count||0));
-    sb.from("blocks").select("id").eq("blocker_id",session?.user?.id).eq("blocked_id",user.id).maybeSingle().then(({data})=>{if(data)setBlocked(true);});
+    sb.from("blocks").select("blocker_id,blocked_id").or(`and(blocker_id.eq.${session?.user?.id},blocked_id.eq.${user.id}),and(blocker_id.eq.${user.id},blocked_id.eq.${session?.user?.id})`).then(({data})=>{
+      setBlocked((data||[]).some(b=>b.blocker_id===session?.user?.id));
+      setBlockedByOther((data||[]).some(b=>b.blocker_id===user.id));
+    });
   },[user.id,session?.user?.id]);
 
   const toggle=async()=>{
@@ -5470,6 +5490,21 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   notify("Erreur upload couverture");
 }
 };
+
+if(blocked||blockedByOther) return(
+  <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
+    <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
+      <Btn onClick={()=>onBack?.()} style={{color:T.muted,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
+      <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.text}}>Profil</span>
+    </div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:40}}>
+      <div style={{width:96,height:96,borderRadius:"50%",background:"rgba(255,255,255,0.04)",border:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>🚫</div>
+      <p style={{margin:0,fontSize:17,fontWeight:700,color:T.text}}>{blocked?"Profil bloqué":"Profil non disponible"}</p>
+      <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center",lineHeight:1.6}}>{blocked?<>Tu as bloqué cette organisation.<br/>Son contenu n'est plus visible.</>:"Ce profil n'est pas disponible."}</p>
+      {blocked&&<Btn onClick={handleBlock} style={{marginTop:8,padding:"10px 28px",borderRadius:20,border:`1px solid ${T.err}44`,background:"rgba(200,64,64,0.08)",color:"#e06060",fontSize:13,fontWeight:600}}>Débloquer</Btn>}
+    </div>
+  </div>
+);
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -7492,8 +7527,11 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
   const loadBlockedUsers=useCallback(async()=>{
     if(!session?.user?.id)return[];
-    const{data}=await sb.from("blocks").select("blocked_id").eq("blocker_id",session.user.id);
-    const ids=(data||[]).map(b=>b.blocked_id);
+    const[{data:iBlocked},{data:blockedMe}]=await Promise.all([
+      sb.from("blocks").select("blocked_id").eq("blocker_id",session.user.id),
+      sb.from("blocks").select("blocker_id").eq("blocked_id",session.user.id),
+    ]);
+    const ids=[...new Set([...(iBlocked||[]).map(b=>b.blocked_id),...(blockedMe||[]).map(b=>b.blocker_id)])];
     setBlockedUserIds(ids);
     return ids;
   },[session?.user?.id]);
@@ -7599,12 +7637,13 @@ return updated;
 
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
-    const[{data},{data:blockedData}]=await Promise.all([
+    const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
       sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
-      sb.from("blocks").select("blocked_id").eq("blocker_id",myId)
+      sb.from("blocks").select("blocked_id").eq("blocker_id",myId),
+      sb.from("blocks").select("blocker_id").eq("blocked_id",myId)
     ]);
     if(data){
-      const blocked=new Set((blockedData||[]).map(b=>b.blocked_id));
+      const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
       const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
