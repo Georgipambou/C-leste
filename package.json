@@ -25,7 +25,6 @@
     "@fontsource/cormorant-garamond": "^5.2.11",
     "@fontsource/space-grotesk": "^5.2.10",
     "@onesignal/capacitor-plugin": "^1.0.5",
-    "@pixi/filter-color-matrix": "^7.4.3",
     "@supabase/supabase-js": "^2.106.0",
     "lucide-react": "^1.16.0",
     "pixi.js": "^8.19.0",

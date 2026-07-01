@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+﻿import { useState, useRef, useEffect, useCallback } from "react";
 import { X, Type, Image as ImageIcon, Check, RefreshCw, ChevronDown, ZapOff, Zap } from "lucide-react";
 import * as PIXI from "pixi.js";
-import { ColorMatrixFilter } from "@pixi/filter-color-matrix";
+import { ColorMatrixFilter } from "pixi.js";
 
-// ── LUT FILTERS (matrices ColorMatrix pro) ─────────────────
+// â”€â”€ LUT FILTERS (matrices ColorMatrix pro) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FILTERS = [
   {
     id:"normal", label:"Original",
@@ -38,11 +38,11 @@ const FILTERS = [
     matrix: (f) => { f.contrast(0.4,true); f.saturate(-0.3,true); f.brightness(0.85,true); },
   },
   {
-    id:"rose", label:"Rosé",
+    id:"rose", label:"RosÃ©",
     matrix: (f) => { f.hue(-20,true); f.saturate(0.5,true); f.brightness(1.04,true); f.colorTone(0xFF69B4,0.15,0x000000,0.0,true); },
   },
   {
-    id:"cinema", label:"Cinéma",
+    id:"cinema", label:"CinÃ©ma",
     matrix: (f) => { f.contrast(0.25,true); f.saturate(-0.5,true); f.brightness(0.83,true); f.sepia(true); f.colorTone(0x8B4513,0.1,0x000000,0.0,true); },
   },
   {
@@ -76,7 +76,7 @@ const COLORS = ["#FFFFFF","#000000","#C9952A","#FF4B6E","#00E5FF","#A8FF3E","#FF
 const SIZES  = [16,22,30,40,52];
 const MODES  = ["60 s","15 s","PHOTO"];
 
-// ── COMPOSANT PRINCIPAL ─────────────────────────────────────
+// â”€â”€ COMPOSANT PRINCIPAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function CameraStudioModal({ onClose, onDone }) {
   const videoRef    = useRef(null);
   const mountRef    = useRef(null);   // conteneur Pixi
@@ -113,7 +113,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const [pixiReady,  setPixiReady]  = useState(false);
   const [flashOn,    setFlashOn]    = useState(false);
 
-  // ── Caméra ─────────────────────────────────────────────
+  // â”€â”€ CamÃ©ra â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const startCam = useCallback(async (f = facing) => {
     try {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
@@ -137,7 +137,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     };
   }, []);
 
-  // ── Init Pixi ───────────────────────────────────────────
+  // â”€â”€ Init Pixi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const initPixi = useCallback(async () => {
     const v = videoRef.current;
     const mount = mountRef.current;
@@ -201,7 +201,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     return () => v.removeEventListener("loadeddata", tryInit);
   }, [phase, initPixi]);
 
-  // ── Appliquer filtre Pixi ───────────────────────────────
+  // â”€â”€ Appliquer filtre Pixi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const f = pixiFilter.current;
     if (!f) return;
@@ -212,7 +212,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     }
   }, [filter, pixiReady]);
 
-  // ── Flip ───────────────────────────────────────────────
+  // â”€â”€ Flip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const flip = () => {
     const n = facing === "user" ? "environment" : "user";
     setFacing(n);
@@ -220,7 +220,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     setTimeout(() => startCam(n).then(() => setTimeout(initPixi, 500)), 100);
   };
 
-  // ── Capture photo ───────────────────────────────────────
+  // â”€â”€ Capture photo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const takePhoto = useCallback(() => {
     // Essai 1 : depuis le canvas Pixi
     const pixiCanvas = pixiApp.current?.canvas;
@@ -246,7 +246,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     c.toBlob(b => { if(b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.95);
   };
 
-  // ── Enregistrement vidéo ────────────────────────────────
+  // â”€â”€ Enregistrement vidÃ©o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const startRec = () => {
     const pixiCanvas = pixiApp.current?.canvas;
     const s = streamRef.current;
@@ -275,7 +275,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     setRecording(false); clearInterval(timerRef.current);
   };
 
-  // ── Galerie ─────────────────────────────────────────────
+  // â”€â”€ Galerie â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const pickGallery = () => fileRef.current?.click();
   const onGalleryPick = e => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -290,7 +290,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     e.target.value = ""; setPanel(null);
   };
 
-  // ── Finish ──────────────────────────────────────────────
+  // â”€â”€ Finish â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const finish = (b, u, v) => {
     destroyPixi();
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
@@ -304,7 +304,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     startCam().then(() => setTimeout(initPixi, 500));
   };
 
-  // ── Overlays ────────────────────────────────────────────
+  // â”€â”€ Overlays â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const addOverlay = (patch) => {
     const ov = { id:Date.now(), type:"text", value:"", x:60, y:180, size:24, color:"#FFFFFF", font:"Space Grotesk", ...patch };
     setOverlays(os => [...os, ov]); setActiveOv(ov);
@@ -315,7 +315,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
   };
   const delOv = id => { setOverlays(os=>os.filter(o=>o.id!==id)); setActiveOv(null); setPanel(null); };
 
-  // ── Drag ────────────────────────────────────────────────
+  // â”€â”€ Drag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const pDown = (e, id) => {
     e.stopPropagation();
     const ov = overlays.find(o=>o.id===id);
@@ -338,7 +338,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     setNewText(""); setPanel(null); setActiveOv(null);
   };
 
-  // ── Export ──────────────────────────────────────────────
+  // â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const exportFinal = async () => {
     if (!blob) return;
     if (!isVid && overlays.length > 0) {
@@ -380,10 +380,10 @@ export default function CameraStudioModal({ onClose, onDone }) {
       <input ref={imgRef}  type="file" accept="image/*" style={{display:"none"}} onChange={onOverlayImg}/>
       <video ref={videoRef} playsInline muted style={{display:"none"}}/>
 
-      {/* ── Zone visuelle ── */}
+      {/* â”€â”€ Zone visuelle â”€â”€ */}
       <div style={{position:"relative",flex:1,overflow:"hidden"}}>
 
-        {/* Pixi mount (caméra live avec filtres WebGL) */}
+        {/* Pixi mount (camÃ©ra live avec filtres WebGL) */}
         <div ref={mountRef} style={{
           position:"absolute",inset:0,
           display: phase==="camera" ? "block" : "none",
@@ -397,7 +397,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
           }}/>
         )}
 
-        {/* Preview vidéo */}
+        {/* Preview vidÃ©o */}
         {phase==="preview" && isVid && (
           <video src={url} autoPlay loop playsInline muted style={{
             position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
@@ -427,7 +427,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
                   <button onClick={e=>{e.stopPropagation();delOv(ov.id);}}
                     style={{position:"absolute",top:-10,right:-10,width:22,height:22,borderRadius:"50%",
                       background:"#dc2626",border:"none",color:"#fff",fontSize:14,cursor:"pointer",
-                      display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,fontWeight:700}}>×</button>
+                      display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,fontWeight:700}}>Ã—</button>
                 )}
               </div>
             ))}
@@ -456,11 +456,11 @@ export default function CameraStudioModal({ onClose, onDone }) {
           </div>
         )}
 
-        {/* ── Top bar ── */}
+        {/* â”€â”€ Top bar â”€â”€ */}
         <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"52px 16px 0",zIndex:20}}>
           <button onClick={onClose} style={Ic()}><X size={18}/></button>
 
-          {/* Outils droite — caméra */}
+          {/* Outils droite â€” camÃ©ra */}
           {phase==="camera" && !recording && (
             <div style={{display:"flex",flexDirection:"column",gap:16,alignItems:"center"}}>
               <button onClick={flip} style={Ic()}><RefreshCw size={16}/></button>
@@ -468,23 +468,23 @@ export default function CameraStudioModal({ onClose, onDone }) {
                 {flashOn ? <Zap size={16}/> : <ZapOff size={16}/>}
               </button>
               <button onClick={()=>setShowFilters(s=>!s)} style={Ic(showFilters)}>
-                <span style={{fontSize:15}}>✦</span>
+                <span style={{fontSize:15}}>âœ¦</span>
               </button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16}/></button>
             </div>
           )}
 
-          {/* Outils droite — preview */}
+          {/* Outils droite â€” preview */}
           {phase==="preview" && (
             <div style={{display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
               <button onClick={()=>{setNewText("");setActiveOv(null);setPanel("text");}} style={Ic(panel==="text")}><Type size={16}/></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16}/></button>
-              {!isVid && <button onClick={()=>setShowFilters(s=>!s)} style={Ic(showFilters)}><span style={{fontSize:15}}>✦</span></button>}
+              {!isVid && <button onClick={()=>setShowFilters(s=>!s)} style={Ic(showFilters)}><span style={{fontSize:15}}>âœ¦</span></button>}
             </div>
           )}
         </div>
 
-        {/* ── Barre filtres ── */}
+        {/* â”€â”€ Barre filtres â”€â”€ */}
         {showFilters && (
           <div style={{position:"absolute",bottom: phase==="camera" ? 200 : 110,left:0,right:0,zIndex:15,paddingBottom:8}}>
             <div style={{display:"flex",gap:12,overflowX:"auto",padding:"4px 16px",scrollbarWidth:"none"}}>
@@ -517,14 +517,14 @@ export default function CameraStudioModal({ onClose, onDone }) {
         )}
       </div>
 
-      {/* ── Zone bas ── */}
+      {/* â”€â”€ Zone bas â”€â”€ */}
       <div style={{position:"relative",zIndex:20,paddingBottom:40}}>
 
         {/* Panel texte */}
         {panel==="text" && (
           <div style={{background:"rgba(6,6,6,0.97)",borderRadius:"24px 24px 0 0",padding:"20px 18px 10px",backdropFilter:"blur(30px)"}}>
             <input value={newText} onChange={e=>setNewText(e.target.value)}
-              placeholder="Votre texte…" autoFocus
+              placeholder="Votre texteâ€¦" autoFocus
               style={{width:"100%",background:"rgba(255,255,255,0.06)",
                 border:"1px solid rgba(255,255,255,0.1)",borderRadius:16,
                 padding:"12px 16px",color:txtColor,
@@ -590,7 +590,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
           <>
             {phase==="camera" && (
               <>
-                {/* Sélecteur mode */}
+                {/* SÃ©lecteur mode */}
                 <div style={{display:"flex",justifyContent:"center",gap:4,paddingTop:14,paddingBottom:10}}>
                   {MODES.map(m=>{
                     const on=m===mode;
@@ -607,7 +607,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
                   })}
                 </div>
 
-                {/* Rangée capture */}
+                {/* RangÃ©e capture */}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 36px"}}>
                   {/* Galerie */}
                   <button onClick={pickGallery}
