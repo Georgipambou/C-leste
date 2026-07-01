@@ -1,119 +1,259 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, RotateCcw, Type, Check, Trash2, RefreshCw, Images, Zap } from "lucide-react";
+import { X, Type, Image as ImageIcon, Check, RefreshCw, ChevronDown, ZapOff, Zap } from "lucide-react";
+import * as PIXI from "pixi.js";
+import { ColorMatrixFilter } from "@pixi/filter-color-matrix";
 
-// ── FILTRES ────────────────────────────────────────────────
+// ── LUT FILTERS (matrices ColorMatrix pro) ─────────────────
 const FILTERS = [
-  { id:"normal",  label:"Naturel",  css:"none" },
-  { id:"vivid",   label:"Éclatant", css:"saturate(1.9) contrast(1.1)" },
-  { id:"golden",  label:"Or",       css:"sepia(0.5) saturate(1.7) brightness(1.06)" },
-  { id:"cold",    label:"Glacial",  css:"hue-rotate(18deg) saturate(1.3) brightness(0.96)" },
-  { id:"noir",    label:"Noir",     css:"grayscale(1) contrast(1.35) brightness(0.88)" },
-  { id:"fade",    label:"Fondu",    css:"brightness(1.12) contrast(0.82) saturate(0.65)" },
-  { id:"warm",    label:"Chaud",    css:"sepia(0.3) saturate(1.5) brightness(1.07) hue-rotate(-12deg)" },
-  { id:"drama",   label:"Drame",    css:"contrast(1.55) saturate(0.75) brightness(0.82)" },
-  { id:"rose",    label:"Rose",     css:"hue-rotate(-22deg) saturate(1.6) brightness(1.04)" },
-  { id:"matte",   label:"Mat",      css:"contrast(0.88) brightness(1.08) saturate(0.8) sepia(0.1)" },
+  {
+    id:"normal", label:"Original",
+    matrix: null,
+  },
+  {
+    id:"vivid", label:"Vivid",
+    matrix: (f) => { f.saturate(0.8,true); f.brightness(1.05,true); f.contrast(0.15,true); },
+  },
+  {
+    id:"golden", label:"Golden",
+    matrix: (f) => { f.sepia(true); f.saturate(0.5,true); f.colorTone(0xC9952A, 0.3, 0x000000, 0.0, true); f.brightness(1.05,true); },
+  },
+  {
+    id:"arctic", label:"Arctic",
+    matrix: (f) => { f.saturate(0.3,true); f.contrast(0.1,true); f.brightness(1.02,true); f.hue(15,true); },
+  },
+  {
+    id:"noir", label:"Noir",
+    matrix: (f) => { f.greyscale(0.9,true); f.contrast(0.3,true); f.brightness(0.9,true); },
+  },
+  {
+    id:"warm", label:"Warm",
+    matrix: (f) => { f.warmth && f.warmth(true); f.saturate(0.4,true); f.colorTone(0xFF6B35,0.2,0x000000,0.0,true); f.brightness(1.03,true); },
+  },
+  {
+    id:"fade", label:"Fade",
+    matrix: (f) => { f.brightness(1.1,true); f.contrast(-0.2,true); f.saturate(-0.4,true); },
+  },
+  {
+    id:"drama", label:"Drama",
+    matrix: (f) => { f.contrast(0.4,true); f.saturate(-0.3,true); f.brightness(0.85,true); },
+  },
+  {
+    id:"rose", label:"Rosé",
+    matrix: (f) => { f.hue(-20,true); f.saturate(0.5,true); f.brightness(1.04,true); f.colorTone(0xFF69B4,0.15,0x000000,0.0,true); },
+  },
+  {
+    id:"cinema", label:"Cinéma",
+    matrix: (f) => { f.contrast(0.25,true); f.saturate(-0.5,true); f.brightness(0.83,true); f.sepia(true); f.colorTone(0x8B4513,0.1,0x000000,0.0,true); },
+  },
+  {
+    id:"neon", label:"Neon",
+    matrix: (f) => { f.saturate(1.5,true); f.contrast(0.2,true); f.hue(10,true); f.brightness(1.05,true); },
+  },
+  {
+    id:"matte", label:"Matte",
+    matrix: (f) => { f.contrast(-0.15,true); f.brightness(1.08,true); f.saturate(-0.2,true); },
+  },
 ];
 
-const FONTS  = ["Space Grotesk","Cormorant Garamond","Arial","Georgia","Impact","Courier New"];
-const COLORS = ["#FFFFFF","#C9952A","#FF4B6E","#00E5FF","#A8FF3E","#FF9500","#FF69B4","#000000"];
-const SIZES  = [16,22,30,40,52];
+// CSS fallback pour les previews miniatures (Pixi trop lourd pour 12 instances)
+const PREVIEW_CSS = {
+  normal:  "none",
+  vivid:   "saturate(1.9) contrast(1.15) brightness(1.05)",
+  golden:  "sepia(0.5) saturate(1.7) brightness(1.06) contrast(1.05)",
+  arctic:  "hue-rotate(15deg) saturate(1.3) brightness(1.02) contrast(1.1)",
+  noir:    "grayscale(1) contrast(1.4) brightness(0.88)",
+  warm:    "sepia(0.25) saturate(1.5) brightness(1.06) hue-rotate(-10deg)",
+  fade:    "brightness(1.12) contrast(0.78) saturate(0.55)",
+  drama:   "contrast(1.55) saturate(0.68) brightness(0.8)",
+  rose:    "hue-rotate(-22deg) saturate(1.7) brightness(1.05)",
+  cinema:  "contrast(1.25) saturate(0.4) brightness(0.82) sepia(0.3)",
+  neon:    "saturate(2.2) contrast(1.2) hue-rotate(10deg) brightness(1.05)",
+  matte:   "contrast(0.85) brightness(1.1) saturate(0.78)",
+};
 
-// ── COMPOSANT ──────────────────────────────────────────────
+const FONTS  = ["Space Grotesk","Cormorant Garamond","Arial Black","Georgia","Impact","Courier New"];
+const COLORS = ["#FFFFFF","#000000","#C9952A","#FF4B6E","#00E5FF","#A8FF3E","#FF9500","#FF69B4"];
+const SIZES  = [16,22,30,40,52];
+const MODES  = ["60 s","15 s","PHOTO"];
+
+// ── COMPOSANT PRINCIPAL ─────────────────────────────────────
 export default function CameraStudioModal({ onClose, onDone }) {
   const videoRef    = useRef(null);
-  const canvasRef   = useRef(null);
+  const mountRef    = useRef(null);   // conteneur Pixi
+  const pixiApp     = useRef(null);
+  const pixiSprite  = useRef(null);
+  const pixiFilter  = useRef(null);
+  const canvasCap   = useRef(null);   // canvas pour capture
   const overlayRef  = useRef(null);
   const streamRef   = useRef(null);
   const recRef      = useRef(null);
   const chunksRef   = useRef([]);
-  const rafRef      = useRef(null);
   const timerRef    = useRef(null);
-  const dragRef     = useRef({ on:false, id:null, ox:0, oy:0 });
   const fileRef     = useRef(null);
+  const imgRef      = useRef(null);
+  const dragRef     = useRef({ on:false, id:null, ox:0, oy:0 });
 
-  const [phase,      setPhase]      = useState("camera"); // camera | preview
+  const [phase,      setPhase]      = useState("camera");
   const [facing,     setFacing]     = useState("user");
   const [filter,     setFilter]     = useState("normal");
+  const [mode,       setMode]       = useState("60 s");
   const [recording,  setRecording]  = useState(false);
   const [secs,       setSecs]       = useState(0);
   const [blob,       setBlob]       = useState(null);
   const [url,        setUrl]        = useState(null);
   const [isVid,      setIsVid]      = useState(false);
-  const [texts,      setTexts]      = useState([]);
-  const [activeText, setActiveText] = useState(null);
-  const [panel,      setPanel]      = useState(null); // null | "filter" | "text"
+  const [overlays,   setOverlays]   = useState([]);
+  const [activeOv,   setActiveOv]   = useState(null);
+  const [panel,      setPanel]      = useState(null);
+  const [showFilters,setShowFilters]= useState(false);
+  const [newText,    setNewText]    = useState("");
+  const [txtColor,   setTxtColor]   = useState("#FFFFFF");
+  const [txtSize,    setTxtSize]    = useState(24);
+  const [txtFont,    setTxtFont]    = useState("Space Grotesk");
+  const [pixiReady,  setPixiReady]  = useState(false);
+  const [flashOn,    setFlashOn]    = useState(false);
 
   // ── Caméra ─────────────────────────────────────────────
   const startCam = useCallback(async (f = facing) => {
     try {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      const s = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         video: { facingMode: f, width:{ideal:1920}, height:{ideal:1080} },
         audio: true,
-      });
+      };
+      const s = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = s;
-      if (videoRef.current) { videoRef.current.srcObject = s; await videoRef.current.play(); }
-    } catch(e) { console.error(e); }
+      const v = videoRef.current;
+      if (v) { v.srcObject = s; await v.play(); }
+    } catch(e) { console.error("Cam:", e); }
   }, [facing]);
 
   useEffect(() => {
     startCam();
     return () => {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      cancelAnimationFrame(rafRef.current);
       clearInterval(timerRef.current);
+      destroyPixi();
     };
   }, []);
 
-  // ── Canvas loop ─────────────────────────────────────────
-  const drawLoop = useCallback(() => {
-    const v = videoRef.current, c = canvasRef.current;
-    if (v && c && v.readyState >= 2) {
-      const ctx = c.getContext("2d");
-      c.width  = v.videoWidth  || 720;
-      c.height = v.videoHeight || 1280;
-      const f = FILTERS.find(x => x.id === filter);
-      ctx.filter = f?.css === "none" ? "none" : (f?.css || "none");
-      ctx.drawImage(v, 0, 0, c.width, c.height);
-      ctx.filter = "none";
+  // ── Init Pixi ───────────────────────────────────────────
+  const initPixi = useCallback(async () => {
+    const v = videoRef.current;
+    const mount = mountRef.current;
+    if (!v || !mount || pixiApp.current) return;
+    if (v.readyState < 2 || !v.videoWidth) return;
+
+    try {
+      const app = new PIXI.Application();
+      await app.init({
+        width:  mount.clientWidth  || 390,
+        height: mount.clientHeight || 844,
+        backgroundAlpha: 0,
+        antialias: true,
+        resolution: 1,
+      });
+      mount.appendChild(app.canvas);
+      app.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
+
+      const tex = PIXI.Texture.from(v);
+      const sprite = new PIXI.Sprite(tex);
+      sprite.width  = app.screen.width;
+      sprite.height = app.screen.height;
+      app.stage.addChild(sprite);
+
+      const cmFilter = new ColorMatrixFilter();
+      sprite.filters = [cmFilter];
+
+      pixiApp.current    = app;
+      pixiSprite.current = sprite;
+      pixiFilter.current = cmFilter;
+
+      app.ticker.add(() => {
+        tex.source.update();
+        sprite.width  = app.screen.width;
+        sprite.height = app.screen.height;
+      });
+
+      setPixiReady(true);
+    } catch(e) {
+      console.error("Pixi init:", e);
     }
-    rafRef.current = requestAnimationFrame(drawLoop);
-  }, [filter]);
+  }, []);
+
+  const destroyPixi = () => {
+    if (pixiApp.current) {
+      try { pixiApp.current.destroy(true, { children:true, texture:true }); } catch(e){}
+      pixiApp.current    = null;
+      pixiSprite.current = null;
+      pixiFilter.current = null;
+      setPixiReady(false);
+    }
+  };
 
   useEffect(() => {
-    if (phase === "camera") {
-      rafRef.current = requestAnimationFrame(drawLoop);
-      return () => cancelAnimationFrame(rafRef.current);
+    if (phase !== "camera") return;
+    const v = videoRef.current;
+    if (!v) return;
+    const tryInit = () => { if (v.videoWidth > 0) initPixi(); };
+    if (v.readyState >= 2 && v.videoWidth > 0) { setTimeout(initPixi, 300); }
+    else { v.addEventListener("loadeddata", tryInit, {once:true}); }
+    return () => v.removeEventListener("loadeddata", tryInit);
+  }, [phase, initPixi]);
+
+  // ── Appliquer filtre Pixi ───────────────────────────────
+  useEffect(() => {
+    const f = pixiFilter.current;
+    if (!f) return;
+    f.reset();
+    const def = FILTERS.find(x => x.id === filter);
+    if (def?.matrix) {
+      try { def.matrix(f); } catch(e) { console.warn("Filter apply:", e); }
     }
-  }, [phase, drawLoop]);
+  }, [filter, pixiReady]);
 
   // ── Flip ───────────────────────────────────────────────
   const flip = () => {
     const n = facing === "user" ? "environment" : "user";
-    setFacing(n); startCam(n);
+    setFacing(n);
+    destroyPixi();
+    setTimeout(() => startCam(n).then(() => setTimeout(initPixi, 500)), 100);
   };
 
-  // ── Photo ──────────────────────────────────────────────
-  const takePhoto = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) { console.error("Canvas null"); return; }
-    try {
-      canvas.toBlob(b => {
-        if (!b) { console.error("Blob null"); return; }
-        finish(b, URL.createObjectURL(b), false);
+  // ── Capture photo ───────────────────────────────────────
+  const takePhoto = useCallback(() => {
+    // Essai 1 : depuis le canvas Pixi
+    const pixiCanvas = pixiApp.current?.canvas;
+    if (pixiCanvas) {
+      pixiCanvas.toBlob(b => {
+        if (b) finish(b, URL.createObjectURL(b), false);
+        else captureFallback();
       }, "image/jpeg", 0.95);
-    } catch(e) { console.error("takePhoto error", e); }
+      return;
+    }
+    captureFallback();
+  }, []);
+
+  const captureFallback = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+    const ctx = c.getContext("2d");
+    const css = PREVIEW_CSS[filter] || "none";
+    if (css !== "none") ctx.filter = css;
+    ctx.drawImage(v, 0, 0);
+    c.toBlob(b => { if(b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.95);
   };
 
-  // ── Vidéo ──────────────────────────────────────────────
+  // ── Enregistrement vidéo ────────────────────────────────
   const startRec = () => {
-    const c = canvasRef.current, s = streamRef.current;
-    if (!c || !s) return;
-    const cs = c.captureStream(30);
+    const pixiCanvas = pixiApp.current?.canvas;
+    const s = streamRef.current;
+    if (!pixiCanvas || !s) return;
+    const cs = pixiCanvas.captureStream(30);
     s.getAudioTracks().forEach(t => cs.addTrack(t));
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9" : "video/webm";
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
     chunksRef.current = [];
     const r = new MediaRecorder(cs, { mimeType: mime });
     r.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -121,218 +261,251 @@ export default function CameraStudioModal({ onClose, onDone }) {
       const b = new Blob(chunksRef.current, { type: mime });
       finish(b, URL.createObjectURL(b), true);
     };
-    recRef.current = r;
-    r.start(100);
+    recRef.current = r; r.start(100);
     setRecording(true); setSecs(0);
-    timerRef.current = setInterval(() => setSecs(s => {
-      if (s >= 59) { stopRec(); return 60; }
-      return s + 1;
+    const max = mode==="15 s"?15:60;
+    timerRef.current = setInterval(() => setSecs(prev => {
+      if (prev >= max-1) { stopRec(); return max; }
+      return prev+1;
     }), 1000);
   };
 
   const stopRec = () => {
-    if (recRef.current?.state !== "inactive") recRef.current.stop();
+    if (recRef.current?.state !== "inactive") recRef.current?.stop();
     setRecording(false); clearInterval(timerRef.current);
   };
 
-  // ── Import galerie ─────────────────────────────────────
+  // ── Galerie ─────────────────────────────────────────────
   const pickGallery = () => fileRef.current?.click();
-
-  const onGalleryPick = async e => {
+  const onGalleryPick = e => {
     const f = e.target.files?.[0]; if (!f) return;
-    const u = URL.createObjectURL(f);
-    const isV = f.type.startsWith("video/");
-    finish(f, u, isV);
+    finish(f, URL.createObjectURL(f), f.type.startsWith("video/"));
     e.target.value = "";
   };
 
-  // ── Transition vers preview ────────────────────────────
+  const pickOverlayImg = () => imgRef.current?.click();
+  const onOverlayImg = e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    addOverlay({ type:"image", value:URL.createObjectURL(f), size:100 });
+    e.target.value = ""; setPanel(null);
+  };
+
+  // ── Finish ──────────────────────────────────────────────
   const finish = (b, u, v) => {
-    cancelAnimationFrame(rafRef.current);
+    destroyPixi();
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     setBlob(b); setUrl(u); setIsVid(v);
-    setPhase("preview"); setPanel(null);
+    setPhase("preview"); setPanel(null); setShowFilters(false);
   };
 
-  // ── Retake ─────────────────────────────────────────────
   const retake = () => {
-    setBlob(null); setUrl(null); setTexts([]); setActiveText(null);
-    setPhase("camera"); setRecording(false); setSecs(0); setPanel(null);
-    startCam();
+    setBlob(null); setUrl(null); setOverlays([]); setActiveOv(null);
+    setPhase("camera"); setRecording(false); setSecs(0); setPanel(null); setShowFilters(false);
+    startCam().then(() => setTimeout(initPixi, 500));
   };
 
-  // ── Textes ─────────────────────────────────────────────
-  const addText = () => {
-    const t = { id:Date.now(), value:"Votre texte", color:"#FFFFFF", size:24, font:"Space Grotesk", x:40, y:200 };
-    setTexts(ts => [...ts, t]); setActiveText(t); setPanel("text");
+  // ── Overlays ────────────────────────────────────────────
+  const addOverlay = (patch) => {
+    const ov = { id:Date.now(), type:"text", value:"", x:60, y:180, size:24, color:"#FFFFFF", font:"Space Grotesk", ...patch };
+    setOverlays(os => [...os, ov]); setActiveOv(ov);
   };
-
-  const upd = (id, patch) => {
-    setTexts(ts => ts.map(t => t.id===id ? {...t,...patch} : t));
-    setActiveText(at => at?.id===id ? {...at,...patch} : at);
+  const updOv = (id, p) => {
+    setOverlays(os => os.map(o => o.id===id?{...o,...p}:o));
+    setActiveOv(ao => ao?.id===id?{...ao,...p}:ao);
   };
+  const delOv = id => { setOverlays(os=>os.filter(o=>o.id!==id)); setActiveOv(null); setPanel(null); };
 
-  const delText = id => {
-    setTexts(ts => ts.filter(t => t.id!==id));
-    setActiveText(null); setPanel(null);
-  };
-
-  // ── Drag ───────────────────────────────────────────────
+  // ── Drag ────────────────────────────────────────────────
   const pDown = (e, id) => {
     e.stopPropagation();
-    dragRef.current = { on:true, id, ox: e.clientX-(texts.find(t=>t.id===id)?.x||0), oy: e.clientY-(texts.find(t=>t.id===id)?.y||0) };
-    const mv = e2 => { if (!dragRef.current.on) return; setTexts(ts=>ts.map(t=>t.id===dragRef.current.id?{...t,x:e2.clientX-dragRef.current.ox,y:e2.clientY-dragRef.current.oy}:t)); };
-    const up = () => { dragRef.current.on=false; window.removeEventListener("pointermove",mv); window.removeEventListener("pointerup",up); };
-    window.addEventListener("pointermove",mv);
-    window.addEventListener("pointerup",up);
+    const ov = overlays.find(o=>o.id===id);
+    dragRef.current = {on:true,id,ox:e.clientX-(ov?.x||0),oy:e.clientY-(ov?.y||0)};
+    const mv = e2 => {
+      if (!dragRef.current.on) return;
+      setOverlays(os=>os.map(o=>o.id===dragRef.current.id?{...o,x:e2.clientX-dragRef.current.ox,y:e2.clientY-dragRef.current.oy}:o));
+    };
+    const up = ()=>{dragRef.current.on=false;window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",up);};
+    window.addEventListener("pointermove",mv); window.addEventListener("pointerup",up);
   };
 
-  // ── Export ─────────────────────────────────────────────
+  const confirmText = () => {
+    if (!newText.trim()) { setPanel(null); return; }
+    if (activeOv?.type==="text" && activeOv?.id) {
+      updOv(activeOv.id, {value:newText,color:txtColor,size:txtSize,font:txtFont});
+    } else {
+      addOverlay({type:"text",value:newText,color:txtColor,size:txtSize,font:txtFont});
+    }
+    setNewText(""); setPanel(null); setActiveOv(null);
+  };
+
+  // ── Export ──────────────────────────────────────────────
   const exportFinal = async () => {
     if (!blob) return;
-    if (!isVid && texts.length > 0) {
+    if (!isVid && overlays.length > 0) {
       const img = new Image(); img.src = url;
-      await new Promise(r => { img.onload = r; });
+      await new Promise(r=>{img.onload=r;});
       const c = document.createElement("canvas");
-      c.width = img.width; c.height = img.height;
-      const ctx = c.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+      c.width=img.width; c.height=img.height;
+      const ctx=c.getContext("2d");
+      const css = PREVIEW_CSS[filter]||"none";
+      if (css!=="none") ctx.filter=css;
+      ctx.drawImage(img,0,0); ctx.filter="none";
       const rect = overlayRef.current?.getBoundingClientRect();
-      const sx = img.width / (rect?.width || 1);
-      const sy = img.height / (rect?.height || 1);
-      texts.forEach(t => {
-        ctx.font        = `bold ${t.size*sx}px "${t.font}"`;
-        ctx.fillStyle   = t.color;
-        ctx.shadowColor = "rgba(0,0,0,0.7)";
-        ctx.shadowBlur  = 10*sx;
-        ctx.fillText(t.value, t.x*sx, t.y*sy);
-      });
-      c.toBlob(b => onDone({ file: new File([b],"celeste-photo.jpg",{type:"image/jpeg"}), type:"image" }), "image/jpeg", 0.95);
+      const sx=img.width/(rect?.width||1), sy=img.height/(rect?.height||1);
+      for (const ov of overlays) {
+        if (ov.type==="text") {
+          ctx.font=`bold ${ov.size*sx}px "${ov.font}"`;
+          ctx.fillStyle=ov.color; ctx.shadowColor="rgba(0,0,0,0.85)"; ctx.shadowBlur=10*sx;
+          ctx.fillText(ov.value, ov.x*sx, ov.y*sy);
+        } else if (ov.type==="image") {
+          const oi=new Image(); oi.src=ov.value;
+          await new Promise(r=>{oi.onload=r;});
+          ctx.drawImage(oi,ov.x*sx,ov.y*sy,ov.size*sx,ov.size*sy);
+        }
+      }
+      c.toBlob(b=>onDone({file:new File([b],"celeste-photo.jpg",{type:"image/jpeg"}),type:"image"}),"image/jpeg",0.95);
     } else {
-      const ext = isVid ? "webm" : "jpg";
-      const mime = isVid ? "video/webm" : "image/jpeg";
-      onDone({ file: new File([blob],`celeste-media.${ext}`,{type:mime}), type: isVid?"video":"image" });
+      const ext=isVid?"webm":"jpg";
+      onDone({file:new File([blob],`celeste.${ext}`,{type:isVid?"video/webm":"image/jpeg"}),type:isVid?"video":"image"});
     }
   };
 
-  // ── Filtre CSS actif ───────────────────────────────────
-  const activeCss = FILTERS.find(f => f.id===filter)?.css || "none";
-
-  // ── Secs formatés ─────────────────────────────────────
-  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const fmt = s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const maxSecs = mode==="15 s"?15:60;
+  const progress = recording ? (secs/maxSecs)*100 : 0;
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:600,background:"#000",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-
-      {/* Input galerie caché */}
       <input ref={fileRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={onGalleryPick}/>
+      <input ref={imgRef}  type="file" accept="image/*" style={{display:"none"}} onChange={onOverlayImg}/>
+      <video ref={videoRef} playsInline muted style={{display:"none"}}/>
 
-      {/* ── Zone visuelle plein écran ── */}
+      {/* ── Zone visuelle ── */}
       <div style={{position:"relative",flex:1,overflow:"hidden"}}>
 
-        {/* Canvas live */}
-        <canvas ref={canvasRef} style={{
-          width:"100%", height:"100%", objectFit:"cover",
+        {/* Pixi mount (caméra live avec filtres WebGL) */}
+        <div ref={mountRef} style={{
+          position:"absolute",inset:0,
           display: phase==="camera" ? "block" : "none",
-          filter: activeCss === "none" ? undefined : activeCss,
         }}/>
 
         {/* Preview image */}
         {phase==="preview" && !isVid && (
           <img src={url} alt="" style={{
-            width:"100%", height:"100%", objectFit:"cover", display:"block",
-            filter: activeCss === "none" ? undefined : activeCss,
+            position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
+            filter: (PREVIEW_CSS[filter]&&PREVIEW_CSS[filter]!=="none") ? PREVIEW_CSS[filter] : undefined,
           }}/>
         )}
 
         {/* Preview vidéo */}
         {phase==="preview" && isVid && (
           <video src={url} autoPlay loop playsInline muted style={{
-            width:"100%", height:"100%", objectFit:"cover", display:"block",
+            position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
           }}/>
         )}
 
-        {/* Video caméra (hidden, source pour canvas) */}
-        <video ref={videoRef} playsInline muted style={{display:"none"}}/>
-
-        {/* Overlay textes draggables */}
+        {/* Overlays */}
         {phase==="preview" && (
           <div ref={overlayRef} style={{position:"absolute",inset:0,pointerEvents:"auto"}}>
-            {texts.map(t => (
-              <div key={t.id}
-                onPointerDown={e => pDown(e, t.id)}
-                onClick={() => { setActiveText(t); setPanel("text"); }}
-                style={{
-                  position:"absolute", left:t.x, top:t.y,
-                  fontFamily:`'${t.font}',sans-serif`,
-                  fontSize:t.size, color:t.color,
-                  fontWeight:700,
-                  textShadow:"0 1px 12px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.6)",
-                  cursor:"move", userSelect:"none", touchAction:"none",
-                  whiteSpace:"pre", letterSpacing:"0.3px",
-                }}>
-                {t.value}
+            {overlays.map(ov=>(
+              <div key={ov.id} onPointerDown={e=>pDown(e,ov.id)}
+                onClick={()=>{
+                  setActiveOv(ov);
+                  if(ov.type==="text"){setNewText(ov.value);setTxtColor(ov.color);setTxtSize(ov.size);setTxtFont(ov.font);setPanel("text");}
+                }}
+                style={{position:"absolute",left:ov.x,top:ov.y,cursor:"move",userSelect:"none",touchAction:"none"}}>
+                {ov.type==="text" && (
+                  <span style={{fontFamily:`'${ov.font}',sans-serif`,fontSize:ov.size,color:ov.color,fontWeight:700,
+                    textShadow:"0 2px 14px rgba(0,0,0,0.95)",whiteSpace:"pre",display:"block"}}>
+                    {ov.value}
+                  </span>
+                )}
+                {ov.type==="image" && (
+                  <img src={ov.value} style={{width:ov.size,height:ov.size,objectFit:"contain",borderRadius:8,pointerEvents:"none"}}/>
+                )}
+                {activeOv?.id===ov.id && (
+                  <button onClick={e=>{e.stopPropagation();delOv(ov.id);}}
+                    style={{position:"absolute",top:-10,right:-10,width:22,height:22,borderRadius:"50%",
+                      background:"#dc2626",border:"none",color:"#fff",fontSize:14,cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,fontWeight:700}}>×</button>
+                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Gradient top */}
-        <div style={{position:"absolute",top:0,left:0,right:0,height:140,
-          background:"linear-gradient(to bottom,rgba(0,0,0,0.55) 0%,transparent 100%)",
-          pointerEvents:"none"}}/>
+        {/* Gradients */}
+        <div style={{position:"absolute",top:0,left:0,right:0,height:180,background:"linear-gradient(to bottom,rgba(0,0,0,0.65),transparent)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:320,background:"linear-gradient(to top,rgba(0,0,0,0.75),transparent)",pointerEvents:"none"}}/>
 
-        {/* Gradient bottom */}
-        <div style={{position:"absolute",bottom:0,left:0,right:0,height:260,
-          background:"linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 100%)",
-          pointerEvents:"none"}}/>
-
-        {/* ── Top bar ── */}
-        <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"52px 20px 0",zIndex:10}}>
-          <button onClick={onClose} style={Ic()}><X size={18}/></button>
-          <div style={{display:"flex",gap:10}}>
-            {phase==="camera" && <button onClick={flip} style={Ic()}><RefreshCw size={17}/></button>}
-            {phase==="preview" && <button onClick={addText} style={Ic()}><Type size={17}/></button>}
-            {phase==="preview" && !isVid && (
-              <button onClick={()=>setPanel(p=>p==="filter"?null:"filter")} style={Ic(panel==="filter")}>
-                <Zap size={17}/>
-              </button>
-            )}
+        {/* Barre progression REC */}
+        {recording && (
+          <div style={{position:"absolute",top:0,left:0,right:0,height:3,zIndex:30,background:"rgba(255,255,255,0.1)"}}>
+            <div style={{height:"100%",width:`${progress}%`,background:"linear-gradient(to right,#ff4b6e,#dc2626)",transition:"width 1s linear"}}/>
           </div>
-        </div>
+        )}
 
-        {/* Timer REC */}
+        {/* Timer */}
         {recording && (
           <div style={{position:"absolute",top:60,left:"50%",transform:"translateX(-50%)",
-            background:"rgba(220,38,38,0.85)",borderRadius:20,padding:"5px 14px",
-            fontSize:13,fontWeight:700,letterSpacing:1,
-            display:"flex",alignItems:"center",gap:7,backdropFilter:"blur(10px)",zIndex:20}}>
-            <div style={{width:7,height:7,borderRadius:"50%",background:"#fff",animation:"pulse 1s infinite"}}/>
+            background:"rgba(220,38,38,0.9)",borderRadius:20,padding:"5px 16px",
+            color:"#fff",fontSize:13,fontWeight:700,letterSpacing:1,
+            display:"flex",alignItems:"center",gap:8,zIndex:20,backdropFilter:"blur(8px)"}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:"#fff"}}/>
             {fmt(secs)}
           </div>
         )}
-      </div>
 
-      {/* ── Bas ── */}
-      <div style={{position:"relative",zIndex:20,background:"transparent",paddingBottom:44}}>
+        {/* ── Top bar ── */}
+        <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"52px 16px 0",zIndex:20}}>
+          <button onClick={onClose} style={Ic()}><X size={18}/></button>
 
-        {/* Barre filtres */}
-        {panel==="filter" && phase==="preview" && (
-          <div style={{padding:"12px 0 8px",borderTop:"none"}}>
-            <div style={{display:"flex",gap:10,overflowX:"auto",padding:"0 20px",scrollbarWidth:"none"}}>
-              {FILTERS.map(f => {
-                const on = f.id===filter;
+          {/* Outils droite — caméra */}
+          {phase==="camera" && !recording && (
+            <div style={{display:"flex",flexDirection:"column",gap:16,alignItems:"center"}}>
+              <button onClick={flip} style={Ic()}><RefreshCw size={16}/></button>
+              <button onClick={()=>setFlashOn(f=>!f)} style={Ic(flashOn)}>
+                {flashOn ? <Zap size={16}/> : <ZapOff size={16}/>}
+              </button>
+              <button onClick={()=>setShowFilters(s=>!s)} style={Ic(showFilters)}>
+                <span style={{fontSize:15}}>✦</span>
+              </button>
+              <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16}/></button>
+            </div>
+          )}
+
+          {/* Outils droite — preview */}
+          {phase==="preview" && (
+            <div style={{display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
+              <button onClick={()=>{setNewText("");setActiveOv(null);setPanel("text");}} style={Ic(panel==="text")}><Type size={16}/></button>
+              <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16}/></button>
+              {!isVid && <button onClick={()=>setShowFilters(s=>!s)} style={Ic(showFilters)}><span style={{fontSize:15}}>✦</span></button>}
+            </div>
+          )}
+        </div>
+
+        {/* ── Barre filtres ── */}
+        {showFilters && (
+          <div style={{position:"absolute",bottom: phase==="camera" ? 200 : 110,left:0,right:0,zIndex:15,paddingBottom:8}}>
+            <div style={{display:"flex",gap:12,overflowX:"auto",padding:"4px 16px",scrollbarWidth:"none"}}>
+              {FILTERS.map(f=>{
+                const on=f.id===filter;
+                const css=PREVIEW_CSS[f.id]||"none";
                 return (
                   <div key={f.id} onClick={()=>setFilter(f.id)}
                     style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer",flexShrink:0}}>
                     <div style={{
-                      width:56,height:56,borderRadius:14,
-                      overflow:"hidden",
-                      border:`2px solid ${on?"#C9952A":"rgba(255,255,255,0.15)"}`,
-                      background:"linear-gradient(135deg,#666,#333)",
-                      filter: f.css==="none"?"none":f.css,
-                      transition:"border-color .2s",
-                    }}/>
+                      width:62,height:62,borderRadius:16,overflow:"hidden",
+                      border:`2.5px solid ${on?"#C9952A":"rgba(255,255,255,0.18)"}`,
+                      boxShadow: on?"0 0 12px rgba(201,149,42,0.5)":"none",
+                      transition:"border .2s,box-shadow .2s",
+                      position:"relative",
+                    }}>
+                      {phase==="preview" && url && !isVid
+                        ? <img src={url} style={{width:"100%",height:"100%",objectFit:"cover",filter:css!=="none"?css:undefined}}/>
+                        : <div style={{width:"100%",height:"100%",background:"linear-gradient(135deg,#555 0%,#222 100%)",filter:css!=="none"?css:undefined}}/>
+                      }
+                    </div>
                     <span style={{fontSize:10,color:on?"#C9952A":"rgba(255,255,255,0.5)",fontWeight:on?700:400,letterSpacing:.3}}>
                       {f.label}
                     </span>
@@ -342,178 +515,174 @@ export default function CameraStudioModal({ onClose, onDone }) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Zone bas ── */}
+      <div style={{position:"relative",zIndex:20,paddingBottom:40}}>
 
         {/* Panel texte */}
-        {panel==="text" && activeText && (
-          <div style={{background:"rgba(10,10,10,0.96)",borderRadius:"22px 22px 0 0",padding:"20px 20px 8px",backdropFilter:"blur(24px)"}}>
-            {/* Input */}
-            <input
-              value={activeText.value}
-              onChange={e=>upd(activeText.id,{value:e.target.value})}
-              placeholder="Votre texte…"
-              autoFocus
-              style={{width:"100%",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:14,padding:"11px 16px",fontSize:16,outline:"none",marginBottom:14,fontFamily:`'${activeText.font}',sans-serif`,color:activeText.color}}
-            />
+        {panel==="text" && (
+          <div style={{background:"rgba(6,6,6,0.97)",borderRadius:"24px 24px 0 0",padding:"20px 18px 10px",backdropFilter:"blur(30px)"}}>
+            <input value={newText} onChange={e=>setNewText(e.target.value)}
+              placeholder="Votre texte…" autoFocus
+              style={{width:"100%",background:"rgba(255,255,255,0.06)",
+                border:"1px solid rgba(255,255,255,0.1)",borderRadius:16,
+                padding:"12px 16px",color:txtColor,
+                fontSize:Math.min(txtSize,22),fontFamily:`'${txtFont}',sans-serif`,
+                fontWeight:700,outline:"none",marginBottom:14,letterSpacing:.3}}/>
             {/* Couleurs */}
             <div style={{display:"flex",gap:9,marginBottom:12}}>
               {COLORS.map(c=>(
-                <div key={c} onClick={()=>upd(activeText.id,{color:c})}
-                  style={{width:30,height:30,borderRadius:"50%",background:c,
-                    border:`2.5px solid ${activeText.color===c?"#C9952A":"transparent"}`,
-                    cursor:"pointer",transition:"border .15s",
-                    boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
+                <div key={c} onClick={()=>setTxtColor(c)}
+                  style={{width:30,height:30,borderRadius:"50%",background:c,cursor:"pointer",flexShrink:0,
+                    border:`2.5px solid ${txtColor===c?"#C9952A":"rgba(255,255,255,0.08)"}`,
+                    transition:"border .15s",boxShadow:"0 1px 6px rgba(0,0,0,0.6)"}}/>
               ))}
             </div>
             {/* Tailles */}
-            <div style={{display:"flex",gap:7,marginBottom:12}}>
+            <div style={{display:"flex",gap:7,marginBottom:11}}>
               {SIZES.map(s=>{
-                const on=activeText.size===s;
-                return (
-                  <button key={s} onClick={()=>upd(activeText.id,{size:s})}
-                    style={{flex:1,padding:"7px 0",borderRadius:10,
-                      border:`1px solid ${on?"#C9952A":"rgba(255,255,255,0.12)"}`,
-                      background:on?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.04)",
-                      color:on?"#C9952A":"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer",
-                      fontWeight:on?700:400}}>
-                    {s}
-                  </button>
-                );
+                const on=txtSize===s;
+                return <button key={s} onClick={()=>setTxtSize(s)}
+                  style={{flex:1,padding:"7px 0",borderRadius:11,cursor:"pointer",fontWeight:on?700:400,fontSize:11,
+                    border:`1px solid ${on?"#C9952A":"rgba(255,255,255,0.08)"}`,
+                    background:on?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.03)",
+                    color:on?"#C9952A":"rgba(255,255,255,0.4)"}}>
+                  {s}
+                </button>;
               })}
             </div>
             {/* Polices */}
             <div style={{display:"flex",gap:7,overflowX:"auto",marginBottom:14,scrollbarWidth:"none"}}>
               {FONTS.map(f=>{
-                const on=activeText.font===f;
-                return (
-                  <button key={f} onClick={()=>upd(activeText.id,{font:f})}
-                    style={{flexShrink:0,padding:"6px 13px",borderRadius:20,
-                      border:`1px solid ${on?"#C9952A":"rgba(255,255,255,0.12)"}`,
-                      background:on?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.04)",
-                      color:on?"#C9952A":"rgba(255,255,255,0.5)",
-                      fontSize:12,fontFamily:`'${f}',sans-serif`,cursor:"pointer",
-                      fontWeight:on?700:400}}>
-                    {f.split(" ")[0]}
-                  </button>
-                );
+                const on=txtFont===f;
+                return <button key={f} onClick={()=>setTxtFont(f)}
+                  style={{flexShrink:0,padding:"6px 14px",borderRadius:20,cursor:"pointer",
+                    border:`1px solid ${on?"#C9952A":"rgba(255,255,255,0.08)"}`,
+                    background:on?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.03)",
+                    color:on?"#C9952A":"rgba(255,255,255,0.4)",
+                    fontSize:12,fontFamily:`'${f}',sans-serif`,fontWeight:on?700:400}}>
+                  {f.split(" ")[0]}
+                </button>;
               })}
             </div>
             {/* Actions */}
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>delText(activeText.id)}
-                style={{flex:1,padding:"11px",borderRadius:14,
-                  border:"1px solid rgba(220,38,38,0.3)",background:"rgba(220,38,38,0.1)",
-                  color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600}}>
-                <Trash2 size={14}/> Supprimer
+            <div style={{display:"flex",gap:9}}>
+              <button onClick={()=>{setPanel(null);setActiveOv(null);}}
+                style={{flex:1,padding:"12px",borderRadius:15,border:"1px solid rgba(255,255,255,0.08)",
+                  background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13}}>
+                Annuler
               </button>
-              <button onClick={()=>{setPanel(null);setActiveText(null);}}
-                style={{flex:2,padding:"11px",borderRadius:14,border:"none",
-                  background:"linear-gradient(135deg,#C9952A,#E8B84B)",
-                  color:"#000",fontWeight:700,cursor:"pointer",
-                  display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:14}}>
-                <Check size={15}/> Valider
+              <button onClick={confirmText}
+                style={{flex:2,padding:"12px",borderRadius:15,border:"none",
+                  background:"linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)",
+                  color:"#000",fontWeight:800,fontSize:14,cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:7,
+                  boxShadow:"0 3px 16px rgba(201,149,42,0.4)"}}>
+                <Check size={15}/> Ajouter
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Boutons principaux ── */}
-        {panel !== "text" && (
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-around",padding:"20px 40px 0"}}>
-
+        {/* Boutons principaux */}
+        {!panel && (
+          <>
             {phase==="camera" && (
               <>
-                {/* Galerie */}
-                <button onClick={pickGallery} style={Ic()}>
-                  <Images size={20}/>
-                </button>
+                {/* Sélecteur mode */}
+                <div style={{display:"flex",justifyContent:"center",gap:4,paddingTop:14,paddingBottom:10}}>
+                  {MODES.map(m=>{
+                    const on=m===mode;
+                    return (
+                      <button key={m} onClick={()=>setMode(m)}
+                        style={{background:on?"rgba(255,255,255,0.15)":"transparent",
+                          border:on?"1px solid rgba(255,255,255,0.25)":"1px solid transparent",
+                          borderRadius:22,padding:"5px 16px",
+                          color:on?"#fff":"rgba(255,255,255,0.4)",
+                          fontSize:13,fontWeight:on?700:400,cursor:"pointer",transition:"all .2s"}}>
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                {/* Déclencheur central */}
-                {!recording
-                  ? <button onClick={takePhoto}
-                      style={{width:74,height:74,borderRadius:"50%",
-                        background:"#fff",border:"4px solid rgba(255,255,255,0.35)",
-                        cursor:"pointer",flexShrink:0,
-                        boxShadow:"0 0 0 2px rgba(255,255,255,0.1), 0 4px 24px rgba(0,0,0,0.5)"}}>
-                      <div style={{width:"100%",height:"100%",borderRadius:"50%",background:"#fff"}}/>
-                    </button>
-                  : <button onClick={stopRec}
-                      style={{width:74,height:74,borderRadius:"50%",
-                        background:"rgba(220,38,38,0.2)",border:"4px solid #dc2626",
-                        cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
-                        boxShadow:"0 0 20px rgba(220,38,38,0.4)"}}>
-                      <div style={{width:24,height:24,borderRadius:5,background:"#dc2626"}}/>
-                    </button>
-                }
+                {/* Rangée capture */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 36px"}}>
+                  {/* Galerie */}
+                  <button onClick={pickGallery}
+                    style={{width:54,height:54,borderRadius:14,overflow:"hidden",
+                      border:"2px solid rgba(255,255,255,0.25)",cursor:"pointer",
+                      background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <ImageIcon size={22} color="#fff"/>
+                  </button>
 
-                {/* REC */}
-                <button onClick={recording ? stopRec : startRec}
-                  style={{...Ic(recording), border: recording?"1px solid #dc2626":"1px solid rgba(255,255,255,0.15)"}}>
-                  <div style={{width:9,height:9,borderRadius:"50%",background:recording?"#dc2626":"#fff",marginRight:3}}/>
-                  <span style={{fontSize:10,color:"#fff",fontWeight:700,letterSpacing:.5}}>{recording?"STOP":"REC"}</span>
-                </button>
+                  {/* Bouton central */}
+                  {mode==="PHOTO"
+                    ? <button onClick={takePhoto}
+                        style={{width:78,height:78,borderRadius:"50%",background:"#fff",
+                          border:"5px solid rgba(255,255,255,0.3)",cursor:"pointer",flexShrink:0,
+                          boxShadow:"0 0 0 3px rgba(255,255,255,0.12),0 6px 32px rgba(0,0,0,0.6)"}}/>
+                    : !recording
+                      ? <button onClick={startRec}
+                          style={{width:78,height:78,borderRadius:"50%",
+                            background:"linear-gradient(135deg,#ff4b6e,#dc2626)",
+                            border:"5px solid rgba(220,38,38,0.25)",cursor:"pointer",flexShrink:0,
+                            boxShadow:"0 0 24px rgba(220,38,38,0.6),0 6px 24px rgba(0,0,0,0.5)"}}/>
+                      : <button onClick={stopRec}
+                          style={{width:78,height:78,borderRadius:"50%",
+                            background:"rgba(220,38,38,0.12)",border:"5px solid #dc2626",cursor:"pointer",flexShrink:0,
+                            display:"flex",alignItems:"center",justifyContent:"center",
+                            boxShadow:"0 0 28px rgba(220,38,38,0.7)"}}>
+                          <div style={{width:28,height:28,borderRadius:7,background:"#dc2626"}}/>
+                        </button>
+                  }
+
+                  {/* Flip */}
+                  <button onClick={flip}
+                    style={{width:54,height:54,borderRadius:"50%",background:"rgba(255,255,255,0.08)",
+                      border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <RefreshCw size={20} color="#fff"/>
+                  </button>
+                </div>
               </>
             )}
 
-            {phase==="preview" && panel===null && (
-              <>
-                <button onClick={retake} style={Ic()}>
-                  <RotateCcw size={18}/>
+            {phase==="preview" && (
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 28px 0"}}>
+                <button onClick={retake}
+                  style={{height:46,borderRadius:23,padding:"0 20px",
+                    background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",
+                    color:"#fff",fontSize:14,cursor:"pointer"}}>
+                  Reprendre
                 </button>
                 <button onClick={exportFinal}
-                  style={{height:52,borderRadius:26,padding:"0 36px",border:"none",
+                  style={{height:50,borderRadius:25,padding:"0 36px",border:"none",
                     background:"linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)",
                     color:"#000",fontWeight:800,fontSize:15,cursor:"pointer",
-                    display:"flex",alignItems:"center",gap:9,letterSpacing:.3,
-                    boxShadow:"0 4px 20px rgba(201,149,42,0.45)"}}>
+                    display:"flex",alignItems:"center",gap:9,
+                    boxShadow:"0 4px 24px rgba(201,149,42,0.55)"}}>
                   <Check size={17}/> Utiliser
                 </button>
-                <button onClick={()=>setPanel("filter")} style={Ic(panel==="filter")}>
-                  <Zap size={18}/>
-                </button>
-              </>
+              </div>
             )}
-          </div>
-        )}
-
-        {/* Barre filtres — phase caméra */}
-        {phase==="camera" && panel!=="text" && (
-          <div style={{marginTop:14,padding:"0 4px"}}>
-            <div style={{display:"flex",gap:10,overflowX:"auto",padding:"0 20px",scrollbarWidth:"none"}}>
-              {FILTERS.map(f=>{
-                const on=f.id===filter;
-                return (
-                  <div key={f.id} onClick={()=>setFilter(f.id)}
-                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",flexShrink:0}}>
-                    <div style={{
-                      width:50,height:50,borderRadius:12,
-                      background:"linear-gradient(135deg,#555,#222)",
-                      border:`2px solid ${on?"#C9952A":"rgba(255,255,255,0.12)"}`,
-                      filter:f.css==="none"?"none":f.css,
-                      transition:"border-color .2s",
-                    }}/>
-                    <span style={{fontSize:9,color:on?"#C9952A":"rgba(255,255,255,0.4)",fontWeight:on?700:400,letterSpacing:.2}}>{f.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          </>
         )}
       </div>
 
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
+      <style>{`::-webkit-scrollbar{display:none}`}</style>
     </div>
   );
 }
 
-// ── Icône bouton helper ────────────────────────────────────
 function Ic(active=false) {
   return {
-    background: active ? "rgba(201,149,42,0.25)" : "rgba(255,255,255,0.1)",
-    border: `1px solid ${active?"rgba(201,149,42,0.5)":"rgba(255,255,255,0.15)"}`,
-    borderRadius:"50%", width:44, height:44,
+    background: active ? "rgba(201,149,42,0.2)" : "rgba(0,0,0,0.5)",
+    border: `1px solid ${active ? "rgba(201,149,42,0.45)" : "rgba(255,255,255,0.18)"}`,
+    borderRadius:"50%", width:42, height:42,
     display:"flex", alignItems:"center", justifyContent:"center",
-    cursor:"pointer", color: active?"#C9952A":"#fff",
-    backdropFilter:"blur(12px)", flexShrink:0,
-    transition:"all .2s",
+    cursor:"pointer", color: active ? "#C9952A" : "#fff",
+    backdropFilter:"blur(12px)", flexShrink:0, transition:"all .2s",
   };
 }
