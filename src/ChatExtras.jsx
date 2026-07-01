@@ -83,20 +83,31 @@ export function ReactionPicker({ T, onSelect, onClose }) {
   );
 }
 
-export function ReactionBar({ reactions, T, myId }) {
+export function ReactionBar({ reactions, T, myId, mine, onPress }) {
   if (!reactions || Object.keys(reactions).length === 0) return null;
   const counts = {};
   Object.values(reactions).forEach(e => { counts[e] = (counts[e] || 0) + 1; });
-  const mine = reactions[myId];
+  const myEmoji = reactions[myId];
   return (
-    <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+    <div onClick={onPress} style={{
+      display: "flex", gap: 3, flexWrap: "wrap",
+      marginTop: -8,
+      marginBottom: 4,
+      paddingLeft: mine ? 0 : 8,
+      paddingRight: mine ? 8 : 0,
+      justifyContent: mine ? "flex-end" : "flex-start"
+    }}>
       {Object.entries(counts).map(([emoji, n]) => (
         <span key={emoji} style={{
-          fontSize: 11, background: emoji === mine ? "rgba(201,149,42,0.18)" : "rgba(255,255,255,0.07)",
-          border: `1px solid ${emoji === mine ? T.gold : T.border}`, borderRadius: 10,
-          padding: "2px 6px", display: "flex", alignItems: "center", gap: 3
+          fontSize: 13,
+          background: emoji === myEmoji ? "rgba(201,149,42,0.22)" : "rgba(30,30,30,0.85)",
+          border: `1px solid ${emoji === myEmoji ? T.gold : "rgba(255,255,255,0.12)"}`,
+          borderRadius: 12, padding: "2px 7px",
+          display: "flex", alignItems: "center", gap: 3,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.3)", cursor: "pointer"
         }}>
-          {emoji}{n > 1 && <span style={{ color: T.muted, fontWeight: 600 }}>{n}</span>}
+          {emoji}
+          {n > 1 && <span style={{ fontSize: 10, color: T.muted, fontWeight: 700 }}>{n}</span>}
         </span>
       ))}
     </div>
@@ -199,23 +210,47 @@ export function useTypingIndicator(sb, convId, session) {
   return { peerTyping, notifyTyping };
 }
 
+// TypingIndicator v2 — visible, coloré, placé juste AU-DESSUS de l'input
+// => mettre JUSTE AVANT la <ReplyComposerBar> dans App.jsx (pas dans le header)
 export function TypingIndicator({ T, userName }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 14px 8px" }}>
-      <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>{userName} écrit</span>
-      <div style={{ display: "flex", gap: 3 }}>
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      padding: "6px 16px",
+      background: "rgba(0,0,0,0.85)",
+      borderTop: "1px solid rgba(201,149,42,0.2)",
+    }}>
+      {/* Bulles animées en or/rouge */}
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
         {[0, 1, 2].map(i => (
-          <div key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: T.muted, animation: `pulse .6s ease ${i * 0.15}s infinite` }} />
+          <div key={i} style={{
+            width: 7, height: 7, borderRadius: "50%",
+            background: "linear-gradient(135deg,#c9952a,#e53935)",
+            animation: `typingDot .9s ease ${i * 0.2}s infinite`,
+            boxShadow: "0 0 6px rgba(229,57,53,0.6)"
+          }} />
         ))}
       </div>
+      <span style={{ fontSize: 12, color: "#e0b84a", fontWeight: 600 }}>
+        {userName} est en train d'écrire…
+      </span>
     </div>
   );
 }
+// CSS supplémentaire à ajouter dans ton bloc global :
+// @keyframes typingDot {
+//   0%,80%,100%{transform:scale(0.7);opacity:0.5;}
+//   40%{transform:scale(1.2);opacity:1;}
+// }
 
 /* ============================================================
-   6. ÉDITION DE MESSAGE
+   6. ÉDITION DE MESSAGE (synchronisée realtime via Supabase)
    ============================================================ */
 
+// editMessage écrit dans la DB — Supabase realtime propage le changement
+// des deux côtés automatiquement via le listener postgres_changes existant.
+// Assure-toi que ton listener realtime écoute l'event UPDATE sur messages :
+//   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages'}, cb)
 export async function editMessage(sb, msgId, newText) {
   return sb.from("messages").update({ text: newText, edited_at: new Date().toISOString() }).eq("id", msgId);
 }
@@ -223,6 +258,97 @@ export async function editMessage(sb, msgId, newText) {
 export function EditedBadge({ message, T }) {
   if (!message?.edited_at) return null;
   return <span style={{ fontSize: 9, color: T.muted, fontStyle: "italic", marginLeft: 4 }}>modifié</span>;
+}
+
+/* ============================================================
+   7b. SWIPE GAUCHE POUR RÉPONDRE (style WhatsApp)
+   ============================================================ */
+
+// Wrapper à utiliser autour de chaque bulle de message.
+// onReply(message) est appelé quand le swipe dépasse le seuil.
+export function SwipeToReply({ children, message, onReply, mine }) {
+  const startX = useRef(null);
+  const elRef = useRef(null);
+  const triggered = useRef(false);
+  const THRESHOLD = 60;
+
+  const onTouchStart = (e) => {
+    startX.current = e.touches[0].clientX;
+    triggered.current = false;
+  };
+
+  const onTouchMove = (e) => {
+    if (startX.current === null) return;
+    const dx = e.touches[0].clientX - startX.current;
+    // Swipe gauche uniquement (dx négatif)
+    if (dx < 0 && Math.abs(dx) < THRESHOLD + 20) {
+      if (elRef.current) elRef.current.style.transform = `translateX(${Math.max(dx, -THRESHOLD - 20)}px)`;
+    }
+    if (dx < -THRESHOLD && !triggered.current) {
+      triggered.current = true;
+      onReply(message);
+      if (navigator.vibrate) navigator.vibrate(30);
+    }
+  };
+
+  const onTouchEnd = () => {
+    startX.current = null;
+    if (elRef.current) {
+      elRef.current.style.transition = "transform .25s ease";
+      elRef.current.style.transform = "translateX(0)";
+      setTimeout(() => { if (elRef.current) elRef.current.style.transition = ""; }, 260);
+    }
+  };
+
+  return (
+    <div ref={elRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      style={{ position: "relative", touchAction: "pan-y" }}>
+      {/* Icône réponse visible derrière lors du swipe */}
+      <div style={{
+        position: "absolute", [mine ? "left" : "right"]: -36, top: "50%",
+        transform: "translateY(-50%)", opacity: 0.6, pointerEvents: "none"
+      }}>↩️</div>
+      {children}
+    </div>
+  );
+}
+
+/* ============================================================
+   7c. RÉACTIONS AU MAINTIEN DIRECT (long-press sur la bulle)
+   ============================================================ */
+
+// Hook : déclenche onLongPress après 500ms de maintien
+export function useLongPress(onLongPress, delay = 500) {
+  const timer = useRef(null);
+  const start = useCallback((e) => {
+    e.preventDefault();
+    timer.current = setTimeout(() => onLongPress(e), delay);
+  }, [onLongPress, delay]);
+  const stop = useCallback(() => { clearTimeout(timer.current); }, []);
+  return { onTouchStart: start, onTouchEnd: stop, onTouchMove: stop, onMouseDown: start, onMouseUp: stop, onMouseLeave: stop };
+}
+
+// Picker inline flottant au-dessus de la bulle (sans overlay noir)
+export function InlineReactionPicker({ T, onSelect, onClose, mine }) {
+  return (
+    <div style={{
+      position: "absolute", bottom: "110%", [mine ? "right" : "left"]: 0,
+      zIndex: 50, background: "rgba(18,18,18,0.97)",
+      border: `1px solid ${T.border}`, borderRadius: 28,
+      padding: "8px 12px", display: "flex", gap: 8,
+      animation: "popIn .15s ease",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.5)"
+    }}>
+      {QUICK_REACTIONS.map(e => (
+        <button key={e} onClick={() => { onSelect(e); onClose(); }}
+          style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", padding: 2 }}
+          onTouchStart={ev => ev.currentTarget.style.transform = "scale(1.35)"}
+          onTouchEnd={ev => ev.currentTarget.style.transform = "scale(1)"}>
+          {e}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ============================================================
@@ -254,7 +380,7 @@ export function filterMessagesByQuery(msgs, query) {
 }
 
 /* ============================================================
-   8. CSS GLOBAL À AJOUTER UNE SEULE FOIS (dans ton fichier de styles globaux ou un <style> existant)
+   8. CSS GLOBAL À AJOUTER UNE SEULE FOIS
    ============================================================
 @keyframes popIn { from{transform:scale(.7);opacity:0;} to{transform:scale(1);opacity:1;} }
 @keyframes heartBurst {
@@ -262,5 +388,9 @@ export function filterMessagesByQuery(msgs, query) {
   30%{transform:scale(1.2);opacity:1;}
   60%{transform:scale(1);opacity:1;}
   100%{transform:scale(1);opacity:0;}
+}
+@keyframes typingDot {
+  0%,80%,100%{transform:scale(0.7);opacity:0.5;}
+  40%{transform:scale(1.2);opacity:1;}
 }
 ============================================================ */

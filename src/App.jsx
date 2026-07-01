@@ -28,7 +28,8 @@ import {
   ReplyComposerBar, MessageReplyQuote,
   useTypingIndicator, TypingIndicator,
   editMessage, EditedBadge,
-  ChatSearchBar, filterMessagesByQuery
+  ChatSearchBar, filterMessagesByQuery,
+  SwipeToReply, useLongPress, InlineReactionPicker   // ← nouveaux
 } from "./ChatExtras";
 
 import {
@@ -618,6 +619,10 @@ const GS = `
   select option{background:#111;color:${T.text};}
 
   /* ── ANIMATIONS PREMIUM ── */
+  @keyframes typingDot {
+  0%,80%,100%{transform:scale(0.7);opacity:0.5;}
+  40%{transform:scale(1.2);opacity:1;}
+}
   @keyframes popIn { from{transform:scale(.7);opacity:0;} to{transform:scale(1);opacity:1;} }
 @keyframes heartBurst {
   0%{transform:scale(0.3);opacity:0;}
@@ -4635,6 +4640,7 @@ const askGemini=async(text)=>{
   const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef();
 const [replyTo,setReplyTo]=useState(null);
 const [showReactionPicker,setShowReactionPicker]=useState(null); // id du message ciblé
+const [inlinePickerMsgId,setInlinePickerMsgId]=useState(null);  // picker maintien direct
 const [burstMsgId,setBurstMsgId]=useState(null);
 const [editingMsg,setEditingMsg]=useState(null);
 const [searchOpen,setSearchOpen]=useState(false);
@@ -4923,7 +4929,7 @@ const handleFile=async(e,isImg)=>{
   <Btn onClick={()=>bgRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Image size={20}/></Btn>
   <Btn onClick={()=>setSearchOpen(s=>!s)} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Search size={20}/></Btn>
 </div>
-{peerTyping&&<TypingIndicator T={T} userName={user.name}/>}
+
 {searchOpen&&<ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={()=>{setSearchOpen(false);setSearchQuery("");}} resultCount={filterMessagesByQuery(conv.msgs,searchQuery).length}/>}
 
       {/* Messages */}
@@ -4942,8 +4948,10 @@ const handleFile=async(e,isImg)=>{
           return(
             <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
-              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}
+              <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
+<div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}
   onClick={doubleTap}
+  {...useLongPress(()=>setInlinePickerMsgId(m.id))}
   onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
   onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
   onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
@@ -4996,6 +5004,16 @@ const handleFile=async(e,isImg)=>{
                   {m.text&&<><p style={{margin:0,fontSize:14,color:"#fff",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
+                {inlinePickerMsgId===m.id&&(
+                  <InlineReactionPicker T={T} mine={mine}
+                    onClose={()=>setInlinePickerMsgId(null)}
+                    onSelect={emoji=>{
+                      toggleReaction(sb,m.id,session?.user?.id,emoji,m.reactions).then(()=>reload());
+                      setInlinePickerMsgId(null);
+                    }}/>
+                )}
+              </div>
+              </SwipeToReply>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
                   {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice"||m.type==="video")&&(
@@ -5014,7 +5032,6 @@ const handleFile=async(e,isImg)=>{
 {mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"✓✓":"✓✓"}</span>}
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
-              </div>
             </div>
           );
         })}
@@ -5034,6 +5051,7 @@ const handleFile=async(e,isImg)=>{
         </div>
       )}
 
+      {peerTyping&&<TypingIndicator T={T} userName={user.name}/>}
       <ReplyComposerBar replyTo={replyTo} T={T} onCancel={()=>setReplyTo(null)}/>
       {/* Input */}
       <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
@@ -7655,6 +7673,13 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}
           prevMsgCount.current=totalNew;
         }
+      })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},payload=>{
+        const updated=payload.new;
+        setConvs(prev=>(prev||[]).map(c=>({
+          ...c,
+          msgs:(c.msgs||[]).map(m=>m.id===updated.id?{...m,...updated}:m)
+        })));
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},payload=>{
         const pid=payload.old?.id;
