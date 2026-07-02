@@ -1,12 +1,24 @@
 ﻿import { useState, useRef, useEffect, useCallback } from "react";
 import {
   X, Type, Image as ImageIcon, Check, RefreshCw, ChevronDown, ChevronUp,
-  ZapOff, Zap, Clock, Columns, UserPlus, Blend, Video, Music2,
+  ZapOff, Zap, Clock, Columns, UserPlus, Video, Music2, Share2, Archive,
 } from "lucide-react";
-import * as PIXI from "pixi.js";
-import { LUT_FILTERS, getLutFilter } from "./PixiLutFilter";
+import { Capacitor } from "@capacitor/core";
+import { Share } from "@capacitor/share";
+import { Filesystem, Directory } from "@capacitor/filesystem";
 
 const extFor = (b) => (b?.type?.includes("mp4") ? "mp4" : "webm");
+
+// Convertit un Blob en base64 (sans le préfixe data:...) — requis par
+// Filesystem.writeFile côté natif (iOS/Android).
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 const FONTS  = ["Space Grotesk", "Cormorant Garamond", "Georgia", "Arial Black", "Courier New"];
 const COLORS = ["#FFFFFF", "#000000", "#C9952A", "#FF4B6E", "#00E5FF", "#A8FF3E", "#FF9500", "#FF69B4"];
@@ -39,10 +51,9 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 // Rejoue la vidéo source, la dessine frame par frame sur un canvas avec les overlays
 // par-dessus, puis réenregistre le tout. Si l'API n'est pas dispo ou s'il n'y a aucun
 // overlay, on renvoie simplement la vidéo brute (aucune erreur ne remonte à l'appelant).
-async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress, cancelToken) {
+async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToken) {
   try {
-    const hasFilter = filterId && filterId !== "normal";
-    if (!ovs.length && !hasFilter) return sourceBlob;
+    if (!ovs.length) return sourceBlob;
 
     const mainVideo = document.createElement("video");
     mainVideo.src = URL.createObjectURL(sourceBlob);
@@ -82,28 +93,6 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress, 
     const ctx = canvas.getContext("2d");
     const sx = canvas.width / (rect?.width || canvas.width);
     const sy = canvas.height / (rect?.height || canvas.height);
-
-    // Rendu du filtre couleur (LUT) via Pixi — EXACTEMENT le même moteur/shader
-    // que la caméra en direct et l'aperçu, pour un résultat identique pixel pour
-    // pixel (fini le double système CSS approximatif vs Pixi qui ne matchaient jamais).
-    let lutApp = null, lutTex = null;
-    if (hasFilter) {
-      try {
-        lutApp = new PIXI.Application();
-        await lutApp.init({ width: canvas.width, height: canvas.height, backgroundAlpha: 0, antialias: false, resolution: 1, autoStart: false });
-        lutTex = PIXI.Texture.from(mainVideo);
-        const lutSprite = new PIXI.Sprite(lutTex);
-        lutSprite.width = canvas.width;
-        lutSprite.height = canvas.height;
-        const lf = getLutFilter(filterId);
-        if (lf) lutSprite.filters = [lf];
-        lutApp.stage.addChild(lutSprite);
-      } catch (e) {
-        console.error("bake LUT init:", e);
-        if (lutApp) { try { lutApp.destroy(true, { children: true, texture: true }); } catch (e2) {} }
-        lutApp = null;
-      }
-    }
 
     // captureStream() sur <canvas> est très largement supporté (contrairement à
     // captureStream() sur <video>, absent sur certains WebView Android — c'était
@@ -147,18 +136,7 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress, 
       if (onProgress && mainVideo.duration) {
         onProgress(Math.min(99, Math.round((mainVideo.currentTime / mainVideo.duration) * 100)));
       }
-      let drawn = false;
-      if (lutApp) {
-        try {
-          lutTex.source.update();
-          lutApp.renderer.render(lutApp.stage);
-          ctx.drawImage(lutApp.canvas, 0, 0, canvas.width, canvas.height);
-          drawn = true;
-        } catch (e) {
-          console.error("bake LUT frame:", e);
-        }
-      }
-      if (!drawn) ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height);
       loaded.forEach((ov) => {
         if (ov.type === "text") {
           ctx.font = `bold ${ov.size * sx}px "${ov.font}"`;
@@ -183,7 +161,6 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress, 
 
     const result = await finished;
     clearTimeout(safetyTimeout);
-    if (lutApp) { try { lutApp.destroy(true, { children: true, texture: true }); } catch (e) {} }
     if (cancelToken?.cancelled) return null;
     return result;
   } catch (e) {
@@ -233,11 +210,8 @@ function showBackgroundProgress(onCancel) {
 }
 
 // ── COMPOSANT PRINCIPAL ─────────────────────────────────────────────
-export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
+export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts }) {
   const videoRef    = useRef(null);
-  const mountRef    = useRef(null);
-  const pixiApp     = useRef(null);
-  const pixiSprite  = useRef(null);
   const overlayRef  = useRef(null);
   const streamRef   = useRef(null);
   const recRef      = useRef(null);
@@ -249,14 +223,11 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   const dragRef     = useRef({ on: false, id: null, ox: 0, oy: 0 });
   const justDraggedRef = useRef(false);
   const previewVidRef = useRef(null);
-  const previewMountRef = useRef(null);
-  const previewPixiApp = useRef(null);
   const resizeRef   = useRef({ on: false, id: null, startX: 0, startSize: 0 });
   const facingRef   = useRef("user");
 
   const [phase,      setPhase]      = useState("camera"); // camera | preview | textcard
   const [facing,     setFacing]     = useState("user");
-  const [filter,     setFilter]     = useState("normal");
   const [mode,       setMode]       = useState("60 s");
   const [recording,  setRecording]  = useState(false);
   const [paused,     setPaused]     = useState(false);
@@ -267,13 +238,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   const [overlays,   setOverlays]   = useState([]);
   const [activeOv,   setActiveOv]   = useState(null);
   const [panel,      setPanel]      = useState(null);
-  const [showFilters,setShowFilters]= useState(false);
-  const [filterThumbs, setFilterThumbs] = useState({});
   const [newText,    setNewText]    = useState("");
   const [txtColor,   setTxtColor]   = useState("#FFFFFF");
   const [txtSize,    setTxtSize]    = useState(24);
   const [txtFont,    setTxtFont]    = useState("Space Grotesk");
-  const [pixiReady,  setPixiReady]  = useState(false);
   const [flashOn,    setFlashOn]    = useState(false);
   const [cameraError,setCameraError]= useState(null);
   const [toolsCollapsed, setToolsCollapsed] = useState(false);
@@ -283,18 +251,12 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   const [toast,      setToast]      = useState(null);
   const [gradIdx,    setGradIdx]    = useState(0);
   const [cardText,   setCardText]   = useState("");
+  const [sharing,    setSharing]    = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
 
-  // Garde facingRef synchro + met à jour le miroir en direct si le canvas existe déjà
-  useEffect(() => {
-    facingRef.current = facing;
-    if (pixiApp.current?.canvas) {
-      pixiApp.current.canvas.style.transform = facing === "user" ? "scaleX(-1)" : "none";
-    }
-  }, [facing]);
+  useEffect(() => { facingRef.current = facing; }, [facing]);
 
-  // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
   // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
   useEffect(() => {
     if (phase === "preview" && isVid && previewVidRef.current) {
@@ -305,128 +267,11 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
     }
   }, [phase, isVid, url]);
 
-  // Rendu de l'aperçu (photo/vidéo capturée) via Pixi + LUT — le MÊME moteur
-  // que la caméra en direct, donc ce que tu vois ici = exactement ce qui sera
-  // exporté. Fini l'écart entre l'aperçu CSS et le rendu final.
-  useEffect(() => {
-    const cleanup = () => {
-      if (previewPixiApp.current) {
-        try { previewPixiApp.current.destroy(true, { children: true, texture: true }); } catch (e) {}
-        previewPixiApp.current = null;
-      }
-    };
-    if (phase !== "preview" || !url) { cleanup(); return; }
-
-    let cancelled = false;
-    (async () => {
-      const mount = previewMountRef.current;
-      if (!mount) return;
-
-      let source;
-      if (isVid) {
-        source = previewVidRef.current;
-        if (!source) return;
-        if (source.readyState < 2) {
-          await new Promise((r) => { source.addEventListener("loadeddata", r, { once: true }); });
-        }
-      } else {
-        source = new Image();
-        source.src = url;
-        await new Promise((r) => { source.onload = r; source.onerror = r; });
-      }
-      if (cancelled) return;
-
-      cleanup();
-      try {
-        const app = new PIXI.Application();
-        await app.init({ width: mount.clientWidth || 390, height: mount.clientHeight || 844, backgroundAlpha: 0, antialias: true, resolution: 1 });
-        if (cancelled) { app.destroy(true, { children: true, texture: true }); return; }
-        mount.innerHTML = "";
-        mount.appendChild(app.canvas);
-        app.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
-
-        const tex = PIXI.Texture.from(source);
-        const sprite = new PIXI.Sprite(tex);
-        sprite.width = app.screen.width;
-        sprite.height = app.screen.height;
-        app.stage.addChild(sprite);
-
-        const lf = getLutFilter(filter);
-        sprite.filters = lf ? [lf] : [];
-
-        if (isVid) {
-          app.ticker.add(() => {
-            tex.source.update();
-            sprite.width = app.screen.width;
-            sprite.height = app.screen.height;
-          });
-        } else {
-          app.renderer.render(app.stage);
-        }
-        previewPixiApp.current = app;
-      } catch (e) {
-        console.error("preview Pixi init:", e);
-      }
-    })();
-
-    return () => { cancelled = true; cleanup(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, url, isVid]);
-
-  // Changement de filtre pendant l'aperçu : on ne recrée pas tout, on
-  // remplace juste le filtre du sprite existant.
-  useEffect(() => {
-    const app = previewPixiApp.current;
-    const sprite = app?.stage?.children?.[0];
-    if (!sprite) return;
-    const lf = getLutFilter(filter);
-    sprite.filters = lf ? [lf] : [];
-    if (!isVid) app.renderer.render(app.stage);
-  }, [filter, isVid]);
-
-  // Génère une vraie vignette par filtre (rendue via Pixi) pour le panneau de
-  // sélection, au lieu d'une approximation CSS qui ne correspondait jamais
-  // exactement au résultat final.
-  useEffect(() => {
-    if (phase !== "preview" || isVid || !url) { setFilterThumbs({}); return; }
-    let cancelled = false;
-    (async () => {
-      const img = new Image();
-      img.src = url;
-      await new Promise((r) => { img.onload = r; img.onerror = r; });
-      if (cancelled) return;
-      const THUMB = 120;
-      const thumbs = { normal: url };
-      for (const f of LUT_FILTERS) {
-        if (cancelled) return;
-        if (f.id === "normal") continue;
-        try {
-          const app = new PIXI.Application();
-          await app.init({ width: THUMB, height: THUMB, backgroundAlpha: 0, antialias: false, resolution: 1, autoStart: false });
-          const tex = PIXI.Texture.from(img);
-          const sprite = new PIXI.Sprite(tex);
-          const scale = Math.max(THUMB / img.width, THUMB / img.height);
-          sprite.width = img.width * scale;
-          sprite.height = img.height * scale;
-          sprite.x = (THUMB - sprite.width) / 2;
-          sprite.y = (THUMB - sprite.height) / 2;
-          const lf = getLutFilter(f.id);
-          if (lf) sprite.filters = [lf];
-          app.stage.addChild(sprite);
-          app.renderer.render(app.stage);
-          thumbs[f.id] = app.canvas.toDataURL("image/jpeg", 0.75);
-          app.destroy(true, { children: true, texture: true });
-        } catch (e) {
-          console.error("thumb LUT:", f.id, e);
-          thumbs[f.id] = url;
-        }
-      }
-      if (!cancelled) setFilterThumbs(thumbs);
-    })();
-    return () => { cancelled = true; };
-  }, [phase, isVid, url]);
-
   // ── Caméra ──────────────────────────────────────────────────────
+  // Caméra native, brute : pas de canvas intermédiaire, pas de moteur de
+  // rendu tiers — juste le flux vidéo affiché directement, comme l'appli
+  // Appareil Photo. C'est ce qui garantit une image nette et uniforme,
+  // fidèle à ce que le capteur du téléphone voit réellement.
   const startCam = useCallback(async (f = facing) => {
     try {
       if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
@@ -452,84 +297,14 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
     return () => {
       if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
       clearInterval(timerRef.current);
-      destroyPixi();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Init Pixi ───────────────────────────────────────────────────
-  const initPixi = useCallback(async () => {
-    const v = videoRef.current;
-    const mount = mountRef.current;
-    if (!v || !mount || pixiApp.current) return;
-    if (v.readyState < 2 || !v.videoWidth) return;
-
-    try {
-      const app = new PIXI.Application();
-      await app.init({
-        width: mount.clientWidth || 390,
-        height: mount.clientHeight || 844,
-        backgroundAlpha: 0,
-        antialias: true,
-        resolution: 1,
-      });
-      mount.appendChild(app.canvas);
-      app.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
-      // Effet miroir uniquement à l'affichage (caméra avant) — n'affecte jamais les pixels capturés
-      app.canvas.style.transform = facingRef.current === "user" ? "scaleX(-1)" : "none";
-
-      const tex = PIXI.Texture.from(v);
-      const sprite = new PIXI.Sprite(tex);
-      sprite.width = app.screen.width;
-      sprite.height = app.screen.height;
-      app.stage.addChild(sprite);
-
-      pixiApp.current = app;
-      pixiSprite.current = sprite;
-
-      app.ticker.add(() => {
-        tex.source.update();
-        sprite.width = app.screen.width;
-        sprite.height = app.screen.height;
-      });
-
-      setPixiReady(true);
-    } catch (e) {
-      console.error("Pixi init:", e);
-    }
-  }, []);
-
-  const destroyPixi = () => {
-    if (pixiApp.current) {
-      try { pixiApp.current.destroy(true, { children: true, texture: true }); } catch (e) {}
-      pixiApp.current = null;
-      pixiSprite.current = null;
-      setPixiReady(false);
-    }
-  };
-
-  useEffect(() => {
-    if (phase !== "camera") return;
-    const v = videoRef.current;
-    if (!v) return;
-    const tryInit = () => { if (v.videoWidth > 0) initPixi(); };
-    if (v.readyState >= 2 && v.videoWidth > 0) setTimeout(initPixi, 300);
-    else v.addEventListener("loadeddata", tryInit, { once: true });
-    return () => v.removeEventListener("loadeddata", tryInit);
-  }, [phase, initPixi]);
-
-  useEffect(() => {
-    const sprite = pixiSprite.current;
-    if (!sprite) return;
-    const lf = getLutFilter(filter);
-    sprite.filters = lf ? [lf] : [];
-  }, [filter, pixiReady]);
-
   const flip = () => {
     const n = facing === "user" ? "environment" : "user";
     setFacing(n);
-    destroyPixi();
-    setTimeout(() => startCam(n).then(() => setTimeout(initPixi, 500)), 100);
+    startCam(n);
   };
 
   const toggleFlash = async () => {
@@ -547,9 +322,8 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   };
 
   // ── Capture photo ───────────────────────────────────────────────
-  // Toujours une capture BRUTE (non filtrée, non miroir) depuis la vidéo source.
-  // Le filtre choisi n'est appliqué qu'une seule fois, à l'export final —
-  // ça évite le bug de double-filtrage (Pixi qui filtre PUIS le CSS qui refiltre par-dessus).
+  // Toujours une capture BRUTE (non miroir) depuis la vidéo source, même si
+  // l'affichage à l'écran est mirroré en CSS pour la caméra avant.
   const takePhoto = useCallback(() => {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
@@ -673,16 +447,15 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
 
   // ── Finish / Retake ─────────────────────────────────────────────
   const finish = (b, u, v) => {
-    destroyPixi();
     if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
     setBlob(b); setUrl(u); setIsVid(v);
-    setPhase("preview"); setPanel(null); setShowFilters(false);
+    setPhase("preview"); setPanel(null);
   };
 
   const retake = () => {
     setBlob(null); setUrl(null); setOverlays([]); setActiveOv(null);
-    setPhase("camera"); setRecording(false); setPaused(false); setSecs(0); setPanel(null); setShowFilters(false);
-    startCam().then(() => setTimeout(initPixi, 500));
+    setPhase("camera"); setRecording(false); setPaused(false); setSecs(0); setPanel(null);
+    startCam();
   };
 
   // ── Overlays (texte / image / vidéo) ────────────────────────────
@@ -752,12 +525,9 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   };
 
   // ── Export final ────────────────────────────────────────────────
-  // Point UNIQUE d'application du filtre — la capture est toujours brute,
-  // donc plus jamais de double-filtrage, et on peut changer de filtre après coup.
   const exportFinal = async () => {
     if (!blob) return;
-    const hasFilter = filter && filter !== "normal";
-    const needsWork = overlays.length > 0 || hasFilter;
+    const needsWork = overlays.length > 0;
 
     if (!isVid) {
       if (!needsWork) {
@@ -769,27 +539,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
       const c = document.createElement("canvas");
       c.width = img.width; c.height = img.height;
       const ctx = c.getContext("2d");
-
-      let drawn = false;
-      if (hasFilter) {
-        try {
-          const lutApp = new PIXI.Application();
-          await lutApp.init({ width: img.width, height: img.height, backgroundAlpha: 0, antialias: false, resolution: 1, autoStart: false });
-          const tex = PIXI.Texture.from(img);
-          const sprite = new PIXI.Sprite(tex);
-          sprite.width = img.width; sprite.height = img.height;
-          const lf = getLutFilter(filter);
-          if (lf) sprite.filters = [lf];
-          lutApp.stage.addChild(sprite);
-          lutApp.renderer.render(lutApp.stage);
-          ctx.drawImage(lutApp.canvas, 0, 0);
-          lutApp.destroy(true, { children: true, texture: true });
-          drawn = true;
-        } catch (e) {
-          console.error("photo LUT render:", e);
-        }
-      }
-      if (!drawn) ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0);
 
       const rect = overlayRef.current?.getBoundingClientRect();
       const sx = img.width / (rect?.width || 1), sy = img.height / (rect?.height || 1);
@@ -818,7 +568,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
     // car les refs React (overlayRef) ne seront plus valides après.
     const rect = overlayRef.current?.getBoundingClientRect();
     const ovsSnapshot = overlays;
-    const filterSnapshot = filter;
     const blobSnapshot = blob;
     const modeSnapshot = mode;
     const saveDraft = onSaveDraft; // référence capturée : reste utilisable après le unmount
@@ -829,7 +578,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
       progress.fail("Annulé — brouillon enregistré");
       if (saveDraft) {
         try {
-          await saveDraft({ blob: blobSnapshot, overlays: ovsSnapshot, filter: filterSnapshot, mode: modeSnapshot, type: "video" });
+          await saveDraft({ blob: blobSnapshot, overlays: ovsSnapshot, mode: modeSnapshot, type: "video" });
         } catch (e) {
           console.error("saveDraft:", e);
         }
@@ -837,13 +586,52 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
     });
     onClose(); // on rend la main tout de suite : l'utilisateur continue d'utiliser l'app
 
-    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, filterSnapshot, rect, (pct) => progress.update(pct), cancelToken)
+    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, rect, (pct) => progress.update(pct), cancelToken)
       .then((finalBlob) => {
         if (cancelToken.cancelled || !finalBlob) return; // déjà géré par le bouton Annuler
         progress.done();
         onDone({ file: new File([finalBlob], `celeste.${extFor(finalBlob)}`, { type: finalBlob.type || "video/webm" }), type: "video" });
       })
       .catch(() => { if (!cancelToken.cancelled) progress.fail(); });
+  };
+
+  // ── Éditer ailleurs ──────────────────────────────────────────────
+  // Envoie le fichier capturé vers le partage natif (CapCut, Photos, etc.).
+  // Techniquement impossible de "récupérer" automatiquement le résultat édité —
+  // aucune app tierce ne peut renvoyer un fichier à Céleste. À la place, on
+  // ramène directement l'utilisateur sur la sélection galerie : il choisit le
+  // fichier fraîchement édité (enregistré par l'autre app) en un seul geste.
+  const editElsewhere = async () => {
+    if (!blob || sharing) return;
+    setSharing(true);
+    try {
+      const fileName = `celeste-edit-${Date.now()}.${isVid ? extFor(blob) : "jpg"}`;
+      if (Capacitor.isNativePlatform()) {
+        const base64 = await blobToBase64(blob);
+        const written = await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Cache });
+        await Share.share({ title: "Modifier avec…", dialogTitle: "Modifier avec…", files: [written.uri] });
+      } else if (navigator.share && navigator.canShare) {
+        const file = new File([blob], fileName, { type: blob.type || (isVid ? "video/webm" : "image/jpeg") });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "Modifier avec…" });
+        } else {
+          showToast("Partage de fichier non disponible sur ce navigateur");
+          setSharing(false);
+          return;
+        }
+      } else {
+        showToast("Partage non disponible sur cet appareil");
+        setSharing(false);
+        return;
+      }
+      showToast("Choisis le fichier édité dans ta galerie");
+      setTimeout(() => { setSharing(false); pickGallery(); }, 700);
+    } catch (e) {
+      console.error("editElsewhere:", e);
+      // AbortError = l'utilisateur a juste fermé le menu de partage, pas une vraie erreur
+      if (e?.name !== "AbortError") showToast("Impossible de partager ce fichier");
+      setSharing(false);
+    }
   };
 
   // ── Mode TEXTE (carte de statut texte, sans caméra) ─────────────
@@ -864,7 +652,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const maxSecs = MAX_SECS[mode] || 60;
   const progress = recording ? (secs / maxSecs) * 100 : 0;
-  const quickFilters = LUT_FILTERS.filter((f) => f.id !== "normal").slice(0, 2);
 
   // ── Écran mode TEXTE ─────────────────────────────────────────────
   if (phase === "textcard") {
@@ -913,22 +700,21 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
       <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={onGalleryPick} />
       <input ref={imgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onOverlayImg} />
       <input ref={vidOvRef} type="file" accept="video/*" style={{ display: "none" }} onChange={onOverlayVideo} />
-      <video ref={videoRef} playsInline muted style={{ display: "none" }} />
 
       {/* ── Zone visuelle ── */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
-        <div ref={mountRef} style={{ position: "absolute", inset: 0, display: phase === "camera" ? "block" : "none" }} />
+        {/* Caméra native, brute : le flux vidéo affiché tel quel, sans canvas
+            ni moteur de rendu intermédiaire — image nette et uniforme. */}
+        <video ref={videoRef} autoPlay playsInline muted
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
+            display: phase === "camera" ? "block" : "none",
+            transform: facing === "user" ? "scaleX(-1)" : "none" }} />
 
         {phase === "preview" && !isVid && (
           <img src={url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         )}
         {phase === "preview" && isVid && (
           <video src={url} autoPlay loop playsInline ref={previewVidRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-        )}
-        {/* Pixi rend le résultat filtré (LUT) par-dessus l'image/vidéo brute ci-dessus —
-            même moteur qu'en direct caméra, donc identique à l'export final. */}
-        {phase === "preview" && (
-          <div ref={previewMountRef} style={{ position: "absolute", inset: 0 }} />
         )}
 
         {phase === "preview" && (
@@ -1055,7 +841,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
                   <button onClick={() => setCountdownOn((c) => !c)} style={Ic(countdownOn)}><Clock size={16} /></button>
                   <button onClick={() => showToast("Écran partagé — bientôt disponible")} style={Ic()}><Columns size={16} /></button>
                   <button onClick={() => showToast("Inviter un ami — bientôt disponible")} style={Ic()}><UserPlus size={16} /></button>
-                  <button onClick={() => setShowFilters((s) => !s)} style={Ic(showFilters)}><Blend size={16} /></button>
+                  {onOpenDrafts && <button onClick={onOpenDrafts} style={Ic()}><Archive size={16} /></button>}
                 </>
               )}
               <button onClick={() => setToolsCollapsed((c) => !c)} style={Ic()}>
@@ -1069,40 +855,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
               <button onClick={() => { setNewText(""); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16} /></button>
               {isVid && <button onClick={pickOverlayVideo} style={Ic()}><Video size={16} /></button>}
-              <button onClick={() => setShowFilters((s) => !s)} style={Ic(showFilters)}><Blend size={16} /></button>
+              <button onClick={editElsewhere} disabled={sharing} style={Ic()}><Share2 size={16} /></button>
             </div>
           )}
         </div>
-
-        {/* ── Barre filtres ── */}
-        {showFilters && (
-          <div style={{ position: "absolute", bottom: phase === "camera" ? 210 : 110, left: 0, right: 0, zIndex: 15, paddingBottom: 8 }}>
-            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 16px 4px" }}>
-              <button onClick={() => setShowFilters(false)}
-                style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 14,
-                  padding: "3px 12px", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Fermer ✕</button>
-            </div>
-            <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 16px", scrollbarWidth: "none" }}>
-              {LUT_FILTERS.map((f) => {
-                const on = f.id === filter;
-                const thumb = filterThumbs[f.id];
-                return (
-                  <div key={f.id} onClick={() => setFilter(f.id)}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", flexShrink: 0 }}>
-                    <div style={{ width: 62, height: 62, borderRadius: 16, overflow: "hidden",
-                      border: `2.5px solid ${on ? "#C9952A" : "rgba(255,255,255,0.18)"}`,
-                      boxShadow: on ? "0 0 12px rgba(201,149,42,0.5)" : "none", transition: "border .2s,box-shadow .2s", position: "relative" }}>
-                      {phase === "preview" && !isVid && thumb
-                        ? <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#555 0%,#222 100%)" }} />}
-                    </div>
-                    <span style={{ fontSize: 10, color: on ? "#C9952A" : "rgba(255,255,255,0.5)", fontWeight: on ? 700 : 400, letterSpacing: .3 }}>{f.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── Zone bas ── */}
@@ -1229,13 +985,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
                     <ImageIcon size={19} color="#fff" />
                   </button>
 
-                  {!recording && quickFilters[0] && (
-                    <button onClick={() => setFilter(quickFilters[0].id)}
-                      style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
-                        border: `2px solid ${filter === quickFilters[0].id ? "#C9952A" : "rgba(255,255,255,0.25)"}`,
-                        background: "linear-gradient(135deg,#555,#222)" }} />
-                  )}
-
                   {mode === "PHOTO"
                     ? <button onClick={beginCapture}
                         style={{ width: 78, height: 78, borderRadius: "50%", background: "#fff", border: "5px solid rgba(255,255,255,0.3)",
@@ -1263,13 +1012,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
                         </div>
                       )
                   }
-
-                  {!recording && quickFilters[1] && (
-                    <button onClick={() => setFilter(quickFilters[1].id)}
-                      style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
-                        border: `2px solid ${filter === quickFilters[1].id ? "#C9952A" : "rgba(255,255,255,0.25)"}`,
-                        background: "linear-gradient(135deg,#555,#222)" }} />
-                  )}
 
                   <button onClick={flip} style={{ width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.08)",
                     border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
