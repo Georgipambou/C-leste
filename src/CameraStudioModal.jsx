@@ -354,7 +354,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     ];
     const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/mp4";
     chunksRef.current = [];
-    setShowFilters(false);
     const r = new MediaRecorder(s, { mimeType: mime });
     r.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     r.onstop = () => {
@@ -393,7 +392,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
   // ── Décompte 3-2-1 avant capture ────────────────────────────────
   const doCapture = () => {
-    setShowFilters(false);
     if (mode === "PHOTO") takePhoto();
     else startRec();
   };
