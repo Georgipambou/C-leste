@@ -2596,7 +2596,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
         </button>
-        <button onClick={()=>setShowCameraStudio(true)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+        <button onClick={()=>{ if(typeof notify==="function"){notify("Caméra — bientôt disponible 🎬");}else{alert("Caméra — bientôt disponible 🎬");} }} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <Camera size={22}/>
           <span style={{fontSize:9,letterSpacing:.5}}>Caméra</span>
         </button>
