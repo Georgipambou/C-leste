@@ -74,7 +74,8 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 // overlay, on renvoie simplement la vidéo brute (aucune erreur ne remonte à l'appelant).
 async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) {
   try {
-    if (!ovs.length) return sourceBlob;
+    const css0 = PREVIEW_CSS[filterId] || "none";
+    if (!ovs.length && css0 === "none") return sourceBlob;
 
     const mainVideo = document.createElement("video");
     mainVideo.src = URL.createObjectURL(sourceBlob);
@@ -94,9 +95,17 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
         }
         if (ov.type === "video") {
           const v = document.createElement("video");
+          // Le son de l'overlay est mixé séparément via Web Audio si !ov.muted —
+          // l'élément lui-même reste toujours muted pour éviter un double-son.
           v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
           await new Promise((r) => { v.onloadedmetadata = r; v.onerror = r; });
-          return { ...ov, el: v };
+          const trimStart = ov.trimStart || 0;
+          const trimEnd = ov.trimEnd && ov.trimEnd > trimStart ? ov.trimEnd : v.duration;
+          v.currentTime = trimStart;
+          v.addEventListener("timeupdate", () => {
+            if (v.currentTime >= trimEnd) v.currentTime = trimStart;
+          });
+          return { ...ov, el: v, trimStart, trimEnd };
         }
         return ov;
       })
@@ -114,7 +123,23 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
       mainVideo.captureStream().getAudioTracks().forEach((t) => canvasStream.addTrack(t));
     } catch (e) { /* pas de piste audio dispo, on continue sans son */ }
 
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+    // Mixage du son des vidéos overlay non muettes dans le flux final
+    try {
+      const unmutedVideoOvs = loaded.filter((ov) => ov.type === "video" && !ov.muted);
+      if (unmutedVideoOvs.length) {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const dest = actx.createMediaStreamDestination();
+        unmutedVideoOvs.forEach((ov) => {
+          try {
+            const src = actx.createMediaElementSource(ov.el);
+            src.connect(dest);
+          } catch (e) { /* source déjà connectée ailleurs, on ignore */ }
+        });
+        dest.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
+      }
+    } catch (e) { /* Web Audio indisponible, on continue sans le son des overlays */ }
+
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm";
     const rec = new MediaRecorder(canvasStream, { mimeType: mime });
     const chunks = [];
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
@@ -200,6 +225,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const vidOvRef    = useRef(null);
   const dragRef     = useRef({ on: false, id: null, ox: 0, oy: 0 });
   const resizeRef   = useRef({ on: false, id: null, startX: 0, startSize: 0 });
+  const facingRef   = useRef("user");
 
   const [phase,      setPhase]      = useState("camera"); // camera | preview | textcard
   const [facing,     setFacing]     = useState("user");
@@ -232,6 +258,14 @@ export default function CameraStudioModal({ onClose, onDone }) {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
 
+  // Garde facingRef synchro + met à jour le miroir en direct si le canvas existe déjà
+  useEffect(() => {
+    facingRef.current = facing;
+    if (pixiApp.current?.canvas) {
+      pixiApp.current.canvas.style.transform = facing === "user" ? "scaleX(-1)" : "none";
+    }
+  }, [facing]);
+
   // ── Caméra ──────────────────────────────────────────────────────
   const startCam = useCallback(async (f = facing) => {
     try {
@@ -242,6 +276,9 @@ export default function CameraStudioModal({ onClose, onDone }) {
       });
       streamRef.current = s;
       setCameraError(null);
+      if (s.getAudioTracks().length === 0) {
+        console.warn("Aucune piste audio dans le flux getUserMedia — vérifie la permission micro (Android: RECORD_AUDIO).");
+      }
       const v = videoRef.current;
       if (v) { v.srcObject = s; await v.play(); }
     } catch (e) {
@@ -278,6 +315,8 @@ export default function CameraStudioModal({ onClose, onDone }) {
       });
       mount.appendChild(app.canvas);
       app.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
+      // Effet miroir uniquement à l'affichage (caméra avant) — n'affecte jamais les pixels capturés
+      app.canvas.style.transform = facingRef.current === "user" ? "scaleX(-1)" : "none";
 
       const tex = PIXI.Texture.from(v);
       const sprite = new PIXI.Sprite(tex);
@@ -356,41 +395,40 @@ export default function CameraStudioModal({ onClose, onDone }) {
   };
 
   // ── Capture photo ───────────────────────────────────────────────
+  // Toujours une capture BRUTE (non filtrée, non miroir) depuis la vidéo source.
+  // Le filtre choisi n'est appliqué qu'une seule fois, à l'export final —
+  // ça évite le bug de double-filtrage (Pixi qui filtre PUIS le CSS qui refiltre par-dessus).
   const takePhoto = useCallback(() => {
-    const pixiCanvas = pixiApp.current?.canvas;
-    if (pixiCanvas) {
-      pixiCanvas.toBlob((b) => {
-        if (b) finish(b, URL.createObjectURL(b), false);
-        else captureFallback();
-      }, "image/jpeg", 0.95);
-      return;
-    }
-    captureFallback();
+    const v = videoRef.current;
+    if (!v || !v.videoWidth) return;
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(v, 0, 0);
+    c.toBlob((b) => { if (b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.95);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const captureFallback = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    const c = document.createElement("canvas");
-    c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
-    const ctx = c.getContext("2d");
-    const css = PREVIEW_CSS[filter] || "none";
-    if (css !== "none") ctx.filter = css;
-    ctx.drawImage(v, 0, 0);
-    c.toBlob((b) => { if (b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.95);
-  };
-
   // ── Enregistrement vidéo (avec pause/reprise) ──────────────────
+  // On enregistre directement le flux caméra brut (vidéo + micro déjà synchronisés
+  // par getUserMedia) au lieu de repasser par le canvas Pixi — plus fiable pour le son,
+  // et la capture reste non filtrée (le filtre est appliqué une seule fois, à l'export).
   const startRec = () => {
-    const pixiCanvas = pixiApp.current?.canvas;
     const s = streamRef.current;
-    if (!pixiCanvas || !s) return;
-    const cs = pixiCanvas.captureStream(30);
-    s.getAudioTracks().forEach((t) => cs.addTrack(t));
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+    if (!s) return;
+    if (s.getAudioTracks().length === 0) {
+      showToast("⚠️ Micro non détecté — vérifie les autorisations de l'app");
+    }
+    const mimeCandidates = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm;codecs=h264,opus",
+      "video/webm",
+    ];
+    const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
     chunksRef.current = [];
-    const r = new MediaRecorder(cs, { mimeType: mime });
+    setShowFilters(false);
+    const r = new MediaRecorder(s, { mimeType: mime });
     r.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     r.onstop = () => {
       const b = new Blob(chunksRef.current, { type: mime });
@@ -428,6 +466,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
 
   // ── Décompte 3-2-1 avant capture ────────────────────────────────
   const doCapture = () => {
+    setShowFilters(false);
     if (mode === "PHOTO") takePhoto();
     else startRec();
   };
@@ -467,8 +506,16 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const pickOverlayVideo = () => vidOvRef.current?.click();
   const onOverlayVideo = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    addOverlay({ type: "video", value: URL.createObjectURL(f), size: 150 });
-    e.target.value = ""; setPanel(null);
+    const tmp = document.createElement("video");
+    tmp.src = URL.createObjectURL(f);
+    tmp.onloadedmetadata = () => {
+      addOverlay({
+        type: "video", value: tmp.src, size: 150,
+        muted: false, trimStart: 0, trimEnd: tmp.duration, duration: tmp.duration,
+      });
+      setPanel("video-edit");
+    };
+    e.target.value = "";
   };
 
   // ── Finish / Retake ─────────────────────────────────────────────
@@ -498,11 +545,18 @@ export default function CameraStudioModal({ onClose, onDone }) {
 
   const pDown = (e, id) => {
     e.stopPropagation();
+    e.preventDefault();
     const ov = overlays.find((o) => o.id === id);
-    dragRef.current = { on: true, id, ox: e.clientX - (ov?.x || 0), oy: e.clientY - (ov?.y || 0) };
+    const box = overlayRef.current?.getBoundingClientRect();
+    const bx = box?.left || 0, by = box?.top || 0;
+    dragRef.current = { on: true, id, ox: (e.clientX - bx) - (ov?.x || 0), oy: (e.clientY - by) - (ov?.y || 0) };
     const mv = (e2) => {
       if (!dragRef.current.on) return;
-      setOverlays((os) => os.map((o) => (o.id === dragRef.current.id ? { ...o, x: e2.clientX - dragRef.current.ox, y: e2.clientY - dragRef.current.oy } : o)));
+      const b2 = overlayRef.current?.getBoundingClientRect();
+      const bx2 = b2?.left || 0, by2 = b2?.top || 0;
+      setOverlays((os) => os.map((o) => (o.id === dragRef.current.id
+        ? { ...o, x: (e2.clientX - bx2) - dragRef.current.ox, y: (e2.clientY - by2) - dragRef.current.oy }
+        : o)));
     };
     const up = () => { dragRef.current.on = false; window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
     window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
@@ -542,16 +596,23 @@ export default function CameraStudioModal({ onClose, onDone }) {
   };
 
   // ── Export final ────────────────────────────────────────────────
+  // Point UNIQUE d'application du filtre — la capture est toujours brute,
+  // donc plus jamais de double-filtrage, et on peut changer de filtre après coup.
   const exportFinal = async () => {
     if (!blob) return;
+    const css = PREVIEW_CSS[filter] || "none";
+    const needsWork = overlays.length > 0 || css !== "none";
 
-    if (!isVid && overlays.length > 0) {
+    if (!isVid) {
+      if (!needsWork) {
+        onDone({ file: new File([blob], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image" });
+        return;
+      }
       const img = new Image(); img.src = url;
       await new Promise((r) => { img.onload = r; });
       const c = document.createElement("canvas");
       c.width = img.width; c.height = img.height;
       const ctx = c.getContext("2d");
-      const css = PREVIEW_CSS[filter] || "none";
       if (css !== "none") ctx.filter = css;
       ctx.drawImage(img, 0, 0); ctx.filter = "none";
       const rect = overlayRef.current?.getBoundingClientRect();
@@ -571,28 +632,28 @@ export default function CameraStudioModal({ onClose, onDone }) {
       return;
     }
 
-    if (isVid && overlays.length > 0) {
-      // On capture tout ce dont on a besoin AVANT de fermer le modal,
-      // car les refs React (overlayRef) ne seront plus valides après.
-      const rect = overlayRef.current?.getBoundingClientRect();
-      const ovsSnapshot = overlays;
-      const filterSnapshot = filter;
-      const blobSnapshot = blob;
-
-      const progress = showBackgroundProgress();
-      onClose(); // on rend la main tout de suite : l'utilisateur continue d'utiliser l'app
-
-      bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, filterSnapshot, rect, (pct) => progress.update(pct))
-        .then((finalBlob) => {
-          progress.done();
-          onDone({ file: new File([finalBlob], "celeste.webm", { type: "video/webm" }), type: "video" });
-        })
-        .catch(() => progress.fail());
+    // Vidéo
+    if (!needsWork) {
+      onDone({ file: new File([blob], "celeste.webm", { type: "video/webm" }), type: "video" });
       return;
     }
 
-    const ext = isVid ? "webm" : "jpg";
-    onDone({ file: new File([blob], `celeste.${ext}`, { type: isVid ? "video/webm" : "image/jpeg" }), type: isVid ? "video" : "image" });
+    // On capture tout ce dont on a besoin AVANT de fermer le modal,
+    // car les refs React (overlayRef) ne seront plus valides après.
+    const rect = overlayRef.current?.getBoundingClientRect();
+    const ovsSnapshot = overlays;
+    const filterSnapshot = filter;
+    const blobSnapshot = blob;
+
+    const progress = showBackgroundProgress();
+    onClose(); // on rend la main tout de suite : l'utilisateur continue d'utiliser l'app
+
+    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, filterSnapshot, rect, (pct) => progress.update(pct))
+      .then((finalBlob) => {
+        progress.done();
+        onDone({ file: new File([finalBlob], "celeste.webm", { type: "video/webm" }), type: "video" });
+      })
+      .catch(() => progress.fail());
   };
 
   // ── Mode TEXTE (carte de statut texte, sans caméra) ─────────────
@@ -673,7 +734,8 @@ export default function CameraStudioModal({ onClose, onDone }) {
             filter: (PREVIEW_CSS[filter] && PREVIEW_CSS[filter] !== "none") ? PREVIEW_CSS[filter] : undefined }} />
         )}
         {phase === "preview" && isVid && (
-          <video src={url} autoPlay loop playsInline muted style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          <video src={url} autoPlay loop playsInline muted style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
+            filter: (PREVIEW_CSS[filter] && PREVIEW_CSS[filter] !== "none") ? PREVIEW_CSS[filter] : undefined }} />
         )}
 
         {phase === "preview" && (
@@ -695,7 +757,16 @@ export default function CameraStudioModal({ onClose, onDone }) {
                   <img src={ov.value} style={{ width: ov.size, height: ov.size, objectFit: "contain", borderRadius: 8, pointerEvents: "none" }} />
                 )}
                 {ov.type === "video" && (
-                  <video src={ov.value} autoPlay loop muted playsInline
+                  <video src={ov.value} autoPlay loop muted={!!ov.muted} playsInline
+                    ref={(el) => {
+                      if (!el || el.dataset.trimBound) return;
+                      el.dataset.trimBound = "1";
+                      el.addEventListener("loadedmetadata", () => { el.currentTime = ov.trimStart || 0; });
+                      el.addEventListener("timeupdate", () => {
+                        const end = ov.trimEnd && ov.trimEnd > (ov.trimStart || 0) ? ov.trimEnd : el.duration;
+                        if (el.currentTime >= end) el.currentTime = ov.trimStart || 0;
+                      });
+                    }}
                     style={{ width: ov.size, height: ov.size, objectFit: "cover", borderRadius: 8, pointerEvents: "none" }} />
                 )}
                 {activeOv?.id === ov.id && (
@@ -704,6 +775,12 @@ export default function CameraStudioModal({ onClose, onDone }) {
                       style={{ position: "absolute", top: -10, right: -10, width: 22, height: 22, borderRadius: "50%",
                         background: "#dc2626", border: "none", color: "#fff", fontSize: 14, cursor: "pointer",
                         display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, fontWeight: 700 }}>×</button>
+                    {ov.type === "video" && (
+                      <button onClick={(e) => { e.stopPropagation(); setActiveOv(ov); setPanel("video-edit"); }}
+                        style={{ position: "absolute", top: -10, left: -10, width: 22, height: 22, borderRadius: "50%",
+                          background: "#C9952A", border: "2px solid #fff", color: "#000", fontSize: 11, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, fontWeight: 700 }}>⚙</button>
+                    )}
                     <div onPointerDown={(e) => rDown(e, ov.id)}
                       style={{ position: "absolute", bottom: -10, right: -10, width: 20, height: 20, borderRadius: "50%",
                         background: "#C9952A", border: "2px solid #fff", cursor: "nwse-resize", touchAction: "none" }} />
@@ -798,7 +875,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
               <button onClick={() => { setNewText(""); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16} /></button>
               {isVid && <button onClick={pickOverlayVideo} style={Ic()}><Video size={16} /></button>}
-              {!isVid && <button onClick={() => setShowFilters((s) => !s)} style={Ic(showFilters)}><Blend size={16} /></button>}
+              <button onClick={() => setShowFilters((s) => !s)} style={Ic(showFilters)}><Blend size={16} /></button>
             </div>
           )}
         </div>
@@ -806,6 +883,11 @@ export default function CameraStudioModal({ onClose, onDone }) {
         {/* ── Barre filtres ── */}
         {showFilters && (
           <div style={{ position: "absolute", bottom: phase === "camera" ? 210 : 110, left: 0, right: 0, zIndex: 15, paddingBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 16px 4px" }}>
+              <button onClick={() => setShowFilters(false)}
+                style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 14,
+                  padding: "3px 12px", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Fermer ✕</button>
+            </div>
             <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 16px", scrollbarWidth: "none" }}>
               {FILTERS.map((f) => {
                 const on = f.id === filter;
@@ -871,6 +953,56 @@ export default function CameraStudioModal({ onClose, onDone }) {
                   color: "#000", fontWeight: 800, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                   boxShadow: "0 3px 16px rgba(201,149,42,0.4)" }}>
                 <Check size={15} /> Ajouter
+              </button>
+            </div>
+          </div>
+        )}
+
+        {panel === "video-edit" && activeOv && (
+          <div style={{ background: "rgba(6,6,6,0.97)", borderRadius: "24px 24px 0 0", padding: "20px 18px 10px", backdropFilter: "blur(30px)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <span style={{ color: "#fff", fontSize: 14, fontWeight: 700 }}>Réglages de la vidéo</span>
+              <button onClick={() => updOv(activeOv.id, { muted: !activeOv.muted })}
+                style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 14px", borderRadius: 20, cursor: "pointer",
+                  border: `1px solid ${activeOv.muted ? "rgba(255,255,255,0.15)" : "#C9952A"}`,
+                  background: activeOv.muted ? "rgba(255,255,255,0.04)" : "rgba(201,149,42,0.15)",
+                  color: activeOv.muted ? "rgba(255,255,255,0.5)" : "#C9952A", fontSize: 12, fontWeight: 700 }}>
+                {activeOv.muted ? "Son désactivé" : "Son activé"}
+              </button>
+            </div>
+            {activeOv.duration > 0 && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
+                  <span>Début : {Number(activeOv.trimStart || 0).toFixed(1)}s</span>
+                  <span>Fin : {Number(activeOv.trimEnd || activeOv.duration).toFixed(1)}s</span>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <input type="range" min={0} max={activeOv.duration} step={0.1}
+                    value={activeOv.trimStart || 0}
+                    onChange={(e) => {
+                      const v = Math.min(Number(e.target.value), (activeOv.trimEnd || activeOv.duration) - 0.2);
+                      updOv(activeOv.id, { trimStart: v });
+                    }}
+                    style={{ width: "100%" }} />
+                  <input type="range" min={0} max={activeOv.duration} step={0.1}
+                    value={activeOv.trimEnd || activeOv.duration}
+                    onChange={(e) => {
+                      const v = Math.max(Number(e.target.value), (activeOv.trimStart || 0) + 0.2);
+                      updOv(activeOv.id, { trimEnd: v });
+                    }}
+                    style={{ width: "100%" }} />
+                </div>
+              </>
+            )}
+            <div style={{ display: "flex", gap: 9, marginTop: 6 }}>
+              <button onClick={() => { setPanel(null); setActiveOv(null); }}
+                style={{ flex: 1, padding: "12px", borderRadius: 15, border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)", cursor: "pointer", fontSize: 13 }}>Fermer</button>
+              <button onClick={() => setPanel(null)}
+                style={{ flex: 2, padding: "12px", borderRadius: 15, border: "none", background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)",
+                  color: "#000", fontWeight: 800, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                  boxShadow: "0 3px 16px rgba(201,149,42,0.4)" }}>
+                <Check size={15} /> OK
               </button>
             </div>
           </div>

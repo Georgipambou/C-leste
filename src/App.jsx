@@ -5287,6 +5287,17 @@ if(blocked||blockedByOther) return(
     </div>
   </div>
 );
+const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
+  const [userReelsIndex,setUserReelsIndex]=useState(null);
+  const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
+  const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
+  const loadUPosts=useCallback(async()=>{
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
+  },[user.id]);
+  useEffect(()=>{
+    loadUPosts();
+  },[user.id,userPostsVersion]);
 if(user?.status==="suspended") return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
     <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
@@ -5300,17 +5311,6 @@ if(user?.status==="suspended") return(
     </div>
   </div>
 );
-  const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
-  const [userReelsIndex,setUserReelsIndex]=useState(null);
-  const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
-  const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
-  const loadUPosts=useCallback(async()=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
-    if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
-  },[user.id]);
-  useEffect(()=>{
-    loadUPosts();
-  },[user.id,userPostsVersion]);
   const stats=[{l:"POSTS",v:uPosts.length},{l:"ABONNÉS",v:followersCount},{l:"ABONNEMENTS",v:followingCount}];
 
   return(
@@ -7654,10 +7654,9 @@ return updated;
 useEffect(()=>{
   if(session?.user?.id&&myProfile?.id&&!isPending){
     loadMembers();
-    loadPosts(1);
     loadConnections(session.user.id);
     loadUnreadNotifs(session.user.id);
-    loadBlockedUsers().then(()=>loadConvs(session.user.id));
+    loadBlockedUsers().then(()=>{loadPosts(1);loadConvs(session.user.id);});
     const loadUnreadStatuses=async()=>{
       const since=new Date(Date.now()-24*60*60*1000).toISOString();
       const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session.user.id);
@@ -7893,8 +7892,8 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
         <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
           {openUserId&&openUser&&(
             openUser.account_type==="organisation"
-              ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg}/>
-              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers();}} onImageView={setViewImg} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
+              ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg}/>
+              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&(
             <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
