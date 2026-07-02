@@ -4,42 +4,7 @@ import {
   ZapOff, Zap, Clock, Columns, UserPlus, Blend, Video, Music2,
 } from "lucide-react";
 import * as PIXI from "pixi.js";
-import { ColorMatrixFilter } from "pixi.js";
-
-// ── FILTRES CINÉMATIQUES (s'appuient sur les préréglages éprouvés de Pixi.js) ──
-// Objectif : peu de filtres, mais un rendu propre et pro plutôt que 12 effets criards.
-const FILTERS = [
-  { id: "normal",   label: "Original",   matrix: null },
-  { id: "cinema",   label: "Cinéma",     matrix: (f) => { f.contrast(0.15, true); f.saturate(-0.15, true); f.brightness(0.96, true); } },
-  { id: "kodachrome", label: "Kodachrome", matrix: (f) => { f.kodachrome(true); } },
-  { id: "technicolor", label: "Technicolor", matrix: (f) => { f.technicolor(true); f.brightness(1.02, true); } },
-  { id: "vintage",  label: "Vintage",    matrix: (f) => { f.vintage(true); } },
-  { id: "polaroid", label: "Polaroid",   matrix: (f) => { f.polaroid(true); } },
-  { id: "night",    label: "Nuit",       matrix: (f) => { f.night(0.3, true); f.brightness(0.97, true); } },
-  { id: "golden",   label: "Doré",       matrix: (f) => { f.sepia(true); f.saturate(0.3, true); f.brightness(1.05, true); } },
-  { id: "noir",     label: "Noir & Blanc", matrix: (f) => { f.blackAndWhite(true); f.contrast(0.15, true); } },
-  { id: "browni",   label: "Argentique", matrix: (f) => { f.browni(true); } },
-  { id: "rose",     label: "Rosé",       matrix: (f) => { f.colorTone(0.15, 0.1, 0xffd1e8, 0x552244, true); f.saturate(0.1, true); } },
-  { id: "emeraude", label: "Émeraude",   matrix: (f) => { f.colorTone(0.2, 0.15, 0xbfffe0, 0x003322, true); } },
-  { id: "clair",    label: "Clair",      matrix: (f) => { f.brightness(1.15, true); f.contrast(-0.05, true); f.saturate(-0.05, true); } },
-];
-
-// Équivalents CSS (thumbnails, capture galerie, export vidéo avec overlays)
-const PREVIEW_CSS = {
-  normal:      "none",
-  cinema:      "contrast(1.15) saturate(0.85) brightness(0.96)",
-  kodachrome:  "contrast(1.2) saturate(1.35) sepia(0.15) brightness(1.02)",
-  technicolor: "contrast(1.1) saturate(1.5) brightness(1.02) hue-rotate(-5deg)",
-  vintage:     "sepia(0.35) contrast(0.9) brightness(1.05) saturate(0.8)",
-  polaroid:    "sepia(0.2) contrast(0.85) brightness(1.1) saturate(0.9)",
-  night:       "hue-rotate(190deg) saturate(0.7) brightness(0.9) contrast(1.1)",
-  golden:      "sepia(0.5) saturate(1.3) brightness(1.05)",
-  noir:        "grayscale(1) contrast(1.15)",
-  browni:      "sepia(0.45) contrast(1.05) saturate(0.85) brightness(0.98)",
-  rose:        "saturate(1.1) hue-rotate(-15deg) brightness(1.03)",
-  emeraude:    "hue-rotate(70deg) saturate(1.15) brightness(1.0)",
-  clair:       "brightness(1.15) contrast(0.95) saturate(0.95)",
-};
+import { LUT_FILTERS, getLutFilter } from "./PixiLutFilter";
 
 const extFor = (b) => (b?.type?.includes("mp4") ? "mp4" : "webm");
 
@@ -74,10 +39,10 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 // Rejoue la vidéo source, la dessine frame par frame sur un canvas avec les overlays
 // par-dessus, puis réenregistre le tout. Si l'API n'est pas dispo ou s'il n'y a aucun
 // overlay, on renvoie simplement la vidéo brute (aucune erreur ne remonte à l'appelant).
-async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) {
+async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress, cancelToken) {
   try {
-    const css0 = PREVIEW_CSS[filterId] || "none";
-    if (!ovs.length && css0 === "none") return sourceBlob;
+    const hasFilter = filterId && filterId !== "normal";
+    if (!ovs.length && !hasFilter) return sourceBlob;
 
     const mainVideo = document.createElement("video");
     mainVideo.src = URL.createObjectURL(sourceBlob);
@@ -118,6 +83,28 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
     const sx = canvas.width / (rect?.width || canvas.width);
     const sy = canvas.height / (rect?.height || canvas.height);
 
+    // Rendu du filtre couleur (LUT) via Pixi — EXACTEMENT le même moteur/shader
+    // que la caméra en direct et l'aperçu, pour un résultat identique pixel pour
+    // pixel (fini le double système CSS approximatif vs Pixi qui ne matchaient jamais).
+    let lutApp = null, lutTex = null;
+    if (hasFilter) {
+      try {
+        lutApp = new PIXI.Application();
+        await lutApp.init({ width: canvas.width, height: canvas.height, backgroundAlpha: 0, antialias: false, resolution: 1, autoStart: false });
+        lutTex = PIXI.Texture.from(mainVideo);
+        const lutSprite = new PIXI.Sprite(lutTex);
+        lutSprite.width = canvas.width;
+        lutSprite.height = canvas.height;
+        const lf = getLutFilter(filterId);
+        if (lf) lutSprite.filters = [lf];
+        lutApp.stage.addChild(lutSprite);
+      } catch (e) {
+        console.error("bake LUT init:", e);
+        if (lutApp) { try { lutApp.destroy(true, { children: true, texture: true }); } catch (e2) {} }
+        lutApp = null;
+      }
+    }
+
     // captureStream() sur <canvas> est très largement supporté (contrairement à
     // captureStream() sur <video>, absent sur certains WebView Android — c'était
     // la cause du bug "rien ne s'applique" : le bake plantait puis retombait sur
@@ -154,15 +141,24 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
     await mainVideo.play();
     loaded.forEach((ov) => { if (ov.type === "video") ov.el.play().catch(() => {}); });
 
-    const css = PREVIEW_CSS[filterId] || "none";
     const draw = () => {
+      if (cancelToken?.cancelled) { if (rec.state !== "inactive") rec.stop(); return; }
       if (mainVideo.ended || mainVideo.paused) { rec.stop(); return; }
       if (onProgress && mainVideo.duration) {
         onProgress(Math.min(99, Math.round((mainVideo.currentTime / mainVideo.duration) * 100)));
       }
-      ctx.filter = css;
-      ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height);
-      ctx.filter = "none";
+      let drawn = false;
+      if (lutApp) {
+        try {
+          lutTex.source.update();
+          lutApp.renderer.render(lutApp.stage);
+          ctx.drawImage(lutApp.canvas, 0, 0, canvas.width, canvas.height);
+          drawn = true;
+        } catch (e) {
+          console.error("bake LUT frame:", e);
+        }
+      }
+      if (!drawn) ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height);
       loaded.forEach((ov) => {
         if (ov.type === "text") {
           ctx.font = `bold ${ov.size * sx}px "${ov.font}"`;
@@ -178,7 +174,18 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
     };
     draw();
 
-    return await finished;
+    // Filet de sécurité : si le traitement dépasse 45s (vidéo anormalement
+    // longue, WebView lente, etc.), on force l'arrêt plutôt que de rester
+    // bloqué indéfiniment sur "Publication en cours…".
+    const safetyTimeout = setTimeout(() => {
+      if (rec.state !== "inactive") rec.stop();
+    }, 45000);
+
+    const result = await finished;
+    clearTimeout(safetyTimeout);
+    if (lutApp) { try { lutApp.destroy(true, { children: true, texture: true }); } catch (e) {} }
+    if (cancelToken?.cancelled) return null;
+    return result;
   } catch (e) {
     console.error("bakeOverlaysOnVideo:", e);
     return sourceBlob; // en cas de souci, on renvoie la vidéo brute plutôt que planter
@@ -188,36 +195,49 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
 // ── Pastille de progression en arrière-plan ─────────────────────────
 // Créée en DOM natif (pas via React) pour continuer à s'afficher même
 // après la fermeture du modal caméra, pendant que la vidéo se traite.
-function showBackgroundProgress() {
+// onCancel (optionnel) affiche un bouton "Annuler" tant que le traitement tourne.
+function showBackgroundProgress(onCancel) {
   const pill = document.createElement("div");
   pill.style.cssText = `
     position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
-    background:rgba(20,20,20,0.95);color:#fff;padding:10px 18px;border-radius:22px;
+    background:rgba(20,20,20,0.95);color:#fff;padding:10px 14px 10px 18px;border-radius:22px;
     font-family:sans-serif;font-size:13px;font-weight:600;z-index:99999;
     display:flex;align-items:center;gap:10px;box-shadow:0 6px 24px rgba(0,0,0,0.5);
   `;
   const spinner = document.createElement("div");
-  spinner.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);border-top-color:#C9952A;`;
+  spinner.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);border-top-color:#C9952A;flex-shrink:0;`;
   let deg = 0;
   const spin = setInterval(() => { deg = (deg + 30) % 360; spinner.style.transform = `rotate(${deg}deg)`; }, 60);
   const label = document.createElement("span");
   label.textContent = "Publication en cours… 0%";
   pill.appendChild(spinner); pill.appendChild(label);
+
+  let cancelBtn = null;
+  if (onCancel) {
+    cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "Annuler";
+    cancelBtn.style.cssText = `
+      background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#fff;
+      border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;
+    `;
+    cancelBtn.onclick = () => { cancelBtn.disabled = true; cancelBtn.style.opacity = "0.5"; onCancel(); };
+    pill.appendChild(cancelBtn);
+  }
   document.body.appendChild(pill);
+
   return {
     update: (pct) => { label.textContent = `Publication en cours… ${pct}%`; },
-    done: (msg) => { clearInterval(spin); spinner.remove(); label.textContent = msg || "Publié ✓"; setTimeout(() => pill.remove(), 1800); },
-    fail: (msg) => { clearInterval(spin); spinner.remove(); label.textContent = msg || "Échec de la publication"; setTimeout(() => pill.remove(), 2500); },
+    done: (msg) => { clearInterval(spin); spinner.remove(); if (cancelBtn) cancelBtn.remove(); label.textContent = msg || "Publié ✓"; setTimeout(() => pill.remove(), 1800); },
+    fail: (msg) => { clearInterval(spin); spinner.remove(); if (cancelBtn) cancelBtn.remove(); label.textContent = msg || "Échec de la publication"; setTimeout(() => pill.remove(), 2500); },
   };
 }
 
 // ── COMPOSANT PRINCIPAL ─────────────────────────────────────────────
-export default function CameraStudioModal({ onClose, onDone }) {
+export default function CameraStudioModal({ onClose, onDone, onSaveDraft }) {
   const videoRef    = useRef(null);
   const mountRef    = useRef(null);
   const pixiApp     = useRef(null);
   const pixiSprite  = useRef(null);
-  const pixiFilter  = useRef(null);
   const overlayRef  = useRef(null);
   const streamRef   = useRef(null);
   const recRef      = useRef(null);
@@ -229,6 +249,8 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const dragRef     = useRef({ on: false, id: null, ox: 0, oy: 0 });
   const justDraggedRef = useRef(false);
   const previewVidRef = useRef(null);
+  const previewMountRef = useRef(null);
+  const previewPixiApp = useRef(null);
   const resizeRef   = useRef({ on: false, id: null, startX: 0, startSize: 0 });
   const facingRef   = useRef("user");
 
@@ -246,6 +268,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const [activeOv,   setActiveOv]   = useState(null);
   const [panel,      setPanel]      = useState(null);
   const [showFilters,setShowFilters]= useState(false);
+  const [filterThumbs, setFilterThumbs] = useState({});
   const [newText,    setNewText]    = useState("");
   const [txtColor,   setTxtColor]   = useState("#FFFFFF");
   const [txtSize,    setTxtSize]    = useState(24);
@@ -272,6 +295,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
   }, [facing]);
 
   // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
+  // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
   useEffect(() => {
     if (phase === "preview" && isVid && previewVidRef.current) {
       previewVidRef.current.muted = false;
@@ -279,6 +303,127 @@ export default function CameraStudioModal({ onClose, onDone }) {
         if (previewVidRef.current) { previewVidRef.current.muted = true; previewVidRef.current.play().catch(() => {}); }
       });
     }
+  }, [phase, isVid, url]);
+
+  // Rendu de l'aperçu (photo/vidéo capturée) via Pixi + LUT — le MÊME moteur
+  // que la caméra en direct, donc ce que tu vois ici = exactement ce qui sera
+  // exporté. Fini l'écart entre l'aperçu CSS et le rendu final.
+  useEffect(() => {
+    const cleanup = () => {
+      if (previewPixiApp.current) {
+        try { previewPixiApp.current.destroy(true, { children: true, texture: true }); } catch (e) {}
+        previewPixiApp.current = null;
+      }
+    };
+    if (phase !== "preview" || !url) { cleanup(); return; }
+
+    let cancelled = false;
+    (async () => {
+      const mount = previewMountRef.current;
+      if (!mount) return;
+
+      let source;
+      if (isVid) {
+        source = previewVidRef.current;
+        if (!source) return;
+        if (source.readyState < 2) {
+          await new Promise((r) => { source.addEventListener("loadeddata", r, { once: true }); });
+        }
+      } else {
+        source = new Image();
+        source.src = url;
+        await new Promise((r) => { source.onload = r; source.onerror = r; });
+      }
+      if (cancelled) return;
+
+      cleanup();
+      try {
+        const app = new PIXI.Application();
+        await app.init({ width: mount.clientWidth || 390, height: mount.clientHeight || 844, backgroundAlpha: 0, antialias: true, resolution: 1 });
+        if (cancelled) { app.destroy(true, { children: true, texture: true }); return; }
+        mount.innerHTML = "";
+        mount.appendChild(app.canvas);
+        app.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
+
+        const tex = PIXI.Texture.from(source);
+        const sprite = new PIXI.Sprite(tex);
+        sprite.width = app.screen.width;
+        sprite.height = app.screen.height;
+        app.stage.addChild(sprite);
+
+        const lf = getLutFilter(filter);
+        sprite.filters = lf ? [lf] : [];
+
+        if (isVid) {
+          app.ticker.add(() => {
+            tex.source.update();
+            sprite.width = app.screen.width;
+            sprite.height = app.screen.height;
+          });
+        } else {
+          app.renderer.render(app.stage);
+        }
+        previewPixiApp.current = app;
+      } catch (e) {
+        console.error("preview Pixi init:", e);
+      }
+    })();
+
+    return () => { cancelled = true; cleanup(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, url, isVid]);
+
+  // Changement de filtre pendant l'aperçu : on ne recrée pas tout, on
+  // remplace juste le filtre du sprite existant.
+  useEffect(() => {
+    const app = previewPixiApp.current;
+    const sprite = app?.stage?.children?.[0];
+    if (!sprite) return;
+    const lf = getLutFilter(filter);
+    sprite.filters = lf ? [lf] : [];
+    if (!isVid) app.renderer.render(app.stage);
+  }, [filter, isVid]);
+
+  // Génère une vraie vignette par filtre (rendue via Pixi) pour le panneau de
+  // sélection, au lieu d'une approximation CSS qui ne correspondait jamais
+  // exactement au résultat final.
+  useEffect(() => {
+    if (phase !== "preview" || isVid || !url) { setFilterThumbs({}); return; }
+    let cancelled = false;
+    (async () => {
+      const img = new Image();
+      img.src = url;
+      await new Promise((r) => { img.onload = r; img.onerror = r; });
+      if (cancelled) return;
+      const THUMB = 120;
+      const thumbs = { normal: url };
+      for (const f of LUT_FILTERS) {
+        if (cancelled) return;
+        if (f.id === "normal") continue;
+        try {
+          const app = new PIXI.Application();
+          await app.init({ width: THUMB, height: THUMB, backgroundAlpha: 0, antialias: false, resolution: 1, autoStart: false });
+          const tex = PIXI.Texture.from(img);
+          const sprite = new PIXI.Sprite(tex);
+          const scale = Math.max(THUMB / img.width, THUMB / img.height);
+          sprite.width = img.width * scale;
+          sprite.height = img.height * scale;
+          sprite.x = (THUMB - sprite.width) / 2;
+          sprite.y = (THUMB - sprite.height) / 2;
+          const lf = getLutFilter(f.id);
+          if (lf) sprite.filters = [lf];
+          app.stage.addChild(sprite);
+          app.renderer.render(app.stage);
+          thumbs[f.id] = app.canvas.toDataURL("image/jpeg", 0.75);
+          app.destroy(true, { children: true, texture: true });
+        } catch (e) {
+          console.error("thumb LUT:", f.id, e);
+          thumbs[f.id] = url;
+        }
+      }
+      if (!cancelled) setFilterThumbs(thumbs);
+    })();
+    return () => { cancelled = true; };
   }, [phase, isVid, url]);
 
   // ── Caméra ──────────────────────────────────────────────────────
@@ -339,12 +484,8 @@ export default function CameraStudioModal({ onClose, onDone }) {
       sprite.height = app.screen.height;
       app.stage.addChild(sprite);
 
-      const cmFilter = new ColorMatrixFilter();
-      sprite.filters = [cmFilter];
-
       pixiApp.current = app;
       pixiSprite.current = sprite;
-      pixiFilter.current = cmFilter;
 
       app.ticker.add(() => {
         tex.source.update();
@@ -363,7 +504,6 @@ export default function CameraStudioModal({ onClose, onDone }) {
       try { pixiApp.current.destroy(true, { children: true, texture: true }); } catch (e) {}
       pixiApp.current = null;
       pixiSprite.current = null;
-      pixiFilter.current = null;
       setPixiReady(false);
     }
   };
@@ -379,13 +519,10 @@ export default function CameraStudioModal({ onClose, onDone }) {
   }, [phase, initPixi]);
 
   useEffect(() => {
-    const f = pixiFilter.current;
-    if (!f) return;
-    f.reset();
-    const def = FILTERS.find((x) => x.id === filter);
-    if (def?.matrix) {
-      try { def.matrix(f); } catch (e) { console.warn("Filter apply:", e); }
-    }
+    const sprite = pixiSprite.current;
+    if (!sprite) return;
+    const lf = getLutFilter(filter);
+    sprite.filters = lf ? [lf] : [];
   }, [filter, pixiReady]);
 
   const flip = () => {
@@ -619,8 +756,8 @@ export default function CameraStudioModal({ onClose, onDone }) {
   // donc plus jamais de double-filtrage, et on peut changer de filtre après coup.
   const exportFinal = async () => {
     if (!blob) return;
-    const css = PREVIEW_CSS[filter] || "none";
-    const needsWork = overlays.length > 0 || css !== "none";
+    const hasFilter = filter && filter !== "normal";
+    const needsWork = overlays.length > 0 || hasFilter;
 
     if (!isVid) {
       if (!needsWork) {
@@ -632,8 +769,28 @@ export default function CameraStudioModal({ onClose, onDone }) {
       const c = document.createElement("canvas");
       c.width = img.width; c.height = img.height;
       const ctx = c.getContext("2d");
-      if (css !== "none") ctx.filter = css;
-      ctx.drawImage(img, 0, 0); ctx.filter = "none";
+
+      let drawn = false;
+      if (hasFilter) {
+        try {
+          const lutApp = new PIXI.Application();
+          await lutApp.init({ width: img.width, height: img.height, backgroundAlpha: 0, antialias: false, resolution: 1, autoStart: false });
+          const tex = PIXI.Texture.from(img);
+          const sprite = new PIXI.Sprite(tex);
+          sprite.width = img.width; sprite.height = img.height;
+          const lf = getLutFilter(filter);
+          if (lf) sprite.filters = [lf];
+          lutApp.stage.addChild(sprite);
+          lutApp.renderer.render(lutApp.stage);
+          ctx.drawImage(lutApp.canvas, 0, 0);
+          lutApp.destroy(true, { children: true, texture: true });
+          drawn = true;
+        } catch (e) {
+          console.error("photo LUT render:", e);
+        }
+      }
+      if (!drawn) ctx.drawImage(img, 0, 0);
+
       const rect = overlayRef.current?.getBoundingClientRect();
       const sx = img.width / (rect?.width || 1), sy = img.height / (rect?.height || 1);
       for (const ov of overlays) {
@@ -663,16 +820,30 @@ export default function CameraStudioModal({ onClose, onDone }) {
     const ovsSnapshot = overlays;
     const filterSnapshot = filter;
     const blobSnapshot = blob;
+    const modeSnapshot = mode;
+    const saveDraft = onSaveDraft; // référence capturée : reste utilisable après le unmount
 
-    const progress = showBackgroundProgress();
+    const cancelToken = { cancelled: false };
+    const progress = showBackgroundProgress(async () => {
+      cancelToken.cancelled = true;
+      progress.fail("Annulé — brouillon enregistré");
+      if (saveDraft) {
+        try {
+          await saveDraft({ blob: blobSnapshot, overlays: ovsSnapshot, filter: filterSnapshot, mode: modeSnapshot, type: "video" });
+        } catch (e) {
+          console.error("saveDraft:", e);
+        }
+      }
+    });
     onClose(); // on rend la main tout de suite : l'utilisateur continue d'utiliser l'app
 
-    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, filterSnapshot, rect, (pct) => progress.update(pct))
+    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, filterSnapshot, rect, (pct) => progress.update(pct), cancelToken)
       .then((finalBlob) => {
+        if (cancelToken.cancelled || !finalBlob) return; // déjà géré par le bouton Annuler
         progress.done();
         onDone({ file: new File([finalBlob], `celeste.${extFor(finalBlob)}`, { type: finalBlob.type || "video/webm" }), type: "video" });
       })
-      .catch(() => progress.fail());
+      .catch(() => { if (!cancelToken.cancelled) progress.fail(); });
   };
 
   // ── Mode TEXTE (carte de statut texte, sans caméra) ─────────────
@@ -693,7 +864,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const maxSecs = MAX_SECS[mode] || 60;
   const progress = recording ? (secs / maxSecs) * 100 : 0;
-  const quickFilters = FILTERS.filter((f) => f.id !== "normal").slice(0, 2);
+  const quickFilters = LUT_FILTERS.filter((f) => f.id !== "normal").slice(0, 2);
 
   // ── Écran mode TEXTE ─────────────────────────────────────────────
   if (phase === "textcard") {
@@ -749,12 +920,15 @@ export default function CameraStudioModal({ onClose, onDone }) {
         <div ref={mountRef} style={{ position: "absolute", inset: 0, display: phase === "camera" ? "block" : "none" }} />
 
         {phase === "preview" && !isVid && (
-          <img src={url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-            filter: (PREVIEW_CSS[filter] && PREVIEW_CSS[filter] !== "none") ? PREVIEW_CSS[filter] : undefined }} />
+          <img src={url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         )}
         {phase === "preview" && isVid && (
-          <video src={url} autoPlay loop playsInline ref={previewVidRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-            filter: (PREVIEW_CSS[filter] && PREVIEW_CSS[filter] !== "none") ? PREVIEW_CSS[filter] : undefined }} />
+          <video src={url} autoPlay loop playsInline ref={previewVidRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        )}
+        {/* Pixi rend le résultat filtré (LUT) par-dessus l'image/vidéo brute ci-dessus —
+            même moteur qu'en direct caméra, donc identique à l'export final. */}
+        {phase === "preview" && (
+          <div ref={previewMountRef} style={{ position: "absolute", inset: 0 }} />
         )}
 
         {phase === "preview" && (
@@ -909,18 +1083,18 @@ export default function CameraStudioModal({ onClose, onDone }) {
                   padding: "3px 12px", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Fermer ✕</button>
             </div>
             <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 16px", scrollbarWidth: "none" }}>
-              {FILTERS.map((f) => {
+              {LUT_FILTERS.map((f) => {
                 const on = f.id === filter;
-                const css = PREVIEW_CSS[f.id] || "none";
+                const thumb = filterThumbs[f.id];
                 return (
                   <div key={f.id} onClick={() => setFilter(f.id)}
                     style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", flexShrink: 0 }}>
                     <div style={{ width: 62, height: 62, borderRadius: 16, overflow: "hidden",
                       border: `2.5px solid ${on ? "#C9952A" : "rgba(255,255,255,0.18)"}`,
                       boxShadow: on ? "0 0 12px rgba(201,149,42,0.5)" : "none", transition: "border .2s,box-shadow .2s", position: "relative" }}>
-                      {phase === "preview" && url && !isVid
-                        ? <img src={url} style={{ width: "100%", height: "100%", objectFit: "cover", filter: css !== "none" ? css : undefined }} />
-                        : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#555 0%,#222 100%)", filter: css !== "none" ? css : undefined }} />}
+                      {phase === "preview" && !isVid && thumb
+                        ? <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#555 0%,#222 100%)" }} />}
                     </div>
                     <span style={{ fontSize: 10, color: on ? "#C9952A" : "rgba(255,255,255,0.5)", fontWeight: on ? 700 : 400, letterSpacing: .3 }}>{f.label}</span>
                   </div>
@@ -1059,7 +1233,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
                     <button onClick={() => setFilter(quickFilters[0].id)}
                       style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
                         border: `2px solid ${filter === quickFilters[0].id ? "#C9952A" : "rgba(255,255,255,0.25)"}`,
-                        background: "linear-gradient(135deg,#555,#222)", filter: PREVIEW_CSS[quickFilters[0].id] }} />
+                        background: "linear-gradient(135deg,#555,#222)" }} />
                   )}
 
                   {mode === "PHOTO"
@@ -1094,7 +1268,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
                     <button onClick={() => setFilter(quickFilters[1].id)}
                       style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
                         border: `2px solid ${filter === quickFilters[1].id ? "#C9952A" : "rgba(255,255,255,0.25)"}`,
-                        background: "linear-gradient(135deg,#555,#222)", filter: PREVIEW_CSS[quickFilters[1].id] }} />
+                        background: "linear-gradient(135deg,#555,#222)" }} />
                   )}
 
                   <button onClick={flip} style={{ width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.08)",
