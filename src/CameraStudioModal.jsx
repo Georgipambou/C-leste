@@ -41,6 +41,8 @@ const PREVIEW_CSS = {
   clair:       "brightness(1.15) contrast(0.95) saturate(0.95)",
 };
 
+const extFor = (b) => (b?.type?.includes("mp4") ? "mp4" : "webm");
+
 const FONTS  = ["Space Grotesk", "Cormorant Garamond", "Georgia", "Arial Black", "Courier New"];
 const COLORS = ["#FFFFFF", "#000000", "#C9952A", "#FF4B6E", "#00E5FF", "#A8FF3E", "#FF9500", "#FF69B4"];
 const SIZES  = [16, 22, 30, 40, 52];
@@ -83,8 +85,6 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
     mainVideo.playsInline = true;
     await new Promise((r) => { mainVideo.onloadedmetadata = r; });
 
-    if (typeof mainVideo.captureStream !== "function") return sourceBlob;
-
     const loaded = await Promise.all(
       ovs.map(async (ov) => {
         if (ov.type === "image") {
@@ -118,28 +118,31 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, filterId, rect, onProgress) 
     const sx = canvas.width / (rect?.width || canvas.width);
     const sy = canvas.height / (rect?.height || canvas.height);
 
+    // captureStream() sur <canvas> est très largement supporté (contrairement à
+    // captureStream() sur <video>, absent sur certains WebView Android — c'était
+    // la cause du bug "rien ne s'applique" : le bake plantait puis retombait sur
+    // la vidéo brute). Pour le son, on passe TOUJOURS par Web Audio, qui fonctionne
+    // même sur les éléments <video> muted et ne dépend pas de video.captureStream().
     const canvasStream = canvas.captureStream(30);
     try {
-      mainVideo.captureStream().getAudioTracks().forEach((t) => canvasStream.addTrack(t));
-    } catch (e) { /* pas de piste audio dispo, on continue sans son */ }
+      const actx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = actx.createMediaStreamDestination();
+      try { actx.createMediaElementSource(mainVideo).connect(dest); } catch (e) { /* déjà connectée ailleurs */ }
+      loaded.filter((ov) => ov.type === "video" && !ov.muted).forEach((ov) => {
+        try { actx.createMediaElementSource(ov.el).connect(dest); } catch (e) { /* déjà connectée ailleurs */ }
+      });
+      dest.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
+    } catch (e) {
+      console.error("bake audio mix:", e);
+    }
 
-    // Mixage du son des vidéos overlay non muettes dans le flux final
-    try {
-      const unmutedVideoOvs = loaded.filter((ov) => ov.type === "video" && !ov.muted);
-      if (unmutedVideoOvs.length) {
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const dest = actx.createMediaStreamDestination();
-        unmutedVideoOvs.forEach((ov) => {
-          try {
-            const src = actx.createMediaElementSource(ov.el);
-            src.connect(dest);
-          } catch (e) { /* source déjà connectée ailleurs, on ignore */ }
-        });
-        dest.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
-      }
-    } catch (e) { /* Web Audio indisponible, on continue sans le son des overlays */ }
-
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm";
+    const mimeCandidates = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+      "video/mp4",
+    ];
+    const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/mp4";
     const rec = new MediaRecorder(canvasStream, { mimeType: mime });
     const chunks = [];
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
@@ -224,6 +227,8 @@ export default function CameraStudioModal({ onClose, onDone }) {
   const imgRef      = useRef(null);
   const vidOvRef    = useRef(null);
   const dragRef     = useRef({ on: false, id: null, ox: 0, oy: 0 });
+  const justDraggedRef = useRef(false);
+  const previewVidRef = useRef(null);
   const resizeRef   = useRef({ on: false, id: null, startX: 0, startSize: 0 });
   const facingRef   = useRef("user");
 
@@ -265,6 +270,16 @@ export default function CameraStudioModal({ onClose, onDone }) {
       pixiApp.current.canvas.style.transform = facing === "user" ? "scaleX(-1)" : "none";
     }
   }, [facing]);
+
+  // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
+  useEffect(() => {
+    if (phase === "preview" && isVid && previewVidRef.current) {
+      previewVidRef.current.muted = false;
+      previewVidRef.current.play().catch(() => {
+        if (previewVidRef.current) { previewVidRef.current.muted = true; previewVidRef.current.play().catch(() => {}); }
+      });
+    }
+  }, [phase, isVid, url]);
 
   // ── Caméra ──────────────────────────────────────────────────────
   const startCam = useCallback(async (f = facing) => {
@@ -424,8 +439,9 @@ export default function CameraStudioModal({ onClose, onDone }) {
       "video/webm;codecs=vp8,opus",
       "video/webm;codecs=h264,opus",
       "video/webm",
+      "video/mp4",
     ];
-    const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
+    const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/mp4";
     chunksRef.current = [];
     setShowFilters(false);
     const r = new MediaRecorder(s, { mimeType: mime });
@@ -549,9 +565,12 @@ export default function CameraStudioModal({ onClose, onDone }) {
     const ov = overlays.find((o) => o.id === id);
     const box = overlayRef.current?.getBoundingClientRect();
     const bx = box?.left || 0, by = box?.top || 0;
+    const startX = e.clientX, startY = e.clientY;
+    justDraggedRef.current = false;
     dragRef.current = { on: true, id, ox: (e.clientX - bx) - (ov?.x || 0), oy: (e.clientY - by) - (ov?.y || 0) };
     const mv = (e2) => {
       if (!dragRef.current.on) return;
+      if (Math.abs(e2.clientX - startX) > 4 || Math.abs(e2.clientY - startY) > 4) justDraggedRef.current = true;
       const b2 = overlayRef.current?.getBoundingClientRect();
       const bx2 = b2?.left || 0, by2 = b2?.top || 0;
       setOverlays((os) => os.map((o) => (o.id === dragRef.current.id
@@ -634,7 +653,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
 
     // Vidéo
     if (!needsWork) {
-      onDone({ file: new File([blob], "celeste.webm", { type: "video/webm" }), type: "video" });
+      onDone({ file: new File([blob], `celeste.${extFor(blob)}`, { type: blob.type || "video/webm" }), type: "video" });
       return;
     }
 
@@ -651,7 +670,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
     bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, filterSnapshot, rect, (pct) => progress.update(pct))
       .then((finalBlob) => {
         progress.done();
-        onDone({ file: new File([finalBlob], "celeste.webm", { type: "video/webm" }), type: "video" });
+        onDone({ file: new File([finalBlob], `celeste.${extFor(finalBlob)}`, { type: finalBlob.type || "video/webm" }), type: "video" });
       })
       .catch(() => progress.fail());
   };
@@ -734,7 +753,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
             filter: (PREVIEW_CSS[filter] && PREVIEW_CSS[filter] !== "none") ? PREVIEW_CSS[filter] : undefined }} />
         )}
         {phase === "preview" && isVid && (
-          <video src={url} autoPlay loop playsInline muted style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
+          <video src={url} autoPlay loop playsInline ref={previewVidRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
             filter: (PREVIEW_CSS[filter] && PREVIEW_CSS[filter] !== "none") ? PREVIEW_CSS[filter] : undefined }} />
         )}
 
@@ -743,6 +762,7 @@ export default function CameraStudioModal({ onClose, onDone }) {
             {overlays.map((ov) => (
               <div key={ov.id} onPointerDown={(e) => pDown(e, ov.id)}
                 onClick={() => {
+                  if (justDraggedRef.current) { justDraggedRef.current = false; return; }
                   setActiveOv(ov);
                   if (ov.type === "text") { setNewText(ov.value); setTxtColor(ov.color); setTxtSize(ov.size); setTxtFont(ov.font); setPanel("text"); }
                 }}
