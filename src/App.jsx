@@ -3056,7 +3056,7 @@ useEffect(()=>{
     .order("created_at",{ascending:false});
     const me=(data||[]).filter(s=>s.user_id===session?.user?.id);
     setMyStatuses(me);
-    const blockedSet=new Set(blockedUserIds);
+   const blockedSet=new Set(overrideBlockedIds||blockedUserIds);
     const followingSet=new Set((myConnections||[]));
     const map=new Map();
     (data||[]).filter(s=>s.user_id!==session?.user?.id&&!blockedSet.has(s.user_id)&&followingSet.has(s.user_id)).forEach(s=>{
@@ -3069,7 +3069,7 @@ useEffect(()=>{
     setGroups(prev=>freshGroups.length>0?freshGroups:prev);
     try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(freshGroups));}catch(e){}
     return{me,groups:freshGroups};
-  },[session?.user?.id,myConnections]);
+  },[session?.user?.id,myConnections,blockedUserIds]);
 
   useEffect(()=>{load();},[load]);
 
@@ -4724,10 +4724,15 @@ const doubleTap=useDoubleTap(m=>{
       .subscribe();
     return()=>{sb.removeChannel(ch);disableScreenProtection();};
   },[conv.uid]);
-  
- const ensureConv=async()=>{
-    const{data:blockRows}=await sb.from("blocks").select("blocker_id,blocked_id").or(`and(blocker_id.eq.${session?.user?.id},blocked_id.eq.${conv.uid}),and(blocker_id.eq.${conv.uid},blocked_id.eq.${session?.user?.id})`);
-    if(blockRows&&blockRows.length>0){notify("🚫 Impossible d'envoyer ce message");return null;}
+
+  const [isBlocked,setIsBlocked]=useState(false);
+  useEffect(()=>{
+    sb.from("blocks").select("blocker_id,blocked_id").or(`and(blocker_id.eq.${session?.user?.id},blocked_id.eq.${conv.uid}),and(blocker_id.eq.${conv.uid},blocked_id.eq.${session?.user?.id})`)
+      .then(({data})=>setIsBlocked(!!(data&&data.length>0)));
+  },[conv.uid,session?.user?.id]);
+
+  const ensureConv=async()=>{
+    if(isBlocked){notify("🚫 Impossible d'envoyer ce message");return null;}
     const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge,screenshot_protection").eq("id",conv.uid).single();
 if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
     if(targetProfile?.no_messages){
@@ -4962,9 +4967,11 @@ const handleFile=async(e,isImg)=>{
             <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
               <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
-<div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}
+<div style={{maxWidth:"72%",width:"fit-content",minWidth:0,opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}
   onClick={doubleTap}
-  {...useLongPress(()=>setInlinePickerMsgId(m.id))}
+  onMouseDown={e=>{const t=setTimeout(()=>setInlinePickerMsgId(m.id),500);e.currentTarget._lpm=t;}}
+  onMouseUp={e=>{clearTimeout(e.currentTarget._lpm);}}
+  onMouseLeave={e=>{clearTimeout(e.currentTarget._lpm);}}
   onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
   onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
   onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
@@ -5093,11 +5100,10 @@ e.target.style.height="auto";
 e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
 }}
 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&window.innerWidth>768){e.preventDefault();sendTxt();}}}
-placeholder="Votre message…" rows={1}
-style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto",fontFamily:"inherit"}}/></div>
-  <Btn onClick={()=>fRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Paperclip size={18}/></Btn>
+placeholder={isBlocked?"Vous ne pouvez plus échanger avec cette personne":"Votre message…"} rows={1} disabled={isBlocked}
+style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,outline:"none",resize:"none",lineHeight:1.5,maxHeight:120,overflowY:"auto",height:"auto",fontFamily:"inherit",opacity:isBlocked?0.5:1}}/></div>  <Btn onClick={()=>fRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Paperclip size={18}/></Btn>
   {inp.trim()
-    ?<Btn onClick={sendTxt} disabled={sending} style={{background:sending?"rgba(124,58,237,0.35)":"linear-gradient(135deg,#A855F7,#7C3AED)",borderRadius:"50%",width:38,height:38,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:sending?"none":"0 4px 16px rgba(124,58,237,0.5)"}}>
+    ?<Btn onClick={sendTxt} disabled={sending||isBlocked} style={{background:(sending||isBlocked)?"rgba(124,58,237,0.35)":"linear-gradient(135deg,#A855F7,#7C3AED)",borderRadius:"50%",width:38,height:38,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(sending||isBlocked)?"none":"0 4px 16px rgba(124,58,237,0.5)"}}>
       <Send size={17}/>
     </Btn>
     :<Btn onClick={startRecording} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}>
@@ -5273,6 +5279,17 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(data.created_at).getTime()};
   };
+const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
+  const [userReelsIndex,setUserReelsIndex]=useState(null);
+  const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
+  const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
+  const loadUPosts=useCallback(async()=>{
+    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
+  },[user.id]);
+  useEffect(()=>{
+    loadUPosts();
+  },[user.id,userPostsVersion]);
 if(blocked||blockedByOther) return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
     <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
@@ -5287,17 +5304,6 @@ if(blocked||blockedByOther) return(
     </div>
   </div>
 );
-const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
-  const [userReelsIndex,setUserReelsIndex]=useState(null);
-  const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
-  const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
-  const loadUPosts=useCallback(async()=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
-    if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
-  },[user.id]);
-  useEffect(()=>{
-    loadUPosts();
-  },[user.id,userPostsVersion]);
 if(user?.status==="suspended") return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
     <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
@@ -5312,7 +5318,6 @@ if(user?.status==="suspended") return(
   </div>
 );
   const stats=[{l:"POSTS",v:uPosts.length},{l:"ABONNÉS",v:followersCount},{l:"ABONNEMENTS",v:followingCount}];
-
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {showReport&&<ReportModal onClose={()=>setShowReport(false)} onSubmit={handleReport}/>}
@@ -7543,7 +7548,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     return()=>clearInterval(t);
   },[]);
 
-  const loadPosts=useCallback(async(page=1)=>{
+ const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
   const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,post_phase,text_background,is_for_sale,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
@@ -7552,7 +7557,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
    const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0}));
-    const blockedSet=new Set(blockedUserIds);
+   const blockedSet=new Set(blockedUserIds);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
 const visible=mapped.filter(p=>{
@@ -7656,7 +7661,7 @@ useEffect(()=>{
     loadMembers();
     loadConnections(session.user.id);
     loadUnreadNotifs(session.user.id);
-    loadBlockedUsers().then(()=>{loadPosts(1);loadConvs(session.user.id);});
+    loadBlockedUsers().then(ids=>{loadPosts(1,ids);loadConvs(session.user.id);});
     const loadUnreadStatuses=async()=>{
       const since=new Date(Date.now()-24*60*60*1000).toISOString();
       const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session.user.id);
