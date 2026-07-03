@@ -3066,7 +3066,7 @@ useEffect(()=>{
       map.get(key).statuses.push(mapped);
     });
     const freshGroups=Array.from(map.values());
-    setGroups(prev=>freshGroups.length>0?freshGroups:prev);
+    setGroups(freshGroups);
     try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(freshGroups));}catch(e){}
     return{me,groups:freshGroups};
   },[session?.user?.id,myConnections,blockedUserIds]);
