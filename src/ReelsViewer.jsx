@@ -49,14 +49,25 @@ function ReelVideoSrc({ rawSrc, nearActive, onSrc }) {
 // ── Badge (copié depuis App.jsx pour autonomie) ───────────────────
 function Badge({ type }) {
   if (!type) return null;
-  const map = {
-    confirmed: { emoji: "✦", color: "#C9952A" },
-    friend:    { emoji: "♥", color: "#e05c8a" },
-  };
-  const b = map[type];
-  if (!b) return null;
-  return (
-    <span style={{ fontSize: 12, color: b.color, fontWeight: 700 }}>{b.emoji}</span>
+  const isConfirmed = type === "confirmed";
+  return isConfirmed ? (
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
+      background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
+      boxShadow:"0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4)",
+      flexShrink:0,position:"relative"}}>
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+        <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </span>
+  ) : (
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
+      background:"linear-gradient(135deg,#FFD700,#FF8C00)",
+      boxShadow:"0 0 0 2px rgba(255,165,0,0.3), 0 0 10px rgba(255,180,0,0.9), 0 0 22px rgba(255,140,0,0.5)",
+      flexShrink:0}}>
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+        <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </span>
   );
 }
 
@@ -126,6 +137,7 @@ export default function ReelsViewer({
   const itemRefs     = useRef({});
   const lastTapRef   = useRef({});   // {idx: timestamp}
   const heartIdRef   = useRef(0);
+  const wakeLockRef = useRef(null);
 
   const uid = session?.user?.id;
 
@@ -137,22 +149,26 @@ export default function ReelsViewer({
 
   // ── IntersectionObserver scroll snap ─────────────────────────
   useEffect(() => {
+    let debounceTimer = null;
     const observer = new IntersectionObserver(
       entries => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const idx = Number(entry.target.dataset.idx);
-            if (idx !== activeIdx) {
-              setActiveIdx(idx);
-              setExpandedCaption(false);
-            }
-          }
-        });
+        // On ne retient que l'entrée la PLUS visible du lot, avec un petit
+        // débounce — évite les faux positifs quand deux slides sont
+        // brièvement visibles en même temps (scroll saccadé sur connexion lente)
+        const best = entries.reduce((acc, e) => (e.intersectionRatio > (acc?.intersectionRatio || 0) ? e : acc), null);
+        if (best && best.intersectionRatio >= 0.6) {
+          const idx = Number(best.target.dataset.idx);
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            setActiveIdx(prev => (idx !== prev ? idx : prev));
+            setExpandedCaption(false);
+          }, 80);
+        }
       },
-      { threshold: 0.6 }
+      { threshold: [0, 0.25, 0.5, 0.6, 0.75, 1] }
     );
     Object.values(itemRefs.current).forEach(el => { if (el) observer.observe(el); });
-    return () => observer.disconnect();
+    return () => { clearTimeout(debounceTimer); observer.disconnect(); };
   }, [posts]);
 
   // ── Gestion lecture / pause / preload ─────────────────────────
@@ -163,8 +179,10 @@ export default function ReelsViewer({
       active.muted = muted;
       active.play().catch(() => {});
       setPausedMap(p => ({ ...p, [activeIdx]: false }));
+      requestWakeLock();
     } else if (active && reelsModalOpen) {
       active.pause();
+      releaseWakeLock();
     }
 
     // Pause + libère les vidéos lointaines
@@ -199,15 +217,30 @@ export default function ReelsViewer({
   // ── Nettoyage à la fermeture ──────────────────────────────────
   useEffect(() => () => {
     Object.values(videoRefs.current).forEach(v => { if (v) { v.pause(); v.src = ""; } });
+    releaseWakeLock();
+  }, []);
+
+// ── Empêche l'écran de s'éteindre pendant la lecture ─────────
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if ("wakeLock" in navigator && !wakeLockRef.current) {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => { wakeLockRef.current = null; });
+      }
+    } catch (_) { /* refusé (batterie faible, etc.) — pas grave */ }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) { wakeLockRef.current.release().catch(() => {}); wakeLockRef.current = null; }
   }, []);
 
   // ── Toggle pause ─────────────────────────────────────────────
   const togglePause = useCallback((idx) => {
     const v = videoRefs.current[idx];
     if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); setPausedMap(p => ({ ...p, [idx]: false })); }
-    else          { v.pause();                setPausedMap(p => ({ ...p, [idx]: true  })); }
-  }, []);
+    if (v.paused) { v.play().catch(() => {}); setPausedMap(p => ({ ...p, [idx]: false })); requestWakeLock(); }
+    else          { v.pause();                setPausedMap(p => ({ ...p, [idx]: true  })); releaseWakeLock(); }
+  }, [requestWakeLock, releaseWakeLock]);
 
   // ── Seek via progress bar ─────────────────────────────────────
   const seekVideo = useCallback((idx, e) => {
@@ -348,7 +381,10 @@ export default function ReelsViewer({
                   }}
                   onClick={e => handleTap(idx, post, e)}
                   onWaiting={() => setLoadingMap(p => ({ ...p, [idx]: true  }))}
-                  onCanPlay={() => setLoadingMap(p => ({ ...p, [idx]: false }))}
+                  onCanPlay={() => {
+                    setLoadingMap(p => ({ ...p, [idx]: false }));
+                    if (idx === activeIdx && !pausedMap[idx]) videoRefs.current[idx]?.play().catch(() => {});
+                  }}
                   onPlaying={() => setLoadingMap(p => ({ ...p, [idx]: false }))}
                   onTimeUpdate={e => {
                     const v = e.target;
