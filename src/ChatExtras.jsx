@@ -232,7 +232,7 @@ export function useTypingIndicator(sb, convId, session) {
 // Utilisé dans MsgsTab (liste), alors que useTypingIndicator reste utilisé
 // dans ChatScreen pour la conversation actuellement ouverte.
 export function useTypingIndicatorForConvs(sb, convIds, myId) {
-  const [typingMap, setTypingMap] = useState({});
+  const [statusMap, setStatusMap] = useState({}); // { convId: "typing" | "recording" | null }
 
   useEffect(() => {
     const ids = (convIds || []).filter(Boolean);
@@ -243,11 +243,16 @@ export function useTypingIndicatorForConvs(sb, convIds, myId) {
       const ch = sb.channel(`typing_${id}`, { config: { broadcast: { self: false } } });
       ch.on("broadcast", { event: "typing" }, ({ payload }) => {
         if (payload.userId === myId) return;
-        setTypingMap(p => ({ ...p, [id]: true }));
         clearTimeout(timeouts[id]);
-        timeouts[id] = setTimeout(() => {
-          setTypingMap(p => ({ ...p, [id]: false }));
-        }, 2500);
+        if (payload.action === "recording_start") {
+          setStatusMap(p => ({ ...p, [id]: "recording" }));
+          timeouts[id] = setTimeout(() => setStatusMap(p => ({ ...p, [id]: null })), 90000);
+        } else if (payload.action === "recording_stop") {
+          setStatusMap(p => ({ ...p, [id]: null }));
+        } else {
+          setStatusMap(p => ({ ...p, [id]: "typing" }));
+          timeouts[id] = setTimeout(() => setStatusMap(p => ({ ...p, [id]: null })), 2500);
+        }
       }).subscribe();
       channels[id] = ch;
     });
@@ -258,11 +263,11 @@ export function useTypingIndicatorForConvs(sb, convIds, myId) {
     };
   }, [sb, (convIds || []).join(","), myId]);
 
-  return typingMap;
+  return statusMap;
 }
 // TypingIndicator v2 — visible, coloré, placé juste AU-DESSUS de l'input
 // => mettre JUSTE AVANT la <ReplyComposerBar> dans App.jsx (pas dans le header)
-export function TypingIndicator({ T, userName }) {
+export function TypingIndicator({ T, userName, mode = "typing" }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
@@ -282,7 +287,7 @@ export function TypingIndicator({ T, userName }) {
         ))}
       </div>
       <span style={{ fontSize: 12, color: "#e0b84a", fontWeight: 600 }}>
-        {userName} est en train d'écrire…
+        {mode === "recording" ? `${userName} enregistre un message vocal…` : `${userName} est en train d'écrire…`}
       </span>
     </div>
   );
