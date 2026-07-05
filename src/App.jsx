@@ -27,6 +27,7 @@ import {
   useDoubleTap, HeartBurst,
   ReplyComposerBar, MessageReplyQuote,
   useTypingIndicator, TypingIndicator,
+  useTypingIndicatorForConvs,
   editMessage, EditedBadge,
   ChatSearchBar, filterMessagesByQuery,
   SwipeToReply, useLongPress, InlineReactionPicker   // ← nouveaux
@@ -498,7 +499,7 @@ const renderTextWithMentions = (text, onMentionClick) => {
   });
 };
 const normProfile = p => ({
-  isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<3*60*1000):false,
+  isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
 country:p.country||null,
   followersCount:p.followersCount||0,
 joined_at:p.joined_at||null,
@@ -3056,7 +3057,7 @@ useEffect(()=>{
     .order("created_at",{ascending:false});
     const me=(data||[]).filter(s=>s.user_id===session?.user?.id);
     setMyStatuses(me);
-   const blockedSet=new Set(overrideBlockedIds||blockedUserIds);
+   const blockedSet=new Set(blockedUserIds);
     const followingSet=new Set((myConnections||[]));
     const map=new Map();
     (data||[]).filter(s=>s.user_id!==session?.user?.id&&!blockedSet.has(s.user_id)&&followingSet.has(s.user_id)).forEach(s=>{
@@ -3066,7 +3067,7 @@ useEffect(()=>{
       map.get(key).statuses.push(mapped);
     });
     const freshGroups=Array.from(map.values());
-    setGroups(freshGroups);
+    setGroups(prev=>freshGroups.length>0?freshGroups:prev);
     try{localStorage.setItem("celeste_statuts_cache",JSON.stringify(freshGroups));}catch(e){}
     return{me,groups:freshGroups};
   },[session?.user?.id,myConnections,blockedUserIds]);
@@ -4320,7 +4321,7 @@ return(
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste}){
+function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session}){
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("tous");
   const [favorites,setFavorites]=useState(()=>{try{return JSON.parse(localStorage.getItem("celeste_favs")||"[]");}catch{return[];}});
@@ -4337,6 +4338,9 @@ const openMenu=id=>{setMenuConvId(id);};
   if(bPin!==aPin)return bPin-aPin;
   return(b.msgs[b.msgs.length-1]?.ts||0)-(a.msgs[a.msgs.length-1]?.ts||0);
 }),[convs,pinned]);
+
+  const convIds=useMemo(()=>(convs||[]).map(c=>c.id),[convs]);
+  const typingMap=useTypingIndicatorForConvs(sb,convIds,session?.user?.id);
 
   const filtered=sorted.filter(c=>{
     const u=getM(c.uid);
@@ -4400,6 +4404,7 @@ const openMenu=id=>{setMenuConvId(id);};
           const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
           const prev=!last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.type==="voice"?"🎤 Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
           const isFav=favorites.includes(c.id);
+          const isTyping=!!typingMap[c.id];
           
           return(
   
@@ -4428,7 +4433,9 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
                   <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <p style={{margin:0,fontSize:13,color:unreads>0?T.sub:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{prev}</p>
+                  <p style={{margin:0,fontSize:13,color:isTyping?T.goldL:(unreads>0?T.sub:T.muted),fontStyle:isTyping?"italic":"normal",fontWeight:isTyping?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,display:"flex",alignItems:"center",gap:5}}>
+                    {isTyping?(<>écrit<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):prev}
+                  </p>
                   {unreads>0&&<div style={{width:20,height:20,borderRadius:"50%",background:"#4A90D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",flexShrink:0,marginLeft:8}}>{unreads}</div>}
                 </div>
               </div>
@@ -4678,8 +4685,9 @@ const doubleTap=useDoubleTap(m=>{
           if(nm.sender_id!==session?.user?.id){playChatSound("receive");}
           reload();
         })
-        .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
-        .subscribe((status)=>{
+       .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
+.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
+.subscribe((status)=>{
           if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
             clearTimeout(retryTimer);
             retryTimer=setTimeout(subscribe,3000);
@@ -4932,9 +4940,9 @@ const handleFile=async(e,isImg)=>{
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
       {/* Chat header — style Instagram */}
-<div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"6px 12px",paddingTop:"calc(6px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+<div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"3px 10px",paddingTop:"calc(3px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
   <div style={{position:"relative",flexShrink:0}}>
-    <Av u={user} size={36} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
+    <Av u={user} size={26} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
   </div>
   <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
@@ -4966,10 +4974,11 @@ const handleFile=async(e,isImg)=>{
           return(
             <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
-              <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
-<div style={{maxWidth:"72%",width:"fit-content",minWidth:0,opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}
+              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}>
+<SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
+<div
   onClick={doubleTap}
-  onMouseDown={e=>{const t=setTimeout(()=>setInlinePickerMsgId(m.id),500);e.currentTarget._lpm=t;}}
+  onMouseDown={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpm=t;}}
   onMouseUp={e=>{clearTimeout(e.currentTarget._lpm);}}
   onMouseLeave={e=>{clearTimeout(e.currentTarget._lpm);}}
   onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
@@ -5034,6 +5043,7 @@ const handleFile=async(e,isImg)=>{
                 )}
               </div>
               </SwipeToReply>
+              </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
                   {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice"||m.type==="video")&&(
@@ -5181,15 +5191,21 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
       {selectedMsg&&(
         <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>setSelectedMsg(null)}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
+            <div style={{display:"flex",justifyContent:"center",gap:10,padding:"14px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+              {QUICK_REACTIONS.map(e=>(
+                <button key={e} onClick={()=>{toggleReaction(sb,selectedMsg.id,session?.user?.id,e,selectedMsg.reactions).then(()=>reload());setSelectedMsg(null);}}
+                  style={{background:"none",border:"none",fontSize:26,cursor:"pointer",padding:4}}>
+                  {e}
+                </button>
+              ))}
+            </div>
             {selectedMsg.text&&<div style={{padding:"14px 20px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
               <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
             </div>}
             <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text,authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <span>↩️</span><span>Répondre</span>
             </Btn>
-            <Btn onClick={()=>{setShowReactionPicker(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-              <span>😀</span><span>Réagir</span>
-            </Btn>
+            
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&selectedMsg.text&&(
               <Btn onClick={()=>{setEditingMsg(selectedMsg);setInp(selectedMsg.text);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                 <span>✏️</span><span>Modifier</span>
@@ -7516,7 +7532,18 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 (async()=>{try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:10000});await sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);}catch(e){console.warn("geo:",e);}})();}});
     const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
     const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},60000);
-    return()=>{subscription.unsubscribe();clearInterval(lsInterval);};
+    // Force la mise à jour de last_seen dès que l'app/onglet revient au premier plan
+    // (le setInterval peut être throttled/suspendu par le mobile en arrière-plan)
+    const onVisible=()=>{
+      if(document.visibilityState==="visible"){
+        sb.auth.getUser().then(({data})=>{
+          if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);
+        });
+      }
+    };
+    document.addEventListener("visibilitychange",onVisible);
+    window.addEventListener("focus",onVisible);
+    return()=>{subscription.unsubscribe();clearInterval(lsInterval);document.removeEventListener("visibilitychange",onVisible);window.removeEventListener("focus",onVisible);};
   },[loadMyProfile]);
   
 
@@ -7643,13 +7670,13 @@ return updated;
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId),
       sb.from("blocks").select("blocker_id").eq("blocked_id",myId)
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem("celeste_convs_cache",JSON.stringify(filtered));}catch(e){}
@@ -7911,7 +7938,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav}/>
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
 {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}

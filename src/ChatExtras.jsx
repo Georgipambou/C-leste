@@ -189,6 +189,7 @@ export function useTypingIndicator(sb, convId, session) {
   const [peerTyping, setPeerTyping] = useState(false);
   const channelRef = useRef(null);
   const typingTimeout = useRef(null);
+  
 
   useEffect(() => {
     if (!convId) return;
@@ -208,8 +209,57 @@ export function useTypingIndicator(sb, convId, session) {
   }, [session?.user?.id]);
 
   return { peerTyping, notifyTyping };
+
 }
 
+// Variante "liste de conversations" : écoute le typing sur PLUSIEURS conversations
+// en même temps et retourne une map { convId: true/false }.
+// Utilisé dans MsgsTab (liste), alors que useTypingIndicator reste utilisé
+// dans ChatScreen pour la conversation actuellement ouverte.
+export function useTypingIndicatorForConvs(sb, convIds, myId) {
+  const [typingMap, setTypingMap] = useState({});
+  const channelsRef = useRef({});
+  const timeoutsRef = useRef({});
+
+  useEffect(() => {
+    const ids = (convIds || []).filter(Boolean);
+    const channels = channelsRef.current;
+
+    // Désabonner les conversations qui ont disparu de la liste
+    Object.keys(channels).forEach(id => {
+      if (!ids.includes(id)) {
+        sb.removeChannel(channels[id]);
+        delete channels[id];
+        clearTimeout(timeoutsRef.current[id]);
+        delete timeoutsRef.current[id];
+        setTypingMap(p => { const n = { ...p }; delete n[id]; return n; });
+      }
+    });
+
+    // Abonner les nouvelles conversations
+    ids.forEach(id => {
+      if (channels[id]) return;
+      const ch = sb.channel(`typing_${id}`, { config: { broadcast: { self: false } } });
+      ch.on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (payload.userId === myId) return;
+        setTypingMap(p => ({ ...p, [id]: true }));
+        clearTimeout(timeoutsRef.current[id]);
+        timeoutsRef.current[id] = setTimeout(() => {
+          setTypingMap(p => ({ ...p, [id]: false }));
+        }, 2500);
+      }).subscribe();
+      channels[id] = ch;
+    });
+  }, [sb, (convIds || []).join(","), myId]);
+
+  // Nettoyage complet au démontage (ex: on quitte l'onglet Messages)
+  useEffect(() => () => {
+    Object.values(channelsRef.current).forEach(ch => sb.removeChannel(ch));
+    Object.values(timeoutsRef.current).forEach(t => clearTimeout(t));
+  }, [sb]);
+
+  return typingMap;
+}
 // TypingIndicator v2 — visible, coloré, placé juste AU-DESSUS de l'input
 // => mettre JUSTE AVANT la <ReplyComposerBar> dans App.jsx (pas dans le header)
 export function TypingIndicator({ T, userName }) {
@@ -270,7 +320,9 @@ export function SwipeToReply({ children, message, onReply, mine }) {
   const startX = useRef(null);
   const elRef = useRef(null);
   const triggered = useRef(false);
-  const THRESHOLD = 60;
+  // Seuil proportionnel à la largeur de l'écran : 12% de la largeur,
+  // borné entre 45px (petits téléphones) et 80px (tablettes/desktop)
+  const THRESHOLD = Math.min(80, Math.max(45, window.innerWidth * 0.12));
 
   const onTouchStart = (e) => {
     startX.current = e.touches[0].clientX;
@@ -280,11 +332,11 @@ export function SwipeToReply({ children, message, onReply, mine }) {
   const onTouchMove = (e) => {
     if (startX.current === null) return;
     const dx = e.touches[0].clientX - startX.current;
-    // Swipe gauche uniquement (dx négatif)
-    if (dx < 0 && Math.abs(dx) < THRESHOLD + 20) {
-      if (elRef.current) elRef.current.style.transform = `translateX(${Math.max(dx, -THRESHOLD - 20)}px)`;
+    // Swipe droite uniquement (dx positif)
+    if (dx > 0 && dx < THRESHOLD + 20) {
+      if (elRef.current) elRef.current.style.transform = `translateX(${Math.min(dx, THRESHOLD + 20)}px)`;
     }
-    if (dx < -THRESHOLD && !triggered.current) {
+    if (dx > THRESHOLD && !triggered.current) {
       triggered.current = true;
       onReply(message);
       if (navigator.vibrate) navigator.vibrate(30);
@@ -304,10 +356,7 @@ export function SwipeToReply({ children, message, onReply, mine }) {
     <div ref={elRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       style={{ position: "relative", touchAction: "pan-y" }}>
       {/* Icône réponse visible derrière lors du swipe */}
-      <div style={{
-        position: "absolute", [mine ? "left" : "right"]: -36, top: "50%",
-        transform: "translateY(-50%)", opacity: 0.6, pointerEvents: "none"
-      }}>↩️</div>
+
       {children}
     </div>
   );
