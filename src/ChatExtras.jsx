@@ -195,6 +195,7 @@ export function useTypingIndicator(sb, convId, session) {
     if (!convId) return;
     const ch = sb.channel(`typing_${convId}`, { config: { broadcast: { self: false } } });
     ch.on("broadcast", { event: "typing" }, ({ payload }) => {
+      console.log("typing reçu pour", convId, payload);
       if (payload.userId === session?.user?.id) return;
       setPeerTyping(true);
       clearTimeout(typingTimeout.current);
@@ -205,8 +206,9 @@ export function useTypingIndicator(sb, convId, session) {
   }, [convId, sb, session?.user?.id]);
 
   const notifyTyping = useCallback(() => {
+    console.log("📤 notifyTyping envoyé sur conv", convId, "par", session?.user?.id);
     channelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: session?.user?.id } });
-  }, [session?.user?.id]);
+  }, [session?.user?.id, convId]);
 
   return { peerTyping, notifyTyping };
 
@@ -218,45 +220,30 @@ export function useTypingIndicator(sb, convId, session) {
 // dans ChatScreen pour la conversation actuellement ouverte.
 export function useTypingIndicatorForConvs(sb, convIds, myId) {
   const [typingMap, setTypingMap] = useState({});
-  const channelsRef = useRef({});
-  const timeoutsRef = useRef({});
 
   useEffect(() => {
     const ids = (convIds || []).filter(Boolean);
-    const channels = channelsRef.current;
+    const channels = {};
+    const timeouts = {};
 
-    // Désabonner les conversations qui ont disparu de la liste
-    Object.keys(channels).forEach(id => {
-      if (!ids.includes(id)) {
-        sb.removeChannel(channels[id]);
-        delete channels[id];
-        clearTimeout(timeoutsRef.current[id]);
-        delete timeoutsRef.current[id];
-        setTypingMap(p => { const n = { ...p }; delete n[id]; return n; });
-      }
-    });
-
-    // Abonner les nouvelles conversations
     ids.forEach(id => {
-      if (channels[id]) return;
       const ch = sb.channel(`typing_${id}`, { config: { broadcast: { self: false } } });
       ch.on("broadcast", { event: "typing" }, ({ payload }) => {
         if (payload.userId === myId) return;
         setTypingMap(p => ({ ...p, [id]: true }));
-        clearTimeout(timeoutsRef.current[id]);
-        timeoutsRef.current[id] = setTimeout(() => {
+        clearTimeout(timeouts[id]);
+        timeouts[id] = setTimeout(() => {
           setTypingMap(p => ({ ...p, [id]: false }));
         }, 2500);
       }).subscribe();
       channels[id] = ch;
     });
-  }, [sb, (convIds || []).join(","), myId]);
 
-  // Nettoyage complet au démontage (ex: on quitte l'onglet Messages)
-  useEffect(() => () => {
-    Object.values(channelsRef.current).forEach(ch => sb.removeChannel(ch));
-    Object.values(timeoutsRef.current).forEach(t => clearTimeout(t));
-  }, [sb]);
+    return () => {
+      Object.values(channels).forEach(ch => sb.removeChannel(ch));
+      Object.values(timeouts).forEach(t => clearTimeout(t));
+    };
+  }, [sb, (convIds || []).join(","), myId]);
 
   return typingMap;
 }
@@ -318,25 +305,39 @@ export function EditedBadge({ message, T }) {
 // onReply(message) est appelé quand le swipe dépasse le seuil.
 export function SwipeToReply({ children, message, onReply, mine }) {
   const startX = useRef(null);
+  const startY = useRef(null);
+  const locked = useRef(null); // 'horizontal' | 'vertical' | null
   const elRef = useRef(null);
   const triggered = useRef(false);
-  // Seuil proportionnel à la largeur de l'écran : 12% de la largeur,
-  // borné entre 45px (petits téléphones) et 80px (tablettes/desktop)
   const THRESHOLD = Math.min(80, Math.max(45, window.innerWidth * 0.12));
 
   const onTouchStart = (e) => {
     startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
     triggered.current = false;
+    locked.current = null;
   };
 
   const onTouchMove = (e) => {
     if (startX.current === null) return;
     const dx = e.touches[0].clientX - startX.current;
-    // Swipe droite uniquement (dx positif)
+    const dy = e.touches[0].clientY - startY.current;
+
+    // Détermine la direction dominante une seule fois, dès qu'un mouvement net apparaît
+    if (locked.current === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      locked.current = Math.abs(dx) > Math.abs(dy) * 1.5 ? "horizontal" : "vertical";
+    }
+
+    // Si c'est un scroll vertical, on annule et on laisse la liste scroller normalement
+    if (locked.current === "vertical") {
+      if (elRef.current) elRef.current.style.transform = "translateX(0)";
+      return;
+    }
+
     if (dx > 0 && dx < THRESHOLD + 20) {
       if (elRef.current) elRef.current.style.transform = `translateX(${Math.min(dx, THRESHOLD + 20)}px)`;
     }
-    if (dx > THRESHOLD && !triggered.current) {
+    if (dx > THRESHOLD && !triggered.current && locked.current === "horizontal") {
       triggered.current = true;
       onReply(message);
       if (navigator.vibrate) navigator.vibrate(30);
@@ -345,6 +346,8 @@ export function SwipeToReply({ children, message, onReply, mine }) {
 
   const onTouchEnd = () => {
     startX.current = null;
+    startY.current = null;
+    locked.current = null;
     if (elRef.current) {
       elRef.current.style.transition = "transform .25s ease";
       elRef.current.style.transform = "translateX(0)";
@@ -355,8 +358,6 @@ export function SwipeToReply({ children, message, onReply, mine }) {
   return (
     <div ref={elRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       style={{ position: "relative", touchAction: "pan-y" }}>
-      {/* Icône réponse visible derrière lors du swipe */}
-
       {children}
     </div>
   );

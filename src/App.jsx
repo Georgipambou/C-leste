@@ -4341,6 +4341,7 @@ const openMenu=id=>{setMenuConvId(id);};
 
   const convIds=useMemo(()=>(convs||[]).map(c=>c.id),[convs]);
   const typingMap=useTypingIndicatorForConvs(sb,convIds,session?.user?.id);
+  console.log("typingMap", typingMap, "convIds", convIds, "myId", session?.user?.id);
 
   const filtered=sorted.filter(c=>{
     const u=getM(c.uid);
@@ -4974,7 +4975,7 @@ const handleFile=async(e,isImg)=>{
           return(
             <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
-              <div style={{maxWidth:"72%",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}>
+              <div style={{maxWidth:"72%",display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}>
 <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
 <div
   onClick={doubleTap}
@@ -5043,7 +5044,6 @@ const handleFile=async(e,isImg)=>{
                 )}
               </div>
               </SwipeToReply>
-              </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3,justifyContent:mine?"flex-end":"flex-start"}}>
                   <span style={{fontSize:10,color:T.muted}}>{hm(m.ts)}</span>
                   {isSending&&(m.type==="photo"||m.type==="file"||m.type==="voice"||m.type==="video")&&(
@@ -5062,6 +5062,7 @@ const handleFile=async(e,isImg)=>{
 {mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"✓✓":"✓✓"}</span>}
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
+              </div>
             </div>
           );
         })}
