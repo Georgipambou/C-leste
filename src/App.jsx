@@ -43,7 +43,7 @@ import {
   User, Users, ChevronLeft, ChevronRight, MoreVertical,
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
-  Reply, ArrowLeft, Check, CheckCheck,
+  Reply, ArrowLeft, Check, CheckCheck, Copy,
   Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
@@ -3856,7 +3856,7 @@ useEffect(()=>{
   },[hasMore,loadMore]);
 
   const toggleLike=async pid=>{
-    console.log("toggleLike called pid:", pid, "posts count:", (posts||[]).length);
+   
     const post=(posts||[]).find(p=>p.id===pid);
     
     if(!post)return;
@@ -4341,7 +4341,7 @@ const openMenu=id=>{setMenuConvId(id);};
 
   const convIds=useMemo(()=>(convs||[]).map(c=>c.id),[convs]);
   const typingMap=useTypingIndicatorForConvs(sb,convIds,session?.user?.id);
-  console.log("typingMap", typingMap, "convIds", convIds, "myId", session?.user?.id);
+ 
 
   const filtered=sorted.filter(c=>{
     const u=getM(c.uid);
@@ -4403,9 +4403,12 @@ const openMenu=id=>{setMenuConvId(id);};
           const u=getM(c.uid);
           const last=c.msgs[c.msgs.length-1];
           const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
-          const prev=!last?"":last.type==="photo"?"📷 Photo":last.type==="file"?`📎 ${last.fileName}`:last.type==="voice"?"🎤 Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
+          const previewIcon=!last?null:last.type==="photo"?<Image size={13}/>:last.type==="file"?<Paperclip size={13}/>:last.type==="voice"?<Mic size={13}/>:null;
+          const prev=!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
           const isFav=favorites.includes(c.id);
-          const isTyping=!!typingMap[c.id];
+          const peerStatus=typingMap[c.id]||null;
+          const isTyping=peerStatus==="typing";
+          const isRecording=peerStatus==="recording";
           
           return(
   
@@ -4421,7 +4424,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               <div style={{position:"relative",flexShrink:0}}>
                 <Av u={u} size={52}/>
                 {u?.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px solid #000"}}/>}
-                {pinned.includes(c.id)&&<span style={{position:"absolute",top:8,right:36,fontSize:12}}>📌</span>}
+                {pinned.includes(c.id)&&<Pin size={12} color={T.gold} style={{position:"absolute",top:8,right:36}}/>}
               </div>
               
               {/* Infos */}
@@ -4434,8 +4437,8 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
                   <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <p style={{margin:0,fontSize:13,color:isTyping?T.goldL:(unreads>0?T.sub:T.muted),fontStyle:isTyping?"italic":"normal",fontWeight:isTyping?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,display:"flex",alignItems:"center",gap:5}}>
-                    {isTyping?(<>écrit<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):prev}
+                  <p style={{margin:0,fontSize:13,color:(isTyping||isRecording)?T.goldL:(unreads>0?T.sub:T.muted),fontStyle:(isTyping||isRecording)?"italic":"normal",fontWeight:(isTyping||isRecording)?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,display:"flex",alignItems:"center",gap:5}}>
+                    {isRecording?(<><Mic size={13}/>enregistre<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):isTyping?(<>écrit<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):(<>{previewIcon}{prev}</>)}
                   </p>
                   {unreads>0&&<div style={{width:20,height:20,borderRadius:"50%",background:"#4A90D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",flexShrink:0,marginLeft:8}}>{unreads}</div>}
                 </div>
@@ -4604,7 +4607,7 @@ function VoicePlayer({src,mine}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile}){
+function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile,onBack}){
 const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
@@ -4664,7 +4667,7 @@ const [burstMsgId,setBurstMsgId]=useState(null);
 const [editingMsg,setEditingMsg]=useState(null);
 const [searchOpen,setSearchOpen]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
-const {peerTyping,notifyTyping}=useTypingIndicator(sb,conv.id,session);
+const {peerTyping,peerRecording,notifyTyping,notifyRecording}=useTypingIndicator(sb,conv.id,session);
 const doubleTap=useDoubleTap(m=>{
   toggleReaction(sb,m.id,session?.user?.id,"❤️",m.reactions).then(()=>reload());
   setBurstMsgId(m.id); setTimeout(()=>setBurstMsgId(null),600);
@@ -4906,6 +4909,7 @@ const handleFile=async(e,isImg)=>{
       };
       rec.start(250); mediaRecRef.current=rec;
       setRecording(true);setRecordSecs(0);
+      notifyRecording(true);
       timerRef.current=setInterval(()=>setRecordSecs(s=>s+1),1000);
     }catch{notify("Microphone non accessible");}
   };
@@ -4913,8 +4917,9 @@ const handleFile=async(e,isImg)=>{
   const cancelRecording=()=>{
     if(mediaRecRef.current){mediaRecRef.current.ondata=null;mediaRecRef.current.onstop=null;mediaRecRef.current.stop();}
     clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);
+    notifyRecording(false);
   };
-  const stopRecording=()=>{mediaRecRef.current?.stop();clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);};
+  const stopRecording=()=>{mediaRecRef.current?.stop();clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);notifyRecording(false);};
   const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
 
   return(
@@ -4942,6 +4947,7 @@ const handleFile=async(e,isImg)=>{
 
       {/* Chat header — style Instagram */}
 <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"3px 10px",paddingTop:"calc(3px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
+  <Btn onClick={()=>onBack&&onBack()} style={{color:T.gold,padding:"6px 2px 6px 0",display:"flex",alignItems:"center",flexShrink:0}}><ChevronLeft size={22}/></Btn>
   <div style={{position:"relative",flexShrink:0}}>
     <Av u={user} size={26} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
@@ -5057,9 +5063,9 @@ const handleFile=async(e,isImg)=>{
     </div>
   </div>
 )}
-                  {mine&&isSending&&<span style={{fontSize:10,color:T.muted}}>✓</span>}
+                  {mine&&isSending&&<Check size={12} color={T.muted}/>}
 {mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
-{mine&&!isSending&&<span style={{fontSize:10,color:isRead?T.gold:T.muted,transition:"color .3s",fontWeight:isRead?700:400}}>{isRead?"✓✓":"✓✓"}</span>}
+{mine&&!isSending&&<CheckCheck size={13} color={isRead?T.gold:T.muted} style={{transition:"color .3s"}}/>}
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
               </div>
@@ -5082,7 +5088,7 @@ const handleFile=async(e,isImg)=>{
         </div>
       )}
 
-      {peerTyping&&<TypingIndicator T={T} userName={user.name}/>}
+      {peerRecording?<TypingIndicator T={T} userName={user.name} mode="recording"/>:peerTyping?<TypingIndicator T={T} userName={user.name} mode="typing"/>:null}
       <ReplyComposerBar replyTo={replyTo} T={T} onCancel={()=>setReplyTo(null)}/>
       {/* Input */}
       <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
@@ -5091,7 +5097,7 @@ const handleFile=async(e,isImg)=>{
             <div style={{display:"flex",gap:3,alignItems:"center"}}>
               {[0,1,2,3,4].map(i=>(<div key={i} style={{width:3,height:4+Math.sin(Date.now()/200+i)*8,background:T.err,borderRadius:2,animation:`waveform .6s ease ${i*.1}s infinite`}}/>))}
             </div>
-            <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600}}>🔴 {recordSecs}s</span>
+            <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:T.err,display:"inline-block"}}/>{recordSecs}s</span>
             <Btn onClick={cancelRecording} style={{color:T.err,padding:"8px",display:"flex",alignItems:"center"}}><Trash2 size={20}/></Btn>
             <Btn onClick={stopRecording} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13}}>Envoyer</Btn>
           </div>
@@ -5204,20 +5210,20 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
               <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
             </div>}
             <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text,authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-              <span>↩️</span><span>Répondre</span>
+              <Reply size={18}/><span>Répondre</span>
             </Btn>
             
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&selectedMsg.text&&(
               <Btn onClick={()=>{setEditingMsg(selectedMsg);setInp(selectedMsg.text);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-                <span>✏️</span><span>Modifier</span>
+                <Edit2 size={18}/><span>Modifier</span>
               </Btn>
             )}
             <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("Copié !");}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-              <span>📋</span><span>Copier</span>
+              <Copy size={18}/><span>Copier</span>
             </Btn>
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&(
               <Btn onClick={()=>{deleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-                <span>🗑</span><span>Supprimer</span>
+                <Trash2 size={18}/><span>Supprimer</span>
               </Btn>
             )}
             <Btn onClick={()=>setSelectedMsg(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
@@ -7887,7 +7893,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>setShowAdmin(false)} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>setOpenCeleste(false)} myProfile={myProfile} session={session}/>}
 
-        <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:hideNav?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
+        <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId)?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -7929,7 +7935,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
               :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>setOpenUserId(null)} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&(
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onBack={()=>setOpenConvId(null)}/>
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>

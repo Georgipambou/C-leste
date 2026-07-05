@@ -186,32 +186,45 @@ export function MessageReplyQuote({ message, mine, T, onClick }) {
    ============================================================ */
 
 export function useTypingIndicator(sb, convId, session) {
-  const [peerTyping, setPeerTyping] = useState(false);
+  const [peerStatus, setPeerStatus] = useState(null); // null | "typing" | "recording"
   const channelRef = useRef(null);
   const typingTimeout = useRef(null);
-  
+  const recordingTimeout = useRef(null);
 
   useEffect(() => {
     if (!convId) return;
     const ch = sb.channel(`typing_${convId}`, { config: { broadcast: { self: false } } });
     ch.on("broadcast", { event: "typing" }, ({ payload }) => {
-      console.log("typing reçu pour", convId, payload);
       if (payload.userId === session?.user?.id) return;
-      setPeerTyping(true);
-      clearTimeout(typingTimeout.current);
-      typingTimeout.current = setTimeout(() => setPeerTyping(false), 2500);
+      if (payload.action === "recording_start") {
+        clearTimeout(typingTimeout.current);
+        clearTimeout(recordingTimeout.current);
+        setPeerStatus("recording");
+        // Filet de sécurité si le "stop" n'arrive jamais (crash, coupure réseau)
+        recordingTimeout.current = setTimeout(() => setPeerStatus(p => (p === "recording" ? null : p)), 90000);
+      } else if (payload.action === "recording_stop") {
+        clearTimeout(recordingTimeout.current);
+        setPeerStatus(p => (p === "recording" ? null : p));
+      } else {
+        clearTimeout(recordingTimeout.current);
+        setPeerStatus("typing");
+        clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => setPeerStatus(p => (p === "typing" ? null : p)), 2500);
+      }
     }).subscribe();
     channelRef.current = ch;
-    return () => { clearTimeout(typingTimeout.current); sb.removeChannel(ch); };
+    return () => { clearTimeout(typingTimeout.current); clearTimeout(recordingTimeout.current); sb.removeChannel(ch); };
   }, [convId, sb, session?.user?.id]);
 
   const notifyTyping = useCallback(() => {
-    console.log("📤 notifyTyping envoyé sur conv", convId, "par", session?.user?.id);
-    channelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: session?.user?.id } });
-  }, [session?.user?.id, convId]);
+    channelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: session?.user?.id, action: "typing" } });
+  }, [session?.user?.id]);
 
-  return { peerTyping, notifyTyping };
+  const notifyRecording = useCallback((isRecording) => {
+    channelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: session?.user?.id, action: isRecording ? "recording_start" : "recording_stop" } });
+  }, [session?.user?.id]);
 
+  return { peerTyping: peerStatus === "typing", peerRecording: peerStatus === "recording", notifyTyping, notifyRecording };
 }
 
 // Variante "liste de conversations" : écoute le typing sur PLUSIEURS conversations
