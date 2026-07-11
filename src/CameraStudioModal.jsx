@@ -210,7 +210,7 @@ function showBackgroundProgress(onCancel) {
 }
 
 // ── COMPOSANT PRINCIPAL ─────────────────────────────────────────────
-export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts }) {
+export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts, sb, initialSound }) {
   const videoRef    = useRef(null);
   const overlayRef  = useRef(null);
   const streamRef   = useRef(null);
@@ -253,7 +253,68 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const [cardText,   setCardText]   = useState("");
   const [sharing,    setSharing]    = useState(false);
 
+  // ── Son attaché au post (existant depuis la bibliothèque, ou fraîchement enregistré) ──
+  const [selectedSound, setSelectedSound] = useState(initialSound || null); // {id,title,url} existant OU {title,blob,isNew:true} nouveau
+  const [soundPanelLoading, setSoundPanelLoading] = useState(false);
+  const [trendingSounds, setTrendingSounds] = useState([]);
+  const [recordingSound, setRecordingSound] = useState(false);
+  const [soundSecs, setSoundSecs] = useState(0);
+  const soundRecRef = useRef(null);
+  const soundChunksRef = useRef([]);
+  const soundTimerRef = useRef(null);
+  const SOUND_MAX_SECS = 15; // contrainte demandée : jamais plus de 15s
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
+
+  // ── Ouvre le panel son, charge les sons tendance ──────────────────
+  const openSoundPanel = useCallback(async () => {
+    setPanel("sound");
+    if (!sb) return;
+    setSoundPanelLoading(true);
+    try {
+      const { data, error } = await sb.from("sounds").select("id,title,url,usage_count").order("usage_count", { ascending: false }).limit(20);
+      if (!error) setTrendingSounds(data || []);
+    } finally {
+      setSoundPanelLoading(false);
+    }
+  }, [sb]);
+
+  // ── Enregistrer un son original, 15s max, compressé (32kbps) ──────
+  const stopSoundRecording = useCallback(() => {
+    if (soundRecRef.current && soundRecRef.current.state !== "inactive") soundRecRef.current.stop();
+    clearInterval(soundTimerRef.current);
+    setRecordingSound(false);
+  }, []);
+
+  const startSoundRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "audio/webm";
+      // 32kbps : largement suffisant pour un son de fond, garde le fichier très léger (essentiel pour le scroll fluide du feed)
+      const rec = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32000 });
+      soundChunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) soundChunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const soundBlob = new Blob(soundChunksRef.current, { type: mime });
+        setSelectedSound({ title: "Mon son", blob: soundBlob, isNew: true });
+        setPanel(null);
+      };
+      soundRecRef.current = rec;
+      rec.start();
+      setRecordingSound(true);
+      setSoundSecs(0);
+      soundTimerRef.current = setInterval(() => {
+        setSoundSecs((s) => {
+          if (s + 1 >= SOUND_MAX_SECS) { stopSoundRecording(); return SOUND_MAX_SECS; }
+          return s + 1;
+        });
+      }, 1000);
+    } catch (e) {
+      showToast("Micro indisponible — vérifie les autorisations");
+    }
+  }, [stopSoundRecording]);
 
   useEffect(() => { facingRef.current = facing; }, [facing]);
 
@@ -529,7 +590,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
     if (!isVid) {
       if (!needsWork) {
-        onDone({ file: new File([blob], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image" });
+        onDone({ file: new File([blob], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound });
         return;
       }
       const img = new Image(); img.src = url;
@@ -552,13 +613,13 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
           ctx.drawImage(oi, ov.x * sx, ov.y * sy, ov.size * sx, ov.size * sy);
         }
       }
-      c.toBlob((b) => onDone({ file: new File([b], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image" }), "image/jpeg", 0.95);
+      c.toBlob((b) => onDone({ file: new File([b], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound }), "image/jpeg", 0.95);
       return;
     }
 
     // Vidéo
     if (!needsWork) {
-      onDone({ file: new File([blob], `celeste.${extFor(blob)}`, { type: blob.type || "video/webm" }), type: "video" });
+      onDone({ file: new File([blob], `celeste.${extFor(blob)}`, { type: blob.type || "video/webm" }), type: "video", sound: selectedSound });
       return;
     }
 
@@ -588,7 +649,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
       .then((finalBlob) => {
         if (cancelToken.cancelled || !finalBlob) return; // déjà géré par le bouton Annuler
         progress.done();
-        onDone({ file: new File([finalBlob], `celeste.${extFor(finalBlob)}`, { type: finalBlob.type || "video/webm" }), type: "video" });
+        onDone({ file: new File([finalBlob], `celeste.${extFor(finalBlob)}`, { type: finalBlob.type || "video/webm" }), type: "video", sound: selectedSound });
       })
       .catch(() => { if (!cancelToken.cancelled) progress.fail(); });
   };
@@ -644,7 +705,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     ctx.fillStyle = txtColor; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.font = `bold ${txtSize * 2.4}px "${txtFont}"`;
     wrapText(ctx, cardText, c.width / 2, c.height / 2, c.width - 140, txtSize * 2.8);
-    c.toBlob((b) => onDone({ file: new File([b], "celeste-texte.jpg", { type: "image/jpeg" }), type: "image" }), "image/jpeg", 0.95);
+    c.toBlob((b) => onDone({ file: new File([b], "celeste-texte.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound }), "image/jpeg", 0.95);
   };
 
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -822,11 +883,14 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
           <button onClick={onClose} style={Ic()}><X size={18} /></button>
 
           {phase === "camera" && !recording && (
-            <button onClick={() => showToast("Bientôt disponible : ajout de son")}
-              style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 20,
+            <button onClick={openSoundPanel}
+              style={{ background: selectedSound ? "rgba(201,149,42,0.25)" : "rgba(0,0,0,0.5)", border: `1px solid ${selectedSound ? "#C9952A" : "rgba(255,255,255,0.18)"}`, borderRadius: 20,
                 padding: "8px 16px", color: "#fff", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center",
-                gap: 7, cursor: "pointer", backdropFilter: "blur(12px)" }}>
-              <Music2 size={14} /> Ajouter un son
+                gap: 7, cursor: "pointer", backdropFilter: "blur(12px)", maxWidth: 180 }}>
+              <Music2 size={14} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedSound ? selectedSound.title : "Ajouter un son"}
+              </span>
             </button>
           )}
 
@@ -861,6 +925,62 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
       {/* ── Zone bas ── */}
       <div style={{ position: "relative", zIndex: 20, paddingBottom: 40 }}>
+        {panel === "sound" && (
+          <div style={{ background: "rgba(6,6,6,0.97)", borderRadius: "24px 24px 0 0", padding: "20px 18px 14px", backdropFilter: "blur(30px)", maxHeight: "60vh", display: "flex", flexDirection: "column" }}>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 12 }}>Choisis un son ou enregistre le tien (15s max)</span>
+
+            {recordingSound ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "20px 0" }}>
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#FF2D55", display: "flex", alignItems: "center", justifyContent: "center", animation: "celeste-pulse 1s ease-in-out infinite" }}>
+                  <Music2 size={26} color="#fff" />
+                </div>
+                <span style={{ color: "#fff", fontWeight: 700 }}>{soundSecs}s / {SOUND_MAX_SECS}s</span>
+                <button onClick={stopSoundRecording}
+                  style={{ padding: "10px 22px", borderRadius: 20, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                  Arrêter
+                </button>
+                <style>{`@keyframes celeste-pulse { 0%,100%{transform:scale(1);} 50%{transform:scale(1.08);} }`}</style>
+              </div>
+            ) : (
+              <>
+                <button onClick={startSoundRecording}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 14, border: "1px dashed rgba(201,149,42,0.5)",
+                    background: "rgba(201,149,42,0.08)", color: "#e0b84a", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 14 }}>
+                  <Music2 size={16} /> Enregistrer mon propre son
+                </button>
+
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {soundPanelLoading && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>Chargement des sons…</span>}
+                  {!soundPanelLoading && trendingSounds.length === 0 && (
+                    <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>Aucun son tendance pour l'instant — sois le premier à en créer un !</span>
+                  )}
+                  {trendingSounds.map((s) => {
+                    const active = selectedSound?.id === s.id;
+                    return (
+                      <div key={s.id} onClick={() => { setSelectedSound({ id: s.id, title: s.title, url: s.url }); setPanel(null); }}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 8px", borderRadius: 12, cursor: "pointer",
+                          background: active ? "rgba(201,149,42,0.15)" : "transparent", marginBottom: 4 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: "50%", border: `2px solid ${active ? "#C9952A" : "rgba(255,255,255,0.2)"}`,
+                          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Music2 size={14} color={active ? "#C9952A" : "rgba(255,255,255,0.5)"} />
+                        </div>
+                        <span style={{ color: "#fff", fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                        <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>{s.usage_count} posts</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <button onClick={() => setPanel(null)}
+              style={{ marginTop: 12, padding: "10px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)", cursor: "pointer", fontSize: 13 }}>
+              Fermer
+            </button>
+          </div>
+        )}
+
         {panel === "text" && (
           <div style={{ background: "rgba(6,6,6,0.97)", borderRadius: "24px 24px 0 0", padding: "20px 18px 10px", backdropFilter: "blur(30px)" }}>
             <input value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Votre texte…" autoFocus

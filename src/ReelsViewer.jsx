@@ -1,18 +1,34 @@
 /**
  * ReelsViewer.jsx — Céleste
  * Composant Reels/TikTok isolé, extrait de App.jsx
- * Améliorations : double tap + cœur animé, bouton mute, preload n+1 propre
+ * Améliorations : double tap + cœur animé, bouton mute, preload n+1 propre,
+ * wake lock pendant la lecture, commentaires qui ne coupent plus le reel,
+ * menu "..." (supprimer / signaler / ne plus voir cette personne)
  */
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX } from "lucide-react";
-
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye } from "lucide-react";
+import { pauseOtherVideos, releaseActiveVideo } from "./videoRegistry";
+import { useVideoEngagement } from "./lib/recommendation/useVideoEngagement";
 // ── Utilitaires écran ─────────────────────────────────────────────
 import { Capacitor } from "@capacitor/core";
 import { PrivacyScreen } from "@capacitor-community/privacy-screen";
 const isNative = Capacitor.isNativePlatform();
 const enableScreenProtection  = async () => { if (!isNative) return; try { await PrivacyScreen.enable();  } catch (_) {} };
 const disableScreenProtection = async () => { if (!isNative) return; try { await PrivacyScreen.disable(); } catch (_) {} };
+
+// ── Raisons de signalement spécifiques à une publication ──────────
+const POST_REPORT_REASONS = [
+  "Contenu inapproprié ou choquant",
+  "Nudité ou contenu sexuel",
+  "Violence ou contenu dangereux",
+  "Discours haineux ou discrimination",
+  "Harcèlement ou intimidation",
+  "Fausses informations",
+  "Spam ou publicité non désirée",
+  "Contenu protégé (droits d'auteur)",
+  "Autre",
+];
 
 // ── Cache vidéo session ───────────────────────────────────────────
 const _vBlobMap = new Map();
@@ -99,9 +115,86 @@ function FloatingHeart({ x, y, id, onDone }) {
   );
 }
 
+// ── Menu "..." (supprimer / signaler / ne plus voir) ──────────────
+function PostActionMenu({ isMine, isAdmin, onClose, onDelete, onReport, onMute }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1400, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: "rgba(18,18,18,0.98)", borderRadius: "22px 22px 0 0", paddingBottom: "calc(12px + env(safe-area-inset-bottom,0px))", animation: "slideUp .2s ease" }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "12px auto 8px" }} />
+        {(isMine || isAdmin) && (
+          <button onClick={onDelete} style={{ width: "100%", padding: "16px 22px", background: "none", border: "none", display: "flex", alignItems: "center", gap: 14, fontSize: 15, color: "#ff5c5c", textAlign: "left", cursor: "pointer" }}>
+            <Trash2 size={19} /> Supprimer la publication
+          </button>
+        )}
+        {!isMine && (
+          <>
+            <button onClick={onReport} style={{ width: "100%", padding: "16px 22px", background: "none", border: "none", display: "flex", alignItems: "center", gap: 14, fontSize: 15, color: "#fff", textAlign: "left", cursor: "pointer", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <Flag size={19} /> Signaler la publication
+            </button>
+            <button onClick={onMute} style={{ width: "100%", padding: "16px 22px", background: "none", border: "none", display: "flex", alignItems: "center", gap: 14, fontSize: 15, color: "#fff", textAlign: "left", cursor: "pointer", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <EyeOff size={19} /> Ne plus voir les publications de cette personne
+            </button>
+          </>
+        )}
+        <button onClick={onClose} style={{ width: "100%", padding: "14px 22px", background: "none", border: "none", fontSize: 14, color: "rgba(255,255,255,0.5)", textAlign: "center", cursor: "pointer", marginTop: 4 }}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Feuille de signalement (raisons + détails) ────────────────────
+function PostReportSheet({ onClose, onSubmit }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [details, setDetails] = useState("");
+  const [pendingReason, setPendingReason] = useState(null);
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1400, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ width: "100%", maxWidth: 480, background: "rgba(18,18,18,0.98)", borderRadius: "22px 22px 0 0", padding: "20px 18px calc(24px + env(safe-area-inset-bottom,0px))", animation: "slideUp .25s ease" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>Signaler la publication</span>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 30, height: 30, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={15} /></button>
+        </div>
+        {!showDetails ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: "55vh", overflowY: "auto" }}>
+            {POST_REPORT_REASONS.map(r => (
+              <button key={r} onClick={() => onSubmit(r, "")} style={{ padding: "13px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.9)", fontSize: 13.5, textAlign: "left", cursor: "pointer" }}>
+                {r}
+              </button>
+            ))}
+            <button onClick={() => setShowDetails(true)} style={{ padding: "10px 14px", background: "none", border: "none", color: "#e0b84a", fontSize: 12, textAlign: "left", cursor: "pointer" }}>
+              + Ajouter des précisions avant d'envoyer
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 12, maxHeight: "40vh", overflowY: "auto" }}>
+              {POST_REPORT_REASONS.map(r => (
+                <button key={r} onClick={() => setPendingReason(r)} style={{ padding: "11px 14px", borderRadius: 12, border: `1px solid ${pendingReason === r ? "#C9952A88" : "rgba(255,255,255,0.1)"}`, background: pendingReason === r ? "rgba(201,149,42,0.12)" : "transparent", color: pendingReason === r ? "#e0b84a" : "rgba(255,255,255,0.85)", fontSize: 13, textAlign: "left", cursor: "pointer" }}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <textarea value={details} onChange={e => setDetails(e.target.value)} placeholder="Détails" rows={2}
+              style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "11px 14px", color: "#fff", fontSize: 13, outline: "none", resize: "none", marginBottom: 12 }} />
+            <button onClick={() => pendingReason && onSubmit(pendingReason, details)} disabled={!pendingReason}
+              style={{ width: "100%", padding: 14, borderRadius: 14, border: "none", background: pendingReason ? "linear-gradient(135deg,#e0b84a,#C9952A)" : "rgba(255,255,255,0.08)", color: pendingReason ? "#000" : "rgba(255,255,255,0.4)", fontSize: 14, fontWeight: 700, cursor: pendingReason ? "pointer" : "default" }}>
+              Envoyer le signalement
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Composant principal ───────────────────────────────────────────
 export default function ReelsViewer({
   posts,
+  sb,
   startIndex,
   onClose,
   toggleLike,
@@ -122,6 +215,10 @@ export default function ReelsViewer({
   const [showControls,    setShowControls]    = useState(false);
   const [muted,           setMuted]           = useState(false);
   const [reelsModalOpen,  setReelsModalOpen]  = useState(false);
+  const [hiddenPostIds,   setHiddenPostIds]   = useState(() => new Set());
+  const [menuPostId,      setMenuPostId]      = useState(null);
+  const [reportPost,      setReportPost]      = useState(null);
+  const [viewCounts, setViewCounts] = useState({});
   const [savedIds,        setSavedIds]        = useState(
     () => new Set((posts || []).filter(p => p.saved?.length > 0).map(p => p.id))
   );
@@ -137,9 +234,47 @@ export default function ReelsViewer({
   const itemRefs     = useRef({});
   const lastTapRef   = useRef({});   // {idx: timestamp}
   const heartIdRef   = useRef(0);
-  const wakeLockRef = useRef(null);
+  const wakeLockRef  = useRef(null);
 
   const uid = session?.user?.id;
+  const engagement = useVideoEngagement(sb, uid);
+
+  // Liste réellement affichée : on retire ce qui vient d'être supprimé/masqué
+  const displayPosts = useMemo(
+    () => (posts || []).filter(p => !hiddenPostIds.has(p.id)),
+    [posts, hiddenPostIds]
+  );
+
+  // Si la liste affichée se vide ou rétrécit sous l'index courant, on s'ajuste
+  useEffect(() => {
+    if (displayPosts.length === 0) { onClose?.(); return; }
+    if (activeIdx >= displayPosts.length) setActiveIdx(displayPosts.length - 1);
+  }, [displayPosts.length]);
+
+  // ── Empêche l'écran de s'éteindre pendant la lecture ─────────
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if ("wakeLock" in navigator && !wakeLockRef.current) {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => { wakeLockRef.current = null; });
+      }
+    } catch (_) { /* refusé (batterie faible, etc.) — pas grave */ }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) { wakeLockRef.current.release().catch(() => {}); wakeLockRef.current = null; }
+  }, []);
+  useEffect(() => {
+    const post = displayPosts[activeIdx];
+    if (!post?.id || !session?.user?.id) return;
+    sb.from("post_views").upsert(
+      { post_id: post.id, viewer_id: session.user.id },
+      { onConflict: "post_id,viewer_id", ignoreDuplicates: true }
+    ).then(() => {
+      sb.from("post_views").select("*", { count: "exact", head: true }).eq("post_id", post.id)
+        .then(({ count }) => setViewCounts(v => ({ ...v, [post.id]: count || 0 })));
+    });
+  }, [activeIdx, displayPosts, session?.user?.id]);
 
   // ── Scroll initial ────────────────────────────────────────────
   useEffect(() => {
@@ -169,20 +304,19 @@ export default function ReelsViewer({
     );
     Object.values(itemRefs.current).forEach(el => { if (el) observer.observe(el); });
     return () => { clearTimeout(debounceTimer); observer.disconnect(); };
-  }, [posts]);
+  }, [displayPosts]);
 
   // ── Gestion lecture / pause / preload ─────────────────────────
   useEffect(() => {
     const active = videoRefs.current[activeIdx];
-    if (active && !reelsModalOpen) {
-      active.currentTime = 0;
+    if (active) {
       active.muted = muted;
+      pauseOtherVideos(active);
       active.play().catch(() => {});
       setPausedMap(p => ({ ...p, [activeIdx]: false }));
       requestWakeLock();
-    } else if (active && reelsModalOpen) {
-      active.pause();
-      releaseWakeLock();
+      const post = displayPosts[activeIdx];
+      if (post) engagement.start(post.id, (active.duration || 0) * 1000);
     }
 
     // Pause + libère les vidéos lointaines
@@ -192,6 +326,7 @@ export default function ReelsViewer({
       if (n !== activeIdx) {
         v.pause();
         v.currentTime = 0;
+        releaseActiveVideo(v);
         if (Math.abs(n - activeIdx) > 2) v.src = "";
       }
     });
@@ -199,7 +334,19 @@ export default function ReelsViewer({
     // Preload n+1
     const next = videoRefs.current[activeIdx + 1];
     if (next && next.readyState < 3) next.load();
-  }, [activeIdx, reelsModalOpen]);
+  }, [activeIdx]);
+
+  // Ouverture/fermeture des commentaires : le reel ne doit NI se mettre en
+  // pause, NI redémarrer à zéro — il continue exactement où il en était.
+  useEffect(() => {
+    const active = videoRefs.current[activeIdx];
+    if (!active) return;
+    if (!reelsModalOpen && !pausedMap[activeIdx]) {
+      pauseOtherVideos(active);
+      active.play().catch(() => {});
+      requestWakeLock();
+    }
+  }, [reelsModalOpen]);
 
   // ── Sync mute sur toutes les vidéos ──────────────────────────
   useEffect(() => {
@@ -208,38 +355,24 @@ export default function ReelsViewer({
 
   // ── Protection écran ─────────────────────────────────────────
   useEffect(() => {
-    const post = posts[activeIdx];
+    const post = displayPosts[activeIdx];
     if (post?.author?.screenshot_protection) enableScreenProtection();
     else disableScreenProtection();
     return () => disableScreenProtection();
-  }, [activeIdx, posts]);
+  }, [activeIdx, displayPosts]);
 
   // ── Nettoyage à la fermeture ──────────────────────────────────
   useEffect(() => () => {
-    Object.values(videoRefs.current).forEach(v => { if (v) { v.pause(); v.src = ""; } });
+    Object.values(videoRefs.current).forEach(v => { if (v) { v.pause(); releaseActiveVideo(v); v.src = ""; } });
     releaseWakeLock();
-  }, []);
-
-// ── Empêche l'écran de s'éteindre pendant la lecture ─────────
-  const requestWakeLock = useCallback(async () => {
-    try {
-      if ("wakeLock" in navigator && !wakeLockRef.current) {
-        wakeLockRef.current = await navigator.wakeLock.request("screen");
-        wakeLockRef.current.addEventListener("release", () => { wakeLockRef.current = null; });
-      }
-    } catch (_) { /* refusé (batterie faible, etc.) — pas grave */ }
-  }, []);
-
-  const releaseWakeLock = useCallback(() => {
-    if (wakeLockRef.current) { wakeLockRef.current.release().catch(() => {}); wakeLockRef.current = null; }
   }, []);
 
   // ── Toggle pause ─────────────────────────────────────────────
   const togglePause = useCallback((idx) => {
     const v = videoRefs.current[idx];
     if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); setPausedMap(p => ({ ...p, [idx]: false })); requestWakeLock(); }
-    else          { v.pause();                setPausedMap(p => ({ ...p, [idx]: true  })); releaseWakeLock(); }
+    if (v.paused) { pauseOtherVideos(v); v.play().catch(() => {}); setPausedMap(p => ({ ...p, [idx]: false })); requestWakeLock(); }
+    else          { v.pause(); releaseActiveVideo(v); setPausedMap(p => ({ ...p, [idx]: true  })); releaseWakeLock(); }
   }, [requestWakeLock, releaseWakeLock]);
 
   // ── Seek via progress bar ─────────────────────────────────────
@@ -254,19 +387,16 @@ export default function ReelsViewer({
   const handleTap = useCallback((idx, post, e) => {
     const now  = Date.now();
     const last = lastTapRef.current[idx] || 0;
-    // Annule le simple tap en attente
     clearTimeout(window[`_tap_${idx}`]);
     if (now - last < 320) {
-      // Double tap confirmé → like + cœur
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const id = ++heartIdRef.current;
       setHearts(h => [...h, { id, x, y }]);
       const liked = (post.likes || []).some(l => (l.user_id || l) === uid);
-      if (!liked) toggleLike(post.id);
+      if (!liked) { toggleLike(post.id); engagement.markLiked(myProfile?.is_admin); }
     } else {
-      // Premier tap → attend 320ms pour voir si un 2e tap arrive
       window[`_tap_${idx}`] = setTimeout(() => togglePause(idx), 320);
     }
     lastTapRef.current[idx] = now;
@@ -282,6 +412,37 @@ export default function ReelsViewer({
     clearTimeout(window._rctimer);
     window._rctimer = setTimeout(() => setShowControls(false), 2500);
   }, []);
+
+  // ── Supprimer / signaler / masquer ────────────────────────────
+  const handleDeletePost = useCallback(async (post) => {
+    setMenuPostId(null);
+    if (!window.confirm("Supprimer cette publication ?")) return;
+    const byAdmin = myProfile?.is_admin && post.by !== uid;
+    setHiddenPostIds(p => new Set([...p, post.id]));
+    notify?.("Publication supprimée");
+    if (myProfile?.is_admin) await sb.from("posts").delete().eq("id", post.id);
+    else await sb.from("posts").delete().eq("id", post.id).eq("author_id", uid);
+    if (byAdmin) await sb.from("notifications").insert({ user_id: post.by, from_id: uid, type: "post_deleted", text: "Ta publication a été supprimée par un administrateur", read: false });
+  }, [uid, myProfile, notify]);
+
+  const handleMuteAuthor = useCallback(async (post) => {
+    setMenuPostId(null);
+    if (!uid || !post?.by) return;
+    const { error } = await sb.from("muted_authors").insert({ muter_id: uid, muted_id: post.by });
+    if (error && error.code !== "23505") { notify?.("Erreur, réessaie"); return; }
+    setHiddenPostIds(p => new Set([...p, ...(posts || []).filter(x => x.by === post.by).map(x => x.id)]));
+    notify?.("Tu ne verras plus les publications de cette personne");
+  }, [uid, posts, notify]);
+
+  const handleSubmitReport = useCallback(async (reason, details) => {
+    if (!uid || !reportPost) return;
+    engagement.markReported();
+    await sb.from("reports").insert({ reporter_id: uid, reported_id: reportPost.by, post_id: reportPost.id, reason, details });
+    setReportPost(null);
+    notify?.("Publication signalée — merci, notre équipe va l'examiner");
+  }, [uid, reportPost, notify]);
+
+  const menuPost = displayPosts.find(p => p.id === menuPostId) || null;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "#000" }}>
@@ -328,7 +489,7 @@ export default function ReelsViewer({
           scrollbarWidth: "none",
         }}
       >
-        {posts.map((post, idx) => {
+        {displayPosts.map((post, idx) => {
           const liked       = (post.likes || []).some(l => (l.user_id || l) === uid);
           const nearActive  = Math.abs(idx - activeIdx) <= 1;
           const rawVideoSrc = (post.media_urls || []).find(u => (u || "").match(/\.(mp4|mov|webm)/i)) || post.img;
@@ -340,6 +501,7 @@ export default function ReelsViewer({
           const progress    = progressMap[idx] || 0;
           const isConnected = myConnections?.includes(post.by);
           const isMe        = post.by === uid;
+          const isLocked    = post.is_private && !isNative && !isMe;
 
           return (
             <div
@@ -366,7 +528,13 @@ export default function ReelsViewer({
               />
 
               {/* Vidéo */}
-              {nearActive && rawVideoSrc && (
+              {isLocked ? (
+                <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:"#fff",padding:20,textAlign:"center"}}>
+                  <div style={{width:60,height:60,borderRadius:"50%",background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>🔒</div>
+                  <p style={{margin:0,fontSize:15,fontWeight:700}}>Contenu privé</p>
+                  <p style={{margin:0,fontSize:12,color:"rgba(255,255,255,0.6)",maxWidth:240}}>Disponible uniquement dans l'application Céleste sur Android.</p>
+                </div>
+              ) : nearActive && rawVideoSrc && (
                 <video
                   ref={el => { videoRefs.current[idx] = el; }}
                   src={rawVideoSrc}
@@ -389,6 +557,7 @@ export default function ReelsViewer({
                   onTimeUpdate={e => {
                     const v = e.target;
                     if (v.duration) setProgressMap(p => ({ ...p, [idx]: (v.currentTime / v.duration) * 100 }));
+                    if (idx === activeIdx) engagement.tick(v.currentTime * 1000);
                   }}
                 />
               )}
@@ -463,6 +632,11 @@ export default function ReelsViewer({
                     )}
                   </p>
                 )}
+                {(myProfile?.badge === "confirmed" || myProfile?.badge === "friend") && (
+                  <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.55)", display: "flex", alignItems: "center", gap: 4 }}>
+                    <Eye size={12} />{viewCounts[post.id] ?? 0}
+                  </p>
+                )}
               </div>
 
               {/* Boutons marketplace */}
@@ -498,7 +672,7 @@ export default function ReelsViewer({
 
                 {/* Like */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                  <button onClick={() => toggleLike(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}>
+                  <button onClick={() => { toggleLike(post.id); if (!liked) engagement.markLiked(); }} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}>
                     <Heart size={32} fill={liked ? "#ff2d55" : "none"} color={liked ? "#ff2d55" : "#fff"} />
                   </button>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{(post.likes || []).length}</span>
@@ -530,6 +704,11 @@ export default function ReelsViewer({
                   </button>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{saveCountMap[post.id] ?? post.savesCount ?? 0}</span>
                 </div>
+
+                {/* Menu "..." */}
+                <button onClick={() => setMenuPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, marginTop: 2 }}>
+                  <MoreVertical size={26} />
+                </button>
               </div>
 
             </div>
@@ -537,8 +716,27 @@ export default function ReelsViewer({
         })}
       </div>
 
+      {menuPost && (
+        <PostActionMenu
+          isMine={menuPost.by === uid}
+          isAdmin={!!myProfile?.is_admin}
+          onClose={() => setMenuPostId(null)}
+          onDelete={() => handleDeletePost(menuPost)}
+          onReport={() => { setReportPost(menuPost); setMenuPostId(null); }}
+          onMute={() => handleMuteAuthor(menuPost)}
+        />
+      )}
+
+      {reportPost && (
+        <PostReportSheet
+          onClose={() => setReportPost(null)}
+          onSubmit={handleSubmitReport}
+        />
+      )}
+
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes heartPop {
           0%   { transform: scale(0.5); opacity: 1; }
           50%  { transform: scale(1.3); opacity: 1; }
