@@ -10,6 +10,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye } from "lucide-react";
 import { pauseOtherVideos, releaseActiveVideo } from "./videoRegistry";
 import { useVideoEngagement } from "./lib/recommendation/useVideoEngagement";
+import SoundBadge from "./components/SoundBadge";
+import SoundDiscBadge from "./components/SoundDiscBadge";
 // ── Utilitaires écran ─────────────────────────────────────────────
 import { Capacitor } from "@capacitor/core";
 import { PrivacyScreen } from "@capacitor-community/privacy-screen";
@@ -206,6 +208,7 @@ export default function ReelsViewer({
   onOpenComments,
   myConnections,
   onConnect,
+  onOpenSound,
 }) {
   const [activeIdx,       setActiveIdx]       = useState(startIndex);
   const [pausedMap,       setPausedMap]       = useState({});
@@ -637,6 +640,11 @@ export default function ReelsViewer({
                     <Eye size={12} />{viewCounts[post.id] ?? 0}
                   </p>
                 )}
+                {post.sound?.title && (
+                  <div style={{ marginTop: 8 }} onClick={() => onOpenSound?.(post.sound.id)}>
+                    <SoundBadge title={post.sound.title} playing={isActive && !pausedMap[idx]} />
+                  </div>
+                )}
               </div>
 
               {/* Boutons marketplace */}
@@ -709,6 +717,15 @@ export default function ReelsViewer({
                 <button onClick={() => setMenuPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, marginTop: 2 }}>
                   <MoreVertical size={26} />
                 </button>
+
+                {/* Disque du son (façon TikTok) */}
+                {post.sound?.id && (
+                  <SoundDiscBadge
+                    avatarUrl={post.sound.owner_avatar}
+                    playing={isActive && !pausedMap[idx]}
+                    onClick={() => onOpenSound?.(post.sound.id)}
+                  />
+                )}
               </div>
 
             </div>

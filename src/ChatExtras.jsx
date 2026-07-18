@@ -52,12 +52,14 @@ export const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🙏", "👍"
 
 // payload.reactions attendu en jsonb sur la table messages : { "userId": "emoji", ... }
 export async function toggleReaction(sb, msgId, userId, emoji, currentReactions) {
-  const reactions = { ...(currentReactions || {}) };
+  const { data: fresh } = await sb.from("messages").select("reactions").eq("id", msgId).single();
+  const reactions = { ...(fresh?.reactions || currentReactions || {}) };
   if (reactions[userId] === emoji) delete reactions[userId];
   else reactions[userId] = emoji;
   await sb.from("messages").update({ reactions }).eq("id", msgId);
   return reactions;
 }
+
 
 export function ReactionPicker({ T, onSelect, onClose }) {
   return (

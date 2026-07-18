@@ -12,6 +12,7 @@
  *   value    — son actuellement sélectionné ({id,title,url} ou {title,blob,isNew})
  *   onChange — (sound|null) => void
  *   userId   — id de l'utilisateur courant (pour l'onglet "Mes sons")
+ *   T        — palette du thème actif (voir getThemePalette dans App.jsx)
  */
 import { useState, useRef, useCallback } from "react";
 import { Music2, X, Upload } from "lucide-react";
@@ -23,7 +24,13 @@ const TABS = [
   { id: "mine", label: "Mes sons" },
 ];
 
-export default function SoundPickerButton({ sb, value, onChange, userId }) {
+export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
+  const muted = T?.muted || "rgba(255,255,255,0.5)";
+  const border = T?.border || "rgba(255,255,255,0.12)";
+  const text = T?.text || "rgba(255,255,255,0.8)";
+  const gold = T?.goldL || T?.gold || "#e0b84a";
+  const panelBg = T?.cardSolid || T?.bg2 || "rgba(10,10,10,0.98)";
+
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("trending");
   const [loading, setLoading] = useState(false);
@@ -141,9 +148,9 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
         style={{
           display: "flex", alignItems: "center", gap: 7,
           padding: "7px 13px", borderRadius: 20,
-          border: `1px solid ${value ? "#C9952A88" : "rgba(255,255,255,0.12)"}`,
+          border: `1px solid ${value ? "#C9952A88" : border}`,
           background: value ? "rgba(201,149,42,0.15)" : "transparent",
-          color: value ? "#e0b84a" : "rgba(255,255,255,0.8)",
+          color: value ? gold : text,
           fontSize: 12.5, fontWeight: value ? 700 : 400, cursor: "pointer",
           maxWidth: 200,
         }}
@@ -166,14 +173,14 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
           style={{
             position: "absolute", top: "110%", left: 0, zIndex: 50,
             width: 340, maxHeight: 440, overflowY: "auto",
-            background: "rgba(10,10,10,0.98)", backdropFilter: "blur(20px)",
-            border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16,
+            background: panelBg, backdropFilter: "blur(20px)",
+            border: `1px solid ${border}`, borderRadius: 16,
             padding: 14, boxShadow: "0 8px 30px rgba(0,0,0,0.5)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11.5 }}>Choisis un son (15s max)</span>
-            <X size={15} color="rgba(255,255,255,0.4)" style={{ cursor: "pointer" }} onClick={() => setOpen(false)} />
+            <span style={{ color: muted, fontSize: 11.5 }}>Choisis un son (15s max)</span>
+            <X size={15} color={muted} style={{ cursor: "pointer" }} onClick={() => setOpen(false)} />
           </div>
 
           {recording ? (
@@ -185,11 +192,11 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
               }}>
                 <Music2 size={20} color="#fff" />
               </div>
-              <span style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{secs}s / {SOUND_MAX_SECS}s</span>
+              <span style={{ color: text, fontWeight: 700, fontSize: 13 }}>{secs}s / {SOUND_MAX_SECS}s</span>
               <button
                 type="button"
                 onClick={stopRecording}
-                style={{ padding: "8px 18px", borderRadius: 16, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                style={{ padding: "8px 18px", borderRadius: 16, border: "none", background: "rgba(255,255,255,0.1)", color: text, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
               >
                 Arrêter
               </button>
@@ -205,7 +212,7 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
                   style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                     padding: "10px 8px", borderRadius: 12, border: "1px dashed rgba(201,149,42,0.5)",
-                    background: "rgba(201,149,42,0.08)", color: "#e0b84a", fontWeight: 700, fontSize: 12,
+                    background: "rgba(201,149,42,0.08)", color: gold, fontWeight: 700, fontSize: 12,
                     cursor: "pointer",
                   }}
                 >
@@ -216,8 +223,8 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
                   onClick={startRecording}
                   style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                    padding: "10px 8px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)",
-                    background: "transparent", color: "rgba(255,255,255,0.85)", fontWeight: 700, fontSize: 12,
+                    padding: "10px 8px", borderRadius: 12, border: `1px solid ${border}`,
+                    background: "transparent", color: text, fontWeight: 700, fontSize: 12,
                     cursor: "pointer",
                   }}
                 >
@@ -226,13 +233,13 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
               </div>
 
               {durationWarning && (
-                <div style={{ marginBottom: 10, fontSize: 11, color: "#e0b84a", lineHeight: 1.4 }}>
+                <div style={{ marginBottom: 10, fontSize: 11, color: gold, lineHeight: 1.4 }}>
                   {durationWarning}
                 </div>
               )}
 
               {/* Onglets */}
-              <div style={{ display: "flex", gap: 6, marginBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, borderBottom: `1px solid ${border}`, paddingBottom: 8 }}>
                 {TABS.map((t) => (
                   <button
                     key={t.id}
@@ -241,7 +248,7 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
                     style={{
                       flex: 1, padding: "6px 4px", borderRadius: 8, border: "none",
                       background: tab === t.id ? "rgba(201,149,42,0.15)" : "transparent",
-                      color: tab === t.id ? "#e0b84a" : "rgba(255,255,255,0.5)",
+                      color: tab === t.id ? gold : muted,
                       fontSize: 11.5, fontWeight: tab === t.id ? 700 : 500, cursor: "pointer",
                     }}
                   >
@@ -250,14 +257,14 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
                 ))}
               </div>
 
-              {loading && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11.5 }}>Chargement…</span>}
+              {loading && <span style={{ color: muted, fontSize: 11.5 }}>Chargement…</span>}
 
               {!loading && tab === "mine" && !userId && (
-                <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11.5 }}>Connecte-toi pour voir tes sons.</span>
+                <span style={{ color: muted, fontSize: 11.5 }}>Connecte-toi pour voir tes sons.</span>
               )}
 
               {!loading && currentList.length === 0 && !(tab === "mine" && !userId) && (
-                <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11.5 }}>
+                <span style={{ color: muted, fontSize: 11.5 }}>
                   {tab === "mine" ? "Tu n'as pas encore ajouté de son." : "Rien à afficher pour l'instant."}
                 </span>
               )}
@@ -274,12 +281,12 @@ export default function SoundPickerButton({ sb, value, onChange, userId }) {
                       background: active ? "rgba(201,149,42,0.15)" : "transparent",
                     }}
                   >
-                    <Music2 size={13} color={active ? "#C9952A" : "rgba(255,255,255,0.5)"} />
-                    <span style={{ color: "#fff", fontSize: 12.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <Music2 size={13} color={active ? "#C9952A" : muted} />
+                    <span style={{ color: text, fontSize: 12.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {s.title}
                     </span>
                     {tab !== "mine" && (
-                      <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 10.5 }}>{s.usage_count}</span>
+                      <span style={{ color: muted, fontSize: 10.5 }}>{s.usage_count}</span>
                     )}
                   </div>
                 );

@@ -1,11 +1,12 @@
 ﻿import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  X, Type, Image as ImageIcon, Check, RefreshCw, ChevronDown, ChevronUp,
-  ZapOff, Zap, Clock, Columns, UserPlus, Video, Music2, Share2, Archive,
+  X, Type, Image as ImageIcon, Check,
+  Video, Music2, Share2, Archive,
 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
+import fixWebmDuration from "fix-webm-duration";
 
 const extFor = (b) => (b?.type?.includes("mp4") ? "mp4" : "webm");
 
@@ -23,26 +24,36 @@ function blobToBase64(blob) {
 const FONTS  = ["Space Grotesk", "Cormorant Garamond", "Georgia", "Arial Black", "Courier New"];
 const COLORS = ["#FFFFFF", "#000000", "#C9952A", "#FF4B6E", "#00E5FF", "#A8FF3E", "#FF9500", "#FF69B4"];
 const SIZES  = [16, 22, 30, 40, 52];
-const MODES  = ["5 min", "60 s", "15 s", "PHOTO", "TEXTE"];
-const MAX_SECS = { "5 min": 300, "60 s": 60, "15 s": 15 };
 const GRADIENTS = [
   ["#C9952A", "#7A1F3D"], ["#0F2027", "#2C5364"], ["#833AB4", "#FD1D1D"],
   ["#1A1A1A", "#434343"], ["#134E5E", "#71B280"], ["#DA22FF", "#9733EE"],
 ];
+import previewDark from "./assets/preview.webp";
+import previewLight from "./assets/preview-light.webp";
+
+function isLightBg(hex) {
+  if (!hex || hex[0] !== "#") return false;
+  const h = hex.length === 4 ? hex.replace(/#(.)(.)(.)/, "#$1$1$2$2$3$3") : hex;
+  const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
+}
 
 // ── Utilitaire : découpe un texte sur plusieurs lignes pour le canvas ──
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = String(text || " ").split(" ");
+  const paragraphs = String(text || " ").split("\n");
   const lines = [];
-  let line = "";
-  words.forEach((w) => {
-    const test = line + w + " ";
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = w + " ";
-    } else line = test;
+  paragraphs.forEach((para) => {
+    const words = para.split(" ");
+    let line = "";
+    words.forEach((w) => {
+      const test = line + w + " ";
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line);
+        line = w + " ";
+      } else line = test;
+    });
+    lines.push(line);
   });
-  lines.push(line);
   const startY = y - ((lines.length - 1) * lineHeight) / 2;
   lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
 }
@@ -51,9 +62,9 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 // Rejoue la vidéo source, la dessine frame par frame sur un canvas avec les overlays
 // par-dessus, puis réenregistre le tout. Si l'API n'est pas dispo ou s'il n'y a aucun
 // overlay, on renvoie simplement la vidéo brute (aucune erreur ne remonte à l'appelant).
-async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToken) {
+async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToken, soundMix) {
   try {
-    if (!ovs.length) return sourceBlob;
+    if (!ovs.length && !soundMix) return sourceBlob;
 
     const mainVideo = document.createElement("video");
     mainVideo.src = URL.createObjectURL(sourceBlob);
@@ -93,6 +104,7 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
     const ctx = canvas.getContext("2d");
     const sx = canvas.width / (rect?.width || canvas.width);
     const sy = canvas.height / (rect?.height || canvas.height);
+    const s = Math.min(sx, sy);
 
     // captureStream() sur <canvas> est très largement supporté (contrairement à
     // captureStream() sur <video>, absent sur certains WebView Android — c'était
@@ -100,13 +112,35 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
     // la vidéo brute). Pour le son, on passe TOUJOURS par Web Audio, qui fonctionne
     // même sur les éléments <video> muted et ne dépend pas de video.captureStream().
     const canvasStream = canvas.captureStream(30);
+    let soundEl = null;
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = actx.createMediaStreamDestination();
-      try { actx.createMediaElementSource(mainVideo).connect(dest); } catch (e) { /* déjà connectée ailleurs */ }
+
+      const mainGain = actx.createGain();
+      mainGain.gain.value = soundMix ? (soundMix.mainVolume ?? 100) / 100 : 1;
+      try { actx.createMediaElementSource(mainVideo).connect(mainGain).connect(dest); } catch (e) { /* déjà connectée ailleurs */ }
+
       loaded.filter((ov) => ov.type === "video" && !ov.muted).forEach((ov) => {
         try { actx.createMediaElementSource(ov.el).connect(dest); } catch (e) { /* déjà connectée ailleurs */ }
       });
+
+      if (soundMix?.src) {
+        soundEl = document.createElement("audio");
+        soundEl.src = soundMix.src;
+        soundEl.crossOrigin = "anonymous";
+        await new Promise((r) => { soundEl.onloadedmetadata = r; soundEl.onerror = r; });
+        const soundStart = soundMix.offset || 0;
+        const soundStop = soundMix.trimEnd && soundMix.trimEnd > soundStart ? soundMix.trimEnd : soundEl.duration;
+        soundEl.currentTime = soundStart;
+        soundEl.loop = true;
+        soundEl.addEventListener("timeupdate", () => {
+          if (soundEl.currentTime >= soundStop) soundEl.currentTime = soundStart;
+        });        const soundGain = actx.createGain();
+        soundGain.gain.value = (soundMix.volume ?? 100) / 100;
+        try { actx.createMediaElementSource(soundEl).connect(soundGain).connect(dest); } catch (e) { /* déjà connectée ailleurs */ }
+      }
+
       dest.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
     } catch (e) {
       console.error("bake audio mix:", e);
@@ -123,12 +157,18 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
     const chunks = [];
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-    const finished = new Promise((resolve) => { rec.onstop = () => resolve(new Blob(chunks, { type: mime })); });
+    const finished = new Promise((resolve) => {
+      rec.onstop = () => {
+        const raw = new Blob(chunks, { type: mime });
+        fixWebmDuration(raw, mainVideo.duration * 1000, (fixed) => resolve(fixed));
+      };
+    });
 
     rec.start(200);
     mainVideo.currentTime = 0;
     await mainVideo.play();
     loaded.forEach((ov) => { if (ov.type === "video") ov.el.play().catch(() => {}); });
+    if (soundEl) soundEl.play().catch(() => {});
 
     const draw = () => {
       if (cancelToken?.cancelled) { if (rec.state !== "inactive") rec.stop(); return; }
@@ -139,13 +179,15 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
       ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height);
       loaded.forEach((ov) => {
         if (ov.type === "text") {
-          ctx.font = `bold ${ov.size * sx}px "${ov.font}"`;
+          ctx.font = `bold ${ov.size * s}px "${ov.font}"`;
           ctx.fillStyle = ov.color;
           ctx.shadowColor = "rgba(0,0,0,0.85)";
-          ctx.shadowBlur = 10 * sx;
-          ctx.fillText(ov.value, ov.x * sx, ov.y * sy);
+          ctx.shadowBlur = 10 * s;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * canvas.width, ov.size * s * 1.2);
         } else if (ov.el) {
-          ctx.drawImage(ov.el, ov.x * sx, ov.y * sy, ov.size * sx, ov.size * sy);
+          ctx.drawImage(ov.el, ov.x * sx, ov.y * sy, ov.size * s, ov.size * s);
         }
       });
       requestAnimationFrame(draw);
@@ -166,6 +208,65 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
   } catch (e) {
     console.error("bakeOverlaysOnVideo:", e);
     return sourceBlob; // en cas de souci, on renvoie la vidéo brute plutôt que planter
+  }
+}
+
+// ── Recadre une vidéo importée entre [start,end] (re-encodage réel, pas juste un marqueur) ──
+async function trimVideoBlob(sourceFile, start, end, onProgress, cancelToken) {
+  try {
+    const mainVideo = document.createElement("video");
+    mainVideo.src = URL.createObjectURL(sourceFile);
+    mainVideo.muted = false;
+    mainVideo.playsInline = true;
+    await new Promise((r) => { mainVideo.onloadedmetadata = r; });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = mainVideo.videoWidth;
+    canvas.height = mainVideo.videoHeight;
+    const ctx = canvas.getContext("2d");
+    const canvasStream = canvas.captureStream(30);
+
+    try {
+      const actx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = actx.createMediaStreamDestination();
+      actx.createMediaElementSource(mainVideo).connect(dest);
+      dest.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
+    } catch (e) { console.error("trimVideoBlob audio:", e); }
+
+    const mimeCandidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
+    const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/mp4";
+    const rec = new MediaRecorder(canvasStream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    const finished = new Promise((resolve) => {
+      rec.onstop = () => {
+        const raw = new Blob(chunks, { type: mime });
+        fixWebmDuration(raw, (end - start) * 1000, (fixed) => resolve(fixed));
+      };
+    });
+
+    rec.start(200);
+    mainVideo.currentTime = start;
+    await mainVideo.play();
+
+    const draw = () => {
+      if (cancelToken?.cancelled) { if (rec.state !== "inactive") rec.stop(); return; }
+      if (mainVideo.ended || mainVideo.currentTime >= end) { rec.stop(); return; }
+      if (onProgress) onProgress(Math.min(99, Math.round(((mainVideo.currentTime - start) / (end - start)) * 100)));
+      ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(draw);
+    };
+    draw();
+
+    const safetyTimeout = setTimeout(() => { if (rec.state !== "inactive") rec.stop(); }, 45000);
+    const result = await finished;
+    clearTimeout(safetyTimeout);
+    mainVideo.pause();
+    if (cancelToken?.cancelled) return null;
+    return result;
+  } catch (e) {
+    console.error("trimVideoBlob:", e);
+    return sourceFile; // en cas de souci, on renvoie le fichier brut plutôt que planter
   }
 }
 
@@ -210,31 +311,23 @@ function showBackgroundProgress(onCancel) {
 }
 
 // ── COMPOSANT PRINCIPAL ─────────────────────────────────────────────
-export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts, sb, initialSound }) {
-  const videoRef    = useRef(null);
+export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts, sb, initialSound, initialDraft, T }) {
   const overlayRef  = useRef(null);
-  const streamRef   = useRef(null);
   const recRef      = useRef(null);
   const chunksRef   = useRef([]);
   const timerRef    = useRef(null);
   const fileRef     = useRef(null);
   const imgRef      = useRef(null);
   const vidOvRef    = useRef(null);
-  const dragRef     = useRef({ on: false, id: null, ox: 0, oy: 0 });
-  const justDraggedRef = useRef(false);
-  const previewVidRef = useRef(null);
-  const resizeRef   = useRef({ on: false, id: null, startX: 0, startSize: 0 });
-  const facingRef   = useRef("user");
 
-  const [phase,      setPhase]      = useState("camera"); // camera | preview | textcard
-  const [facing,     setFacing]     = useState("user");
-  const [mode,       setMode]       = useState("60 s");
-  const [recording,  setRecording]  = useState(false);
-  const [paused,     setPaused]     = useState(false);
-  const [secs,       setSecs]       = useState(0);
+   const previewVidRef = useRef(null);
+  const previewSoundElRef = useRef(null); // <audio> qui joue le son ajouté PENDANT la preview (avant export)
+
+  const [phase,      setPhase]      = useState("camera"); // camera(=choix) | preview | textcard | trim
   const [blob,       setBlob]       = useState(null);
   const [url,        setUrl]        = useState(null);
   const [isVid,      setIsVid]      = useState(false);
+  const [videoDuration, setVideoDuration] = useState(0); // durée réelle de la vidéo choisie/recadrée
   const [overlays,   setOverlays]   = useState([]);
   const [activeOv,   setActiveOv]   = useState(null);
   const [panel,      setPanel]      = useState(null);
@@ -242,13 +335,18 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const [txtColor,   setTxtColor]   = useState("#FFFFFF");
   const [txtSize,    setTxtSize]    = useState(24);
   const [txtFont,    setTxtFont]    = useState("Space Grotesk");
-  const [flashOn,    setFlashOn]    = useState(false);
-  const [cameraError,setCameraError]= useState(null);
-  const [toolsCollapsed, setToolsCollapsed] = useState(false);
-  const [countdownOn, setCountdownOn] = useState(false);
-  const [showCountdown, setShowCountdown] = useState(false);
-  const [countdownVal, setCountdownVal] = useState(3);
+
   const [toast,      setToast]      = useState(null);
+  const [mainVolume,  setMainVolume]  = useState(100); // volume du son ORIGINAL de la vidéo (0-100)
+  const [soundVolume, setSoundVolume] = useState(100); // volume du son AJOUTÉ (0-100)
+   const [soundOffset, setSoundOffset] = useState(0);   // point de départ (s) du segment choisi dans le son ajouté
+  const [soundEnd,    setSoundEnd]    = useState(0);   // point de fin (s) du segment choisi dans le son ajouté
+  const [selectedSoundDuration, setSelectedSoundDuration] = useState(0);
+  const [pendingTrim,  setPendingTrim]  = useState(null); // {file,url,duration} — vidéo importée en attente de recadrage
+  const [trimStart,    setTrimStart]    = useState(0);
+  const [trimEnd,      setTrimEnd]      = useState(0);
+  const [trimming,     setTrimming]     = useState(false);
+  const [trimProgress, setTrimProgress] = useState(0);
   const [gradIdx,    setGradIdx]    = useState(0);
   const [cardText,   setCardText]   = useState("");
   const [sharing,    setSharing]    = useState(false);
@@ -262,6 +360,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const soundRecRef = useRef(null);
   const soundChunksRef = useRef([]);
   const soundTimerRef = useRef(null);
+  const recSoundRef = useRef(null); // <audio> qui joue le son choisi PENDANT le tournage (monitoring, pour pouvoir danser/synchroniser)
   const SOUND_MAX_SECS = 15; // contrainte demandée : jamais plus de 15s
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
@@ -298,9 +397,13 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const soundBlob = new Blob(soundChunksRef.current, { type: mime });
-        setSelectedSound({ title: "Mon son", blob: soundBlob, isNew: true });
-        setPanel(null);
-      };
+        setSelectedSound({ title: "Mon son", blob: soundBlob, url: URL.createObjectURL(soundBlob), isNew: true });
+        if (!isVid) { setPanel(null); return; }
+        setSelectedSoundDuration(soundSecs);
+        setSoundOffset(0);
+        setSoundEnd(soundSecs);
+        setMainVolume(100); setSoundVolume(100);
+        setPanel("sound-mix");      };
       soundRecRef.current = rec;
       rec.start();
       setRecordingSound(true);
@@ -316,11 +419,36 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     }
   }, [stopSoundRecording]);
 
-  useEffect(() => { facingRef.current = facing; }, [facing]);
+  // ── Lecture du son PENDANT le tournage (monitoring) ─────────────
+  // Ne fait pas partie de l'enregistrement (le flux capturé reste caméra+micro
+  // brut) : c'est juste pour que tu puisses te caler dessus / danser dessus.
+  // Le vrai mixage propre (celui qui finit dans le fichier exporté) se fait
+  // séparément via bakeOverlaysOnVideo. On boucle le son pour ne pas qu'il
+  // s'arrête en plein milieu d'une prise plus longue que le son lui-même.
+  const startSoundMonitor = useCallback(() => {
+    if (!selectedSound?.url) return;
+    const a = new Audio(selectedSound.url);
+    a.loop = true;
+    a.currentTime = soundOffset || 0;
+    a.volume = (soundVolume ?? 100) / 100;
+    a.play().catch(() => {});
+    recSoundRef.current = a;
+  }, [selectedSound, soundOffset, soundVolume]);
 
-  // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
+  const pauseSoundMonitor = () => { recSoundRef.current?.pause(); };
+  const resumeSoundMonitor = () => { recSoundRef.current?.play().catch(() => {}); };
+  const stopSoundMonitor = () => {
+    if (recSoundRef.current) {
+      recSoundRef.current.pause();
+      recSoundRef.current.currentTime = 0;
+      recSoundRef.current = null;
+    }
+  };
+
+   // Prévisualisation vidéo avec son (tente non-muet, retombe en muet si le navigateur bloque l'autoplay avec son)
   useEffect(() => {
     if (phase === "preview" && isVid && previewVidRef.current) {
+      previewVidRef.current.volume = (mainVolume ?? 100) / 100;
       previewVidRef.current.muted = false;
       previewVidRef.current.play().catch(() => {
         if (previewVidRef.current) { previewVidRef.current.muted = true; previewVidRef.current.play().catch(() => {}); }
@@ -328,158 +456,92 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     }
   }, [phase, isVid, url]);
 
-  // ── Caméra ──────────────────────────────────────────────────────
-  // Caméra native, brute : pas de canvas intermédiaire, pas de moteur de
-  // rendu tiers — juste le flux vidéo affiché directement, comme l'appli
-  // Appareil Photo. C'est ce qui garantit une image nette et uniforme,
-  // fidèle à ce que le capteur du téléphone voit réellement.
-  const startCam = useCallback(async (f = facing) => {
-    try {
-      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: f, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: true,
-      });
-      streamRef.current = s;
-      setCameraError(null);
-      if (s.getAudioTracks().length === 0) {
-        console.warn("Aucune piste audio dans le flux getUserMedia — vérifie la permission micro (Android: RECORD_AUDIO).");
-      }
-      const v = videoRef.current;
-      if (v) { v.srcObject = s; await v.play(); }
-    } catch (e) {
-      console.error("Cam:", e);
-      setCameraError("Impossible d'accéder à la caméra. Vérifie les autorisations de l'application.");
-    }
-  }, [facing]);
-
+  // Le volume du son ORIGINAL de la vidéo réagit en direct au curseur, sans redémarrer la lecture
   useEffect(() => {
-    startCam();
+    if (previewVidRef.current) previewVidRef.current.volume = (mainVolume ?? 100) / 100;
+  }, [mainVolume]);
+
+  // ── Prévisualisation en direct du son AJOUTÉ (avant export) ──────
+  useEffect(() => {
+    if (previewSoundElRef.current) {
+      previewSoundElRef.current.pause();
+      previewSoundElRef.current = null;
+    }
+    if (phase !== "preview" || !selectedSound?.url) return;
+    const a = new Audio(selectedSound.url);
+    a.volume = (soundVolume ?? 100) / 100;
+    const start = soundOffset || 0;
+    a.currentTime = start;
+    a.addEventListener("loadedmetadata", () => { a.currentTime = start; });
+    a.addEventListener("timeupdate", () => {
+      const stop = soundEnd && soundEnd > start ? soundEnd : a.duration;
+      if (a.currentTime >= stop) a.currentTime = start;
+    });
+    const playIfNeeded = () => { if (!isVid || !previewVidRef.current?.paused) a.play().catch(() => {}); };
+    playIfNeeded();
+    previewSoundElRef.current = a;
+    const vid = previewVidRef.current;
+    const onPlay = () => a.play().catch(() => {});
+    const onPause = () => a.pause();
+    vid?.addEventListener("play", onPlay);
+    vid?.addEventListener("pause", onPause);
     return () => {
-      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
-      clearInterval(timerRef.current);
+      a.pause();
+      vid?.removeEventListener("play", onPlay);
+      vid?.removeEventListener("pause", onPause);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [phase, selectedSound, soundOffset, soundEnd, isVid]);
 
-  const flip = () => {
-    const n = facing === "user" ? "environment" : "user";
-    setFacing(n);
-    startCam(n);
-  };
-
-  const toggleFlash = async () => {
-    const next = !flashOn;
-    setFlashOn(next);
-    try {
-      const track = streamRef.current?.getVideoTracks()?.[0];
-      const caps = track?.getCapabilities?.();
-      if (track && caps && caps.torch) {
-        await track.applyConstraints({ advanced: [{ torch: next }] });
-      } else {
-        showToast("Flash non disponible sur cet appareil");
-      }
-    } catch (e) { /* torche non supportée, on ignore silencieusement */ }
-  };
-
-  // ── Capture photo ───────────────────────────────────────────────
-  // Toujours une capture BRUTE (non miroir) depuis la vidéo source, même si
-  // l'affichage à l'écran est mirroré en CSS pour la caméra avant.
-  const takePhoto = useCallback(() => {
-    const v = videoRef.current;
-    if (!v || !v.videoWidth) return;
-    const c = document.createElement("canvas");
-    c.width = v.videoWidth; c.height = v.videoHeight;
-    const ctx = c.getContext("2d");
-    ctx.drawImage(v, 0, 0);
-    c.toBlob((b) => { if (b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.95);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Enregistrement vidéo (avec pause/reprise) ──────────────────
-  // On enregistre directement le flux caméra brut (vidéo + micro déjà synchronisés
-  // par getUserMedia) au lieu de repasser par le canvas Pixi — plus fiable pour le son,
-  // et la capture reste non filtrée (le filtre est appliqué une seule fois, à l'export).
-  const startRec = () => {
-    const s = streamRef.current;
-    if (!s) return;
-    if (s.getAudioTracks().length === 0) {
-      showToast("⚠️ Micro non détecté — vérifie les autorisations de l'app");
-    }
-    const mimeCandidates = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm;codecs=h264,opus",
-      "video/webm",
-      "video/mp4",
-    ];
-    const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/mp4";
-    chunksRef.current = [];
-    const r = new MediaRecorder(s, { mimeType: mime });
-    r.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-    r.onstop = () => {
-      const b = new Blob(chunksRef.current, { type: mime });
-      finish(b, URL.createObjectURL(b), true);
-    };
-    recRef.current = r; r.start(100);
-    setRecording(true); setPaused(false); setSecs(0);
-    const max = MAX_SECS[mode] || 60;
-    timerRef.current = setInterval(() => setSecs((prev) => {
-      if (prev >= max - 1) { stopRec(); return max; }
-      return prev + 1;
-    }), 1000);
-  };
-
-  const stopRec = () => {
-    if (recRef.current?.state !== "inactive") recRef.current?.stop();
-    setRecording(false); setPaused(false); clearInterval(timerRef.current);
-  };
-
-  const pauseRec = () => {
-    try { recRef.current?.pause(); } catch (e) {}
-    setPaused(true);
-    clearInterval(timerRef.current);
-  };
-
-  const resumeRec = () => {
-    try { recRef.current?.resume(); } catch (e) {}
-    setPaused(false);
-    const max = MAX_SECS[mode] || 60;
-    timerRef.current = setInterval(() => setSecs((prev) => {
-      if (prev >= max - 1) { stopRec(); return max; }
-      return prev + 1;
-    }), 1000);
-  };
-
-  // ── Décompte 3-2-1 avant capture ────────────────────────────────
-  const doCapture = () => {
-    if (mode === "PHOTO") takePhoto();
-    else startRec();
-  };
-
-  const beginCapture = () => {
-    if (countdownOn && !recording) {
-      setCountdownVal(3);
-      setShowCountdown(true);
-    } else {
-      doCapture();
-    }
-  };
+  // Volume du son AJOUTÉ : mise à jour en direct, sans relancer la lecture
+  useEffect(() => {
+    if (previewSoundElRef.current) previewSoundElRef.current.volume = (soundVolume ?? 100) / 100;
+  }, [soundVolume]);
 
   useEffect(() => {
-    if (!showCountdown) return;
-    if (countdownVal <= 0) { setShowCountdown(false); doCapture(); return; }
-    const t = setTimeout(() => setCountdownVal((v) => v - 1), 700);
-    return () => clearTimeout(t);
+    return () => {
+      clearInterval(timerRef.current);
+      stopSoundMonitor();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCountdown, countdownVal]);
+  }, []);
 
   // ── Galerie ─────────────────────────────────────────────────────
   const pickGallery = () => fileRef.current?.click();
   const onGalleryPick = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    finish(f, URL.createObjectURL(f), f.type.startsWith("video/"));
     e.target.value = "";
+    if (!f.type.startsWith("video/")) { finish(f, URL.createObjectURL(f), false); return; }
+    const tmp = document.createElement("video");
+    tmp.src = URL.createObjectURL(f);
+    tmp.onloadedmetadata = () => {
+      setPendingTrim({ file: f, url: tmp.src, duration: tmp.duration });
+      setTrimStart(0);
+      setTrimEnd(Math.min(tmp.duration, 60));
+      setPhase("trim");
+    };
+  };
+
+  const cancelTrim = () => { setPendingTrim(null); setPhase("camera"); };
+
+  const confirmTrim = async () => {
+    if (!pendingTrim) return;
+    // Si l'utilisateur n'a rien coupé (garde la vidéo entière), on évite le
+    // ré-encodage temps réel — c'est lui qui abîmait la vidéo (saccades).
+    const noRealCut = trimStart <= 0.05 && trimEnd >= pendingTrim.duration - 0.05;
+    if (noRealCut) {
+      setVideoDuration(pendingTrim.duration);
+      finish(pendingTrim.file, pendingTrim.url, true);
+      setPendingTrim(null);
+      return;
+    }
+    setTrimming(true);
+    const cancelToken = { cancelled: false };
+    const cut = await trimVideoBlob(pendingTrim.file, trimStart, trimEnd, setTrimProgress, cancelToken);
+    setTrimming(false);
+    if (!cut) return;
+    setVideoDuration(trimEnd - trimStart);
+    finish(cut, URL.createObjectURL(cut), true);
+    setPendingTrim(null);
   };
 
   const pickOverlayImg = () => imgRef.current?.click();
@@ -506,15 +568,21 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
   // ── Finish / Retake ─────────────────────────────────────────────
   const finish = (b, u, v) => {
-    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
     setBlob(b); setUrl(u); setIsVid(v);
     setPhase("preview"); setPanel(null);
   };
 
+  // Restaure un brouillon ouvert depuis la galerie
+  useEffect(() => {
+    if (!initialDraft) return;
+    const u = URL.createObjectURL(initialDraft.blob);
+    finish(initialDraft.blob, u, initialDraft.type === "video");
+    if (initialDraft.overlays) setOverlays(initialDraft.overlays);
+  }, []);
   const retake = () => {
+    stopSoundMonitor();
     setBlob(null); setUrl(null); setOverlays([]); setActiveOv(null);
-    setPhase("camera"); setRecording(false); setPaused(false); setSecs(0); setPanel(null);
-    startCam();
+    setPhase("camera"); setPanel(null);
   };
 
   // ── Overlays (texte / image / vidéo) ────────────────────────────
@@ -528,49 +596,75 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   };
   const delOv = (id) => { setOverlays((os) => os.filter((o) => o.id !== id)); setActiveOv(null); setPanel(null); };
 
-  const pDown = (e, id) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const ov = overlays.find((o) => o.id === id);
-    const box = overlayRef.current?.getBoundingClientRect();
-    const bx = box?.left || 0, by = box?.top || 0;
-    const startX = e.clientX, startY = e.clientY;
-    justDraggedRef.current = false;
-    dragRef.current = { on: true, id, ox: (e.clientX - bx) - (ov?.x || 0), oy: (e.clientY - by) - (ov?.y || 0) };
-    const mv = (e2) => {
-      if (!dragRef.current.on) return;
-      if (Math.abs(e2.clientX - startX) > 4 || Math.abs(e2.clientY - startY) > 4) justDraggedRef.current = true;
-      const b2 = overlayRef.current?.getBoundingClientRect();
-      const bx2 = b2?.left || 0, by2 = b2?.top || 0;
-      setOverlays((os) => os.map((o) => (o.id === dragRef.current.id
-        ? { ...o, x: (e2.clientX - bx2) - dragRef.current.ox, y: (e2.clientY - by2) - dragRef.current.oy }
-        : o)));
-    };
-    const up = () => { dragRef.current.on = false; window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
-    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+ const pDown = (e, id) => {
+  e.stopPropagation();
+  e.preventDefault();
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  const ov = overlays.find((o) => o.id === id);
+  const box = overlayRef.current?.getBoundingClientRect();
+  const bx = box?.left || 0, by = box?.top || 0;
+  const startX = e.clientX, startY = e.clientY;
+  const pointerId = e.pointerId;
+  let moved = false;
+  const ox = (e.clientX - bx) - (ov?.x || 0), oy = (e.clientY - by) - (ov?.y || 0);
+  const mv = (e2) => {
+    if (e2.pointerId !== pointerId) return;
+    e2.preventDefault?.();
+    if (!moved && (Math.abs(e2.clientX - startX) > 6 || Math.abs(e2.clientY - startY) > 6)) moved = true;
+    if (!moved) return;
+    const b2 = overlayRef.current?.getBoundingClientRect();
+    const bx2 = b2?.left || 0, by2 = b2?.top || 0;
+    setOverlays((os) => os.map((o) => (o.id === id
+      ? { ...o, x: (e2.clientX - bx2) - ox, y: (e2.clientY - by2) - oy }
+      : o)));
   };
+  const end = (evEnd) => {
+    window.removeEventListener("pointermove", mv);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", cancel);
+    if (!moved && evEnd?.type !== "pointercancel") {
+      setActiveOv(ov);
+      if (ov?.type === "text") { setNewText(ov.value); setTxtColor(ov.color); setTxtSize(ov.size); setTxtFont(ov.font); setPanel("text"); }
+    }
+  };
+  const cancel = (evCancel) => end(evCancel);
+  window.addEventListener("pointermove", mv);
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", cancel);
+};
 
   // Poignée de redimensionnement (agrandir / rétrécir un overlay)
   const rDown = (e, id) => {
     e.stopPropagation();
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
     const ov = overlays.find((o) => o.id === id);
-    const startSize = ov?.type === "text" ? ov.size : ov.size;
-    resizeRef.current = { on: true, id, startX: e.clientX, startSize };
+    const startSize = ov?.size;
+    const pointerId = e.pointerId;
+    const startX = e.clientX;
+    let on = true;
     const mv = (e2) => {
-      if (!resizeRef.current.on) return;
-      const delta = e2.clientX - resizeRef.current.startX;
-      const o = overlays.find((x) => x.id === resizeRef.current.id);
+      if (!on || e2.pointerId !== pointerId) return;
+      const delta = e2.clientX - startX;
+      const o = overlays.find((x) => x.id === id);
       if (!o) return;
       if (o.type === "text") {
-        const next = Math.max(12, Math.min(96, resizeRef.current.startSize + delta * 0.4));
-        updOv(resizeRef.current.id, { size: Math.round(next) });
+        const next = Math.max(12, Math.min(96, startSize + delta * 0.4));
+        updOv(id, { size: Math.round(next) });
       } else {
-        const next = Math.max(40, Math.min(320, resizeRef.current.startSize + delta));
-        updOv(resizeRef.current.id, { size: Math.round(next) });
+        const next = Math.max(40, Math.min(320, startSize + delta));
+        updOv(id, { size: Math.round(next) });
       }
     };
-    const up = () => { resizeRef.current.on = false; window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
-    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+    const end = () => {
+      on = false;
+      window.removeEventListener("pointermove", mv);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
   };
 
   const confirmText = () => {
@@ -586,7 +680,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   // ── Export final ────────────────────────────────────────────────
   const exportFinal = async () => {
     if (!blob) return;
-    const needsWork = overlays.length > 0;
+    const soundSrcForVideo = isVid && selectedSound
+      ? (selectedSound.url || (selectedSound.blob ? URL.createObjectURL(selectedSound.blob) : null))
+      : null;
+    const needsWork = overlays.length > 0 || !!soundSrcForVideo || (isVid && mainVolume !== 100);
 
     if (!isVid) {
       if (!needsWork) {
@@ -602,15 +699,17 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
       const rect = overlayRef.current?.getBoundingClientRect();
       const sx = img.width / (rect?.width || 1), sy = img.height / (rect?.height || 1);
+      const s = Math.min(sx, sy);
       for (const ov of overlays) {
         if (ov.type === "text") {
-          ctx.font = `bold ${ov.size * sx}px "${ov.font}"`;
-          ctx.fillStyle = ov.color; ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 10 * sx;
-          ctx.fillText(ov.value, ov.x * sx, ov.y * sy);
+          ctx.font = `bold ${ov.size * s}px "${ov.font}"`;
+          ctx.fillStyle = ov.color; ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 10 * s;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * c.width, ov.size * s * 1.2);
         } else if (ov.type === "image" || ov.type === "video") {
           const oi = ov.el || new Image();
           if (!ov.el) { oi.src = ov.value; await new Promise((r) => { oi.onload = r; oi.onerror = r; }); }
-          ctx.drawImage(oi, ov.x * sx, ov.y * sy, ov.size * sx, ov.size * sy);
+          ctx.drawImage(oi, ov.x * sx, ov.y * sy, ov.size * s, ov.size * s);
         }
       }
       c.toBlob((b) => onDone({ file: new File([b], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound }), "image/jpeg", 0.95);
@@ -628,7 +727,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     const rect = overlayRef.current?.getBoundingClientRect();
     const ovsSnapshot = overlays;
     const blobSnapshot = blob;
-    const modeSnapshot = mode;
+    const modeSnapshot = isVid ? "VIDEO" : "PHOTO";
+   const soundMixSnapshot = (soundSrcForVideo || mainVolume !== 100)
+      ? { src: soundSrcForVideo, offset: soundOffset, trimEnd: soundEnd, volume: soundVolume, mainVolume }
+      : null;
     const saveDraft = onSaveDraft; // référence capturée : reste utilisable après le unmount
 
     const cancelToken = { cancelled: false };
@@ -645,7 +747,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     });
     onClose(); // on rend la main tout de suite : l'utilisateur continue d'utiliser l'app
 
-    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, rect, (pct) => progress.update(pct), cancelToken)
+    bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, rect, (pct) => progress.update(pct), cancelToken, soundMixSnapshot)
       .then((finalBlob) => {
         if (cancelToken.cancelled || !finalBlob) return; // déjà géré par le bouton Annuler
         progress.done();
@@ -708,10 +810,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     c.toBlob((b) => onDone({ file: new File([b], "celeste-texte.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound }), "image/jpeg", 0.95);
   };
 
-  const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-  const maxSecs = MAX_SECS[mode] || 60;
-  const progress = recording ? (secs / maxSecs) * 100 : 0;
-
   // ── Écran mode TEXTE ─────────────────────────────────────────────
   if (phase === "textcard") {
     const [c1, c2] = GRADIENTS[gradIdx];
@@ -754,21 +852,51 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     );
   }
 
+  if (phase === "trim" && pendingTrim) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 600, background: "#000", display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+          <video src={pendingTrim.url} autoPlay loop muted playsInline
+            onTimeUpdate={(e) => { if (e.target.currentTime >= trimEnd) e.target.currentTime = trimStart; }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "52px 16px 0", display: "flex", justifyContent: "space-between" }}>
+            <button onClick={cancelTrim} style={Ic()}><X size={18} /></button>
+            <span style={{ color: "#fff", fontSize: 13, fontWeight: 700, background: "rgba(0,0,0,0.5)", padding: "8px 14px", borderRadius: 20 }}>
+              Choisis le début et la fin
+            </span>
+          </div>
+        </div>
+        <div style={{ background: "rgba(6,6,6,0.97)", padding: "18px 20px 34px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
+            <span>Début : {trimStart.toFixed(1)}s</span>
+            <span>Fin : {trimEnd.toFixed(1)}s</span>
+            <span>Durée : {(trimEnd - trimStart).toFixed(1)}s</span>
+          </div>
+          <input type="range" min={0} max={pendingTrim.duration} step={0.1} value={trimStart}
+            onChange={(e) => setTrimStart(Math.min(Number(e.target.value), trimEnd - 0.3))}
+            style={{ width: "100%" }} />
+          <input type="range" min={0} max={pendingTrim.duration} step={0.1} value={trimEnd}
+            onChange={(e) => setTrimEnd(Math.max(Number(e.target.value), trimStart + 0.3))}
+            style={{ width: "100%", marginTop: 6 }} />
+          <button onClick={confirmTrim} disabled={trimming}
+            style={{ marginTop: 16, width: "100%", padding: "14px", borderRadius: 20, border: "none",
+              background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)", color: "#000", fontWeight: 800, fontSize: 15,
+              cursor: trimming ? "default" : "pointer", opacity: trimming ? 0.6 : 1 }}>
+            {trimming ? `Découpage… ${trimProgress}%` : "Valider ce passage"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 600, background: "#000", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 600, backgroundImage: `url(${isLightBg(T?.bg) ? previewLight : previewDark})`, backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={onGalleryPick} />
       <input ref={imgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onOverlayImg} />
       <input ref={vidOvRef} type="file" accept="video/*" style={{ display: "none" }} onChange={onOverlayVideo} />
 
       {/* ── Zone visuelle ── */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
-        {/* Caméra native, brute : le flux vidéo affiché tel quel, sans canvas
-            ni moteur de rendu intermédiaire — image nette et uniforme. */}
-        <video ref={videoRef} autoPlay playsInline muted
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-            display: phase === "camera" ? "block" : "none",
-            transform: facing === "user" ? "scaleX(-1)" : "none" }} />
-
         {phase === "preview" && !isVid && (
           <img src={url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         )}
@@ -779,21 +907,17 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
         {phase === "preview" && (
           <div ref={overlayRef} style={{ position: "absolute", inset: 0, pointerEvents: "auto" }}>
             {overlays.map((ov) => (
-              <div key={ov.id} onPointerDown={(e) => pDown(e, ov.id)}
-                onClick={() => {
-                  if (justDraggedRef.current) { justDraggedRef.current = false; return; }
-                  setActiveOv(ov);
-                  if (ov.type === "text") { setNewText(ov.value); setTxtColor(ov.color); setTxtSize(ov.size); setTxtFont(ov.font); setPanel("text"); }
-                }}
-                style={{ position: "absolute", left: ov.x, top: ov.y, cursor: "move", userSelect: "none", touchAction: "none" }}>
-                {ov.type === "text" && (
-                  <span style={{ fontFamily: `'${ov.font}',sans-serif`, fontSize: ov.size, color: ov.color, fontWeight: 700,
-                    textShadow: "0 2px 14px rgba(0,0,0,0.95)", whiteSpace: "pre", display: "block" }}>
+               <div key={ov.id} onPointerDown={(e) => pDown(e, ov.id)}
+                style={{ position: "absolute", left: ov.x, top: ov.y, cursor: "move", userSelect: "none", touchAction: "none" }}>                {ov.type === "text" && (
+                   <span style={{ fontFamily: `'${ov.font}',sans-serif`, fontSize: ov.size, color: ov.color, fontWeight: 700,
+                    textShadow: "0 2px 14px rgba(0,0,0,0.95)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+                    display: "block", maxWidth: "72vw", textAlign: "center",
+                    pointerEvents: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
                     {ov.value}
                   </span>
                 )}
                 {ov.type === "image" && (
-                  <img src={ov.value} style={{ width: ov.size, height: ov.size, objectFit: "contain", borderRadius: 8, pointerEvents: "none" }} />
+                  <img src={ov.value} draggable={false} style={{ width: ov.size, height: ov.size, objectFit: "contain", borderRadius: 8, pointerEvents: "none" }} />
                 )}
                 {ov.type === "video" && (
                   <video src={ov.value} autoPlay loop muted={!!ov.muted} playsInline
@@ -830,46 +954,8 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
           </div>
         )}
 
-        {cameraError && phase === "camera" && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            background: "rgba(0,0,0,0.75)", padding: "0 36px", textAlign: "center", zIndex: 25 }}>
-            <div>
-              <p style={{ color: "#fff", fontSize: 15, marginBottom: 16, lineHeight: 1.5 }}>{cameraError}</p>
-              <button onClick={() => startCam()} style={{ padding: "10px 24px", borderRadius: 20, border: "none",
-                background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)", color: "#000", fontWeight: 700, cursor: "pointer" }}>
-                Réessayer
-              </button>
-            </div>
-          </div>
-        )}
-
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 180, background: "linear-gradient(to bottom,rgba(0,0,0,0.65),transparent)", pointerEvents: "none" }} />
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 320, background: "linear-gradient(to top,rgba(0,0,0,0.75),transparent)", pointerEvents: "none" }} />
-
-        {recording && (
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, zIndex: 30, background: "rgba(255,255,255,0.1)" }}>
-            <div style={{ height: "100%", width: `${progress}%`, background: paused ? "#f5a623" : "linear-gradient(to right,#ff4b6e,#dc2626)", transition: "width 1s linear" }} />
-          </div>
-        )}
-
-        {recording && (
-          <div style={{ position: "absolute", top: 60, left: "50%", transform: "translateX(-50%)",
-            background: paused ? "rgba(245,166,35,0.9)" : "rgba(220,38,38,0.9)", borderRadius: 20, padding: "5px 16px",
-            color: "#fff", fontSize: 13, fontWeight: 700, letterSpacing: 1,
-            display: "flex", alignItems: "center", gap: 8, zIndex: 20, backdropFilter: "blur(8px)" }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />
-            {paused ? "Pause" : fmt(secs)}
-          </div>
-        )}
-
-        {showCountdown && (
-          <div style={{ position: "absolute", inset: 0, zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}>
-            <div key={countdownVal} className="celeste-countdown" style={{ fontSize: 120, fontWeight: 800, color: "#fff",
-              textShadow: "0 0 40px rgba(201,149,42,0.7)" }}>
-              {countdownVal > 0 ? countdownVal : ""}
-            </div>
-          </div>
-        )}
 
         {toast && (
           <div style={{ position: "absolute", top: 100, left: "50%", transform: "translateX(-50%)", background: "rgba(20,20,20,0.92)",
@@ -879,50 +965,23 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
         )}
 
         {/* ── Top bar ── */}
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "52px 16px 0", zIndex: 20 }}>
-          <button onClick={onClose} style={Ic()}><X size={18} /></button>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "52px 16px 0", zIndex: 20, pointerEvents: "none" }}>
+          <button onClick={onClose} style={{ ...Ic(), pointerEvents: "auto" }}><X size={18} /></button>
 
-          {phase === "camera" && !recording && (
-            <button onClick={openSoundPanel}
-              style={{ background: selectedSound ? "rgba(201,149,42,0.25)" : "rgba(0,0,0,0.5)", border: `1px solid ${selectedSound ? "#C9952A" : "rgba(255,255,255,0.18)"}`, borderRadius: 20,
-                padding: "8px 16px", color: "#fff", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center",
-                gap: 7, cursor: "pointer", backdropFilter: "blur(12px)", maxWidth: 180 }}>
-              <Music2 size={14} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedSound ? selectedSound.title : "Ajouter un son"}
-              </span>
-            </button>
-          )}
-
-          {phase === "camera" && !recording && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center" }}>
-              {!toolsCollapsed && (
-                <>
-                  <button onClick={flip} style={Ic()}><RefreshCw size={16} /></button>
-                  <button onClick={toggleFlash} style={Ic(flashOn)}>{flashOn ? <Zap size={16} /> : <ZapOff size={16} />}</button>
-                  <button onClick={() => setCountdownOn((c) => !c)} style={Ic(countdownOn)}><Clock size={16} /></button>
-                  <button onClick={() => showToast("Écran partagé — bientôt disponible")} style={Ic()}><Columns size={16} /></button>
-                  <button onClick={() => showToast("Inviter un ami — bientôt disponible")} style={Ic()}><UserPlus size={16} /></button>
-                  {onOpenDrafts && <button onClick={onOpenDrafts} style={Ic()}><Archive size={16} /></button>}
-                </>
-              )}
-              <button onClick={() => setToolsCollapsed((c) => !c)} style={Ic()}>
-                {toolsCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
-            </div>
+         {phase === "camera" && onOpenDrafts && (
+            <button onClick={onOpenDrafts} style={{ ...Ic(), pointerEvents: "auto" }}><Archive size={16} /></button>
           )}
 
           {phase === "preview" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", pointerEvents: "auto" }}>
               <button onClick={() => { setNewText(""); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16} /></button>
               {isVid && <button onClick={pickOverlayVideo} style={Ic()}><Video size={16} /></button>}
-              <button onClick={editElsewhere} disabled={sharing} style={Ic()}><Share2 size={16} /></button>
+             <button onClick={() => (selectedSound ? setPanel("sound-mix") : openSoundPanel())} style={Ic(!!selectedSound)}><Music2 size={16} /></button>              <button onClick={editElsewhere} disabled={sharing} style={Ic()}><Share2 size={16} /></button>
             </div>
           )}
         </div>
       </div>
-
       {/* ── Zone bas ── */}
       <div style={{ position: "relative", zIndex: 20, paddingBottom: 40 }}>
         {panel === "sound" && (
@@ -957,7 +1016,18 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
                   {trendingSounds.map((s) => {
                     const active = selectedSound?.id === s.id;
                     return (
-                      <div key={s.id} onClick={() => { setSelectedSound({ id: s.id, title: s.title, url: s.url }); setPanel(null); }}
+                      <div key={s.id} onClick={() => {
+                        setSelectedSound({ id: s.id, title: s.title, url: s.url });
+                        if (!isVid) { setPanel(null); return; }
+                        const a = new Audio(s.url);
+                        a.onloadedmetadata = () => {
+                          setSelectedSoundDuration(a.duration || 0);
+                          setSoundOffset(0);
+                          setMainVolume(100); setSoundVolume(100);
+                          setPanel("sound-mix");
+                        };
+                        a.onerror = () => setPanel(null);
+                      }}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 8px", borderRadius: 12, cursor: "pointer",
                           background: active ? "rgba(201,149,42,0.15)" : "transparent", marginBottom: 4 }}>
                         <div style={{ width: 34, height: 34, borderRadius: "50%", border: `2px solid ${active ? "#C9952A" : "rgba(255,255,255,0.2)"}`,
@@ -981,12 +1051,67 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
           </div>
         )}
 
+        {panel === "sound-mix" && (
+          <div style={{ background: "rgba(6,6,6,0.97)", borderRadius: "24px 24px 0 0", padding: "20px 18px 14px", backdropFilter: "blur(30px)" }}>
+            <span style={{ color: "#fff", fontSize: 14, fontWeight: 700, display: "block", marginBottom: 16 }}>Mixage du son</span>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>
+                <span>Son original de la vidéo</span><span>{mainVolume}%</span>
+              </div>
+              <input type="range" min={0} max={100} value={mainVolume} onChange={(e) => setMainVolume(Number(e.target.value))} style={{ width: "100%" }} />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>
+                <span>Son ajouté{selectedSound?.title ? ` — ${selectedSound.title}` : ""}</span><span>{soundVolume}%</span>
+              </div>
+              <input type="range" min={0} max={100} value={soundVolume} onChange={(e) => setSoundVolume(Number(e.target.value))} style={{ width: "100%" }} />
+            </div>
+
+           {selectedSoundDuration > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>
+                  <span>Passage utilisé : {soundOffset.toFixed(1)}s → {soundEnd.toFixed(1)}s</span>
+                  <span>sur {selectedSoundDuration.toFixed(0)}s</span>
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <input type="range" min={0} max={selectedSoundDuration} step={0.1}
+                    value={soundOffset}
+                    onChange={(e) => {
+                      const v = Math.min(Number(e.target.value), soundEnd - 0.3);
+                      setSoundOffset(Math.max(0, v));
+                    }} style={{ width: "100%" }} />
+                  <input type="range" min={0} max={selectedSoundDuration} step={0.1}
+                    value={soundEnd}
+                    onChange={(e) => {
+                      const v = Math.max(Number(e.target.value), soundOffset + 0.3);
+                      setSoundEnd(Math.min(selectedSoundDuration, v));
+                    }} style={{ width: "100%" }} />
+                </div>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>Glisse le début et la fin pour choisir librement le passage.</span>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 9, marginTop: 6 }}>
+              <button onClick={() => { setSelectedSound(null); setPanel(null); }}
+                style={{ flex: 1, padding: "12px", borderRadius: 15, border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)", cursor: "pointer", fontSize: 13 }}>Retirer le son</button>
+              <button onClick={() => setPanel(null)}
+                style={{ flex: 2, padding: "12px", borderRadius: 15, border: "none", background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)",
+                  color: "#000", fontWeight: 800, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                  boxShadow: "0 3px 16px rgba(201,149,42,0.4)" }}>
+                <Check size={15} /> OK
+              </button>
+            </div>
+          </div>
+        )}
+
         {panel === "text" && (
           <div style={{ background: "rgba(6,6,6,0.97)", borderRadius: "24px 24px 0 0", padding: "20px 18px 10px", backdropFilter: "blur(30px)" }}>
-            <input value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Votre texte…" autoFocus
+            <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Votre texte…" autoFocus rows={3}
               style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16,
                 padding: "12px 16px", color: txtColor, fontSize: Math.min(txtSize, 22), fontFamily: `'${txtFont}',sans-serif`,
-                fontWeight: 700, outline: "none", marginBottom: 14, letterSpacing: .3 }} />
+                fontWeight: 700, outline: "none", marginBottom: 14, letterSpacing: .3, resize: "none", lineHeight: 1.3 }} />
             <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
               {COLORS.map((c) => (
                 <div key={c} onClick={() => setTxtColor(c)}
@@ -1079,70 +1204,21 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
         {!panel && (
           <>
             {phase === "camera" && (
-              <>
-                <div style={{ display: "flex", justifyContent: "center", gap: 4, paddingTop: 14, paddingBottom: 10, flexWrap: "wrap" }}>
-                  {MODES.map((m) => {
-                    const on = m === mode;
-                    return (
-                      <button key={m} onClick={() => {
-                        if (recording) return;
-                        setMode(m);
-                        if (m === "TEXTE") setPhase("textcard");
-                      }}
-                        style={{ background: on ? "rgba(255,255,255,0.15)" : "transparent", border: on ? "1px solid rgba(255,255,255,0.25)" : "1px solid transparent",
-                          borderRadius: 22, padding: "5px 16px", color: on ? "#fff" : "rgba(255,255,255,0.4)", fontSize: 13, fontWeight: on ? 700 : 400,
-                          cursor: "pointer", transition: "all .2s" }}>{m}</button>
-                    );
-                  })}
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 26px" }}>
-                  <button onClick={pickGallery} style={{ width: 46, height: 46, borderRadius: 14, overflow: "hidden",
-                    border: "2px solid rgba(255,255,255,0.25)", cursor: "pointer", background: "rgba(255,255,255,0.08)",
-                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <ImageIcon size={19} color="#fff" />
-                  </button>
-
-                  {mode === "PHOTO"
-                    ? <button onClick={beginCapture}
-                        style={{ width: 78, height: 78, borderRadius: "50%", background: "#fff", border: "5px solid rgba(255,255,255,0.3)",
-                          cursor: "pointer", flexShrink: 0, boxShadow: "0 0 0 3px rgba(255,255,255,0.12),0 6px 32px rgba(0,0,0,0.6)" }} />
-                    : !recording
-                      ? <button onClick={beginCapture}
-                          style={{ width: 78, height: 78, borderRadius: "50%", background: "linear-gradient(135deg,#ff4b6e,#dc2626)",
-                            border: "5px solid rgba(220,38,38,0.25)", cursor: "pointer", flexShrink: 0,
-                            boxShadow: "0 0 24px rgba(220,38,38,0.6),0 6px 24px rgba(0,0,0,0.5)" }} />
-                      : (
-                        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                          <button onClick={paused ? resumeRec : pauseRec}
-                            style={{ width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.12)",
-                              border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {paused
-                              ? <div style={{ width: 0, height: 0, borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderLeft: "13px solid #fff", marginLeft: 3 }} />
-                              : <div style={{ display: "flex", gap: 4 }}><div style={{ width: 5, height: 16, background: "#fff", borderRadius: 1 }} /><div style={{ width: 5, height: 16, background: "#fff", borderRadius: 1 }} /></div>}
-                          </button>
-                          <button onClick={stopRec}
-                            style={{ width: 78, height: 78, borderRadius: "50%", background: "rgba(220,38,38,0.12)", border: "5px solid #dc2626",
-                              cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 28px rgba(220,38,38,0.7)" }}>
-                            <div style={{ width: 28, height: 28, borderRadius: 7, background: "#dc2626" }} />
-                          </button>
-                          <div style={{ width: 46 }} />
-                        </div>
-                      )
-                  }
-
-                  <button onClick={flip} style={{ width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <RefreshCw size={18} color="#fff" />
-                  </button>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "center", gap: 26, paddingTop: 16 }}>
-                  <button onClick={() => showToast("Live — bientôt disponible")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", fontSize: 13, cursor: "pointer" }}>LIVE</button>
-                  <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>PUBLIER</span>
-                  <button onClick={() => showToast("Créer — bientôt disponible")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", fontSize: 13, cursor: "pointer" }}>CRÉER</button>
-                </div>
-              </>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 22, padding: "0 32px" }}>
+                <button onClick={pickGallery}
+                  style={{ width: "100%", maxWidth: 320, padding: "18px", borderRadius: 22, border: "none",
+                    background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)", color: "#000", fontWeight: 800, fontSize: 15,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+                    boxShadow: "0 4px 24px rgba(201,149,42,0.4)" }}>
+                  <ImageIcon size={18} /> Choisir une photo ou vidéo
+                </button>
+                <button onClick={() => setPhase("textcard")}
+                  style={{ width: "100%", maxWidth: 320, padding: "16px", borderRadius: 22,
+                    border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", color: "#fff",
+                    fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }}>
+                  <Type size={17} /> Créer une carte de texte
+                </button>
+              </div>
             )}
 
             {phase === "preview" && (

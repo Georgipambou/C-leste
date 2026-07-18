@@ -27,6 +27,7 @@
     "@fontsource/space-grotesk": "^5.2.10",
     "@onesignal/capacitor-plugin": "^1.0.5",
     "@supabase/supabase-js": "^2.106.0",
+    "fix-webm-duration": "^1.0.6",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.16.0",

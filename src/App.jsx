@@ -34,12 +34,14 @@ import {
   ChatSearchBar, filterMessagesByQuery,
   SwipeToReply, useLongPress, InlineReactionPicker
 } from "./ChatExtras";
+import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
+
 
 import {
   useState, useRef, useEffect, useCallback, useMemo, memo, createContext, useContext
 } from "react";
 import {
-  Trash2, Mail, Mic, Camera, Image,
+  Trash2, Mail, Mic, Camera, Image, Wrench,
   Edit2, Bell, Heart, MessageCircle,
   Send, X, Plus, Search, Settings,
   User, Users, ChevronLeft, ChevronRight, MoreVertical,
@@ -55,6 +57,7 @@ import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react"; 
 import emailjs from "@emailjs/browser";
 import { uploadToR2 } from "./uploadMedia";
+import { autoExtractAndAttachSound } from "./lib/soundExtraction";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -69,9 +72,13 @@ import { pauseOtherVideos as __pauseOtherPostVideos, releaseActiveVideo as __rel
 import { fetchRankingData, rankPosts } from "./lib/recommendation/useFeedRanking";
 import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
+import SoundDetailModal from "./components/SoundDetailModal";
+import { saveDraft } from "./lib/draftsStore";
+import DraftsGallery from "./components/DraftsGallery";
 // Mémoïsation pour éviter les re-renders inutiles
 const MemoFeed = React.memo(({children}) => children);
-
+import previewDark from "./assets/preview.webp";
+import previewLight from "./assets/preview-light.webp";
 
 // ── SUPABASE ──────────────────────────────────────────────
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -445,6 +452,12 @@ const setAppTheme=(mode)=>{
   localStorage.setItem("celeste_theme",mode);
   window.dispatchEvent(new CustomEvent("celeste_theme_changed"));
 };
+function isLightBg(hex) {
+  if (!hex || hex[0] !== "#") return false;
+  const h = hex.length === 4 ? hex.replace(/#(.)(.)(.)/, "#$1$1$2$2$3$3") : hex;
+  const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
+}
 
 // ── UTILITAIRES ───────────────────────────────────────────
 const distKm=(lat1,lon1,lat2,lon2)=>{
@@ -581,7 +594,7 @@ const sendPushNotif=async(title,body)=>{
 };
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
-const GS = `
+const getGS = () => `
   @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
@@ -850,32 +863,32 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   );
 });
 
+// Forme "sceau" festonnée (8 pétales arrondis), façon nuage
+const BADGE_CLIP="path('M 14.93 10.87 C 13.57 10.73, 10.73 13.57, 10.87 14.93 C 10.01 13.87, 5.99 13.87, 5.13 14.93 C 5.27 13.57, 2.43 10.73, 1.07 10.87 C 2.13 10.01, 2.13 5.99, 1.07 5.13 C 2.43 5.27, 5.27 2.43, 5.13 1.07 C 5.99 2.13, 10.01 2.13, 10.87 1.07 C 10.73 2.43, 13.57 5.27, 14.93 5.13 C 13.87 5.99, 13.87 10.01, 14.93 10.87 Z')";
+
 const Badge = memo(function Badge({type}){
   if(!type) return null;
   const isConfirmed = type==="confirmed";
   return isConfirmed ? (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
       background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
-      boxShadow:"0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4)",
       flexShrink:0,position:"relative",}}>
-      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </span>
   ) : (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
       background:"linear-gradient(135deg,#FFD700,#FF8C00)",
-      boxShadow:"0 0 0 2px rgba(255,165,0,0.3), 0 0 10px rgba(255,180,0,0.9), 0 0 22px rgba(255,140,0,0.5)",
       flexShrink:0,}}>
-      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
   <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
 </svg>
     </span>
   );
 });
-
-const Btn = ({children,onClick,style={},disabled=false,type="button"})=>(
-  <button type={type} onClick={disabled?undefined:onClick} disabled={disabled}
+const Btn = ({children,onClick,style={},disabled=false,type="button",...rest})=>(
+  <button type={type} onClick={disabled?undefined:onClick} disabled={disabled} {...rest}
     style={{cursor:disabled?"not-allowed":"pointer",border:"none",background:"none",outline:"none",...style}}>
     {children}
   </button>
@@ -2098,7 +2111,7 @@ mentionedIdsRef.current=[];
           placeholder="Ajouter un commentaire..."
           members={members||[]}
           onFocus={()=>setHideNav(true)}
-          onBlur={()=>setHideNav(false)}
+          onBlur={()=>setTimeout(()=>setHideNav(false),150)}
         />
         <Btn onClick={submit} disabled={posting||(!text.trim()&&!mediaFile)} style={{background:(text.trim()||mediaFile)?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:(text.trim()||mediaFile)?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",flexShrink:0,marginBottom:2}}>
           <Send size={13} style={{transform:"translateX(0.5px)"}}/>
@@ -2354,7 +2367,7 @@ useEffect(()=>{
                 <p style={{margin:0,fontSize:11,color:T.muted}}>{ago(post.ts)}</p>
               </div>
             </div>
-            <Btn onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+            <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
           </div>
           <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
             {post.type==="event"
@@ -2423,8 +2436,30 @@ useEffect(()=>{
     </>
   );
 }
+function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300}){
+  const auth=post.author||getM(post.by);
+  return(
+    <div style={{position:"fixed",inset:0,zIndex,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+      onMouseDown={e=>{if(e.target===e.currentTarget)e.preventDefault();}}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",animation:"slideUp .3s cubic-bezier(0.34,1.1,0.64,1)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Av u={auth} size={32}/>
+            <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>Commentaires</p>
+          </div>
+          <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+        </div>
+        <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={()=>{}} targetCommentId={null}/>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-function NewPostModal({myProfile,session,onClose,onPost,notify}){
+function NewPostModal({myProfile,session,onClose,onPost,notify,initialSound=null}){
+
 const [type,setType]=useState("text"); const [text,setText]=useState("");
 const [previews,setPreviews]=useState([]); const [mediaUrls,setMediaUrls]=useState([]);
 const [carouselIdx,setCarouselIdx]=useState(0);
@@ -2439,8 +2474,9 @@ const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
 const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
 const [selectedCategories,setSelectedCategories]=useState([]);
-const [selectedSound,setSelectedSound]=useState(null);
-
+const [selectedSound,setSelectedSound]=useState(initialSound);
+const [showDrafts, setShowDrafts] = useState(false);
+const [resumeDraft, setResumeDraft] = useState(null);
 const [isForSale,setIsForSale]=useState(false);
 const [isPrivate,setIsPrivate]=useState(false);
 const [contactType,setContactType]=useState("whatsapp");
@@ -2456,6 +2492,7 @@ useEffect(()=>{
 },[]);
 const vRef=useRef();
 const mentionedIdsRef=useRef([]);
+const lastVideoFileRef=useRef(null);
 const {members}=useApp();
 
   const cropImage=src=>new Promise(resolve=>{
@@ -2480,6 +2517,7 @@ const handlePick=async e=>{
         setPreviews(p=>[...p,{url:src,type:"video"}]);
         setType("photo");
         setUploading(true);setUploadPct(0);
+lastVideoFileRef.current=f;
 try{const publicUrl=await uploadToR2(f,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
 catch(err){console.error(err);}
 finally{setUploading(false);setUploadPct(0);}
@@ -2493,7 +2531,7 @@ continue;
         setPreviews(p=>[...p,{url:trimData.src,type:"video"}]);
         setType("photo");
         setUploading(true);setUploadPct(0);
-try{const fileToUpload=trimData.file||f;const publicUrl=await uploadToR2(fileToUpload,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
+try{const fileToUpload=trimData.file||f;lastVideoFileRef.current=fileToUpload;const publicUrl=await uploadToR2(fileToUpload,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
 catch(err){console.error(err);}
 finally{setUploading(false);setUploadPct(0);}
 continue;
@@ -2531,6 +2569,7 @@ try {
     setBusy(true);
    const{error}=await sb.from("posts").insert({
       author_id:session?.user?.id,type,
+      visibility:"testing",
       text:text.trim()||"",
       img_url:mediaUrls.length===1?(mediaUrls[0]||null):null,
       media_urls:mediaUrls.length>1?mediaUrls:null,
@@ -2552,6 +2591,9 @@ if(!error){
   if(postId){
     if(selectedCategories.length>0){
       await sb.from("post_categories").insert(selectedCategories.map(category=>({post_id:postId,category,source:"manual"})));
+    }
+    if(!selectedSound&&lastVideoFileRef.current){
+      autoExtractAndAttachSound({sb,uploadToR2,videoFile:lastVideoFileRef.current,postId,uid,authorName:myProfile?.prenom||myProfile?.fullName});
     }
     if(selectedSound){
       if(selectedSound.isNew&&selectedSound.blob){
@@ -2599,16 +2641,27 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 )}
     {showCameraStudio&&<CameraStudioModal
   sb={sb}
-  onClose={()=>setShowCameraStudio(false)}
+  initialDraft={resumeDraft}
+  onSaveDraft={async(d)=>{await saveDraft(d);notify("Brouillon enregistré ✦");}}
+  onOpenDrafts={()=>{setShowCameraStudio(false);setShowDrafts(true);}}
+  onClose={()=>{setShowCameraStudio(false);setResumeDraft(null);}}
   onDone={({file,type:mtype,sound})=>{
-    setShowCameraStudio(false);
+    setShowCameraStudio(false);setResumeDraft(null);
     file._fromCamera=true;
     if(sound) setSelectedSound(sound);
     const fakeEvent={target:{files:[file]}};
     handlePick(fakeEvent);
   }}
 />}
-<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+{showDrafts&&<DraftsGallery T={T} onClose={()=>setShowDrafts(false)}
+  onResume={(d)=>{setShowDrafts(false);setResumeDraft(d);setShowCameraStudio(true);}}
+  onPublishAsIs={(d)=>{
+    setShowDrafts(false);
+    const file=new File([d.blob],(d.type==="video"?"draft.mp4":"draft.jpg"),{type:d.blob.type});
+    const fakeEvent={target:{files:[file]}};
+    handlePick(fakeEvent);
+  }}
+/>}<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
       <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePick}/>
 <input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
@@ -2621,10 +2674,15 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
         <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:T.text,letterSpacing:2,fontWeight:600}}>
           Nouveau post
         </span>
-        <button onClick={submit} disabled={!ok||busy||uploading}
-          style={{background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,padding:"8px 18px",color:ok&&!busy&&!uploading?"#000":T.muted,fontSize:14,fontWeight:700,cursor:ok&&!busy&&!uploading?"pointer":"default",transition:"all .2s",boxShadow:ok&&!busy&&!uploading?"0 4px 16px rgba(201,149,42,0.3)":"none"}}>
-          {busy?"…":uploading?"↑":"Publier"}
-        </button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+  <button onClick={()=>setShowDrafts(true)} style={{background:"none",border:"none",color:T.muted,fontSize:13,fontWeight:500,cursor:"pointer"}}>
+    Brouillons
+  </button>
+  <button onClick={submit} disabled={!ok||busy||uploading}
+    style={{background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,padding:"8px 18px",color:ok&&!busy&&!uploading?"#000":T.muted,fontSize:14,fontWeight:700,cursor:ok&&!busy&&!uploading?"pointer":"default",transition:"all .2s",boxShadow:ok&&!busy&&!uploading?"0 4px 16px rgba(201,149,42,0.3)":"none"}}>
+    {busy?"…":uploading?"↑":"Publier"}
+  </button>
+</div>
       </div>
 
       {/* ── Corps scrollable ── */}
@@ -2654,8 +2712,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 />
 
             <div style={{ margin: "10px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-              <CategoryPicker selected={selectedCategories} onChange={setSelectedCategories} />
-              <SoundPickerButton sb={sb} value={selectedSound} onChange={setSelectedSound} userId={session?.user?.id} />
+              <CategoryPicker selected={selectedCategories} onChange={setSelectedCategories} T={T}/>
+              <SoundPickerButton sb={sb} value={selectedSound} onChange={setSelectedSound} userId={session?.user?.id} T={T}/>
             </div>
 
             {/* Option vente (badge doré + Congo uniquement) */}
@@ -2798,8 +2856,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
           <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
         </button>
         <button onClick={()=>setShowCameraStudio(true)} style={{background:"none",border:"none",cursor:"pointer",color:showCameraStudio?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
-          <Camera size={22}/>
-          <span style={{fontSize:9,letterSpacing:.5}}>Caméra</span>
+          <Wrench size={22}/>
+          <span style={{fontSize:9,letterSpacing:.5}}>Studio</span>
         </button>
         <button onClick={()=>setType("text")} style={{background:"none",border:"none",cursor:"pointer",color:type==="text"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <span style={{fontSize:18}}>✍</span>
@@ -3964,7 +4022,7 @@ function SkeletonPost(){
   );
 }
 
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,viewedPostIdsRef}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,viewedPostIdsRef}){
 
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
@@ -3974,6 +4032,8 @@ const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.medi
 const [photoIndex,setPhotoIndex]=useState(null);
 const [photoStartMedia,setPhotoStartMedia]=useState(0);
 const [photoViewerPosts,setPhotoViewerPosts]=useState(null);
+const [openSoundId,setOpenSoundId]=useState(null);
+
 const [photoCommentPost,setPhotoCommentPost]=useState(null);
 const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
 const photoPosts=posts.filter(p=>{
@@ -4155,11 +4215,13 @@ useEffect(()=>{
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);setDetailPost(p);}}
+  onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
   myConnections={myConnections}
   onConnect={onConnect}
+  onOpenSound={setOpenSoundId}
 />}
 {photoIndex!==null&&<PhotoViewer
+ onOpenSound={setOpenSoundId}
   posts={photoViewerPosts||photoPosts}
   sb={sb}
   startIndex={photoIndex}
@@ -4171,15 +4233,31 @@ useEffect(()=>{
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);setDetailPost(p);}}
+  onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
   myConnections={myConnections}
   onConnect={onConnect}
 />}
+{openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)}
+  onUseSound={(sound)=>{setOpenSoundId(null); onUseSoundForPost?.(sound);}}
+/>}
+{(reelsCommentPost||photoCommentPost)&&(
+  <CommentsOnlyModal
+    post={reelsCommentPost||photoCommentPost}
+    session={session}
+    getM={getM}
+    onClose={()=>{
+      setReelsCommentPost(null);
+      setPhotoCommentPost(null);
+      if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+      if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+    }}
+  />
+)}
       {detailPost&&(
         <PostDetailModal
           post={detailPost} myProfile={myProfile} session={session} getM={getM}
           zIndex={(reelsCommentPost||photoCommentPost)?1300:800}
-          fromReel={!!(reelsCommentPost||photoCommentPost)}
+          
           onPhotoView={openPhotoViewer}
           onClose={()=>{
             popNav();
@@ -4239,7 +4317,7 @@ useEffect(()=>{
         {(posts||[]).filter(p=>!searchQuery||p.text?.toLowerCase().includes(searchQuery.toLowerCase())||p.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((p,i)=>(
           <div key={p.id} data-post-id={p.id}>
 <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-           onDetail={p=>{const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid&&!p._forceComments){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else{const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);}}}
+           onDetail={p=>{const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid&&!p._forceComments){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else if(p._forceComments){setDetailPost(p);}else{const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);}}}
             onLike={toggleLike}
             onSave={toggleSave}
             onUser={onUser}
@@ -4355,6 +4433,30 @@ if(byAdmin){
   notify(post.pinned?"Désponsorisé":"Sponsorisé ✦");
   setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_reload_posts")),300);
 };
+const handleProfilePin=()=>{
+  if(!isMine)return;
+  const next=!post.profile_pinned;
+  setPosts?.(prev=>(prev||[]).map(p=>p.id===post.id?{...p,profile_pinned:next}:p));
+  notify(next?"Épinglé sur ton profil ✦":"Désépinglé du profil");
+  (async()=>{
+    if(next){
+      const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session.user.id).eq("profile_pinned",true);
+      if((count||0)>=3){
+        setPosts?.(prev=>(prev||[]).map(p=>p.id===post.id?{...p,profile_pinned:false}:p));
+        notify("Tu peux épingler 3 publications maximum");
+        return;
+      }
+    }
+    const{error}=await sb.from("posts").update({profile_pinned:next}).eq("id",post.id);
+    if(error){
+      console.error("profile_pinned update error:",error);
+      setPosts?.(prev=>(prev||[]).map(p=>p.id===post.id?{...p,profile_pinned:!next}:p));
+      notify("Erreur lors de l'épinglage — réessaie");
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("celeste_profile_pin_changed"));
+  })();
+};
 const [showPostReport,setShowPostReport]=useState(false);
   const handleReportPost=async(reason,details)=>{
     await sb.from("reports").insert({reporter_id:session?.user?.id,reported_id:post.by,post_id:post.id,reason,details});
@@ -4404,6 +4506,7 @@ const [showPostReport,setShowPostReport]=useState(false);
               <Btn onClick={e=>{e.stopPropagation();onUser?.(post.by);}} style={{fontSize:14,fontWeight:700,color:T.text,padding:0}}>{post.author?.name}</Btn>
               <Badge type={post.author?.badge}/>
               {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
+              {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={10} color={T.goldL}/>Épinglé</span>}
               <span style={{fontSize:11,color:T.muted}}>{ago(post.ts)}</span>
             </div>
             <div style={{position:"relative",flexShrink:0}}>
@@ -4419,6 +4522,11 @@ const [showPostReport,setShowPostReport]=useState(false);
                   {isAdmin&&(
     <Btn onClick={()=>{handlePin();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
       <Pin size={14}/>{post.pinned?"Désponsoriser":"✦ Sponsoriser"}
+    </Btn>
+  )}
+  {isMine&&(
+    <Btn onClick={()=>{handleProfilePin();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,color:T.sub,fontSize:13,textAlign:"left",borderBottom:`1px solid ${T.border}`}}>
+      <Pin size={14}/>{post.profile_pinned?"Désépingler du profil":"Épingler sur mon profil"}
     </Btn>
   )}
                   {(isMine||isAdmin)&&(
@@ -4554,32 +4662,50 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   const [loading,setLoading]=useState(true);
   const [reelsIndex,setReelsIndex]=useState(null);
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+  const [openSoundId,setOpenSoundId]=useState(null);
+  const [reelsCommentPost,setReelsCommentPost]=useState(null);
+  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [photoCommentPost,setPhotoCommentPost]=useState(null);
+  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const videoPosts=posts.filter(isVid);
 
   useEffect(()=>{
     setLoading(true);
     sb.from("saved_posts")
-      .select("post_id, posts(*, author:profiles!posts_author_id_fkey(*))")
+      .select("post_id, posts(*, sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)), author:profiles!posts_author_id_fkey(*))")
       .eq("user_id",session?.user?.id)
       .then(({data})=>{
         const mapped=(data||[]).map(d=>d.posts).filter(Boolean).map(p=>({
           id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,
-          text:p.text||"",img:p.img_url||null,title:p.event_title||null,
+          text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,
           eventDate:p.event_date||null,eventLoc:p.event_loc||null,
           likes:(p.likes||[]).map(l=>l.user_id)||(p.likes||[]),
-          comments:[],ts:new Date(p.created_at).getTime(),pinned:p.pinned||false,is_private:p.is_private||false
+          comments:[],ts:new Date(p.created_at).getTime(),pinned:p.pinned||false,is_private:p.is_private||false,
+          sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null
         }));
         setPosts(mapped);setLoading(false);
       });
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
 const [detailPost, setDetailPost] = useState(null);
+  const localToggleLike=async pid=>{
+    const uid=session?.user?.id;
+    const post=posts.find(p=>p.id===pid);
+    if(!post)return;
+    const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
+    setPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]}));
+    await toggleLike(pid);
+  };
+  const localToggleSave=async pid=>{
+    await toggleSave(pid);
+    setPosts(prev=>prev.filter(p=>p.id!==pid));
+  };
   if(loading) return(
     <div style={{display:"flex",justifyContent:"center",padding:40}}>
       <div style={{width:32,height:32,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
@@ -4614,14 +4740,28 @@ return(
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
         {reelsIndex!==null&&toggleLike&&toggleSave&&(
           <ReelsViewer posts={videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>setReelsIndex(null)}
-            toggleLike={toggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={p=>setDetailPost(p)} myConnections={[]} onConnect={()=>{}}/>
+            toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
+            onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={[]} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
         )}
         {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
           <PhotoViewer posts={posts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>setPhotoViewerIndex(null)}
-            toggleLike={toggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={p=>setDetailPost(p)} myConnections={[]} onConnect={()=>{}}/>
+            toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
+            onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={[]} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
         )}
+        {(reelsCommentPost||photoCommentPost)&&(
+          <CommentsOnlyModal
+            post={reelsCommentPost||photoCommentPost}
+            session={session}
+            getM={getM}
+            onClose={()=>{
+              setReelsCommentPost(null);
+              setPhotoCommentPost(null);
+              if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+              if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+            }}
+          />
+        )}
+        {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
         {!navigator.onLine&&posts.length===0&&[1,2,3].map(i=><SkeletonPost key={i}/>)}
         {posts.map((p,i)=>(
           <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}}
@@ -4666,6 +4806,8 @@ return(
 // ── MESSAGES TAB ──────────────────────────────────────────
 function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session}){
   const [q,setQ]=useState("");
+  const [queueStatuses,setQueueStatuses]=useState(()=>getConvStatuses());
+  useEffect(()=>subscribeQueue(()=>setQueueStatuses(getConvStatuses())),[]);
   const [filter,setFilter]=useState("tous");
   const [favorites,setFavorites]=useState(()=>{try{return JSON.parse(localStorage.getItem("celeste_favs")||"[]");}catch{return[];}});
 const [pinned,setPinned]=useState(()=>{try{return JSON.parse(localStorage.getItem("celeste_pins")||"[]");}catch{return[];}});
@@ -4768,6 +4910,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
                 <Av u={u} size={52}/>
                 {u?.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px solid #000"}}/>}
                 {pinned.includes(c.id)&&<Pin size={12} color={T.gold} style={{position:"absolute",top:8,right:36}}/>}
+                {queueStatuses[c.id]==="error"&&<div style={{position:"absolute",top:0,right:0,width:12,height:12,borderRadius:"50%",background:"#e05252",border:"2px solid "+T.bg}}/>}
               </div>
               
               {/* Infos */}
@@ -5001,7 +5144,10 @@ const askGemini=async(text)=>{
   const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false);
   const [recording,setRecording]=useState(false); const [recordSecs,setRecordSecs]=useState(0);
   const [bgPhoto,setBgPhoto]=useState(null);
-  const [sendingMsgs,setSendingMsgs]=useState([]);
+  const [sendingMsgs,setSendingMsgs]=useState(()=>getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"})));
+useEffect(()=>subscribeQueue(()=>{
+  setSendingMsgs(getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"})));
+}),[conv.id]);
   const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef();
 const [replyTo,setReplyTo]=useState(null);
 const [showReactionPicker,setShowReactionPicker]=useState(null); // id du message ciblé
@@ -5109,25 +5255,14 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   };
 
   const sendMsg=async payload=>{
-  const tempId="tmp_"+Date.now();
-  setSendingMsgs(p=>[...p,{id:tempId,...payload,f:"me",ts:Date.now(),sending:true}]);
-  try{
-    const convId=await ensureConv(); if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));return;}
-    let error,attempt=0;
-    while(attempt<3){
-      const res=await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,...payload});
-      error=res.error;
-      if(!error)break;
-      attempt++;
-      await new Promise(r=>setTimeout(r,1500*attempt));
-    }
-    setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-    if(error){notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><XCircle size={14}/>Message non envoyé — vérifie ta connexion</span>);return;}
-    setAttach(false);playChatSound("send");
-  }catch(e){
-    notify("Erreur d'envoi, réessayez");
-    setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
+  let convId=conv.id;
+  if(navigator.onLine){
+    try{ convId=await ensureConv()||conv.id; }catch(e){ convId=conv.id; }
   }
+  if(!convId)return;
+  enqueueMessage(convId,session?.user?.id,payload);
+  setAttach(false);playChatSound("send");
+  processQueue(sb,notify).then(reload);
 };
 
   const [sending,setSending]=useState(false);
@@ -5137,15 +5272,6 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
       const txt=inp.trim();
       setInp(""); setChatDrafts(d=>({...d,[conv.id]:""})); setEditingMsg(null);
       await editMessage(sb,editingMsg.id,txt); reload();
-      return;
-    }
-    if(!navigator.onLine){
-      const q=JSON.parse(localStorage.getItem("celeste_msg_queue")||"[]");
-      q.push({convId:conv.id,text:inp.trim(),ts:Date.now()});
-      localStorage.setItem("celeste_msg_queue",JSON.stringify(q));
-      setInp("");
-      setChatDrafts(d=>({...d,[conv.id]:""}));
-      notify("Message en attente — sera envoyé dès la reconnexion");
       return;
     }
     const txt=inp.trim();
@@ -5266,7 +5392,7 @@ const handleFile=async(e,isImg)=>{
   const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
 
   return(
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",background:T.bg}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",backgroundImage:`linear-gradient(${isLightBg(T.bg)?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.6)"},${isLightBg(T.bg)?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.6)"}),url(${isLightBg(T.bg)?previewLight:previewDark})`,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat"}}>
       {cropSrc&&(
         <ImageCropModal
           imageSrc={cropSrc}
@@ -5327,7 +5453,7 @@ const handleFile=async(e,isImg)=>{
               <div style={{maxWidth:"72%",display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}>
 <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
 <div
-  onClick={doubleTap}
+  onClick={m.error?()=>retryMessage(sb,m.id,notify).then(reload):doubleTap}
   onMouseDown={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpm=t;}}
   onMouseUp={e=>{clearTimeout(e.currentTarget._lpm);}}
   onMouseLeave={e=>{clearTimeout(e.currentTarget._lpm);}}
@@ -5366,7 +5492,7 @@ const handleFile=async(e,isImg)=>{
       </div>
       <div style={{flex:1,minWidth:0}}>
         <p style={{margin:0,fontSize:10,fontWeight:600,color:mine?"rgba(0,0,0,0.5)":T.goldL}}>Statut</p>
-        <p style={{margin:0,fontSize:11,color:mine?"rgba(0,0,0,0.6)":"rgba(255,255,255,0.5)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:m.reply_metadata?.previewText?"normal":"italic"}}>
+        <p style={{margin:0,fontSize:11,color:mine?"rgba(0,0,0,0.6)":T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:m.reply_metadata?.previewText?"normal":"italic"}}>
           {m.reply_metadata?.previewText||"Photo/Vidéo"}
         </p>
       </div>
@@ -5376,11 +5502,11 @@ const handleFile=async(e,isImg)=>{
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
-                    <span style={{fontSize:12,fontWeight:600,color:"#fff",wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
 {m.type==="video"&&(m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>}
-                  {m.text&&<><p style={{margin:0,fontSize:14,color:"#fff",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
+                  {m.text&&<><p style={{margin:0,fontSize:14,fontWeight:600,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
                 {inlinePickerMsgId===m.id&&(
@@ -5406,9 +5532,10 @@ const handleFile=async(e,isImg)=>{
     </div>
   </div>
 )}
-                  {mine&&isSending&&<Check size={12} color={T.muted}/>}
-{mine&&isSending&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
-{mine&&!isSending&&<CheckCheck size={13} color={isRead?T.gold:T.muted} style={{transition:"color .3s"}}/>}
+                  {mine&&isSending&&!m.error&&<Check size={12} color={T.muted}/>}
+{mine&&isSending&&!m.error&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
+{mine&&m.error&&<span style={{fontSize:10,color:"#e05252",fontWeight:600}}>⚠️ Réessayer</span>}
+{mine&&!isSending&&!m.error&&<CheckCheck size={13} color={isRead?T.gold:T.muted} style={{transition:"color .3s"}}/>}
                   {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
               </div>
@@ -5613,8 +5740,8 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   },[user.id]);
 
   useEffect(()=>{
-  if(session?.user?.id&&user?.id)logProfileView(sb,session.user.id,user.id);
-},[user.id,session?.user?.id]);
+  if(session?.user?.id&&user?.id&&!myProfile?.hide_online)logProfileView(sb,session.user.id,user.id);
+},[user.id,session?.user?.id,myProfile?.hide_online]);
 
   useEffect(()=>{
     Promise.all([
@@ -5645,18 +5772,33 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
 const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
+  const localToggleLike=async pid=>{
+    const uid=session?.user?.id;
+    const post=uPosts.find(p=>p.id===pid);
+    if(!post)return;
+    const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
+    setUPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]}));
+    await toggleLike(pid);
+  };
  const [userReelsIndex,setUserReelsIndex]=useState(null);
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
   const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
   const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
+  const [photoCommentPost,setPhotoCommentPost]=useState(null);
+  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+  const [openSoundId,setOpenSoundId]=useState(null);
   const loadUPosts=useCallback(async()=>{
-    const{data}=await sb.from("posts").select(`*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
-   if(data)setUPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,is_private:p.is_private||false,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime()})));
+    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+   if(data){
+     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+     mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
+     setUPosts(mapped);
+   }
   },[user.id]);
   useEffect(()=>{
     loadUPosts();
@@ -5698,15 +5840,16 @@ if(user?.status==="suspended") return(
           sb={sb}
           startIndex={userReelsIndex}
           onClose={()=>setUserReelsIndex(null)}
-          toggleLike={toggleLike}
+          toggleLike={localToggleLike}
           toggleSave={toggleSave}
           session={session}
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={(p,onReelsCb)=>{setUserReelsCommentPost(p);setUserReelsCloseCallback(()=>onReelsCb);setDetailPost(p);}}
+          onOpenComments={(p,onReelsCb)=>{setUserReelsCommentPost(p);setUserReelsCloseCallback(()=>onReelsCb);}}
           myConnections={myConnections}
           onConnect={()=>{}}
+          onOpenSound={setOpenSoundId}
         />
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
@@ -5715,26 +5858,31 @@ if(user?.status==="suspended") return(
           sb={sb}
           startIndex={photoViewerIndex}
           onClose={()=>setPhotoViewerIndex(null)}
-          toggleLike={toggleLike}
+          toggleLike={localToggleLike}
           toggleSave={toggleSave}
           session={session}
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={p=>setDetailPost(p)}
+          onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
           myConnections={myConnections}
           onConnect={()=>{}}
+          onOpenSound={setOpenSoundId}
         />
       )}
-      {detailPost&&(
-        <PostDetailModal post={detailPost} myProfile={myProfile} session={session}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+      {(userReelsCommentPost||photoCommentPost)&&(
+        <CommentsOnlyModal
+          post={userReelsCommentPost||photoCommentPost}
+          session={session}
           getM={id=>id===user.id?user:myProfile}
-          zIndex={userReelsCommentPost?1300:800}
-          fromReel={!!userReelsCommentPost}
-          onClose={()=>{popNav();setDetailPost(null);setUserReelsCommentPost(null);if(userReelsCloseCallback){userReelsCloseCallback();setUserReelsCloseCallback(null);}}}
-          onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").insert({post_id:pid,user_id:session?.user?.id});const u=await refreshPost(pid);if(u)setDetailPost(u);}}
-          onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
-          notify={notify}/>
+          onClose={()=>{
+            setUserReelsCommentPost(null);
+            setPhotoCommentPost(null);
+            if(userReelsCloseCallback){userReelsCloseCallback();setUserReelsCloseCallback(null);}
+            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+          }}
+        />
       )}
 
       <ProfileHeader
@@ -5827,6 +5975,10 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const [detailPost,setDetailPost]=useState(null);
  const [userReelsIndex,setUserReelsIndex]=useState(null);
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+  const [reelsCommentPost,setReelsCommentPost]=useState(null);
+  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [photoCommentPost,setPhotoCommentPost]=useState(null);
+  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const fileRef=useRef(); const coverRef=useRef();
 
   useEffect(()=>{
@@ -5855,7 +6007,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -5863,6 +6015,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
  const isMe=session?.user?.id===user.id;
   const uPosts=(posts||[]).filter(p=>p.by===user.id);
   const orgTypeLabel={restaurant:"🍽️ Restaurant",hotel:"🏨 Hôtel",musique:"🎵 Musique / Artiste",entreprise:"💼 Entreprise",association:"🤝 Association",ecole:"🎓 École / Université",autre:"📌 Organisation"}[user.org_type]||"📌 Organisation";
+  const [openSoundId,setOpenSoundId]=useState(null);
 
   const uploadAvatar=async e=>{
   const f=e.target.files[0];
@@ -5920,9 +6073,10 @@ if(blocked||blockedByOther) return(
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={p=>setDetailPost(p)}
+          onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
           myConnections={myConnections}
           onConnect={()=>{}}
+          onOpenSound={setOpenSoundId}
         />
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
@@ -5937,18 +6091,25 @@ if(blocked||blockedByOther) return(
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={p=>setDetailPost(p)}
+          onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
           myConnections={myConnections}
           onConnect={()=>{}}
+          onOpenSound={setOpenSoundId}
         />
       )}
-      {detailPost&&(
-        <PostDetailModal post={detailPost} myProfile={myProfile} session={session}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+      {(reelsCommentPost||photoCommentPost)&&(
+        <CommentsOnlyModal
+          post={reelsCommentPost||photoCommentPost}
+          session={session}
           getM={id=>id===user.id?user:myProfile}
-          onClose={()=>setDetailPost(null)}
-          onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").insert({post_id:pid,user_id:session?.user?.id});const u=await refreshPost(pid);if(u)setDetailPost(u);}}
-          onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
-          notify={notify}/>
+          onClose={()=>{
+            setReelsCommentPost(null);
+            setPhotoCommentPost(null);
+            if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+          }}
+        />
       )}
       <input ref={coverRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadCover}/>
       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadAvatar}/>
@@ -6997,29 +7158,73 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [detailPost,setDetailPost]=useState(null);
   const [reelsIndex,setReelsIndex]=useState(null);
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+  const [openSoundId,setOpenSoundId]=useState(null);
+  const [reelsCommentPost,setReelsCommentPost]=useState(null);
+  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [photoCommentPost,setPhotoCommentPost]=useState(null);
+  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+  const refreshPost=async pid=>{
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    if(!data)return null;
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+  };
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const videoPosts=likedPosts.filter(isVid);
   useEffect(()=>{
-    sb.from("likes").select("post_id,posts(*,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
-      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false})));
+    sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
       setLoading(false);
     });
   },[session?.user?.id]);
+  const localToggleLike=async pid=>{
+    const uid=session?.user?.id;
+    const post=likedPosts.find(p=>p.id===pid);
+    if(!post)return;
+    const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
+    if(liked){
+      setLikedPosts(prev=>prev.filter(p=>p.id!==pid));
+    }else{
+      setLikedPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,likes:[...(p.likes||[]),uid]}));
+    }
+    await toggleLike(pid);
+  };
   if(loading)return<div style={{textAlign:"center",padding:40,color:T.muted}}>Chargement…</div>;
   if(!likedPosts.length)return<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>♡</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun j'aime</p></div>;
-  if(detailPost)return<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} onComment={()=>{}} notify={notify}/>;
+  if(detailPost)return<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)}
+    onLike={async pid=>{
+      const liked=(detailPost.likes||[]).includes(session?.user?.id);
+      if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);
+      else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+      const u=await refreshPost(pid);if(u)setDetailPost(u);
+    }}
+    onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
+    notify={notify}/>;
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
       {reelsIndex!==null&&toggleLike&&toggleSave&&(
         <ReelsViewer posts={videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>setReelsIndex(null)}
-          toggleLike={toggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={p=>setDetailPost(p)} myConnections={myConnections} onConnect={()=>{}}/>
+          toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
+          onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
         <PhotoViewer posts={likedPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>setPhotoViewerIndex(null)}
-          toggleLike={toggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={p=>setDetailPost(p)} myConnections={myConnections} onConnect={()=>{}}/>
+          toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
+          onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
       )}
+      {(reelsCommentPost||photoCommentPost)&&(
+        <CommentsOnlyModal
+          post={reelsCommentPost||photoCommentPost}
+          session={session}
+          getM={getM}
+          onClose={()=>{
+            setReelsCommentPost(null);
+            setPhotoCommentPost(null);
+            if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+          }}
+        />
+      )}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
       {likedPosts.map(p=>(
         <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:p.is_private&&!isNative?"default":"pointer",overflow:"hidden",borderRadius:4}}
           onClick={()=>{
@@ -7106,14 +7311,23 @@ const [showWallet,setShowWallet]=useState(false);
 
   const [myPosts,setMyPosts]=useState([]);
 const [myPostsLoading,setMyPostsLoading]=useState(true);
-useEffect(()=>{
+const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,pinned,text_background,visibility,created_at,author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
-    if(data)setMyPosts(data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null})));
+  sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+    if(data){
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
+      setMyPosts(mapped);
+    }
     setMyPostsLoading(false);
   });
-},[session?.user?.id, userPostsVersion]);
+},[session?.user?.id]);
+useEffect(()=>{loadMyPosts();},[loadMyPosts, userPostsVersion]);
+useEffect(()=>{
+  window.addEventListener("celeste_profile_pin_changed",loadMyPosts);
+  return()=>window.removeEventListener("celeste_profile_pin_changed",loadMyPosts);
+},[loadMyPosts]);
 
 const isVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
 const myPhotoPosts=useMemo(()=>myPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0))),[myPosts]);
@@ -7125,8 +7339,13 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
 
  const [userReelsIndex,setUserReelsIndex]=useState(null);
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+  const [openSoundId,setOpenSoundId]=useState(null);
+  const [reelsCommentPost,setReelsCommentPost]=useState(null);
+  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [photoCommentPost,setPhotoCommentPost]=useState(null);
+  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   
@@ -7143,15 +7362,16 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
     sb={sb}
     startIndex={userReelsIndex}
     onClose={()=>setUserReelsIndex(null)}
-    toggleLike={toggleLike}
-    toggleSave={toggleSave}
+    toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
+    toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
     session={session}
     myProfile={myProfile}
     notify={notify}
     onUser={()=>{}}
-    onOpenComments={(p)=>{setDetailPost(p);}}
+    onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
     myConnections={myConnections}
     onConnect={()=>{}}
+    onOpenSound={setOpenSoundId}
   />
 )}
 {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
@@ -7160,18 +7380,44 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
     sb={sb}
     startIndex={photoViewerIndex}
     onClose={()=>setPhotoViewerIndex(null)}
-    toggleLike={toggleLike}
-    toggleSave={toggleSave}
+    toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
+    toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
     session={session}
     myProfile={myProfile}
     notify={notify}
     onUser={()=>{}}
-    onOpenComments={p=>setDetailPost(p)}
+    onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
     myConnections={myConnections}
     onConnect={()=>{}}
+    onOpenSound={setOpenSoundId}
   />
 )}
-{detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} onClose={()=>setDetailPost(null)} onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").insert({post_id:pid,user_id:session?.user?.id});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
+
+{openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+  {(reelsCommentPost||photoCommentPost)&&(
+  <CommentsOnlyModal
+    post={reelsCommentPost||photoCommentPost}
+    session={session}
+    getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}}
+    onClose={()=>{
+      setReelsCommentPost(null);
+      setPhotoCommentPost(null);
+      if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+      if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+    }}
+  />
+)}
+{detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}}
+  zIndex={(reelsCommentPost||photoCommentPost)?1300:800}
+  fromReel={!!(reelsCommentPost||photoCommentPost)}
+  onClose={()=>{
+    setDetailPost(null);
+    setReelsCommentPost(null);
+    setPhotoCommentPost(null);
+    if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+    if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+  }}
+  onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
       {/* Cover */}
       <div style={{height:160,background:`linear-gradient(135deg,${myProfile?.color||T.gold}22,${T.goldD}11)`,position:"relative",overflow:"hidden",cursor:"pointer"}} onClick={()=>cvRef.current.click()}>
         {myProfile?.cover_url&&<img src={myProfile.cover_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
@@ -7367,9 +7613,37 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
           <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
           {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>🔖 {p.savesCount}</span>}
         </div>
+        {p.profile_pinned&&(
+          <div style={{position:"absolute",top:6,left:6,background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}}>
+            <Pin size={11} color={T.goldL}/>
+          </div>
+        )}
       </div>
-      <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Supprimer ?"))sb.from("posts").delete().eq("id",p.id).then(()=>{reload();notify("Supprimé");});}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:T.err,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",border:`1px solid ${T.err}33`}}>
-  <Trash2 size={13}/>
+      <Btn onClick={e=>{
+        e.stopPropagation();
+        const next=!p.profile_pinned;
+        setMyPosts(prev=>prev.map(x=>x.id===p.id?{...x,profile_pinned:next}:x));
+        notify(next?"Épinglé sur ton profil ✦":"Désépinglé du profil");
+        (async()=>{
+          if(next){
+            const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session.user.id).eq("profile_pinned",true);
+            if((count||0)>=3){
+              setMyPosts(prev=>prev.map(x=>x.id===p.id?{...x,profile_pinned:false}:x));
+              notify("Tu peux épingler 3 publications maximum");
+              return;
+            }
+          }
+          const{error}=await sb.from("posts").update({profile_pinned:next}).eq("id",p.id);
+          if(error){
+            console.error("profile_pinned update error:",error);
+            setMyPosts(prev=>prev.map(x=>x.id===p.id?{...x,profile_pinned:!next}:x));
+            notify("Erreur lors de l'épinglage — réessaie");
+            return;
+          }
+          window.dispatchEvent(new CustomEvent("celeste_profile_pin_changed"));
+        })();
+      }} style={{position:"absolute",top:6,right:36,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:p.profile_pinned?T.goldL:"#fff",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",border:`1px solid ${p.profile_pinned?T.goldL+"55":"rgba(255,255,255,0.2)"}`}}>
+  <Pin size={13}/>
 </Btn>
     </div>
   ))}
@@ -7573,7 +7847,7 @@ if(data)setList(data.map(normProfile));
             <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.goldL}}>🛡 Administration</h2>
             <p style={{margin:0,fontSize:12,color:T.muted}}>{(list||[]).length} membres · {pending.length} en attente · {allReports.length} signalements</p>
           </div>
-          <Btn onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+          <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
           {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${allReports.length})`}].map(f=>(
@@ -7923,7 +8197,7 @@ function SplashScreen(){
 
   return(
     <div style={{minHeight:"100vh",background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:0,position:"relative",overflow:"hidden"}}>
-      <style>{GS}</style>
+      <style>{getGS()}</style>
       <div style={{position:"absolute",top:"20%",left:"50%",transform:"translateX(-50%)",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,149,42,0.08),transparent 70%)",pointerEvents:"none",animation:"glowPulse 2s ease infinite"}}/>
       <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:90,color:T.gold,animation:"starPulse 2s ease infinite",lineHeight:1,filter:"drop-shadow(0 0 40px rgba(201,149,42,0.6))"}}>✦</div>
       <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.text,letterSpacing:7,margin:"20px 0 8px",animation:"titleReveal .8s ease .3s both"}}>Céleste</h1>
@@ -8013,16 +8287,7 @@ function CelesteApp(){
         loadMembers();
         loadPosts(1);
         loadConvs(session.user.id);
-        try{
-          const q=JSON.parse(localStorage.getItem("celeste_msg_queue")||"[]");
-          if(q.length>0){
-            for(const m of q){
-              await sb.from("messages").insert({conv_id:m.convId,sender_id:session.user.id,type:"text",text:m.text,created_at:new Date(m.ts).toISOString()});
-            }
-            localStorage.removeItem("celeste_msg_queue");
-            loadConvs(session.user.id);
-          }
-        }catch(e){}
+        processQueue(sb,notify).then(()=>loadConvs(session.user.id));
       }
     };
     const off=()=>setIsOnline(false);
@@ -8101,6 +8366,7 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
   const [openUserId,setOpenUserId]=useState(null);
   const [openUser,setOpenUser]=useState(null);
   const [showNewPost,setShowNewPost]=useState(false);
+const [pendingSound,setPendingSound]=useState(null);
   const [showAdmin,setShowAdmin]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
   const [toast,setToast]=useState(null);
@@ -8274,13 +8540,14 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
+  if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0}));
+   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
    const blockedSet=new Set([...blockedUserIds,...mutedAuthorIds]);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
@@ -8351,9 +8618,9 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false};
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>{
   const map=new Map((prev||[]).map(p=>[p.id,p]));
   map.set(pid,updated);
@@ -8529,11 +8796,11 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
     <SplashScreen/>
   );
 
-  if(!session) return(<><style>{GS}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}}/></>);
+  if(!session) return(<><style>{getGS()}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}}/></>);
 
   if(myProfile?.status==="suspended") return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
-      <style>{GS}</style>
+      <style>{getGS()}</style>
       <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp .5s ease"}}>
         <div style={{fontSize:60,marginBottom:20}}>
           🚫</div>
@@ -8546,7 +8813,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
 
   if(isPending) return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
-      <style>{GS}</style>
+      <style>{getGS()}</style>
       <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp .5s ease"}}>
         <div style={{fontSize:60,marginBottom:20,animation:"float 3s ease infinite"}}>⏳</div>
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.text,marginBottom:12}}>Compte en attente</h2>
@@ -8560,7 +8827,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
   return(
     <AppContext.Provider value={appCtx}>
       <div style={{display:"flex",flexDirection:"column",height:"100svh",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
-        <style>{GS}</style>
+        <style>{getGS()}</style>
         {toast&&<Toast msg={toast}/>}
         {!isOnline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #FF6432",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
           <WifiOff size={14} color="#FF6432"/>
@@ -8580,7 +8847,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
   </div>
   <button onClick={()=>setSharedMedia(null)} style={{color:T.muted,background:"none",border:"none",fontSize:13,cursor:"pointer"}}>Annuler</button>
 </div>}
-        {showNewPost&&<NewPostModal myProfile={myProfile} session={session} onClose={()=>{popNav();setShowNewPost(false);}} onPost={()=>{loadPosts(1);setShowNewPost(false);notify("Publié ✦");}} notify={notify}/>}
+        {showNewPost&&<NewPostModal myProfile={myProfile} session={session} initialSound={pendingSound} onClose={()=>{popNav();setShowNewPost(false);setPendingSound(null);}} onPost={()=>{loadPosts(1);setShowNewPost(false);setPendingSound(null);notify("Publié ✦");}} notify={notify}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>{popNav();setOpenCeleste(false);}} myProfile={myProfile} session={session}/>}
 
@@ -8623,21 +8890,21 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
           {openUserId&&openUser&&(
             openUser.account_type==="organisation"
               ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg}/>
-              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
+              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&(
             <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onBack={()=>{popNav();setOpenConvId(null);}}/>
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} viewedPostIdsRef={viewedPostIdsRef}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} viewedPostIdsRef={viewedPostIdsRef}/>
 </div>
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
-             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const post=(posts||[]).find(p=>p.id===pid);if(!post)return;const uid=session?.user?.id;const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").insert({post_id:pid,user_id:uid});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
+             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
 {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
             </div>

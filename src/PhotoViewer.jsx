@@ -9,8 +9,10 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { X, Heart, MessageCircle, Bookmark, MoreVertical, Trash2, Flag, EyeOff, Eye } from "lucide-react";
+import { X, Heart, MessageCircle, Bookmark, MoreVertical, Trash2, Flag, EyeOff, Eye, Volume2, VolumeX } from "lucide-react";
 import { useVideoEngagement } from "./lib/recommendation/useVideoEngagement";
+import SoundBadge from "./components/SoundBadge";
+import SoundDiscBadge from "./components/SoundDiscBadge";
 
 // ── Utilitaires écran (copiés depuis ReelsViewer pour autonomie) ──
 import { Capacitor } from "@capacitor/core";
@@ -180,6 +182,7 @@ export default function PhotoViewer({
   onOpenComments,
   myConnections,
   onConnect,
+  onOpenSound,
 }) {
   const [activeIdx,       setActiveIdx]       = useState(startIndex);
   const [mediaIdxMap,     setMediaIdxMap]     = useState(() => ({ [startIndex]: startMediaIndex }));
@@ -204,9 +207,30 @@ export default function PhotoViewer({
   const carouselRefs  = useRef({});
   const lastTapRef    = useRef({});
   const heartIdRef    = useRef(0);
+  const soundAudioRef = useRef(null);
+  const [muted, setMuted] = useState(false);
 
   const uid = session?.user?.id;
   const engagement = useVideoEngagement(sb, uid);
+
+  const [likedIds, setLikedIds] = useState(
+    () => new Set((posts || []).filter(p => (p.likes || []).some(l => (l.user_id || l) === uid)).map(p => p.id))
+  );
+  const [likeCountMap, setLikeCountMap] = useState(() => {
+    const m = {};
+    (posts || []).forEach(p => { m[p.id] = (p.likes || []).length; });
+    return m;
+  });
+  const handleToggleLike = useCallback((post) => {
+    const alreadyLiked = likedIds.has(post.id);
+    setLikedIds(prev => {
+      const n = new Set(prev);
+      alreadyLiked ? n.delete(post.id) : n.add(post.id);
+      return n;
+    });
+    setLikeCountMap(cm => ({ ...cm, [post.id]: Math.max(0, (cm[post.id] ?? (post.likes || []).length) + (alreadyLiked ? -1 : 1)) }));
+    toggleLike(post.id);
+  }, [toggleLike, likedIds]);
 
   // Liste des médias-photo par post (on ignore les vidéos d'un carrousel mixte)
   const photosByPost = useMemo(() => {
@@ -294,6 +318,22 @@ export default function PhotoViewer({
     return () => clearInterval(timer);
   }, [activeIdx, displayPosts]);
 
+  // ── Lecture du son attaché à la photo active ──────────────────
+  useEffect(() => {
+    const post = displayPosts[activeIdx];
+    const a = soundAudioRef.current;
+    if (!a) return;
+    a.muted = muted;
+    if (post?.sound?.url) {
+      if (a.src !== post.sound.url) { a.src = post.sound.url; a.currentTime = 0; }
+      a.loop = true;
+      a.play().catch(() => {});
+    } else {
+      a.pause();
+    }
+    return () => a.pause();
+  }, [activeIdx, displayPosts, muted]);
+
   // ── Défilement horizontal du carrousel d'un post ──────────────
   const handleCarouselScroll = useCallback((idx, photosCount) => (e) => {
     const el = e.currentTarget;
@@ -312,11 +352,10 @@ export default function PhotoViewer({
       const y = e.clientY - rect.top;
       const id = ++heartIdRef.current;
       setHearts(h => [...h, { id, x, y }]);
-      const liked = (post.likes || []).some(l => (l.user_id || l) === uid);
-      if (!liked) { toggleLike(post.id); engagement.markLiked(myProfile?.is_admin); }
+      if (!likedIds.has(post.id)) { handleToggleLike(post); engagement.markLiked(myProfile?.is_admin); }
     }
     lastTapRef.current[idx] = now;
-  }, [toggleLike, uid, engagement]);
+  }, [handleToggleLike, likedIds, engagement, myProfile]);
 
   const removeHeart = useCallback((id) => {
     setHearts(h => h.filter(hh => hh.id !== id));
@@ -355,6 +394,7 @@ export default function PhotoViewer({
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "#000" }}>
+      <audio ref={soundAudioRef} style={{ display: "none" }} />
 
       {/* Bouton fermer */}
       <button
@@ -372,6 +412,22 @@ export default function PhotoViewer({
         <X size={20} />
       </button>
 
+      {/* Bouton mute */}
+      <button
+        onClick={() => setMuted(m => !m)}
+        style={{
+          position: "absolute",
+          top: "calc(14px + env(safe-area-inset-top,0px))",
+          right: 14, zIndex: 10,
+          background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%",
+          width: 36, height: 36,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", cursor: "pointer",
+        }}
+      >
+        {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+      </button>
+
       {/* Scroll container vertical */}
       <div
         ref={containerRef}
@@ -383,7 +439,7 @@ export default function PhotoViewer({
         }}
       >
         {displayPosts.map((post, idx) => {
-          const liked        = (post.likes || []).some(l => (l.user_id || l) === uid);
+          const liked        = likedIds.has(post.id);
           const isMe         = post.by === uid;
           const photos       = photosByPost[post.id] || [];
           const curMediaIdx  = mediaIdxMap[idx] || 0;
@@ -484,6 +540,11 @@ export default function PhotoViewer({
                     <Eye size={12} />{viewCounts[post.id] ?? 0}
                   </p>
                 )}
+                {post.sound?.title && (
+                  <div style={{ marginTop: 8, pointerEvents: "auto", width: "fit-content" }} onClick={() => onOpenSound?.(post.sound.id)}>
+                    <SoundBadge title={post.sound.title} playing={isActive} />
+                  </div>
+                )}
               </div>
 
               {/* Boutons marketplace */}
@@ -519,10 +580,10 @@ export default function PhotoViewer({
 
                 {/* Like */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                  <button onClick={() => toggleLike(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}>
+                  <button onClick={() => handleToggleLike(post)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}>
                     <Heart size={32} fill={liked ? "#ff2d55" : "none"} color={liked ? "#ff2d55" : "#fff"} />
                   </button>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{(post.likes || []).length}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{likeCountMap[post.id] ?? (post.likes || []).length}</span>
                 </div>
 
                 {/* Commentaires */}
@@ -556,6 +617,15 @@ export default function PhotoViewer({
                 <button onClick={() => setMenuPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, marginTop: 2 }}>
                   <MoreVertical size={26} />
                 </button>
+
+                {/* Disque du son (façon TikTok) */}
+                {post.sound?.id && (
+                  <SoundDiscBadge
+                    avatarUrl={post.sound.owner_avatar}
+                    playing={isActive}
+                    onClick={() => onOpenSound?.(post.sound.id)}
+                  />
+                )}
               </div>
 
             </div>

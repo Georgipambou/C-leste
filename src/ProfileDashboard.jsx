@@ -31,6 +31,7 @@ export async function logProfileView(sb, viewerId, viewedId) {
 // ── Carte "Tableau de bord" (vues du profil) ──────────────
 export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
   const [count, setCount] = useState(null);
+  const [uniqueCount, setUniqueCount] = useState(null);
   const [showViewers, setShowViewers] = useState(false);
   const [viewers, setViewers] = useState([]);
   const [loadingViewers, setLoadingViewers] = useState(false);
@@ -38,20 +39,36 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
   useEffect(() => {
     if (!session?.user?.id) return;
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    sb.from("profile_views").select("id", { count: "exact", head: true })
+    sb.from("profile_views").select("viewer_id")
       .eq("viewed_id", session.user.id).gte("created_at", since)
-      .then(({ count: c }) => setCount(c || 0));
+      .then(({ data }) => {
+        const rows = data || [];
+        setCount(rows.length);
+        setUniqueCount(new Set(rows.map(r => r.viewer_id)).size);
+      });
   }, [session?.user?.id]);
 
   const openViewers = async () => {
     setShowViewers(true); setLoadingViewers(true);
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    const { data } = await sb.from("profile_views")
-      .select("viewer_id,created_at,viewer:profiles(id,prenom,nom,avatar_url,badge,paroisse)")
+    const { data: rows, error } = await sb.from("profile_views")
+      .select("viewer_id,created_at")
       .eq("viewed_id", session?.user?.id).gte("created_at", since)
       .order("created_at", { ascending: false }).limit(100);
-    const seen = new Set(); const list = [];
-    (data || []).forEach(r => { if (r.viewer && !seen.has(r.viewer_id)) { seen.add(r.viewer_id); list.push(r.viewer); } });
+    if (error) console.error("profile_views error:", error);
+
+    const countsMap = new Map();
+    (rows || []).forEach(r => countsMap.set(r.viewer_id, (countsMap.get(r.viewer_id) || 0) + 1));
+    const uniqueIds = [...countsMap.keys()];
+    if (uniqueIds.length === 0) { setViewers([]); setLoadingViewers(false); return; }
+
+    const { data: profiles, error: pErr } = await sb.from("profiles")
+      .select("id,prenom,nom,avatar_url,badge,paroisse")
+      .in("id", uniqueIds);
+    if (pErr) console.error("profiles error:", pErr);
+
+    const byId = new Map((profiles || []).map(p => [p.id, p]));
+    const list = uniqueIds.map(id => byId.get(id) ? { ...byId.get(id), visitCount: countsMap.get(id) } : null).filter(Boolean);
     setViewers(list); setLoadingViewers(false);
   };
 
@@ -64,7 +81,7 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: T.text }}>Votre tableau de bord</p>
           <p style={{ margin: 0, fontSize: 12, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}>
-            {count === null ? "…" : <><Eye size={11} /> {fmtCount(count)} vue{count > 1 ? "s" : ""} au cours des 30 derniers jours</>}
+            {count === null ? "…" : <><Eye size={11} /> {fmtCount(count)} vue{count > 1 ? "s" : ""} · {fmtCount(uniqueCount || 0)} visiteur{uniqueCount > 1 ? "s" : ""} (30j)</>}
           </p>
         </div>
         <ChevronRight size={18} color={T.muted} />
@@ -88,6 +105,11 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
                       <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: T.text }}>{u.prenom} {u.nom}</p>
                       <p style={{ margin: 0, fontSize: 12, color: T.muted }}>{u.paroisse}</p>
                     </div>
+                    {u.visitCount > 1 && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: T.goldL, background: T.goldBg, padding: "3px 8px", borderRadius: 20, flexShrink: 0 }}>
+                        vu {u.visitCount}×
+                      </span>
+                    )}
                     {u.badge && <Badge type={u.badge} />}
                   </div>
                 ))
