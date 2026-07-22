@@ -20,7 +20,7 @@ function fmtCount(n) {
   return String(v);
 }
 
-export default function SoundDetailModal({ sb, soundId, onClose, onUseSound }) {
+export default function SoundDetailModal({ sb, soundId, onClose, onUseSound, onOpenPost }) {
   const [sound, setSound] = useState(null);
   const [owner, setOwner] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -142,7 +142,12 @@ export default function SoundDetailModal({ sb, soundId, onClose, onUseSound }) {
                 const thumb = p.img_url || p.media_urls?.[0];
                 const likeCount = p.likes?.[0]?.count || 0;
                 return (
-                  <div key={p.id} style={{ position: "relative", aspectRatio: "9/16", background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden" }}>
+                  <div key={p.id} onClick={() => {
+                    const soundRef = { id: sound.id, title: sound.title, url: sound.url, created_by: sound.created_by, owner: owner ? { avatar_url: owner.avatar_url } : null };
+                    const soundPosts = posts.map(x => ({ ...x, img: x.img_url, sound: soundRef }));
+                    onOpenPost?.({ ...p, img: p.img_url, sound: soundRef }, soundPosts);
+                    onClose?.();
+                  }} style={{ position: "relative", aspectRatio: "9/16", background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden", cursor: "pointer" }}>
                     {thumb && <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
                     <div style={{
                       position: "absolute", bottom: 4, left: 4, right: 4, display: "flex", justifyContent: "space-between",

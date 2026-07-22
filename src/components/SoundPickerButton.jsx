@@ -16,9 +16,11 @@
  */
 import { useState, useRef, useCallback } from "react";
 import { Music2, X, Upload } from "lucide-react";
+import SoundPreviewButton from "./SoundPreviewButton";
 
 const SOUND_MAX_SECS = 15; // jamais plus de 15s, comme demandé
 const TABS = [
+  { id: "search", label: "Chercher" },
   { id: "trending", label: "Tendances" },
   { id: "recent", label: "Récents" },
   { id: "mine", label: "Mes sons" },
@@ -32,9 +34,10 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
   const panelBg = T?.cardSolid || T?.bg2 || "rgba(10,10,10,0.98)";
 
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState("trending");
+  const [tab, setTab] = useState("search");
   const [loading, setLoading] = useState(false);
-  const [lists, setLists] = useState({ trending: [], recent: [], mine: [] });
+  const [lists, setLists] = useState({ search: [], trending: [], recent: [], mine: [] });
+  const [searchQuery, setSearchQuery] = useState("");
   const [recording, setRecording] = useState(false);
   const [secs, setSecs] = useState(0);
   const [durationWarning, setDurationWarning] = useState("");
@@ -43,6 +46,19 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const fileRef = useRef(null);
+
+  const runSearch = useCallback(async (q) => {
+    if (!sb || !q.trim()) { setLists((l) => ({ ...l, search: [] })); return; }
+    setLoading(true);
+    const term = q.trim().toLowerCase();
+    const { data, error } = await sb
+      .from("sounds")
+      .select("id,title,url,usage_count,author_name,tags")
+      .or(`title.ilike.%${term}%,author_name.ilike.%${term}%,tags.cs.{${term}}`)
+      .limit(30);
+    if (!error) setLists((l) => ({ ...l, search: data || [] }));
+    setLoading(false);
+  }, [sb]);
 
   const fetchTab = useCallback(async (which) => {
     if (!sb) return;
@@ -148,10 +164,10 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
         style={{
           display: "flex", alignItems: "center", gap: 7,
           padding: "7px 13px", borderRadius: 20,
-          border: `1px solid ${value ? "#C9952A88" : border}`,
-          background: value ? "rgba(201,149,42,0.15)" : "transparent",
-          color: value ? gold : text,
-          fontSize: 12.5, fontWeight: value ? 700 : 400, cursor: "pointer",
+          border: `1px solid ${value ? "#C9952A88" : "rgba(255,255,255,0.3)"}`,
+          background: value ? "rgba(201,149,42,0.15)" : "rgba(0,0,0,0.35)",
+          color: value ? gold : "#fff",
+          fontSize: 12.5, fontWeight: value ? 700 : 600, cursor: "pointer",
           maxWidth: 200,
         }}
       >
@@ -171,8 +187,8 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
       {open && (
         <div
           style={{
-            position: "absolute", top: "110%", left: 0, zIndex: 50,
-            width: 340, maxHeight: 440, overflowY: "auto",
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 2000,
+            width: 340, maxWidth: "90vw", maxHeight: "70vh", overflowY: "auto",
             background: panelBg, backdropFilter: "blur(20px)",
             border: `1px solid ${border}`, borderRadius: 16,
             padding: 14, boxShadow: "0 8px 30px rgba(0,0,0,0.5)",
@@ -238,6 +254,15 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
                 </div>
               )}
 
+              {tab === "search" && (
+                <input
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); runSearch(e.target.value); }}
+                  placeholder="Ex: rire, ambiance, nom de l'artiste…"
+                  style={{ width: "100%", marginBottom: 10, padding: "9px 12px", borderRadius: 10, border: `1px solid ${border}`, background: "transparent", color: text, fontSize: 12.5, outline: "none" }}
+                />
+              )}
+
               {/* Onglets */}
               <div style={{ display: "flex", gap: 6, marginBottom: 10, borderBottom: `1px solid ${border}`, paddingBottom: 8 }}>
                 {TABS.map((t) => (
@@ -265,7 +290,7 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
 
               {!loading && currentList.length === 0 && !(tab === "mine" && !userId) && (
                 <span style={{ color: muted, fontSize: 11.5 }}>
-                  {tab === "mine" ? "Tu n'as pas encore ajouté de son." : "Rien à afficher pour l'instant."}
+                  {tab === "mine" ? "Tu n'as pas encore ajouté de son." : tab === "search" && !searchQuery.trim() ? "Tape un mot-clé pour chercher (tag, titre, artiste)." : "Rien à afficher pour l'instant."}
                 </span>
               )}
 
@@ -285,6 +310,7 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
                     <span style={{ color: text, fontSize: 12.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {s.title}
                     </span>
+                    <SoundPreviewButton url={s.url} color={gold} />
                     {tab !== "mine" && (
                       <span style={{ color: muted, fontSize: 10.5 }}>{s.usage_count}</span>
                     )}

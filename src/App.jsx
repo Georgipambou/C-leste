@@ -20,6 +20,8 @@
  *  - AdminPanel, OrgView, UserView, StatusViewer
  *  - Push notifications (subscribePush)
  */
+import AdminSoundsPanel from "./components/AdminSoundsPanel";
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -45,10 +47,11 @@ import {
   Edit2, Bell, Heart, MessageCircle,
   Send, X, Plus, Search, Settings,
   User, Users, ChevronLeft, ChevronRight, MoreVertical,
-  Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, Zap, Star,
+  Play, Pause, Volume2,  VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
-  Reply, ArrowLeft, Check, CheckCheck, Copy,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid, UserCheck
+  Reply, ArrowLeft, Check, CheckCheck, Copy, ChevronDown,
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck
+
 } from "lucide-react";
 
 import { ProfileViewsCard, DiscoverPeopleSection, logProfileView, ProfileHeader } from "./ProfileDashboard";
@@ -73,8 +76,12 @@ import { fetchRankingData, rankPosts } from "./lib/recommendation/useFeedRanking
 import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
 import SoundDetailModal from "./components/SoundDetailModal";
+import StickerPicker from "./components/StickerPicker";
+import { Sticker as StickerIcon } from "lucide-react";
+import SoundDiscBadge from "./components/SoundDiscBadge";
 import { saveDraft } from "./lib/draftsStore";
 import DraftsGallery from "./components/DraftsGallery";
+import AdminStickersPanel from "./components/AdminStickersPanel";
 // Mémoïsation pour éviter les re-renders inutiles
 const MemoFeed = React.memo(({children}) => children);
 import previewDark from "./assets/preview.webp";
@@ -543,6 +550,10 @@ longitude:p.longitude||null,
   org_name:p.org_name||null, org_type:p.org_type||null,
   org_country:p.org_country||null, org_desc:p.org_desc||null,
 });
+
+// Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
+const normalizeSearch = s => (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+const matchQuery = (text,query) => !query || normalizeSearch(text).includes(normalizeSearch(query));
 
 const compressImage = file => new Promise(resolve=>{
   const img = new window.Image(), url = URL.createObjectURL(file);
@@ -1899,14 +1910,9 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
     const textBeforeCursor=val.slice(0,cursor);
     const match=textBeforeCursor.match(/@([\w\u00C0-\u017F]*)$/);
     if(match){
-      const query=match[1].toLowerCase();
-      setMentionQuery(query);
-      const filtered=(members||[]).filter(m=>
-        !query||
-        m.name?.toLowerCase().includes(query)||
-        m.prenom?.toLowerCase().includes(query)||
-        m.fullName?.toLowerCase().includes(query)
-      ).slice(0,8);
+      const query=match[1];
+setMentionQuery(query);
+const filtered=(members||[]).filter(m=>matchQuery(m.fullName,query)).slice(0,8);
       setSuggestions(filtered);
       setShowSuggestions(filtered.length>0);
       if(filtered.length===0&&(members||[]).length===0){
@@ -1971,7 +1977,7 @@ function MentionInput({value,onChange,onSubmit,placeholder,style={},rows=1,membe
   );
 }
 // ── COMMENTS SECTION ─────────────────────────────────────
-function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId}){
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
   const [loadingCmts,setLoadingCmts]=useState(true);
@@ -1981,6 +1987,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentI
   const [posting,setPosting]=useState(false);
   const [mediaFile,setMediaFile]=useState(null);
   const [mediaPreview,setMediaPreview]=useState(null);
+  const [showStickerPicker,setShowStickerPicker]=useState(false);
 const mentionedIdsRef=useRef([]);
   const textareaRef=useRef(null);
   const imgRef=useRef(null);
@@ -1994,7 +2001,7 @@ const mentionedIdsRef=useRef([]);
     setLoadingCmts(true);
    const from=(page-1)*30,to=from+29;
     const{data}=await sb.from("comments")
-      .select("id,post_id,author_id,text,media_url,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
+      .select("id,post_id,author_id,text,media_url,sticker_id,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
       .eq("post_id",postId)
       .order("created_at",{ascending:true})
       .range(from,to);
@@ -2068,9 +2075,25 @@ mentionedIdsRef.current=[];
     }
     setPosting(false);
   };
+  const submitSticker=async(sticker)=>{
+    setShowStickerPicker(false);
+    const uid=(await sb.auth.getUser())?.data?.user?.id;
+    const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:"",media_url:sticker.url,sticker_id:sticker.id});
+    if(!error){
+      sb.rpc("increment_sticker_usage",{sticker_id:sticker.id}).catch(()=>{});
+      load();
+      const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
+      if(postData?.author_id&&postData.author_id!==uid){
+        await sb.from("notifications").insert({user_id:postData.author_id,from_id:uid,type:"comment",post_id:postId,read:false});
+      }
+    }
+  };
 
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
+    <>
+    {(()=>{
+    const listContent=(
+      <>
       {loadingCmts&&<div style={{display:"flex",justifyContent:"center",padding:"16px 0"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>}
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {comments.map(c=>(
@@ -2093,8 +2116,11 @@ mentionedIdsRef.current=[];
   Voir plus de commentaires
   <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
 </Btn>}
+      </>
+    );
 
-      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 4px 20px rgba(0,0,0,0.2)",position:"sticky",bottom:0,zIndex:10}}>
+    const composerBar=(active)=>(
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:active==="sticky"?"0 4px 20px rgba(0,0,0,0.2)":"0 -4px 20px rgba(0,0,0,0.25)",position:active==="sticky"?"sticky":"relative",bottom:active==="sticky"?0:"auto",zIndex:active==="sticky"?10:"auto",flexShrink:0,marginTop:active==="sticky"?0:8}}>
         <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
           const f=e.target.files[0];if(!f)return;
           const compressed=await compressImage(f);
@@ -2105,6 +2131,16 @@ mentionedIdsRef.current=[];
         <Btn onClick={()=>imgRef.current.click()} style={{color:mediaFile?T.goldL:T.muted,padding:"4px",display:"flex",alignItems:"center",flexShrink:0,transition:"color .2s"}}>
           <Camera size={18}/>
         </Btn>
+        <div style={{position:"relative",display:"flex",flexShrink:0}}>
+          <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"4px",display:"flex",alignItems:"center"}}>
+            <StickerIcon size={18}/>
+          </Btn>
+          {showStickerPicker&&(
+            <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:280,maxWidth:"85vw",zIndex:20}}>
+              <StickerPicker sb={sb} userId={sessionUserId} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={submitSticker}/>
+            </div>
+          )}
+        </div>
         <MentionInput
           value={text}
           onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
@@ -2117,7 +2153,26 @@ mentionedIdsRef.current=[];
           <Send size={13} style={{transform:"translateX(0.5px)"}}/>
         </Btn>
       </div>
-    </div>
+    );
+
+    if(standalone){
+      return(
+        <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+          <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
+            {listContent}
+          </div>
+          {composerBar("fixed")}
+        </div>
+      );
+    }
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
+        {listContent}
+        {composerBar("sticky")}
+      </div>
+    );
+    })()}
+    </>
   );
 }
 
@@ -2209,10 +2264,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
       <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{author?.name||"?"}</span>
-            <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
-          </div>
+          <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{author?.name||"?"}</span>
           {(isMine||comment.text)&&(
             <div style={{position:"relative"}}>
               <Btn onClick={()=>setShowCmtMenu(m=>!m)} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
@@ -2227,22 +2279,23 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
         </div>
 
        {/* Texte */}
-        {comment.text&&<><p style={{margin:"0 0 4px",fontSize:14,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username||`${u.prenom||""} ${u.nom||""}`.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,"")));if(m){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{if(data?.length){const match=data.find(u=>u.prenom?.toLowerCase()===username)||(data[0]);if(match?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:match.id}}));}});})}</p><TranslateBtn text={comment.text}/></>}
-{comment.media_url&&(
+        {comment.text&&<><p style={{margin:"0 0 6px",fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>normalizeSearch(u.prenom)===normalizeSearch(username)||normalizeSearch(`${u.prenom||""} ${u.nom||""}`).replace(/\s+/g,"").includes(normalizeSearch(username).replace(/\s+/g,"")));if(m){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{if(data?.length){const match=data.find(u=>u.prenom?.toLowerCase()===username)||(data[0]);if(match?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:match.id}}));}});})}</p><TranslateBtn text={comment.text}/></>}
+{comment.sticker_id&&comment.media_url&&(
+  <img src={comment.media_url} alt="" style={{width:90,height:90,objectFit:"contain",display:"block",marginBottom:8}}/>
+)}
+{!comment.sticker_id&&comment.media_url&&(
   <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
     <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
   </div>
 )}
 
-        {/* Actions style Threads */}
+        {/* Actions : date + Répondre + like */}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
-          <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12}}>
+          <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
+          <Btn onClick={()=>setReplying(r=>!r)} style={{color:T.muted,fontSize:12,fontWeight:700}}>Répondre</Btn>
+          <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12,marginLeft:"auto"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             {likes>0&&<span>{likes}</span>}
-          </Btn>
-          <Btn onClick={()=>setReplying(r=>!r)} style={{display:"flex",alignItems:"center",gap:5,color:T.muted,fontSize:12}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            {replies.length>0&&<span>{replies.length}</span>}
           </Btn>
         </div>
 
@@ -2263,7 +2316,8 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
         {replies.length>0&&(
           <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:12,color:T.muted,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:16,height:1,background:T.muted,borderRadius:1}}/>
-            {showReplies?`Masquer les réponses`:`Voir ${replies.length} réponse${replies.length>1?"s":""}`}
+            {showReplies?`Masquer les réponses`:`Afficher ${replies.length} réponse${replies.length>1?"s":""}`}
+            <ChevronDown size={13} style={{transform:showReplies?"rotate(180deg)":"none",transition:"transform .2s"}}/>
           </Btn>
         )}
 
@@ -2277,12 +2331,15 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
                   <Av u={ra} size={28}/>
                   <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
-                      <span style={{fontSize:12,fontWeight:700,color:T.text}}>{ra.name}</span>
-                      <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{ra.name}</span>
                       {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
                     </div>
-                    <p style={{margin:0,fontSize:13,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word"}}>{r.text}</p>
-                    <TranslateBtn text={r.text}/>
+                    <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word"}}>{r.text}</p>
+                    <div style={{display:"flex",alignItems:"center",gap:14}}>
+                      <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
+                      <Btn onClick={()=>{setReplyText(`@${ra.name} `);setReplying(true);}} style={{color:T.muted,fontSize:11,fontWeight:700}}>Répondre</Btn>
+                      <TranslateBtn text={r.text}/>
+                    </div>
                   </div>
                 </div>
               );
@@ -2378,7 +2435,7 @@ useEffect(()=>{
                 {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
               </div>
               :<>
-              {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
+              {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>normalizeSearch(u.prenom)===normalizeSearch(username)||matchQuery(`${u.prenom||""} ${u.nom||""}`, username));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
   {(()=>{
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
@@ -2437,21 +2494,18 @@ useEffect(()=>{
   );
 }
 function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300}){
-  const auth=post.author||getM(post.by);
+  const [cmtCount,setCmtCount]=useState(0);
   return(
     <div style={{position:"fixed",inset:0,zIndex,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onMouseDown={e=>{if(e.target===e.currentTarget)e.preventDefault();}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",animation:"slideUp .3s cubic-bezier(0.34,1.1,0.64,1)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <Av u={auth} size={32}/>
-            <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text}}>Commentaires</p>
-          </div>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>{cmtCount>0?`${cmtCount} commentaire${cmtCount>1?"s":""}`:"Commentaires"}</p>
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
-        <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
-          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={()=>{}} targetCommentId={null}/>
+        <div style={{flex:1,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={setCmtCount} targetCommentId={null} standalone/>
         </div>
       </div>
     </div>
@@ -2641,6 +2695,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 )}
     {showCameraStudio&&<CameraStudioModal
   sb={sb}
+  userId={session?.user?.id}
+  T={T}
   initialDraft={resumeDraft}
   onSaveDraft={async(d)=>{await saveDraft(d);notify("Brouillon enregistré ✦");}}
   onOpenDrafts={()=>{setShowCameraStudio(false);setShowDrafts(true);}}
@@ -2883,6 +2939,8 @@ const [cropResolve,setCropResolve]=useState(null);
 const [statusTrimSrc,setStatusTrimSrc]=useState(null);
 const [statusTrimFile,setStatusTrimFile]=useState(null);
 const fRef=useRef();
+const [showStatusCamera,setShowStatusCamera]=useState(false);
+const [selectedSound,setSelectedSound]=useState(null);
 useEffect(()=>{
   if(window.__celesteStatusFile){
     handlePick({target:{files:[window.__celesteStatusFile]}});
@@ -2941,7 +2999,7 @@ setUploading(false);setUploadPct(0);
     if(type==="text"&&!text.trim())return;
     if(type!=="text"&&!mediaUrl)return;
     setBusy(true);
-    await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null});
+    await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null,sound_id:selectedSound?.id||null});
     setBusy(false);onDone();
   };
 
@@ -2953,6 +3011,14 @@ setUploading(false);setUploadPct(0);
     imageSrc={cropSrc}
     onClose={()=>{setCropSrc(null);cropResolve?.fn(null);setCropResolve(null);}}
     onDone={file=>{setCropSrc(null);cropResolve?.fn(file);setCropResolve(null);}}
+  />
+)}
+{showStatusCamera&&(
+  <CameraStudioModal
+    sb={sb}
+    userId={session?.user?.id}
+    onClose={()=>setShowStatusCamera(false)}
+    onDone={({file,sound})=>{setShowStatusCamera(false);if(sound?.id)setSelectedSound(sound);handlePick({target:{files:[file]}});}}
   />
 )}
     <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
@@ -2981,11 +3047,23 @@ setUploading(false);setUploadPct(0);
   </div>
   <span style={{color:"#fff",fontSize:12,fontWeight:700}}>{uploadPct}%</span>
 </div>}
-            <Btn onClick={()=>{setPreview(null);setMediaUrl(null);}} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14}/></Btn>
+            <Btn onClick={()=>{setPreview(null);setMediaUrl(null);setSelectedSound(null);}} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:30,height:30,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14}/></Btn>
+            {selectedSound&&(
+              <div style={{position:"absolute",bottom:8,left:8,display:"flex",alignItems:"center",gap:6,background:"rgba(0,0,0,0.6)",borderRadius:14,padding:"5px 10px"}}>
+                <Music2 size={12} color="#e0b84a"/>
+                <span style={{color:"#fff",fontSize:11,fontWeight:600,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedSound.title}</span>
+                <X size={11} color="#fff" style={{cursor:"pointer"}} onClick={()=>setSelectedSound(null)}/>
+              </div>
+            )}
           </div>
-          :<Btn onClick={()=>fRef.current.click()} style={{width:"100%",height:140,borderRadius:16,border:`2px dashed ${T.gold}33`,background:T.goldBg,color:T.gold,fontSize:13,fontWeight:600,marginBottom:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,transition:"all .2s"}}>
-            <Camera size={32}/><span>Photo ou Vidéo</span>
-          </Btn>
+          :<div style={{display:"flex",gap:8,marginBottom:12}}>
+            <Btn onClick={()=>fRef.current.click()} style={{flex:1,height:140,borderRadius:16,border:`2px dashed ${T.gold}33`,background:T.goldBg,color:T.gold,fontSize:13,fontWeight:600,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,transition:"all .2s"}}>
+              <Camera size={32}/><span>Depuis la galerie</span>
+            </Btn>
+            <Btn onClick={()=>setShowStatusCamera(true)} style={{flex:1,height:140,borderRadius:16,border:`2px dashed ${T.gold}33`,background:T.goldBg,color:T.gold,fontSize:13,fontWeight:600,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,transition:"all .2s"}}>
+              <Music2 size={32}/><span>Caméra Céleste</span>
+            </Btn>
+          </div>
         )}
        {type==="text"&&(
   <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
@@ -3025,6 +3103,9 @@ setUploading(false);setUploadPct(0);
 // ── STATUS VIEWER ─────────────────────────────────────────
 function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   const [idx,setIdx]=useState(0);
+  const [openSoundId,setOpenSoundId]=useState(null);
+  const soundAudioRef=useRef(null);
+  const [soundMuted,setSoundMuted]=useState(false);
   const [likes,setLikes]=useState({});
   const [views,setViews]=useState({});
   const [showInfo,setShowInfo]=useState(false);
@@ -3042,6 +3123,18 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
     setMediaReady(!isVideo);
     const fallback=setTimeout(()=>setMediaReady(true),8000);
     return()=>clearTimeout(fallback);
+  },[current?.id,isVideo]);
+
+  useEffect(()=>{
+    if(soundAudioRef.current){soundAudioRef.current.pause();soundAudioRef.current=null;}
+    if(current?.sound?.url&&!isVideo){
+      const a=new Audio(current.sound.url);
+      a.loop=true;
+      a.muted=soundMuted;
+      a.play().catch(()=>{});
+      soundAudioRef.current=a;
+    }
+    return()=>{if(soundAudioRef.current){soundAudioRef.current.pause();soundAudioRef.current=null;}};
   },[current?.id,isVideo]);
 
   useEffect(()=>{
@@ -3102,6 +3195,7 @@ if(isMe){
       setPaused(true);
       clearInterval(progressRef.current);
       if(videoRef.current)videoRef.current.pause();
+      if(soundAudioRef.current)soundAudioRef.current.pause();
     }
   };
 
@@ -3161,6 +3255,12 @@ if(isMe){
           :<div style={{width:"100%",height:"100%",position:"absolute",inset:0,background:`radial-gradient(circle at 30% 40%,${author?.color||T.goldD}22,transparent 60%),radial-gradient(circle at 70% 60%,${T.navy}22,transparent 60%)`}}/>
         }
         {paused&&<div style={{position:"absolute",zIndex:3,width:6,height:6,borderRadius:"50%",background:"rgba(255,255,255,0.5)"}}/>}
+        {current.sound&&!isVideo&&(
+          <button onClick={e=>{e.stopPropagation();setSoundMuted(m=>{const nm=!m;if(soundAudioRef.current)soundAudioRef.current.muted=nm;return nm;});}}
+            style={{position:"absolute",top:56,right:14,zIndex:3,background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+            {soundMuted?<VolumeX size={16} color="#fff"/>:<Volume2 size={16} color="#fff"/>}
+          </button>
+        )}
         {current.text&&(
   current.text_background?(
     <div style={{
@@ -3234,6 +3334,7 @@ if(isMe){
           );})}
         </div>
       )}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
     </div>
   );
 }
@@ -3310,7 +3411,7 @@ useEffect(()=>{
   const relevantIds=[session?.user?.id,...(myConnections||[])].filter(Boolean);
   if(!relevantIds.length)return;
   const{data}=await sb.from("statuses")
-    .select("id,user_id,type,text,media_url,text_background,expires_at,created_at,author:profiles!statuses_user_id_fkey(id,prenom,nom,avatar_url,badge,paroisse)")
+    .select("id,user_id,type,text,media_url,text_background,expires_at,created_at,sound_id,sound:sounds!statuses_sound_id_fkey(id,title,url),author:profiles!statuses_user_id_fkey(id,prenom,nom,avatar_url,badge,paroisse)")
     .gt("expires_at",new Date().toISOString())
     .in("user_id",relevantIds)
     .order("created_at",{ascending:false});
@@ -3322,7 +3423,7 @@ useEffect(()=>{
     (data||[]).filter(s=>s.user_id!==session?.user?.id&&!blockedSet.has(s.user_id)&&followingSet.has(s.user_id)).forEach(s=>{
       const key=s.user_id;
       if(!map.has(key))map.set(key,{author:s.author?normProfile(s.author):null,statuses:[]});
-     const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null};
+     const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,sound:s.sound||null};
       map.get(key).statuses.push(mapped);
     });
     const freshGroups=Array.from(map.values());
@@ -3350,7 +3451,7 @@ useEffect(()=>{
     }
     const foundMine=me.find(s=>s.id===statusId);
     if(foundMine){
-      const myMappedNow=me.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
+      const myMappedNow=me.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,sound:s.sound||null}));
       pushNav(()=>{setViewing(null);setHideNav(false);});
       setViewing({author:myProfile,statuses:myMappedNow});
       setHideNav(true);
@@ -3375,7 +3476,7 @@ useEffect(()=>{
     load();notify("Statut supprimé");
   };
 
- const myMapped=myStatuses.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null}));
+ const myMapped=myStatuses.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,sound:s.sound||null}));
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
@@ -3910,7 +4011,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFo
     onConnectionChange();
   };
 
-  const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(m.name.toLowerCase().includes(q.toLowerCase())||(m.paroisse||"").toLowerCase().includes(q.toLowerCase())));
+  const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(matchQuery(m.fullName,q)||matchQuery(m.paroisse,q)));
 
   let filtered;
 if(filter==="populaires") filtered=[...active].sort((a,b)=>(b.followersCount||0)-(a.followersCount||0));
@@ -4032,6 +4133,7 @@ const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.medi
 const [photoIndex,setPhotoIndex]=useState(null);
 const [photoStartMedia,setPhotoStartMedia]=useState(0);
 const [photoViewerPosts,setPhotoViewerPosts]=useState(null);
+const [reelsViewerPosts,setReelsViewerPosts]=useState(null);
 const [openSoundId,setOpenSoundId]=useState(null);
 
 const [photoCommentPost,setPhotoCommentPost]=useState(null);
@@ -4043,7 +4145,7 @@ const photoPosts=posts.filter(p=>{
 const openPhotoViewer=(post,url)=>{
   let idx=photoPosts.findIndex(p=>p.id===post.id);
   if(idx<0){
-    // Post hors de la page actuellement chargée (profil, recherche, admin, notification…)
+    // Post hors de la page Actuellement chargée (profil, recherche, admin, notification…)
     // → on ouvre quand même le viewer avec juste ce post
     setPhotoViewerPosts([post]);
     idx=0;
@@ -4057,6 +4159,26 @@ const openPhotoViewer=(post,url)=>{
   if(detailPost){popNav();setDetailPost(null);} // ferme le post modal sous-jacent ET nettoie sa trace dans la pile de nav
   pushNav(()=>setPhotoIndex(null));
   setPhotoIndex(idx);
+};
+
+const openPostFromSound=(post,soundPosts)=>{
+  const list=soundPosts||[post];
+  const isVideoFn=p=>(p.img||"").match(/\.(mp4|mov|webm|ogg|avi)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));
+  if(isVideoFn(post)){
+    const vids=list.filter(isVideoFn);
+    const idx=vids.findIndex(v=>v.id===post.id);
+    setReelsViewerPosts(vids);
+    pushNav(()=>setReelsIndex(null));
+    setReelsIndex(idx>=0?idx:0);
+  }else{
+    const photos=list.filter(p=>!isVideoFn(p));
+    const idx=photos.findIndex(p=>p.id===post.id);
+    setPhotoViewerPosts(photos);
+    setPhotoStartMedia(0);
+    if(detailPost){popNav();setDetailPost(null);}
+    pushNav(()=>setPhotoIndex(null));
+    setPhotoIndex(idx>=0?idx:0);
+  }
 };
 
 useEffect(()=>{
@@ -4205,7 +4327,7 @@ useEffect(()=>{
   return(
     <>
 {reelsIndex!==null&&<ReelsViewer
-  posts={videoPosts}
+  posts={reelsViewerPosts||videoPosts}
   sb={sb}
   startIndex={reelsIndex}
   onClose={()=>{popNav();setReelsIndex(null);}}
@@ -4239,6 +4361,7 @@ useEffect(()=>{
 />}
 {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)}
   onUseSound={(sound)=>{setOpenSoundId(null); onUseSoundForPost?.(sound);}}
+  onOpenPost={openPostFromSound}
 />}
 {(reelsCommentPost||photoCommentPost)&&(
   <CommentsOnlyModal
@@ -4314,7 +4437,11 @@ useEffect(()=>{
           </div>
         )}
 
-        {(posts||[]).filter(p=>!searchQuery||p.text?.toLowerCase().includes(searchQuery.toLowerCase())||p.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((p,i)=>(
+        {(posts||[]).filter(p=>{
+          if(!searchQuery)return true;
+          const author=getM(p.by);
+          return matchQuery(p.text,searchQuery)||matchQuery(p.title,searchQuery)||matchQuery(author?.fullName,searchQuery)||matchQuery(author?.paroisse,searchQuery);
+        }).map((p,i)=>(
           <div key={p.id} data-post-id={p.id}>
 <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
            onDetail={p=>{const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid&&!p._forceComments){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else if(p._forceComments){setDetailPost(p);}else{const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);}}}
@@ -4412,20 +4539,32 @@ const [saved,setSaved]=useState(false);
   };
 
 
- const handleDelete=async()=>{
-    if(!window.confirm("Supprimer ce post ?"))return;
-    const byAdmin=myProfile?.is_admin&&post.by!==session?.user?.id;
-    setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
-    notify("Supprimé");
-    if(myProfile?.is_admin){
+const handleDelete=async()=>{
+  const byAdmin=myProfile?.is_admin&&post.by!==session?.user?.id;
+  if(byAdmin){setShowDeleteReasons(true);return;}
+  if(!window.confirm("Supprimer ce post ?"))return;
+  setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
+  notify("Supprimé");
+  if(myProfile?.is_admin){
+    await sb.from("posts").delete().eq("id",post.id);
+  }else{
+    await sb.from("posts").delete().eq("id",post.id).eq("author_id",session?.user?.id);
+  }
+};
+
+const handleAdminDeleteWithReason=async(reason)=>{
+  setShowDeleteReasons(false);
+  setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
+  notify("Supprimé");
   await sb.from("posts").delete().eq("id",post.id);
-}else{
-  await sb.from("posts").delete().eq("id",post.id).eq("author_id",session?.user?.id);
-}
-if(byAdmin){
-  await sb.from("notifications").insert({user_id:post.by,from_id:session?.user?.id,type:"post_deleted",text:"Ta publication a été supprimée par un administrateur",read:false});
-}
-  };
+  await sb.from("notifications").insert({
+    user_id:post.by,
+    from_id:session?.user?.id,
+    type:"post_deleted",
+    text:`Ta publication a été supprimée par un administrateur (motif : ${reason})`,
+    read:false
+  });
+};
 
   const handlePin=async()=>{
   if(!myProfile?.is_admin)return;
@@ -4458,6 +4597,7 @@ const handleProfilePin=()=>{
   })();
 };
 const [showPostReport,setShowPostReport]=useState(false);
+const [showDeleteReasons,setShowDeleteReasons]=useState(false);
   const handleReportPost=async(reason,details)=>{
     await sb.from("reports").insert({reporter_id:session?.user?.id,reported_id:post.by,post_id:post.id,reason,details});
     setShowPostReport(false);
@@ -4549,6 +4689,11 @@ const [showPostReport,setShowPostReport]=useState(false);
               {showPostReport&&(
                 <div onClick={e=>e.stopPropagation()}>
                   <ReportModal reasons={POST_REPORT_REASONS} onClose={()=>setShowPostReport(false)} onSubmit={handleReportPost}/>
+                </div>
+              )}
+              {showDeleteReasons&&(
+                <div onClick={e=>e.stopPropagation()}>
+                  <ReportModal title="Motif de suppression" reasons={ADMIN_DELETE_REASONS} onClose={()=>setShowDeleteReasons(false)} onSubmit={handleAdminDeleteWithReason}/>
                 </div>
               )}
             </div>
@@ -4667,8 +4812,24 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
+  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const videoPosts=posts.filter(isVid);
+  const openPostFromSound=(post,soundPosts)=>{
+    const list=soundPosts||[post];
+    if(isVid(post)){
+      const vids=list.filter(isVid);
+      const idx=vids.findIndex(v=>v.id===post.id);
+      setReelsViewerFallback(vids);
+      setReelsIndex(idx>=0?idx:0);
+    }else{
+      const photos=list.filter(q=>!isVid(q));
+      const idx=photos.findIndex(q=>q.id===post.id);
+      setPhotoViewerFallback(photos);
+      setPhotoViewerIndex(idx>=0?idx:0);
+    }
+  };
 
   useEffect(()=>{
     setLoading(true);
@@ -4739,12 +4900,12 @@ return(
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
         {reelsIndex!==null&&toggleLike&&toggleSave&&(
-          <ReelsViewer posts={videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>setReelsIndex(null)}
+          <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
             onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={[]} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
         )}
         {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-          <PhotoViewer posts={posts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>setPhotoViewerIndex(null)}
+          <PhotoViewer posts={photoViewerFallback||posts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
             onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={[]} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
         )}
@@ -4761,7 +4922,7 @@ return(
             }}
           />
         )}
-        {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+        {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
         {!navigator.onLine&&posts.length===0&&[1,2,3].map(i=><SkeletonPost key={i}/>)}
         {posts.map((p,i)=>(
           <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}}
@@ -4830,8 +4991,7 @@ const openMenu=id=>{setMenuConvId(id);};
 
   const filtered=sorted.filter(c=>{
     const u=getM(c.uid);
-    const name=(u?.name||"").toLowerCase();
-    if(q&&!name.includes(q.toLowerCase()))return false;
+    if(q&&!matchQuery(u?.fullName,q)&&!matchQuery(u?.paroisse,q))return false;
     if(filter==="nonlus")return(c.msgs||[]).some(m=>m.f!=="me"&&!m.read);
     if(filter==="favoris")return favorites.includes(c.id);
     return true;
@@ -5027,8 +5187,6 @@ L'APP EN BREF :
 - Messagerie privée avec photos, fichiers, audio
 - Découvrir d'autres membres et se connecter
 - Notifications en temps réel
-
-LE BADGE CERTIFIÉ ✦ :
 - Coûte  2000 FCFA pour 40 jours
 - Donne accès aux thèmes premium, stats de vues, confidentialité avancée, publications prioritaires
 - Permet de générer des gains quotidiens grâce à tes posts et likes reçus
@@ -5266,6 +5424,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
 };
 
   const [sending,setSending]=useState(false);
+  const [showStickerPicker,setShowStickerPicker]=useState(false);
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
     if(editingMsg){
@@ -5280,6 +5439,11 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setSending(true);
     const replyPayload=replyTo?{reply_to_id:replyTo.id,reply_to_text:replyTo.text||"",reply_to_author:replyTo.authorName||""}:{};
     try{await sendMsg({type:"text",text:txt,...replyPayload});}finally{setSending(false);setReplyTo(null);}
+  };
+  const sendSticker=async(sticker)=>{
+    setShowStickerPicker(false);
+    await sendMsg({type:"sticker",text:"",file_url:sticker.url,sticker_id:sticker.id});
+    sb.rpc("increment_sticker_usage",{sticker_id:sticker.id}).catch(()=>{});
   };
 
 const cropImage=src=>new Promise(resolve=>{
@@ -5461,13 +5625,13 @@ const handleFile=async(e,isImg)=>{
   onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
   onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
   onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}>
-                <div style={{
-                  background:mine?T.gradGold:"rgba(255,255,255,0.09)",
-                  borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
-                  padding:"10px 14px",
-                  border:mine?"none":`1px solid ${T.border}`,
-                  boxShadow:mine?"0 4px 20px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.3)"
-                }}>
+               <div style={{
+  background:m.type==="sticker"?"transparent":(mine?T.gradGold:"rgba(255,255,255,0.09)"),
+  borderRadius:m.type==="sticker"?0:(mine?"18px 18px 4px 18px":"18px 18px 18px 4px"),
+  padding:m.type==="sticker"?0:"10px 14px",
+  border:m.type==="sticker"?"none":(mine?"none":`1px solid ${T.border}`),
+  boxShadow:m.type==="sticker"?"none":(mine?"0 4px 20px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.3)")
+}}>
                   <HeartBurst show={burstMsgId===m.id}/>
                   <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>{}}/>
                   {m.type==="status_reply"&&(
@@ -5500,6 +5664,7 @@ const handleFile=async(e,isImg)=>{
   </div>
 )}
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
+                  {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" style={{width:100,height:100,objectFit:"contain",display:"block"}}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
@@ -5576,8 +5741,14 @@ const handleFile=async(e,isImg)=>{
   <WifiOff size={13} color="#FF6432"/>
   <span style={{fontSize:12,color:"#FF6432"}}>Hors ligne — les messages seront envoyés dès la reconnexion</span>
 </div>}
-         <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
+         <div style={{display:"flex",gap:6,alignItems:"flex-end",position:"relative"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
+  <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
+  {showStickerPicker&&(
+    <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
+      <StickerPicker sb={sb} userId={session?.user?.id} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={sendSticker}/>
+    </div>
+  )}
   <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
     <textarea value={inp} onChange={e=>{
 setInp(e.target.value);
@@ -5792,6 +5963,8 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const [openSoundId,setOpenSoundId]=useState(null);
+  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
+  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const loadUPosts=useCallback(async()=>{
     const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
@@ -5803,6 +5976,21 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   useEffect(()=>{
     loadUPosts();
   },[user.id,userPostsVersion]);
+const openPostFromSound=(post,soundPosts)=>{
+  const list=soundPosts||[post];
+  const isVidFn=q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video"));
+  if(isVidFn(post)){
+    const vids=list.filter(isVidFn);
+    const idx=vids.findIndex(q=>q.id===post.id);
+    setReelsViewerFallback(vids);
+    setUserReelsIndex(idx>=0?idx:0);
+  }else{
+    const photos=list.filter(q=>!isVidFn(q));
+    const idx=photos.findIndex(q=>q.id===post.id);
+    setPhotoViewerFallback(photos);
+    setPhotoViewerIndex(idx>=0?idx:0);
+  }
+};
 if(blocked||blockedByOther) return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
     <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
@@ -5836,10 +6024,10 @@ if(user?.status==="suspended") return(
       {showReport&&<ReportModal onClose={()=>setShowReport(false)} onSubmit={handleReport}/>}
       {userReelsIndex!==null&&toggleLike&&toggleSave&&(
         <ReelsViewer
-          posts={uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+          posts={reelsViewerFallback||uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
           sb={sb}
           startIndex={userReelsIndex}
-          onClose={()=>setUserReelsIndex(null)}
+          onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={localToggleLike}
           toggleSave={toggleSave}
           session={session}
@@ -5854,10 +6042,10 @@ if(user?.status==="suspended") return(
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
         <PhotoViewer
-          posts={uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"))))}
+          posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"))))}
           sb={sb}
           startIndex={photoViewerIndex}
-          onClose={()=>setPhotoViewerIndex(null)}
+          onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
           toggleLike={localToggleLike}
           toggleSave={toggleSave}
           session={session}
@@ -5870,7 +6058,7 @@ if(user?.status==="suspended") return(
           onOpenSound={setOpenSoundId}
         />
       )}
-      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
       {(userReelsCommentPost||photoCommentPost)&&(
         <CommentsOnlyModal
           post={userReelsCommentPost||photoCommentPost}
@@ -5979,6 +6167,8 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
+  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const fileRef=useRef(); const coverRef=useRef();
 
   useEffect(()=>{
@@ -6043,6 +6233,21 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 }
 };
 
+const openPostFromSound=(post,soundPosts)=>{
+  const list=soundPosts||[post];
+  const isVidFn=q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video"));
+  if(isVidFn(post)){
+    const vids=list.filter(isVidFn);
+    const idx=vids.findIndex(q=>q.id===post.id);
+    setReelsViewerFallback(vids);
+    setUserReelsIndex(idx>=0?idx:0);
+  }else{
+    const photos=list.filter(q=>!isVidFn(q));
+    const idx=photos.findIndex(q=>q.id===post.id);
+    setPhotoViewerFallback(photos);
+    setPhotoViewerIndex(idx>=0?idx:0);
+  }
+};
 if(blocked||blockedByOther) return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
     <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`}}>
@@ -6063,10 +6268,10 @@ if(blocked||blockedByOther) return(
       {showReport&&<ReportModal onClose={()=>setShowReport(false)} onSubmit={handleReport}/>}
       {userReelsIndex!==null&&toggleLike&&toggleSave&&(
         <ReelsViewer
-          posts={uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+          posts={reelsViewerFallback||uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
           sb={sb}
           startIndex={userReelsIndex}
-          onClose={()=>setUserReelsIndex(null)}
+          onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={toggleLike}
           toggleSave={toggleSave}
           session={session}
@@ -6081,10 +6286,10 @@ if(blocked||blockedByOther) return(
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
         <PhotoViewer
-          posts={uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))&&(p.img||(p.media_urls&&p.media_urls.length>0)))}
+          posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))&&(p.img||(p.media_urls&&p.media_urls.length>0)))}
           sb={sb}
           startIndex={photoViewerIndex}
-          onClose={()=>setPhotoViewerIndex(null)}
+          onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
           toggleLike={toggleLike}
           toggleSave={toggleSave}
           session={session}
@@ -6097,7 +6302,7 @@ if(blocked||blockedByOther) return(
           onOpenSound={setOpenSoundId}
         />
       )}
-      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
       {(reelsCommentPost||photoCommentPost)&&(
         <CommentsOnlyModal
           post={reelsCommentPost||photoCommentPost}
@@ -7170,6 +7375,22 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   };
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const videoPosts=likedPosts.filter(isVid);
+  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
+  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+  const openPostFromSound=(post,soundPosts)=>{
+    const list=soundPosts||[post];
+    if(isVid(post)){
+      const vids=list.filter(isVid);
+      const idx=vids.findIndex(v=>v.id===post.id);
+      setReelsViewerFallback(vids);
+      setReelsIndex(idx>=0?idx:0);
+    }else{
+      const photos=list.filter(q=>!isVid(q));
+      const idx=photos.findIndex(q=>q.id===post.id);
+      setPhotoViewerFallback(photos);
+      setPhotoViewerIndex(idx>=0?idx:0);
+    }
+  };
   useEffect(()=>{
     sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
       setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
@@ -7202,12 +7423,12 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
       {reelsIndex!==null&&toggleLike&&toggleSave&&(
-        <ReelsViewer posts={videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>setReelsIndex(null)}
+        <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
           onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-        <PhotoViewer posts={likedPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>setPhotoViewerIndex(null)}
+        <PhotoViewer posts={photoViewerFallback||likedPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
           onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
       )}
@@ -7224,7 +7445,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
           }}
         />
       )}
-      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
       {likedPosts.map(p=>(
         <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:p.is_private&&!isNative?"default":"pointer",overflow:"hidden",borderRadius:4}}
           onClick={()=>{
@@ -7332,6 +7553,22 @@ useEffect(()=>{
 const isVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
 const myPhotoPosts=useMemo(()=>myPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0))),[myPosts]);
 const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
+const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
+const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+const openPostFromSound=(post,soundPosts)=>{
+  const list=soundPosts||[post];
+  if(isVid(post)){
+    const vids=list.filter(isVid);
+    const idx=vids.findIndex(v=>v.id===post.id);
+    setReelsViewerFallback(vids);
+    setUserReelsIndex(idx>=0?idx:0);
+  }else{
+    const photos=list.filter(q=>!isVid(q));
+    const idx=photos.findIndex(q=>q.id===post.id);
+    setPhotoViewerFallback(photos);
+    setPhotoViewerIndex(idx>=0?idx:0);
+  }
+};
 
   const followersCount=useMemo(()=>(myFollowers||[]).length,[myFollowers]);
   const followingCount=useMemo(()=>(myConnections||[]).length,[myConnections]);
@@ -7358,10 +7595,10 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
       {userReelsIndex!==null&&toggleLike&&toggleSave&&(
   <ReelsViewer
-    posts={myPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+    posts={reelsViewerFallback||myPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
     sb={sb}
     startIndex={userReelsIndex}
-    onClose={()=>setUserReelsIndex(null)}
+    onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
     toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
     toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
     session={session}
@@ -7376,10 +7613,10 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
 )}
 {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
   <PhotoViewer
-    posts={myPhotoPosts}
+    posts={photoViewerFallback||myPhotoPosts}
     sb={sb}
     startIndex={photoViewerIndex}
-    onClose={()=>setPhotoViewerIndex(null)}
+    onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
     toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
     toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
     session={session}
@@ -7393,7 +7630,7 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
   />
 )}
 
-{openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)}/>}
+{openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
   {(reelsCommentPost||photoCommentPost)&&(
   <CommentsOnlyModal
     post={reelsCommentPost||photoCommentPost}
@@ -7673,6 +7910,7 @@ const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
     </div>
   );
 }
+
 function WithdrawalRequests({notify}){
   const [requests,setRequests]=useState([]);
   const [open,setOpen]=useState(false);
@@ -7850,8 +8088,9 @@ if(data)setList(data.map(normProfile));
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
-          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${allReports.length})`}].map(f=>(
-            <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
+          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${allReports.length})`},{id:"sons",l:"Sons"},{id:"stickers",l:"Stickers"}].map(f=>(
+
+          <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
               {f.l}
             </Btn>
           ))}
@@ -7866,8 +8105,13 @@ if(data)setList(data.map(normProfile));
             </div>
           </div>
         )}
+        
         <div style={{flex:1,overflowY:"auto"}}>
-          {filter==="reports"
+          {filter==="sons"
+  ?<AdminSoundsPanel sb={sb} notify={notify} T={T} />
+  :filter==="stickers"
+  ?<AdminStickersPanel sb={sb} notify={notify} T={T} />
+  :filter==="reports"
             ?<div>
               {(allReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun signalement</p>}
               {(allReports||[]).map(r=>(

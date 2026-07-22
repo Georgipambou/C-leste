@@ -30,6 +30,8 @@ const GRADIENTS = [
 ];
 import previewDark from "./assets/preview.webp";
 import previewLight from "./assets/preview-light.webp";
+import SoundPickerButton from "./components/SoundPickerButton";
+import SoundPreviewButton from "./components/SoundPreviewButton";
 
 function isLightBg(hex) {
   if (!hex || hex[0] !== "#") return false;
@@ -311,7 +313,7 @@ function showBackgroundProgress(onCancel) {
 }
 
 // ── COMPOSANT PRINCIPAL ─────────────────────────────────────────────
-export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts, sb, initialSound, initialDraft, T }) {
+export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpenDrafts, sb, initialSound, initialDraft, T, userId }) {
   const overlayRef  = useRef(null);
   const recRef      = useRef(null);
   const chunksRef   = useRef([]);
@@ -353,6 +355,20 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
   // ── Son attaché au post (existant depuis la bibliothèque, ou fraîchement enregistré) ──
   const [selectedSound, setSelectedSound] = useState(initialSound || null); // {id,title,url} existant OU {title,blob,isNew:true} nouveau
+
+  const handleSoundPicked = (sound) => {
+    setSelectedSound(sound);
+    if (!sound || !isVid) return;
+    const previewUrl = sound.url || (sound.blob ? URL.createObjectURL(sound.blob) : null);
+    if (!previewUrl) return;
+    const a = new Audio(previewUrl);
+    a.onloadedmetadata = () => {
+      setSelectedSoundDuration(a.duration || 0);
+      setSoundOffset(0);
+      setMainVolume(100); setSoundVolume(100);
+      setPanel("sound-mix");
+    };
+  };
   const [soundPanelLoading, setSoundPanelLoading] = useState(false);
   const [trendingSounds, setTrendingSounds] = useState([]);
   const [recordingSound, setRecordingSound] = useState(false);
@@ -977,7 +993,11 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
               <button onClick={() => { setNewText(""); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16} /></button>
               {isVid && <button onClick={pickOverlayVideo} style={Ic()}><Video size={16} /></button>}
-             <button onClick={() => (selectedSound ? setPanel("sound-mix") : openSoundPanel())} style={Ic(!!selectedSound)}><Music2 size={16} /></button>              <button onClick={editElsewhere} disabled={sharing} style={Ic()}><Share2 size={16} /></button>
+             <SoundPickerButton sb={sb} value={selectedSound} onChange={handleSoundPicked} userId={userId} T={T} />
+              {selectedSound && isVid && (
+                <button onClick={() => setPanel("sound-mix")} style={Ic(panel === "sound-mix")}><Music2 size={16} /></button>
+              )}
+              <button onClick={editElsewhere} disabled={sharing} style={Ic()}><Share2 size={16} /></button>
             </div>
           )}
         </div>
@@ -1035,6 +1055,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
                           <Music2 size={14} color={active ? "#C9952A" : "rgba(255,255,255,0.5)"} />
                         </div>
                         <span style={{ color: "#fff", fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                        <SoundPreviewButton url={s.url} />
                         <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>{s.usage_count} posts</span>
                       </div>
                     );
