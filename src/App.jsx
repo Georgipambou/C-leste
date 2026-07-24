@@ -903,7 +903,7 @@ const Badge = memo(function Badge({type}){
 });
 const Btn = ({children,onClick,style={},disabled=false,type="button",...rest})=>(
   <button type={type} onClick={disabled?undefined:onClick} disabled={disabled} {...rest}
-    style={{cursor:disabled?"not-allowed":"pointer",border:"none",background:"none",outline:"none",...style}}>
+    style={{cursor:disabled?"not-allowed":"pointer",border:"none",background:"none",outline:"none",touchAction:"manipulation",WebkitTapHighlightColor:"transparent",...style}}>
     {children}
   </button>
 );
@@ -1887,7 +1887,33 @@ const mentionedIdsRef=useRef([]);
     setHasMoreCmts((data||[]).length===(to-from+1));
   },[postId,onCountChange]);
 
-  useEffect(()=>{load(1);setCmtPage(1);},[load]);
+  useEffect(()=>{
+    (async()=>{
+      if(targetCommentId){
+        const{data:tc}=await sb.from("comments").select("created_at").eq("id",targetCommentId).maybeSingle();
+        if(tc){
+          const{count}=await sb.from("comments").select("*",{count:"exact",head:true}).eq("post_id",postId).lte("created_at",tc.created_at);
+          setCmtPage(1);
+          load(1,count||30);
+          return;
+        }
+      }
+      setCmtPage(1);
+      load(1);
+    })();
+  },[load,targetCommentId,postId]);
+  const bottomRef=useRef();
+  const cmtObserver=useRef();
+  const loadMore=useCallback(()=>{
+    if(loadingCmts||!hasMoreCmts)return;
+    const next=cmtPage+1;setCmtPage(next);load(next);
+  },[loadingCmts,hasMoreCmts,cmtPage,load]);
+  useEffect(()=>{
+    if(!bottomRef.current||!hasMoreCmts)return;
+    cmtObserver.current=new IntersectionObserver(entries=>{if(entries[0].isIntersecting)loadMore();},{threshold:.3});
+    cmtObserver.current.observe(bottomRef.current);
+    return()=>cmtObserver.current?.disconnect();
+  },[hasMoreCmts,loadMore]);
   const targetRef=useRef(null);
 useEffect(()=>{
   if(targetRef.current){
@@ -1988,7 +2014,7 @@ mentionedIdsRef.current=[];
   <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
     style={{borderRadius:12,transition:"background .5s",
       background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
-    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={load} members={members}/>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members}/>
   </div>
 ))}
     
@@ -1999,11 +2025,7 @@ mentionedIdsRef.current=[];
           <Btn onClick={()=>{setMediaPreview(null);setMediaFile(null);}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:26,height:26,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={12}/></Btn>
         </div>
       )}
-      {hasMoreCmts&&<Btn onClick={()=>{const next=cmtPage+1;setCmtPage(next);load(next);}} style={{width:"100%",padding:"10px 0",color:T.muted,fontSize:12,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
-  Voir plus de commentaires
-  <div style={{width:16,height:1,background:T.border,borderRadius:1}}/>
-</Btn>}
+      {hasMoreCmts&&<div ref={bottomRef} style={{display:"flex",justifyContent:"center",padding:"10px 0"}}>{cmtPage>1&&loadingCmts&&<div style={{width:16,height:16,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/>}</div>}
       </>
     );
 
@@ -2135,7 +2157,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
     setShowCmtMenu(false);
     if(!window.confirm("Supprimer ?"))return;
     await sb.from("comments").delete().eq("id",comment.id);
-    onChange?.();
+    onChange?.("delete");
   };
   const copy=()=>{
     navigator.clipboard?.writeText(comment.text||"");
@@ -5104,20 +5126,27 @@ function VoicePlayer({src,mine}){
   const [playing,setPlaying]=useState(false);
   const [progress,setProgress]=useState(0);
   const [duration,setDuration]=useState(0);
+  const [speed,setSpeed]=useState(1);
   const audioRef=useRef(null);
   const fmt=s=>{if(!s||isNaN(s))return"0:00";const m=Math.floor(s/60),sec=Math.floor(s%60);return`${m}:${sec.toString().padStart(2,"0")}`;};
   useEffect(()=>{
     const a=new Audio(src);
+    a.playbackRate=speed;
     audioRef.current=a;
     a.onloadedmetadata=()=>setDuration(a.duration);
     a.ontimeupdate=()=>setProgress(a.duration?a.currentTime/a.duration*100:0);
     a.onended=()=>{setPlaying(false);setProgress(0);};
     return()=>{a.pause();a.src="";};
   },[src]);
+  useEffect(()=>{if(audioRef.current)audioRef.current.playbackRate=speed;},[speed]);
   const toggle=()=>{
     const a=audioRef.current;if(!a)return;
     if(playing){a.pause();setPlaying(false);}
     else{a.play();setPlaying(true);}
+  };
+  const cycleSpeed=e=>{
+    e.stopPropagation();
+    setSpeed(s=>s===1?1.5:s===1.5?2:1);
   };
   const seek=e=>{
     const a=audioRef.current;if(!a||!duration)return;
@@ -5139,7 +5168,7 @@ function VoicePlayer({src,mine}){
         </div>
         <span style={{fontSize:10,color:mine?"rgba(0,0,0,0.5)":T.muted}}>{fmt(audioRef.current?.currentTime||0)} / {fmt(duration)}</span>
       </div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={mine?"rgba(0,0,0,0.4)":T.muted} strokeWidth="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      <button onClick={cycleSpeed} style={{fontSize:11,fontWeight:700,color:mine?"rgba(0,0,0,0.65)":T.goldL,background:mine?"rgba(0,0,0,0.14)":"rgba(201,149,42,0.15)",border:"none",borderRadius:10,padding:"3px 7px",cursor:"pointer",flexShrink:0,lineHeight:1.4}}>{speed}×</button>
     </div>
   );
 }
@@ -5195,6 +5224,9 @@ const askGemini=async(text)=>{
   const offline=!navigator.onLine;
   const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false);
   const [recording,setRecording]=useState(false); const [recordSecs,setRecordSecs]=useState(0);
+  const [recPaused,setRecPaused]=useState(false);
+  const [recInitializing,setRecInitializing]=useState(false);
+  const cancelledInitRef=useRef(false);
   const [bgPhoto,setBgPhoto]=useState(null);
   const [sendingMsgs,setSendingMsgs]=useState(()=>getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"})));
 useEffect(()=>subscribeQueue(()=>{
@@ -5202,6 +5234,15 @@ useEffect(()=>subscribeQueue(()=>{
 }),[conv.id]);
   const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef();
 const [replyTo,setReplyTo]=useState(null);
+const msgRefs=useRef({});
+const [highlightMsgId,setHighlightMsgId]=useState(null);
+const scrollToMessage=useCallback(id=>{
+  const el=msgRefs.current[id];
+  if(!el)return;
+  el.scrollIntoView({behavior:"smooth",block:"center"});
+  setHighlightMsgId(id);
+  setTimeout(()=>setHighlightMsgId(h=>h===id?null:h),1500);
+},[]);
 const [showReactionPicker,setShowReactionPicker]=useState(null); // id du message ciblé
 const [inlinePickerMsgId,setInlinePickerMsgId]=useState(null);  // picker maintien direct
 const [burstMsgId,setBurstMsgId]=useState(null);
@@ -5402,8 +5443,11 @@ const handleFile=async(e,isImg)=>{
   };
 
   const startRecording=async()=>{
+    cancelledInitRef.current=false;
+    setRecording(true);setRecordSecs(0);setRecInitializing(true);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      if(cancelledInitRef.current){stream.getTracks().forEach(t=>t.stop());return;}
       const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg";
       const recOpts=mimeType?{mimeType}:{};
       const rec=new MediaRecorder(stream,recOpts); const chunks=[];
@@ -5435,18 +5479,37 @@ const handleFile=async(e,isImg)=>{
         })();
       };
       rec.start(250); mediaRecRef.current=rec;
-      setRecording(true);setRecordSecs(0);
+      setRecInitializing(false);
       notifyRecording(true);
       timerRef.current=setInterval(()=>setRecordSecs(s=>s+1),1000);
-    }catch{notify("Microphone non accessible");}
+    }catch{
+      setRecording(false);setRecInitializing(false);
+      notify("Microphone non accessible");
+    }
   };
 
   const cancelRecording=()=>{
     if(mediaRecRef.current){mediaRecRef.current.ondata=null;mediaRecRef.current.onstop=null;mediaRecRef.current.stop();}
-    clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);
+    else cancelledInitRef.current=true;
+    clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);setRecPaused(false);setRecInitializing(false);
     notifyRecording(false);
   };
-  const stopRecording=()=>{mediaRecRef.current?.stop();clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);notifyRecording(false);};
+  const stopRecording=()=>{mediaRecRef.current?.stop();clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);setRecPaused(false);notifyRecording(false);};
+  const canPauseRec=typeof MediaRecorder!=="undefined"&&typeof MediaRecorder.prototype.pause==="function";
+  const pauseRecording=()=>{
+    if(!canPauseRec||mediaRecRef.current?.state!=="recording")return;
+    try{mediaRecRef.current.pause();}catch{return;}
+    clearInterval(timerRef.current);
+    setRecPaused(true);
+    notifyRecording(false);
+  };
+  const resumeRecording=()=>{
+    if(!canPauseRec||mediaRecRef.current?.state!=="paused")return;
+    try{mediaRecRef.current.resume();}catch{return;}
+    timerRef.current=setInterval(()=>setRecordSecs(s=>s+1),1000);
+    setRecPaused(false);
+    notifyRecording(true);
+  };
   const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
 
   return(
@@ -5515,7 +5578,7 @@ const handleFile=async(e,isImg)=>{
           const isSending=!!m.sending;
           const isRead=!!m.read;
           return(
-            <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease"}}>
+            <div key={m.id} ref={el=>{if(el)msgRefs.current[m.id]=el;}} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease",borderRadius:14,transition:"background .6s",background:highlightMsgId===m.id?"rgba(201,149,42,0.18)":"transparent"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
               <div style={{maxWidth:"72%",display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}>
 <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
@@ -5536,7 +5599,7 @@ const handleFile=async(e,isImg)=>{
   boxShadow:m.type==="sticker"?"none":(mine?"0 4px 20px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.3)")
 }}>
                   <HeartBurst show={burstMsgId===m.id}/>
-                  <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>{}}/>
+                  <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>m.reply_to_id&&scrollToMessage(m.reply_to_id)}/>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
     <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.dispatchEvent(new CustomEvent("celeste_close_conv"));window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
@@ -5633,11 +5696,12 @@ const handleFile=async(e,isImg)=>{
         {recording?(
           <div style={{display:"flex",alignItems:"center",gap:12,background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:20,padding:"10px 16px"}}>
             <div style={{display:"flex",gap:3,alignItems:"center"}}>
-              {[0,1,2,3,4].map(i=>(<div key={i} style={{width:3,height:4+Math.sin(Date.now()/200+i)*8,background:T.err,borderRadius:2,animation:`waveform .6s ease ${i*.1}s infinite`}}/>))}
+              {[0,1,2,3,4].map(i=>(<div key={i} style={{width:3,height:4+Math.sin(Date.now()/200+i)*8,background:T.err,borderRadius:2,animation:(recPaused||recInitializing)?"none":`waveform .6s ease ${i*.1}s infinite`,opacity:(recPaused||recInitializing)?0.4:1}}/>))}
             </div>
-            <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:T.err,display:"inline-block"}}/>{recordSecs}s</span>
+            <span style={{flex:1,color:T.err,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:T.err,display:"inline-block",animation:(recPaused||recInitializing)?"none":"pulse 1s ease infinite"}}/>{recInitializing?"Connexion micro…":`${recordSecs}s${recPaused?" (pause)":""}`}</span>
+            {canPauseRec&&<Btn onClick={recPaused?resumeRecording:pauseRecording} disabled={recInitializing} style={{color:T.err,padding:"8px",display:"flex",alignItems:"center",opacity:recInitializing?0.4:1}}>{recPaused?<Play size={18}/>:<Pause size={18}/>}</Btn>}
             <Btn onClick={cancelRecording} style={{color:T.err,padding:"8px",display:"flex",alignItems:"center"}}><Trash2 size={20}/></Btn>
-            <Btn onClick={stopRecording} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13}}>Envoyer</Btn>
+            <Btn onClick={stopRecording} disabled={recInitializing} style={{background:T.gradGold,borderRadius:20,padding:"8px 16px",color:"#000",fontWeight:700,fontSize:13,opacity:recInitializing?0.5:1}}>Envoyer</Btn>
           </div>
         ):(
           <>{offline&&<div style={{padding:"8px 16px",background:"rgba(255,100,50,0.08)",borderTop:"1px solid rgba(255,100,50,0.2)",display:"flex",alignItems:"center",gap:8}}>

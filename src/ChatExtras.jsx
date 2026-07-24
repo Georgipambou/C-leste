@@ -169,6 +169,7 @@ export function MessageReplyQuote({ message, mine, T, onClick }) {
   return (
     <div onClick={onClick} style={{
       display: "flex", flexDirection: "column", gap: 1, padding: "5px 9px", marginBottom: 6,
+      minWidth: 0, maxWidth: "100%",
       borderLeft: `3px solid ${mine ? "rgba(0,0,0,0.3)" : T.goldL}`, background: "rgba(255,255,255,0.05)",
       borderRadius: 8, cursor: message?.reply_to_id ? "pointer" : "default"
     }}>
@@ -177,7 +178,8 @@ export function MessageReplyQuote({ message, mine, T, onClick }) {
       </span>
       <span style={{
         fontSize: 11, color: mine ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.55)",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+        minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+        overflow: "hidden", whiteSpace: "normal", wordBreak: "break-word"
       }}>{message.reply_to_text || "📎 Média"}</span>
     </div>
   );
