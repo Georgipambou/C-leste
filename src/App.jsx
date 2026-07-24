@@ -2999,9 +2999,15 @@ setUploading(false);setUploadPct(0);
   </div>
 )}
 {type==="text"
-  ?<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4}
-    style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:8,transition:"all .3s"}}/>
-          :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" maxLength={150} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>}
+  ?<>
+    <textarea value={text} onChange={e=>{const v=e.target.value;const wc=v.trim()?v.trim().split(/\s+/).length:0;if(wc<=40||v.length<text.length)setText(v);}} placeholder="Partagez votre statut… (40 mots max)" maxLength={280} rows={4}
+      style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:2,transition:"all .3s"}}/>
+    <p style={{margin:"0 0 8px",fontSize:11,color:T.muted,textAlign:"right"}}>{text.trim()?text.trim().split(/\s+/).length:0}/40 mots</p>
+  </>
+  :<>
+    <input value={text} onChange={e=>{const v=e.target.value;const wc=v.trim()?v.trim().split(/\s+/).length:0;if(wc<=20||v.length<text.length)setText(v);}} placeholder="Légende (optionnel, 20 mots max)" maxLength={150} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:2}}/>
+    <p style={{margin:"0 0 10px",fontSize:11,color:T.muted,textAlign:"right"}}>{text.trim()?text.trim().split(/\s+/).length:0}/20 mots</p>
+  </>}
         <div style={{display:"flex",gap:8,marginTop:8}}>
          
           <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
@@ -3028,11 +3034,16 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
   const [paused,setPaused]=useState(false);
   const [hideUI,setHideUI]=useState(false);
   const [mediaReady,setMediaReady]=useState(false);
+  const [soundDuration,setSoundDuration]=useState(null);
+  const [soundBlocked,setSoundBlocked]=useState(false);
   const viewed=useRef(new Set());
+  const closingRef=useRef(false);
+  const [textExpanded,setTextExpanded]=useState(false);
   const progressRef=useRef(null);
   const videoRef=useRef(null);
   const current=(statuses||[])[idx];
   const isVideo=current?.mediaUrl&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(current.mediaUrl)||current.mediaUrl.includes("video"));
+  useEffect(()=>{setTextExpanded(false);},[current?.id]);
 
   useEffect(()=>{
     setMediaReady(!isVideo);
@@ -3042,14 +3053,21 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,session}){
 
   useEffect(()=>{
     if(soundAudioRef.current){soundAudioRef.current.pause();soundAudioRef.current=null;}
+    setSoundDuration(null);
+    setSoundBlocked(false);
+    let fallbackTimer=null;
     if(current?.sound?.url&&!isVideo){
       const a=new Audio(current.sound.url);
-      a.loop=true;
+      a.loop=false;
       a.muted=soundMuted;
-      a.play().catch(()=>{});
+      a.addEventListener("loadedmetadata",()=>{
+        if(a.duration&&isFinite(a.duration)){setSoundDuration(Math.min(a.duration,60)*1000);if(fallbackTimer)clearTimeout(fallbackTimer);}
+      });
+      a.play().catch(()=>setSoundBlocked(true));
       soundAudioRef.current=a;
+      fallbackTimer=setTimeout(()=>setSoundDuration(d=>d===null?10000:d),4000);
     }
-    return()=>{if(soundAudioRef.current){soundAudioRef.current.pause();soundAudioRef.current=null;}};
+    return()=>{if(soundAudioRef.current){soundAudioRef.current.pause();soundAudioRef.current=null;}if(fallbackTimer)clearTimeout(fallbackTimer);};
   },[current?.id,isVideo]);
 
   useEffect(()=>{
@@ -3082,29 +3100,35 @@ if(isMe){
     .then(({error})=>console.log("insert view error:",error));
 }
     setPaused(false);setProgress(0);
+    if(isVideo&&(!videoRef.current||videoRef.current.readyState<1))return;
     if(!mediaReady)return;
-    const duration=current.type==="text"?5000:(isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:10000);
+    const hasSound=!!(current?.sound?.url&&!isVideo);
+    if(hasSound&&soundDuration===null)return;
+    const duration=isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:(hasSound?soundDuration:(current.type==="text"?5000:10000));
     const step=100/(duration/50);
     progressRef.current=setInterval(()=>{
-      setProgress(p=>{
-        if(p>=100){clearInterval(progressRef.current);if(idx<(statuses||[]).length-1)setIdx(i=>i+1);else onClose();return 100;}
-        return p+step;
-      });
+      setProgress(p=>Math.min(p+step,100));
     },50);
     return()=>clearInterval(progressRef.current);
-  },[current?.id,isMe,session?.user?.id,idx,mediaReady]);
+  },[current?.id,isMe,session?.user?.id,idx,mediaReady,soundDuration]);
+
+  useEffect(()=>{
+    if(progress<100)return;
+    clearInterval(progressRef.current);
+    if(idx<(statuses||[]).length-1){setIdx(i=>i+1);}
+    else if(!closingRef.current){closingRef.current=true;onClose();}
+  },[progress]);
 
   const togglePause=()=>{
     if(paused){
       setPaused(false);
       if(videoRef.current)videoRef.current.play().catch(()=>{});
-      const duration=current?.type==="text"?5000:(isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:10000);
+      if(soundAudioRef.current)soundAudioRef.current.play().catch(()=>{});
+      const hasSound=!!(current?.sound?.url&&!isVideo);
+      const duration=isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:(hasSound&&soundDuration?soundDuration:(current?.type==="text"?5000:10000));
       const step=100/(duration/50);
       progressRef.current=setInterval(()=>{
-        setProgress(p=>{
-          if(p>=100){clearInterval(progressRef.current);if(idx<(statuses||[]).length-1)setIdx(i=>i+1);else onClose();return 100;}
-          return p+step;
-        });
+        setProgress(p=>Math.min(p+step,100));
       },50);
     }else{
       setPaused(true);
@@ -3148,6 +3172,7 @@ if(isMe){
 
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}
         onClick={e=>{
+          if(soundBlocked&&soundAudioRef.current){soundAudioRef.current.play().then(()=>setSoundBlocked(false)).catch(()=>{});}
           const{left,width}=e.currentTarget.getBoundingClientRect();
           const relX=e.clientX-left;
           if(relX<width*0.25){if(!paused){if(idx>0){setIdx(idx-1);setProgress(0);}else onClose();}else togglePause();return;}
@@ -3176,18 +3201,24 @@ if(isMe){
             {soundMuted?<VolumeX size={16} color="#fff"/>:<Volume2 size={16} color="#fff"/>}
           </button>
         )}
+        {current.sound&&!isVideo&&soundBlocked&&(
+          <div style={{position:"absolute",top:56,right:56,zIndex:3,background:"rgba(0,0,0,0.6)",borderRadius:20,padding:"7px 12px",color:"#fff",fontSize:11,fontWeight:600}}>
+            🔇 Touche l'écran pour activer le son
+          </div>
+        )}
         {current.text&&(
   current.text_background?(
     <div style={{
       position:"absolute",inset:0,zIndex:1,
       background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[current.text_background]||"#000",
-      display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 32px"
+      display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 32px",overflow:"hidden"
     }}>
-      <p style={{margin:0,fontSize:28,fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center"}}>{current.text}</p>
+      <p style={{margin:0,maxWidth:"100%",maxHeight:"100%",overflow:"hidden",fontSize:current.text?.length>140?20:(current.text?.length>70?24:28),fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center",whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"anywhere"}}>{current.text}</p>
     </div>
   ):(
     <div style={{position:"absolute",bottom:160,left:16,right:16,zIndex:1,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
-      <p style={{margin:0,fontSize:18,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400,textShadow:"0 1px 8px rgba(0,0,0,0.8)",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(current.text,()=>{})}</p>
+      <p style={{margin:"0 0 4px",fontSize:18,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400,textShadow:"0 1px 8px rgba(0,0,0,0.8)",whiteSpace:"pre-wrap",wordBreak:"break-word",display:textExpanded?"block":"-webkit-box",WebkitLineClamp:textExpanded?"unset":3,WebkitBoxOrient:"vertical",overflow:textExpanded?"visible":"hidden"}}>{renderTextWithMentions(current.text,()=>{})}</p>
+      {current.text?.length>90&&<button onClick={e=>{e.stopPropagation();setTextExpanded(x=>!x);}} style={{background:"none",border:"none",padding:0,color:"#fff",fontSize:13,fontWeight:700,textShadow:"0 1px 8px rgba(0,0,0,0.8)",cursor:"pointer"}}>{textExpanded?"Voir moins ▲":"Voir plus ▼"}</button>}
     </div>
   )
 )}
@@ -3307,7 +3338,7 @@ function StatusReplyInput({ statusOwnerId, statusId, current, onClose, session }
 // ── STATUSES TAB ──────────────────────────────────────────
 function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify,blockedUserIds=[],pushNav,popNav}){
   const {setHideNav}=useApp();
-  const [myStatuses,setMyStatuses]=useState([]);
+  const [myStatuses,setMyStatuses]=useState(()=>{try{const c=localStorage.getItem("celeste_mystatuts_cache");return c?JSON.parse(c):[];}catch(e){return[];}});
   const [groups,setGroups]=useState(()=>{try{const c=localStorage.getItem("celeste_statuts_cache");return c?JSON.parse(c):[];}catch(e){return[];}});
   const [viewing,setViewing]=useState(null);
   const [creating,setCreating]=useState(false);
@@ -3332,6 +3363,7 @@ useEffect(()=>{
     .order("created_at",{ascending:false});
     const me=(data||[]).filter(s=>s.user_id===session?.user?.id);
     setMyStatuses(me);
+    try{localStorage.setItem("celeste_mystatuts_cache",JSON.stringify(me));}catch(e){}
    const blockedSet=new Set(blockedUserIds);
     const followingSet=new Set((myConnections||[]));
     const map=new Map();
@@ -3348,6 +3380,7 @@ useEffect(()=>{
   },[session?.user?.id,myConnections,blockedUserIds]);
 
   useEffect(()=>{load();},[load]);
+  useEffect(()=>{if(!viewing&&!creating)setHideNav(false);},[viewing,creating]);
 
 useEffect(()=>{
   const handler=async e=>{
@@ -3428,7 +3461,7 @@ useEffect(()=>{
               <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>{myMapped.length>0?"Voir mon statut":"Ajouter un statut"}</p>
               <p style={{margin:0,fontSize:11,color:T.muted}}>{myMapped.length>0?ago(myMapped[0].ts):"Partagez votre moment"}</p>
             </div>
-            <Btn onClick={()=>{setCreating(true);setHideNav(true);}} style={{marginLeft:"auto",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:12,padding:"8px 14px",color:T.goldL,fontSize:12,fontWeight:600}}>+ Ajouter</Btn>
+            <Btn onClick={()=>{pushNav(()=>setCreating(false));setCreating(true);setHideNav(true);}} style={{marginLeft:"auto",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:12,padding:"8px 14px",color:T.goldL,fontSize:12,fontWeight:600}}>+ Ajouter</Btn>
           </div>
         </div>
 
@@ -4630,7 +4663,7 @@ const [showDeleteReasons,setShowDeleteReasons]=useState(false);
       borderRadius:16,padding:"32px 20px",marginBottom:10,minHeight:160,maxHeight:160,overflow:"hidden",
       display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"
     }}>
-      <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif"}}>{post.text}</p>
+      <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",textOverflow:"ellipsis"}}>{post.text}</p>
     </div>
   ):(
     <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
@@ -9101,7 +9134,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
  if(t==="home"&&tab==="home"){loadPosts(1);feedScrollRef.current=0;}
  if(t==="statuses")setUnreadStatuses(0);
 if(t!=="home")feedScrollRef.current=document.querySelector("[data-feed-scroll]")?.scrollTop||feedScrollRef.current;
-setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
+setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNav(false);
 };
   const unread=(convs||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
   const pending=(members||[]).filter(m=>m.status==="pending").length;
