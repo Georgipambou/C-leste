@@ -118,9 +118,10 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
     canvas.width = mainVideo.videoWidth;
     canvas.height = mainVideo.videoHeight;
     const ctx = canvas.getContext("2d");
-    const sx = canvas.width / (rect?.width || canvas.width);
-    const sy = canvas.height / (rect?.height || canvas.height);
-    const s = Math.min(sx, sy);
+    const rw = rect?.width || canvas.width, rh = rect?.height || canvas.height;
+    const s = Math.min(canvas.width / rw, canvas.height / rh);
+    const offsetX = (canvas.width - rw * s) / 2;
+    const offsetY = (canvas.height - rh * s) / 2;
 
     // captureStream() sur <canvas> est très largement supporté (contrairement à
     // captureStream() sur <video>, absent sur certains WebView Android — c'était
@@ -201,9 +202,9 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
           ctx.shadowBlur = 10 * s;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * canvas.width, ov.size * s * 1.2, ov.bg, true);
+          wrapText(ctx, ov.value, ov.x * s + offsetX, ov.y * s + offsetY, 0.72 * canvas.width, ov.size * s * 1.2, ov.bg, true);
         } else if (ov.el) {
-          ctx.drawImage(ov.el, ov.x * sx, ov.y * sy, ov.size * s, ov.size * s);
+          ctx.drawImage(ov.el, ov.x * s + offsetX, ov.y * s + offsetY, ov.size * s, ov.size * s);
         }
       });
       requestAnimationFrame(draw);
@@ -729,18 +730,20 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
       ctx.drawImage(img, 0, 0);
 
       const rect = overlayRef.current?.getBoundingClientRect();
-      const sx = img.width / (rect?.width || 1), sy = img.height / (rect?.height || 1);
-      const s = Math.min(sx, sy);
+      const rw = rect?.width || img.width, rh = rect?.height || img.height;
+      const s = Math.min(img.width / rw, img.height / rh);
+      const offsetX = (img.width - rw * s) / 2;
+      const offsetY = (img.height - rh * s) / 2;
       for (const ov of overlays) {
         if (ov.type === "text") {
           ctx.font = `bold ${ov.size * s}px "${ov.font}"`;
           ctx.fillStyle = ov.color; ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 10 * s;
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * c.width, ov.size * s * 1.2, ov.bg, true);
+          wrapText(ctx, ov.value, ov.x * s + offsetX, ov.y * s + offsetY, 0.72 * c.width, ov.size * s * 1.2, ov.bg, true);
         } else if (ov.type === "image" || ov.type === "video") {
           const oi = ov.el || new Image();
           if (!ov.el) { oi.src = ov.value; await new Promise((r) => { oi.onload = r; oi.onerror = r; }); }
-          ctx.drawImage(oi, ov.x * sx, ov.y * sy, ov.size * s, ov.size * s);
+          ctx.drawImage(oi, ov.x * s + offsetX, ov.y * s + offsetY, ov.size * s, ov.size * s);
         }
       }
       c.toBlob((b) => onDone({ file: new File([b], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound }), "image/jpeg", 0.95);
@@ -849,13 +852,14 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
         <div style={{ display: "flex", justifyContent: "space-between", padding: "52px 16px 0" }}>
           <button onClick={() => setPhase("camera")} style={Ic()}><X size={18} /></button>
         </div>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 32px" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 32px" }}>
           <textarea
-            value={cardText} onChange={(e) => setCardText(e.target.value)}
-            placeholder="Écris quelque chose…" autoFocus rows={4}
+            value={cardText} onChange={(e) => setCardText(e.target.value.slice(0, 200))}
+            placeholder="Écris quelque chose…" autoFocus rows={4} maxLength={200}
             style={{ width: "100%", background: "transparent", border: "none", outline: "none", resize: "none",
               color: txtColor, fontFamily: `'${txtFont}',sans-serif`, fontWeight: 800, fontSize: 32,
               textAlign: "center", textShadow: "0 2px 20px rgba(0,0,0,0.4)" }} />
+          <p style={{ margin: "10px 0 0", fontSize: 12, color: cardText.length >= 200 ? "#FF6B6B" : "rgba(255,255,255,0.5)", textAlign: "center" }}>{cardText.length}/200</p>
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: 10, paddingBottom: 16 }}>
           {GRADIENTS.map((g, i) => (
@@ -1145,10 +1149,11 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
         {panel === "text" && (
           <div style={{ background: "rgba(6,6,6,0.97)", borderRadius: "24px 24px 0 0", padding: "20px 18px 10px", backdropFilter: "blur(30px)" }}>
-            <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Votre texte…" autoFocus rows={3}
+            <textarea value={newText} onChange={(e) => setNewText(e.target.value.slice(0, 120))} placeholder="Votre texte…" autoFocus rows={3} maxLength={120}
               style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16,
                 padding: "12px 16px", color: txtColor, fontSize: Math.min(txtSize, 22), fontFamily: `'${txtFont}',sans-serif`,
-                fontWeight: 700, outline: "none", marginBottom: 14, letterSpacing: .3, resize: "none", lineHeight: 1.3 }} />
+                fontWeight: 700, outline: "none", marginBottom: 4, letterSpacing: .3, resize: "none", lineHeight: 1.3 }} />
+            <p style={{ margin: "0 0 10px", fontSize: 11, color: newText.length >= 120 ? "#FF6B6B" : "rgba(255,255,255,0.35)", textAlign: "right" }}>{newText.length}/120</p>
             <div style={{ display: "flex", gap: 9, marginBottom: 12, alignItems: "center" }}>
               {COLORS.map((c) => (
                 <div key={c} onClick={() => setTxtColor(c)}
