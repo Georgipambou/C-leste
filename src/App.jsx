@@ -8581,6 +8581,7 @@ function CelesteApp(){
   const [myFollowers,setMyFollowers]=useState([]);
   const [blockedUserIds,setBlockedUserIds]=useState([]);
   const [mutedAuthorIds,setMutedAuthorIds]=useState([]);
+  const [onlinePresenceIds,setOnlinePresenceIds]=useState(()=>new Set());
 
   const [chatDrafts,setChatDrafts]=useState({});
   const [tab,setTab]=useState("home");
@@ -8786,8 +8787,8 @@ useEffect(() => {
     if(!openUserId){setOpenUser(null);return;}
     const found=(members||[]).find(m=>m.id===openUserId);
     if(found){setOpenUser(found);return;}
-    sb.from("profiles").select("*").eq("id",openUserId).single().then(({data})=>{if(data)setOpenUser(normProfile(data));});
-  },[openUserId,members]);
+    sb.from("profiles").select("*").eq("id",openUserId).single().then(({data})=>{if(data)setOpenUser({...normProfile(data),isOnline:onlinePresenceIds.has(data.id),online:onlinePresenceIds.has(data.id)});});
+  },[openUserId,members,onlinePresenceIds]);
 
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);
@@ -8809,7 +8810,25 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     window.addEventListener("focus",onVisible);
     return()=>{subscription.unsubscribe();clearInterval(lsInterval);document.removeEventListener("visibilitychange",onVisible);window.removeEventListener("focus",onVisible);};
   },[loadMyProfile]);
-  
+
+  // Statut en ligne en temps réel via Supabase Realtime Presence
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    const presenceChannel=sb.channel("online-users",{config:{presence:{key:session.user.id}}});
+    presenceChannel.on("presence",{event:"sync"},()=>{
+      const state=presenceChannel.presenceState();
+      setOnlinePresenceIds(new Set(Object.keys(state)));
+    });
+    presenceChannel.subscribe(async status=>{
+      if(status==="SUBSCRIBED"&&!myProfile?.hide_online){
+        await presenceChannel.track({online_at:new Date().toISOString()});
+      }
+    });
+    return()=>{sb.removeChannel(presenceChannel);};
+  },[session?.user?.id,myProfile?.hide_online]);
+  useEffect(()=>{
+    setMembers(prev=>prev.map(m=>({...m,isOnline:onlinePresenceIds.has(m.id),online:onlinePresenceIds.has(m.id)})));
+  },[onlinePresenceIds]);
 
   const loadMembers=useCallback(async()=>{
   const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,joined_at").neq("status","pending");
@@ -8848,14 +8867,14 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
    const blockedSet=new Set([...blockedUserIds,...mutedAuthorIds]);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
@@ -9097,6 +9116,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);
     notify,
     chatDrafts,setChatDrafts,
     hideNav,setHideNav,
+    onlinePresenceIds,
   };
 
   // Splash screen
