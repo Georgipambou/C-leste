@@ -37,25 +37,27 @@ const POST_REPORT_REASONS = [
   "Autre",
 ];
 
+// ── Raisons de suppression admin (motif communiqué à l'auteur) ────
+const ADMIN_DELETE_REASONS = ["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Contenu réutilisé d'une autre plateforme (filigrane visible)","Signalement non fondé mais retiré pour une autre raison","Autre"];
+
 // ── Badge (copié depuis App.jsx pour autonomie) ───────────────────
+const BADGE_CLIP="path('M 14.93 10.87 C 13.57 10.73, 10.73 13.57, 10.87 14.93 C 10.01 13.87, 5.99 13.87, 5.13 14.93 C 5.27 13.57, 2.43 10.73, 1.07 10.87 C 2.13 10.01, 2.13 5.99, 1.07 5.13 C 2.43 5.27, 5.27 2.43, 5.13 1.07 C 5.99 2.13, 10.01 2.13, 10.87 1.07 C 10.73 2.43, 13.57 5.27, 14.93 5.13 C 13.87 5.99, 13.87 10.01, 14.93 10.87 Z')";
 function Badge({ type }) {
   if (!type) return null;
   const isConfirmed = type === "confirmed";
   return isConfirmed ? (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
       background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
-      boxShadow:"0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4)",
       flexShrink:0,position:"relative"}}>
-      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </span>
   ) : (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
       background:"linear-gradient(135deg,#FFD700,#FF8C00)",
-      boxShadow:"0 0 0 2px rgba(255,165,0,0.3), 0 0 10px rgba(255,180,0,0.9), 0 0 22px rgba(255,140,0,0.5)",
       flexShrink:0}}>
-      <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </span>
@@ -121,7 +123,7 @@ function PostActionMenu({ isMine, isAdmin, onClose, onDelete, onReport, onMute }
 }
 
 // ── Feuille de signalement (raisons + détails) ────────────────────
-function PostReportSheet({ onClose, onSubmit }) {
+function PostReportSheet({ onClose, onSubmit, reasons = POST_REPORT_REASONS, title = "Signaler la publication" }) {
   const [showDetails, setShowDetails] = useState(false);
   const [details, setDetails] = useState("");
   const [pendingReason, setPendingReason] = useState(null);
@@ -130,12 +132,12 @@ function PostReportSheet({ onClose, onSubmit }) {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ width: "100%", maxWidth: 480, background: "rgba(18,18,18,0.98)", borderRadius: "22px 22px 0 0", padding: "20px 18px calc(24px + env(safe-area-inset-bottom,0px))", animation: "slideUp .25s ease" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>Signaler la publication</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>{title}</span>
           <button onClick={onClose} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 30, height: 30, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={15} /></button>
         </div>
         {!showDetails ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: "55vh", overflowY: "auto" }}>
-            {POST_REPORT_REASONS.map(r => (
+            {reasons.map(r => (
               <button key={r} onClick={() => onSubmit(r, "")} style={{ padding: "13px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.9)", fontSize: 13.5, textAlign: "left", cursor: "pointer" }}>
                 {r}
               </button>
@@ -147,7 +149,7 @@ function PostReportSheet({ onClose, onSubmit }) {
         ) : (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 12, maxHeight: "40vh", overflowY: "auto" }}>
-              {POST_REPORT_REASONS.map(r => (
+              {reasons.map(r => (
                 <button key={r} onClick={() => setPendingReason(r)} style={{ padding: "11px 14px", borderRadius: 12, border: `1px solid ${pendingReason === r ? "#C9952A88" : "rgba(255,255,255,0.1)"}`, background: pendingReason === r ? "rgba(201,149,42,0.12)" : "transparent", color: pendingReason === r ? "#e0b84a" : "rgba(255,255,255,0.85)", fontSize: 13, textAlign: "left", cursor: "pointer" }}>
                   {r}
                 </button>
@@ -157,7 +159,7 @@ function PostReportSheet({ onClose, onSubmit }) {
               style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "11px 14px", color: "#fff", fontSize: 13, outline: "none", resize: "none", marginBottom: 12 }} />
             <button onClick={() => pendingReason && onSubmit(pendingReason, details)} disabled={!pendingReason}
               style={{ width: "100%", padding: 14, borderRadius: 14, border: "none", background: pendingReason ? "linear-gradient(135deg,#e0b84a,#C9952A)" : "rgba(255,255,255,0.08)", color: pendingReason ? "#000" : "rgba(255,255,255,0.4)", fontSize: 14, fontWeight: 700, cursor: pendingReason ? "pointer" : "default" }}>
-              Envoyer le signalement
+              {title === "Motif de suppression" ? "Supprimer avec ce motif" : "Envoyer le signalement"}
             </button>
           </>
         )}
@@ -191,6 +193,7 @@ export default function PhotoViewer({
   const [hiddenPostIds,   setHiddenPostIds]   = useState(() => new Set());
   const [menuPostId,      setMenuPostId]      = useState(null);
   const [reportPost,      setReportPost]      = useState(null);
+  const [deleteReasonPost, setDeleteReasonPost] = useState(null);
   const [savedIds,        setSavedIds]        = useState(
     () => new Set((posts || []).filter(p => p.saved?.length > 0).map(p => p.id))
   );
@@ -364,14 +367,23 @@ export default function PhotoViewer({
   // ── Supprimer / signaler / masquer ────────────────────────────
   const handleDeletePost = useCallback(async (post) => {
     setMenuPostId(null);
-    if (!window.confirm("Supprimer cette publication ?")) return;
     const byAdmin = myProfile?.is_admin && post.by !== uid;
+    if (byAdmin) { setDeleteReasonPost(post); return; }
+    if (!window.confirm("Supprimer cette publication ?")) return;
     setHiddenPostIds(p => new Set([...p, post.id]));
     notify?.("Publication supprimée");
-    if (myProfile?.is_admin) await sb.from("posts").delete().eq("id", post.id);
-    else await sb.from("posts").delete().eq("id", post.id).eq("author_id", uid);
-    if (byAdmin) await sb.from("notifications").insert({ user_id: post.by, from_id: uid, type: "post_deleted", text: "Ta publication a été supprimée par un administrateur", read: false });
+    await sb.from("posts").delete().eq("id", post.id).eq("author_id", uid);
   }, [uid, myProfile, notify]);
+
+  const handleAdminDeleteWithReason = useCallback(async (reason) => {
+    const post = deleteReasonPost;
+    if (!post) return;
+    setDeleteReasonPost(null);
+    setHiddenPostIds(p => new Set([...p, post.id]));
+    notify?.("Publication supprimée");
+    await sb.from("posts").delete().eq("id", post.id);
+    await sb.from("notifications").insert({ user_id: post.by, from_id: uid, type: "post_deleted", text: `Ta publication a été supprimée par un administrateur (motif : ${reason})`, read: false });
+  }, [uid, deleteReasonPost, notify]);
 
   const handleMuteAuthor = useCallback(async (post) => {
     setMenuPostId(null);
@@ -580,21 +592,21 @@ export default function PhotoViewer({
 
                 {/* Like */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                  <button onClick={() => handleToggleLike(post)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}>
+                  <button onClick={() => handleToggleLike(post)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}>
                     <Heart size={32} fill={liked ? "#ff2d55" : "none"} color={liked ? "#ff2d55" : "#fff"} />
                   </button>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{likeCountMap[post.id] ?? (post.likes || []).length}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{likeCountMap[post.id] ?? (post.likes || []).length}</span>
                 </div>
 
                 {/* Commentaires */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                   <button
                     onClick={() => { setPhotoModalOpen(true); onOpenComments(post, () => setPhotoModalOpen(false)); }}
-                    style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}
+                    style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}
                   >
                     <MessageCircle size={30} color="#fff" />
                   </button>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{(post.comments || []).length}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{(post.comments || []).length}</span>
                 </div>
 
                 {/* Sauvegarder */}
@@ -606,15 +618,15 @@ export default function PhotoViewer({
                       setSaveCountMap(prev => ({ ...prev, [post.id]: Math.max(0, (prev[post.id] || 0) + (alreadySaved ? -1 : 1)) }));
                       toggleSave(post.id);
                     }}
-                    style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0 }}
+                    style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}
                   >
                     <Bookmark size={28} fill={savedIds.has(post.id) ? "#C9952A" : "none"} color={savedIds.has(post.id) ? "#C9952A" : "#fff"} />
                   </button>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{saveCountMap[post.id] ?? post.savesCount ?? 0}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{saveCountMap[post.id] ?? post.savesCount ?? 0}</span>
                 </div>
 
                 {/* Menu "..." */}
-                <button onClick={() => setMenuPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, marginTop: 2 }}>
+                <button onClick={() => setMenuPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, marginTop: 2, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}>
                   <MoreVertical size={26} />
                 </button>
 
@@ -648,6 +660,15 @@ export default function PhotoViewer({
         <PostReportSheet
           onClose={() => setReportPost(null)}
           onSubmit={handleSubmitReport}
+        />
+      )}
+
+      {deleteReasonPost && (
+        <PostReportSheet
+          title="Motif de suppression"
+          reasons={ADMIN_DELETE_REASONS}
+          onClose={() => setDeleteReasonPost(null)}
+          onSubmit={handleAdminDeleteWithReason}
         />
       )}
 

@@ -77,6 +77,9 @@ import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
 import SoundDetailModal from "./components/SoundDetailModal";
 import StickerPicker from "./components/StickerPicker";
+
+import VideoTrimModal from "./components/VideoTrimModal";
+import StickerDetailModal from "./components/StickerDetailModal";
 import { Sticker as StickerIcon } from "lucide-react";
 import SoundDiscBadge from "./components/SoundDiscBadge";
 import { saveDraft } from "./lib/draftsStore";
@@ -1117,139 +1120,7 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideo
   );
 });
 
-// ── VIDEO TRIM MODAL ──────────────────────────────────────
-function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}){
-  const videoRef=useRef();
-  const [duration,setDuration]=useState(0);
-  const [start,setStart]=useState(0);
-  const [end,setEnd]=useState(0);
-  const [playing,setPlaying]=useState(false);
-  const [currentTime,setCurrentTime]=useState(0);
-  const [trimming,setTrimming]=useState(false);
-  const [trimProgress,setTrimProgress]=useState(0);
-  const MAX=maxDuration;
-  const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
-  useEffect(()=>{
-    const v=videoRef.current;if(!v)return;
-    const onLoaded=()=>{const d=Math.min(v.duration,MAX);setDuration(v.duration);setEnd(d);};
-    v.addEventListener("loadedmetadata",onLoaded);
-    v.addEventListener("timeupdate",()=>setCurrentTime(v.currentTime));
-    return()=>{v.removeEventListener("loadedmetadata",onLoaded);};
-  },[]);
-
-  useEffect(()=>{
-    const v=videoRef.current;if(!v)return;
-    if(currentTime>=end){v.pause();v.currentTime=start;setPlaying(false);}
-  },[currentTime,end,start]);
-
-  const togglePlay=()=>{
-    const v=videoRef.current;
-    if(playing){v.pause();setPlaying(false);}
-    else{v.currentTime=start;v.play();setPlaying(true);}
-  };
-
-  const handleValidate=async()=>{
-    if(trimming)return;
-    if(start<0.5&&end>=duration-0.5){
-      onDone({src:videoSrc,start:0,end:duration,file:null});
-      return;
-    }
-    setTrimming(true);
-    setTrimProgress(0);
-    try{
-      const v=videoRef.current;
-      if(typeof v.captureStream!=="function"&&typeof v.mozCaptureStream!=="function"){
-        onDone({src:videoSrc,start,end,file:null});
-        setTrimming(false);
-        return;
-      }
-      if(typeof v.captureStream!=="function"&&typeof v.mozCaptureStream!=="function"){onDone({src:videoSrc,start,end,file:null});setTrimming(false);return;}
-      v.currentTime=start;
-      await new Promise(res=>v.addEventListener("seeked",res,{once:true}));
-      const stream=v.captureStream?v.captureStream():v.mozCaptureStream();
-      const chunks=[];
-      const mimeType=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")?"video/webm;codecs=vp8,opus":"video/webm";
-      const recorder=new MediaRecorder(stream,{mimeType});
-      recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
-      recorder.start(100);
-      v.play();
-      const trimDuration=(end-start)*1000;
-      const startedAt=Date.now();
-      const interval=setInterval(()=>{
-        const elapsed=Date.now()-startedAt;
-        setTrimProgress(Math.min(99,Math.round((elapsed/trimDuration)*100)));
-      },100);
-      await new Promise(res=>{
-        setTimeout(()=>{
-          clearInterval(interval);
-          recorder.stop();
-          v.pause();
-          res();
-        },trimDuration);
-      });
-      await new Promise(res=>recorder.addEventListener("stop",res,{once:true}));
-      setTrimProgress(100);
-      const blob=new Blob(chunks,{type:mimeType});
-      const trimmedFile=new File([blob],"trimmed.webm",{type:"video/webm"});
-      const trimmedSrc=URL.createObjectURL(blob);
-      onDone({src:trimmedSrc,start:0,end:end-start,file:trimmedFile});
-    }catch(e){
-      console.error("Trim error:",e);
-      onDone({src:videoSrc,start,end,file:null});
-    }finally{
-      setTrimming(false);
-    }
-  };
-
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
-      <div style={{padding:"12px 20px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>Annuler</button>
-        <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Couper la vidéo</p>
-        <button onClick={handleValidate} disabled={trimming} style={{background:"none",border:"none",color:trimming?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:trimming?"default":"pointer",padding:"4px 0"}}>
-          {trimming?`Traitement ${trimProgress}%`:"Valider ✦"}
-        </button>
-      </div>
-
-      {trimming&&(
-        <div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-          <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid rgba(201,149,42,0.2)",borderTopColor:"#C9952A",animation:"spin .8s linear infinite"}}/>
-          <p style={{margin:0,color:"#C9952A",fontSize:16,fontWeight:700,letterSpacing:1}}>✦ Découpe en cours</p>
-          <p style={{margin:"4px 0 0",color:"rgba(255,255,255,0.4)",fontSize:12}}>Ne ferme pas l'application</p>
-          <div style={{width:200,height:4,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
-            <div style={{height:"100%",width:`${trimProgress}%`,background:"#C9952A",borderRadius:2,transition:"width 0.2s"}}/>
-          </div>
-          <p style={{margin:0,color:"rgba(255,255,255,0.4)",fontSize:12}}>{trimProgress}%</p>
-        </div>
-      )}
-
-      <div style={{height:"45vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#000",position:"relative",flexShrink:0}}>
-        <video ref={videoRef} src={videoSrc} playsInline style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
-        <button onClick={togglePlay} style={{position:"absolute",width:56,height:56,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"2px solid rgba(255,255,255,0.3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:22}}>
-          {playing?"⏸":"▶"}
-        </button>
-      </div>
-
-      <div style={{background:"rgba(0,0,0,0.95)",padding:"20px 20px calc(20px + env(safe-area-inset-bottom,0px))",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
-          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Début : {fmt(start)}</span>
-          <span style={{fontSize:12,color:"#C9952A",fontWeight:700}}>Durée : {fmt(end-start)}</span>
-          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>Fin : {fmt(end)}</span>
-        </div>
-        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>DÉBUT</p>
-        <input type="range" min={0} max={duration} step={0.1} value={start}
-          onChange={e=>{const v=Number(e.target.value);if(v<end-1){setStart(v);videoRef.current.currentTime=v;}}}
-          style={{width:"100%",accentColor:"#C9952A",marginBottom:14}}/>
-        <p style={{margin:"0 0 8px",fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>FIN</p>
-        <input type="range" min={0} max={Math.min(duration,MAX)} step={0.1} value={end}
-          onChange={e=>{const v=Number(e.target.value);if(v>start+1){setEnd(v);videoRef.current.currentTime=v;}}}
-          style={{width:"100%",accentColor:"#C9952A",marginBottom:12}}/>
-        <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>Maximum {MAX} secondes</p>
-      </div>
-    </div>
-  );
-}
 
 // ── IMAGE CROP MODAL ──────────────────────────────────────
 function ImageCropModal({imageSrc,onClose,onDone}){
@@ -1300,7 +1171,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
       {/* Header */}
       <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
-          <X size={18}/>Annuler
+          <X size={18}/>Garder l'originale
         </button>
         <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Recadrer</p>
         <button onClick={handleDone} disabled={processing} style={{background:"none",border:"none",color:processing?"rgba(201,149,42,0.4)":"#C9952A",fontSize:15,fontWeight:700,cursor:processing?"default":"pointer",padding:"4px 0"}}>
@@ -1588,7 +1459,7 @@ if(data.user){onSuccess?.("pending");}
 <option value="alimentation">🥘 Alimentation / Traiteur</option>
 <option value="autre">📌 Autre</option>
                     </select>
-                    <AuthField val={orgCountry} set={setOrgCountry} placeholder="Pays *"/>
+                    <AuthField val={orgCountry} set={setOrgCountry} placeholder="Ville / Quartier *"/>
                     <AuthField val={orgDesc} set={setOrgDesc} placeholder="Description (optionnel)"/>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
   <DialSelector selected={country} onChange={(code,dial)=>{setCountry(code);setPhone(dial+" ");}}/>
@@ -1977,7 +1848,7 @@ const filtered=(members||[]).filter(m=>matchQuery(m.fullName,query)).slice(0,8);
   );
 }
 // ── COMMENTS SECTION ─────────────────────────────────────
-function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false}){
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false,notify}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
   const [loadingCmts,setLoadingCmts]=useState(true);
@@ -1988,18 +1859,22 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentI
   const [mediaFile,setMediaFile]=useState(null);
   const [mediaPreview,setMediaPreview]=useState(null);
   const [showStickerPicker,setShowStickerPicker]=useState(false);
+  const [openStickerDetail,setOpenStickerDetail]=useState(null);
 const mentionedIdsRef=useRef([]);
   const textareaRef=useRef(null);
   const imgRef=useRef(null);
+  const visibleCountRef=useRef(0);
+  useEffect(()=>{visibleCountRef.current=comments.length;},[comments]);
 
   useEffect(()=>{
     const ta=textareaRef.current;
     if(ta){ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,140)+"px";}
   },[text]);
 
- const load=useCallback(async(page=1)=>{
+ const load=useCallback(async(page=1,minCount=0)=>{
     setLoadingCmts(true);
-   const from=(page-1)*30,to=from+29;
+   const from=(page-1)*30;
+   const to=Math.max(from+29,minCount-1);
     const{data}=await sb.from("comments")
       .select("id,post_id,author_id,text,media_url,sticker_id,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
       .eq("post_id",postId)
@@ -2009,7 +1884,7 @@ const mentionedIdsRef=useRef([]);
     else setComments(prev=>[...prev,...(data||[])]);
     onCountChange?.((data||[]).length);
     setLoadingCmts(false);
-    setHasMoreCmts((data||[]).length===30);
+    setHasMoreCmts((data||[]).length===(to-from+1));
   },[postId,onCountChange]);
 
   useEffect(()=>{load(1);setCmtPage(1);},[load]);
@@ -2024,7 +1899,7 @@ useEffect(()=>{
 
   useEffect(()=>{
     const ch=sb.channel(`comments-${postId}-${Math.random()}`)
-      .on("postgres_changes",{event:"*",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},load)
+      .on("postgres_changes",{event:"*",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},()=>load(1,visibleCountRef.current+1))
       .subscribe();
     return()=>sb.removeChannel(ch);
   },[postId,load]);
@@ -2048,7 +1923,7 @@ const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text
       setText("");
       setMediaFile(null);
       setMediaPreview(null);
-      load();
+      load(1,visibleCountRef.current+1);
       // Notifier l'auteur du post
 const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
 if(postData?.author_id&&postData.author_id!==uid){
@@ -2075,22 +1950,35 @@ mentionedIdsRef.current=[];
     }
     setPosting(false);
   };
-  const submitSticker=async(sticker)=>{
-    setShowStickerPicker(false);
-    const uid=(await sb.auth.getUser())?.data?.user?.id;
-    const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:"",media_url:sticker.url,sticker_id:sticker.id});
-    if(!error){
-      sb.rpc("increment_sticker_usage",{sticker_id:sticker.id}).catch(()=>{});
-      load();
-      const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
-      if(postData?.author_id&&postData.author_id!==uid){
-        await sb.from("notifications").insert({user_id:postData.author_id,from_id:uid,type:"comment",post_id:postId,read:false});
-      }
+ const submitSticker=async(sticker)=>{
+  setShowStickerPicker(false);
+  const uid=(await sb.auth.getUser())?.data?.user?.id;
+  const optimistic={id:"tmp_"+Date.now(),post_id:postId,author_id:uid,text:"",media_url:sticker.url,sticker_id:sticker.id,created_at:new Date().toISOString(),author:getM?.(uid)||null};
+  setComments(prev=>[...prev,optimistic]);
+  const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:"",media_url:sticker.url,sticker_id:sticker.id});
+  if(!error){
+    Promise.resolve(sb.rpc("increment_sticker_usage",{sticker_id:sticker.id})).catch(()=>{});
+    load(1,visibleCountRef.current+1);
+    const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
+    if(postData?.author_id&&postData.author_id!==uid){
+      await sb.from("notifications").insert({user_id:postData.author_id,from_id:uid,type:"comment",post_id:postId,read:false});
     }
-  };
+  }else{
+    setComments(prev=>prev.filter(c=>c.id!==optimistic.id));
+  }
+};
 
   return(
     <>
+    {openStickerDetail&&(
+      <StickerDetailModal
+        sb={sb}
+        stickerId={openStickerDetail}
+        userId={sessionUserId}
+        notify={notify}
+        onClose={()=>setOpenStickerDetail(null)}
+      />
+    )}
     {(()=>{
     const listContent=(
       <>
@@ -2165,6 +2053,7 @@ mentionedIdsRef.current=[];
         </div>
       );
     }
+    
     return(
       <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 0"}}>
         {listContent}
@@ -2187,14 +2076,17 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
   const isMine=comment.author_id===sessionUserId;
   const author=comment.author?normProfile(comment.author):getM(comment.author_id);
 
+  const isPending=typeof comment.id==="string"&&comment.id.startsWith("tmp_");
+
   const loadMeta=useCallback(async()=>{
+    if(isPending)return;
     const[{count:lc},{data:ml},{data:rep}]=await Promise.all([
       sb.from("comment_likes").select("*",{count:"exact",head:true}).eq("comment_id",comment.id),
       sb.from("comment_likes").select("id").eq("comment_id",comment.id).eq("user_id",sessionUserId).maybeSingle(),
       sb.from("comment_replies").select("*, author:profiles(*)").eq("parent_comment_id",comment.id).order("created_at"),
     ]);
     setLikes(lc||0);setLiked(!!ml);setReplies(rep||[]);
-  },[comment.id,sessionUserId]);
+  },[comment.id,sessionUserId,isPending]);
 
   useEffect(()=>{loadMeta();},[loadMeta]);
 
@@ -2281,7 +2173,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
        {/* Texte */}
         {comment.text&&<><p style={{margin:"0 0 6px",fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>normalizeSearch(u.prenom)===normalizeSearch(username)||normalizeSearch(`${u.prenom||""} ${u.nom||""}`).replace(/\s+/g,"").includes(normalizeSearch(username).replace(/\s+/g,"")));if(m){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{if(data?.length){const match=data.find(u=>u.prenom?.toLowerCase()===username)||(data[0]);if(match?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:match.id}}));}});})}</p><TranslateBtn text={comment.text}/></>}
 {comment.sticker_id&&comment.media_url&&(
-  <img src={comment.media_url} alt="" style={{width:90,height:90,objectFit:"contain",display:"block",marginBottom:8}}/>
+  <img src={comment.media_url} alt="" onClick={()=>setOpenStickerDetail(comment.sticker_id)} style={{width:90,height:90,objectFit:"contain",display:"block",marginBottom:8,cursor:"pointer"}}/>
 )}
 {!comment.sticker_id&&comment.media_url&&(
   <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
@@ -2485,6 +2377,7 @@ useEffect(()=>{
   getM={getM}
   onCountChange={setCmtCount}
   targetCommentId={post._targetCommentId||null}
+  notify={notify}
 />
             <div ref={bottomRef}/>
           </div>
@@ -2493,19 +2386,19 @@ useEffect(()=>{
     </>
   );
 }
-function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300}){
+function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify}){
   const [cmtCount,setCmtCount]=useState(0);
   return(
     <div style={{position:"fixed",inset:0,zIndex,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onMouseDown={e=>{if(e.target===e.currentTarget)e.preventDefault();}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",animation:"slideUp .3s cubic-bezier(0.34,1.1,0.64,1)"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,height:"85vh",display:"flex",flexDirection:"column",animation:"slideUp .3s cubic-bezier(0.34,1.1,0.64,1)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
           <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>{cmtCount>0?`${cmtCount} commentaire${cmtCount>1?"s":""}`:"Commentaires"}</p>
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
-        <div style={{flex:1,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
-          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={setCmtCount} targetCommentId={null} standalone/>
+        <div style={{flex:1,minHeight:0,overflow:"visible",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={setCmtCount} targetCommentId={null} standalone notify={notify}/>
         </div>
       </div>
     </div>
@@ -2522,6 +2415,7 @@ const [uploadPct,setUploadPct]=useState(0);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
 const [videoTrimSrc,setVideoTrimSrc]=useState(null);
+
 const [showCameraStudio,setShowCameraStudio]=useState(false);
 const [evTitle,setEvTitle]=useState("");
 const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
@@ -3085,8 +2979,7 @@ setUploading(false);setUploadPct(0);
 {type==="text"
   ?<textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Partagez votre statut…" maxLength={280} rows={4}
     style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:8,transition:"all .3s"}}/>
-          :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>
-        }
+          :<input value={text} onChange={e=>setText(e.target.value)} placeholder="Légende (optionnel)" maxLength={150} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",marginBottom:12}}/>}
         <div style={{display:"flex",gap:8,marginTop:8}}>
          
           <Btn onClick={onClose} style={{flex:1,padding:"14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:14,fontWeight:600}}>Annuler</Btn>
@@ -5257,6 +5150,7 @@ const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
 const [videoTrimSrc,setVideoTrimSrc]=useState(null);
+const [openStickerDetail,setOpenStickerDetail]=useState(null);
 const [geminiMsgs,setGeminiMsgs]=useState(()=>{try{const c=localStorage.getItem("celeste_ia_history");return c?JSON.parse(c):[];}catch(e){return[];}});
 const [geminiInp,setGeminiInp]=useState("");
 const [geminiLoading,setGeminiLoading]=useState(false);
@@ -5443,7 +5337,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   const sendSticker=async(sticker)=>{
     setShowStickerPicker(false);
     await sendMsg({type:"sticker",text:"",file_url:sticker.url,sticker_id:sticker.id});
-    sb.rpc("increment_sticker_usage",{sticker_id:sticker.id}).catch(()=>{});
+    Promise.resolve(sb.rpc("increment_sticker_usage",{sticker_id:sticker.id})).catch(()=>{});
   };
 
 const cropImage=src=>new Promise(resolve=>{
@@ -5572,6 +5466,15 @@ const handleFile=async(e,isImg)=>{
           onDone={data=>{videoTrimSrc.resolve(data);}}
         />
       )}
+      {openStickerDetail&&(
+  <StickerDetailModal
+    sb={sb}
+    stickerId={openStickerDetail}
+    userId={session?.user?.id}
+    notify={notify}
+    onClose={()=>setOpenStickerDetail(null)}
+  />
+)}
       <input ref={fRef} type="file" accept="*/*" style={{display:"none"}} onChange={e=>handleFile(e,false)}/>
       <input ref={iRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={e=>handleFile(e,true)}/>
       <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBgPhoto}/>
@@ -5664,7 +5567,7 @@ const handleFile=async(e,isImg)=>{
   </div>
 )}
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
-                  {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" style={{width:100,height:100,objectFit:"contain",display:"block"}}/>}
+                  {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" onClick={e=>{e.stopPropagation();m.sticker_id&&setOpenStickerDetail(m.sticker_id);}} style={{width:100,height:100,objectFit:"contain",display:"block",cursor:m.sticker_id?"pointer":"default"}}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
@@ -6142,6 +6045,11 @@ if(user?.status==="suspended") return(
                 <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
                   <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
                 </div>
+                {p.profile_pinned&&(
+                  <div style={{position:"absolute",top:6,left:6,background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}}>
+                    <Pin size={11} color={T.goldL}/>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -6379,6 +6287,7 @@ if(blocked||blockedByOther) return(
               :<>
                 {p.img&&<MediaPlayer url={p.img} style={{maxHeight:200}} onImageClick={()=>onImageView(p.img)}/>}
                 <div style={{padding:14}}>
+                  {p.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.goldL,fontWeight:700,marginBottom:6}}><Pin size={10}/>Épinglé</span>}
                   <p style={{margin:"0 0 6px",fontSize:13,color:T.text,lineHeight:1.6}}>{p.text||p.title}</p>
                   <span style={{fontSize:11,color:T.muted}}>{ago(p.ts)} · ❤ {(p.likes||[]).length}</span>
                 </div>
@@ -7694,7 +7603,7 @@ const openPostFromSound=(post,soundPosts)=>{
               <input value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} placeholder="Prénom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.prenom.length-12)*0.5),outline:"none"}}/>
 <input value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Nom" style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:Math.max(10,13-Math.max(0,form.nom.length-12)*0.5),outline:"none"}}/>
             </div>
-            <input value={form.paroisse} onChange={e=>setForm(f=>({...f,paroisse:e.target.value}))} placeholder="Paroisse" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
+            <input value={form.paroisse} onChange={e=>setForm(f=>({...f,paroisse:e.target.value}))} placeholder="Ville" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
             <textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Bio…" rows={3} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.6}}/>
             {(myProfile?.badge==="friend"&&myProfile?.country==="CG")&&(
               <input value={form.shop_link||""} onChange={e=>setForm(f=>({...f,shop_link:e.target.value}))} placeholder="🛍️ Lien boutique (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
@@ -8010,6 +7919,59 @@ function WithdrawalRequests({notify}){
   );
 }
 
+// ── PLAINTES DE RETRAIT ───────────────────────────────────
+function WalletComplaints({notify}){
+  const [complaints,setComplaints]=useState([]);
+  const [open,setOpen]=useState(false);
+
+  const load=async()=>{
+    const{data}=await sb.from("wallet_complaints").select("*,user:profiles!wallet_complaints_user_id_fkey(prenom,nom)").eq("status","open").order("created_at",{ascending:false});
+    setComplaints(data||[]);
+  };
+
+  const resolve=async(c,replyText)=>{
+    await sb.from("wallet_complaints").update({status:"resolved",reply:replyText||null,resolved_at:new Date().toISOString()}).eq("id",c.id);
+    if(replyText){
+      await sb.from("notifications").insert({user_id:c.user_id,from_id:null,type:"wallet_complaint_reply",text:`Réponse de l'équipe à ta plainte : ${replyText}`,read:false});
+    }
+    notify("Plainte marquée résolue ✦");
+    load();
+  };
+
+  useEffect(()=>{
+    load();
+    const ch=sb.channel("wallet_complaints_live")
+      .on("postgres_changes",{event:"*",schema:"public",table:"wallet_complaints"},()=>load())
+      .subscribe();
+    return()=>sb.removeChannel(ch);
+  },[]);
+
+  useEffect(()=>{if(open)load();},[open]);
+
+  return(
+    <>
+      <button onClick={()=>setOpen(o=>!o)} style={{width:"100%",padding:"11px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,color:"#f87171",fontSize:13,fontWeight:600,cursor:"pointer",marginTop:8}}>
+        ⚠️ Plaintes de retrait ({complaints.length})
+      </button>
+      {open&&complaints.map(c=>(
+        <div key={c.id} style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)",marginTop:6}}>
+          <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:"#F5F0E8"}}>{c.user?.prenom} {c.user?.nom} · {Math.abs(c.amount||0).toLocaleString("fr-FR")} F CFA</p>
+          <p style={{margin:"0 0 4px",fontSize:11,color:"#9A9690"}}>{new Date(c.created_at).toLocaleDateString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</p>
+          <p style={{margin:"0 0 10px",fontSize:13,color:"#F0C96A"}}>{c.message}</p>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{const r=window.prompt("Réponse envoyée au membre :");if(r?.trim())resolve(c,r.trim());}} style={{flex:1,padding:"8px",background:"rgba(201,149,42,0.1)",border:"1px solid rgba(201,149,42,0.3)",borderRadius:10,color:"#C9952A",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              💬 Répondre
+            </button>
+            <button onClick={()=>resolve(c,null)} style={{padding:"8px 12px",background:"rgba(61,184,116,0.1)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:10,color:"#4ade80",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              ✓
+            </button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 // ── ADMIN PANEL ───────────────────────────────────────────
 function AdminPanel({onClose,notify,reload,reloadPosts,session}){
   const [list,setList]=useState([]);
@@ -8023,7 +7985,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session}){
 
   useEffect(()=>{
     sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
-    sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom),post:posts(id,text,media_urls,img_url)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
+    sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom),post:posts(id,text,media_urls,img_url),sticker:stickers(id,name,url,type,added_by_admin,author_id)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
     sb.from("posts").select(`*,author:profiles(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
   },[]);
 
@@ -8065,6 +8027,8 @@ if(data)setList(data.map(normProfile));
   };
 
   const norm=s=>(s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+const stickerReports=(allReports||[]).filter(r=>r.sticker_id);
+const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
   const allMembers=(list||[]).filter(m=>m.status!=="pending");
   const pending=(list||[]).filter(m=>m.status==="pending");
   const suspended=(list||[]).filter(m=>m.status==="suspended");
@@ -8088,14 +8052,14 @@ if(data)setList(data.map(normProfile));
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
-          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${allReports.length})`},{id:"sons",l:"Sons"},{id:"stickers",l:"Stickers"}].map(f=>(
+          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${otherReports.length})`},{id:"sticker_reports",l:`Stickers signalés (${stickerReports.length})`},{id:"sons",l:"Sons"},{id:"stickers",l:"Stickers"}].map(f=>(
 
           <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
               {f.l}
             </Btn>
           ))}
         </div>
-        {filter!=="reports"&&(
+        {filter!=="reports"&&filter!=="sticker_reports"&&(
           <div style={{padding:"10px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"9px 12px"}}>
               <Search size={15} color={T.muted}/>
@@ -8111,10 +8075,45 @@ if(data)setList(data.map(normProfile));
   ?<AdminSoundsPanel sb={sb} notify={notify} T={T} />
   :filter==="stickers"
   ?<AdminStickersPanel sb={sb} notify={notify} T={T} />
-  :filter==="reports"
+  :filter==="sticker_reports"
             ?<div>
-              {(allReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun signalement</p>}
-              {(allReports||[]).map(r=>(
+              {(stickerReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun sticker signalé</p>}
+              {(stickerReports||[]).map(r=>(
+                <div key={r.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:"rgba(200,64,64,0.03)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <span style={{fontSize:10,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700}}>🚨 STICKER SIGNALÉ</span>
+                    <span style={{fontSize:10,color:T.muted}}>{new Date(r.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.muted}}><strong>Par :</strong> {r.reporter?.prenom} {r.reporter?.nom}</p>
+                  <p style={{margin:"0 0 8px",fontSize:12,color:T.goldL}}><strong>Raison :</strong> {r.reason}</p>
+                  {r.sticker?(
+                    <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px",background:"rgba(255,255,255,0.04)",borderRadius:10,borderLeft:`3px solid ${T.err}`}}>
+                      <div style={{width:56,height:56,borderRadius:10,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
+                        {r.sticker.type==="animated"
+                          ?<video src={r.sticker.url} autoPlay loop muted playsInline style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                          :<img src={r.sticker.url} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{margin:0,fontSize:12,fontWeight:700,color:T.text}}>{r.sticker.name}</p>
+                        <p style={{margin:0,fontSize:10,color:T.muted}}>{r.sticker.added_by_admin?"Sticker officiel":"Ajouté par un membre"}</p>
+                      </div>
+                      <Btn onClick={async()=>{
+                        if(!window.confirm(`Supprimer le sticker "${r.sticker.name}" de toute l'application ?`))return;
+                        await sb.from("stickers").delete().eq("id",r.sticker.id);
+                        setAllReports(p=>p.filter(x=>x.id!==r.id||x.sticker_id!==r.sticker_id));
+                        notify("Sticker supprimé");
+                      }} style={{fontSize:11,color:T.err,fontWeight:700,padding:"6px 10px",border:`1px solid ${T.err}55`,borderRadius:8,flexShrink:0}}>Supprimer</Btn>
+                    </div>
+                  ):(
+                    <p style={{margin:0,fontSize:11,color:T.muted,fontStyle:"italic"}}>Sticker déjà supprimé</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            :filter==="reports"
+            ?<div>
+  {(otherReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun signalement</p>}
+  {(otherReports||[]).map(r=>(
                 <div key={r.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:"rgba(200,64,64,0.03)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                     <span style={{fontSize:10,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700}}>🚨 SIGNALEMENT</span>
@@ -8264,6 +8263,7 @@ if(data)setList(data.map(normProfile));
 
           {/* Retraits en attente */}
           <WithdrawalRequests notify={notify}/>
+          <WalletComplaints notify={notify}/>
         </div>
       </div>
     </div>
@@ -8878,13 +8878,13 @@ return updated;
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId),
       sb.from("blocks").select("blocker_id").eq("blocked_id",myId)
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem("celeste_convs_cache",JSON.stringify(filtered));}catch(e){}

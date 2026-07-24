@@ -57,11 +57,11 @@ export default function AdminStickersPanel({ sb, notify, T }) {
       )
     : stickers;
 
-  const onFileChosen = (e) => {
+  const onFileChosen = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    const isAnimated = f.type === "image/gif" || f.name.toLowerCase().endsWith(".gif");
+    const isAnimated = await isFileAnimated(f);
     const limit = isAnimated ? MAX_ANIM_BYTES : MAX_STATIC_BYTES;
     if (f.size > limit) {
       notify(`Fichier trop lourd — max ${isAnimated ? "2 Mo (animé)" : "1 Mo (statique)"}`);
@@ -77,10 +77,11 @@ export default function AdminStickersPanel({ sb, notify, T }) {
     setUploading(true);
     try {
       let toUpload = file;
-      if (detectedType === "static" && file.type !== "image/gif") {
+      if (detectedType === "static") {
         toUpload = await resizeStaticImage(file);
       }
-      const ext = detectedType === "animated" ? "gif" : "png";
+      const isWebp = file.type === "image/webp" || file.name.toLowerCase().endsWith(".webp");
+      const ext = detectedType === "animated" ? (isWebp ? "webp" : "gif") : "png";
       const path = `stickers/admin_${Date.now()}.${ext}`;
       const url = await uploadToR2(toUpload, path);
       const tagList = tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);

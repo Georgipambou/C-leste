@@ -41,7 +41,10 @@ function isLightBg(hex) {
 }
 
 // ── Utilitaire : découpe un texte sur plusieurs lignes pour le canvas ──
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+// anchorLeft=false (défaut) : x est le CENTRE du bloc (carte de texte plein écran).
+// anchorLeft=true : x est le bord GAUCHE du bloc, comme en aperçu live (overlay glissé à la main) —
+// sans ça le texte exporté se retrouvait décalé vers la gauche par rapport à sa position à l'écran.
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, bgColor, anchorLeft) {
   const paragraphs = String(text || " ").split("\n");
   const lines = [];
   paragraphs.forEach((para) => {
@@ -57,7 +60,18 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     lines.push(line);
   });
   const startY = y - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
+  const widest = Math.max(...lines.map((l) => ctx.measureText(l.trim()).width));
+  const drawX = anchorLeft ? x + widest / 2 : x;
+  if (bgColor) {
+    const padX = 14, padY = 8;
+    ctx.save();
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(drawX - widest / 2 - padX, startY - lineHeight / 2 - padY, widest + padX * 2, lines.length * lineHeight + padY * 2);
+    ctx.restore();
+  }
+  lines.forEach((l, i) => ctx.fillText(l.trim(), drawX, startY + i * lineHeight));
 }
 
 // ── Utilitaire : réincruste les overlays (texte/image/vidéo) sur une vidéo capturée ──
@@ -187,7 +201,7 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
           ctx.shadowBlur = 10 * s;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * canvas.width, ov.size * s * 1.2);
+          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * canvas.width, ov.size * s * 1.2, ov.bg, true);
         } else if (ov.el) {
           ctx.drawImage(ov.el, ov.x * sx, ov.y * sy, ov.size * s, ov.size * s);
         }
@@ -335,6 +349,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const [panel,      setPanel]      = useState(null);
   const [newText,    setNewText]    = useState("");
   const [txtColor,   setTxtColor]   = useState("#FFFFFF");
+  const [txtBg,      setTxtBg]      = useState(null); // null | "#FFFFFF" | "#000000"
   const [txtSize,    setTxtSize]    = useState(24);
   const [txtFont,    setTxtFont]    = useState("Space Grotesk");
 
@@ -640,7 +655,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     window.removeEventListener("pointercancel", cancel);
     if (!moved && evEnd?.type !== "pointercancel") {
       setActiveOv(ov);
-      if (ov?.type === "text") { setNewText(ov.value); setTxtColor(ov.color); setTxtSize(ov.size); setTxtFont(ov.font); setPanel("text"); }
+      if (ov?.type === "text") { setNewText(ov.value); setTxtColor(ov.color); setTxtBg(ov.bg || null); setTxtSize(ov.size); setTxtFont(ov.font); setPanel("text"); }
     }
   };
   const cancel = (evCancel) => end(evCancel);
@@ -686,9 +701,9 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const confirmText = () => {
     if (!newText.trim()) { setPanel(null); return; }
     if (activeOv?.type === "text" && activeOv?.id) {
-      updOv(activeOv.id, { value: newText, color: txtColor, size: txtSize, font: txtFont });
+      updOv(activeOv.id, { value: newText, color: txtColor, bg: txtBg, size: txtSize, font: txtFont });
     } else {
-      addOverlay({ type: "text", value: newText, color: txtColor, size: txtSize, font: txtFont });
+      addOverlay({ type: "text", value: newText, color: txtColor, bg: txtBg, size: txtSize, font: txtFont });
     }
     setNewText(""); setPanel(null); setActiveOv(null);
   };
@@ -721,7 +736,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
           ctx.font = `bold ${ov.size * s}px "${ov.font}"`;
           ctx.fillStyle = ov.color; ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 10 * s;
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * c.width, ov.size * s * 1.2);
+          wrapText(ctx, ov.value, ov.x * sx, ov.y * sy, 0.72 * c.width, ov.size * s * 1.2, ov.bg, true);
         } else if (ov.type === "image" || ov.type === "video") {
           const oi = ov.el || new Image();
           if (!ov.el) { oi.src = ov.value; await new Promise((r) => { oi.onload = r; oi.onerror = r; }); }
@@ -926,8 +941,9 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
                <div key={ov.id} onPointerDown={(e) => pDown(e, ov.id)}
                 style={{ position: "absolute", left: ov.x, top: ov.y, cursor: "move", userSelect: "none", touchAction: "none" }}>                {ov.type === "text" && (
                    <span style={{ fontFamily: `'${ov.font}',sans-serif`, fontSize: ov.size, color: ov.color, fontWeight: 700,
-                    textShadow: "0 2px 14px rgba(0,0,0,0.95)", whiteSpace: "pre-wrap", wordBreak: "break-word",
-                    display: "block", maxWidth: "72vw", textAlign: "center",
+                    textShadow: ov.bg ? "none" : "0 2px 14px rgba(0,0,0,0.95)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+                    display: "block", maxWidth: "72vw", textAlign: "center", background: ov.bg || "transparent",
+                    padding: ov.bg ? "6px 12px" : 0, borderRadius: ov.bg ? 6 : 0,
                     pointerEvents: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
                     {ov.value}
                   </span>
@@ -990,7 +1006,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
           {phase === "preview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", pointerEvents: "auto" }}>
-              <button onClick={() => { setNewText(""); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
+              <button onClick={() => { setNewText(""); setTxtBg(null); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16} /></button>
               {isVid && <button onClick={pickOverlayVideo} style={Ic()}><Video size={16} /></button>}
              <SoundPickerButton sb={sb} value={selectedSound} onChange={handleSoundPicked} userId={userId} T={T} />
@@ -1133,12 +1149,17 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
               style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16,
                 padding: "12px 16px", color: txtColor, fontSize: Math.min(txtSize, 22), fontFamily: `'${txtFont}',sans-serif`,
                 fontWeight: 700, outline: "none", marginBottom: 14, letterSpacing: .3, resize: "none", lineHeight: 1.3 }} />
-            <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 9, marginBottom: 12, alignItems: "center" }}>
               {COLORS.map((c) => (
                 <div key={c} onClick={() => setTxtColor(c)}
                   style={{ width: 30, height: 30, borderRadius: "50%", background: c, cursor: "pointer", flexShrink: 0,
                     border: `2.5px solid ${txtColor === c ? "#C9952A" : "rgba(255,255,255,0.08)"}`, transition: "border .15s", boxShadow: "0 1px 6px rgba(0,0,0,0.6)" }} />
               ))}
+              <button onClick={() => setTxtBg(txtBg === null ? "#FFFFFF" : txtBg === "#FFFFFF" ? "#000000" : null)}
+                title="Fond du texte"
+                style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, cursor: "pointer", fontSize: 12, fontWeight: 800,
+                  border: `2.5px solid ${txtBg ? "#C9952A" : "rgba(255,255,255,0.08)"}`,
+                  background: txtBg || "rgba(255,255,255,0.04)", color: txtBg === "#FFFFFF" ? "#000" : "#fff" }}>Aa</button>
             </div>
             <div style={{ display: "flex", gap: 7, marginBottom: 11 }}>
               {SIZES.map((s) => {

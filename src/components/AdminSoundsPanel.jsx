@@ -57,7 +57,13 @@ export default function AdminSoundsPanel({ sb, notify, T }) {
 
   const remove = async (s) => {
     if (!window.confirm(`Supprimer "${s.title}" de toute l'application ?`)) return;
-    await sb.from("sounds").delete().eq("id", s.id);
+    const { error } = await sb.from("sounds").delete().eq("id", s.id);
+    if (error) {
+      notify(error.code === "23503"
+        ? "Impossible : ce son est encore utilisé par des publications"
+        : "Erreur : " + error.message);
+      return;
+    }
     setSounds((p) => p.filter((x) => x.id !== s.id));
     notify("Son supprimé");
   };

@@ -13,6 +13,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, X, Clock, Star, User, Plus, Sticker as StickerIcon } from "lucide-react";
 import { uploadToR2 } from "../uploadMedia";
+import VideoTrimModal from "./VideoTrimModal";
+
+const STICKER_ANIM_MAX_SECS = 5; // durée max d'un sticker animé
 
 const MAX_DIM = 512;
 const MAX_STATIC_BYTES = 1 * 1024 * 1024;
@@ -46,6 +49,22 @@ const resizeStaticImage = (file) => new Promise((resolve, reject) => {
   img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image invalide")); };
   img.src = url;
 });
+async function isFileAnimated(file) {
+  const isGif = file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif");
+  if (isGif) return true;
+  const isWebp = file.type === "image/webp" || file.name.toLowerCase().endsWith(".webp");
+  if (!isWebp) return false;
+  try {
+    const buf = await file.slice(0, 40).arrayBuffer();
+    const b = new Uint8Array(buf);
+    const str = (start, len) => String.fromCharCode(...b.slice(start, start + len));
+    if (str(0, 4) !== "RIFF" || str(8, 4) !== "WEBP") return false;
+    if (str(12, 4) === "VP8X") return !!(b[20] & 0x02); // bit ANIM
+    return false; // WEBP simple, jamais animé
+  } catch {
+    return false;
+  }
+}
 
 const RECENTS_KEY = "celeste_recent_stickers";
 const loadRecentIds = () => { try { return JSON.parse(localStorage.getItem(RECENTS_KEY)) || []; } catch { return []; } };
@@ -69,6 +88,8 @@ export default function StickerPicker({ sb, userId, T, onSelect, onClose }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [videoTrimSrc, setVideoTrimSrc] = useState(null);
+  const [pendingVideoName, setPendingVideoName] = useState("");
   const fileRef = useRef(null);
 
   const fetchTab = useCallback(async (which) => {
@@ -121,22 +142,14 @@ export default function StickerPicker({ sb, userId, T, onSelect, onClose }) {
     onSelect?.(sticker);
   }, [onSelect]);
 
-  const onFileChosen = useCallback(async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f || !userId) return;
-    const isAnimated = f.type === "image/gif" || f.name.toLowerCase().endsWith(".gif");
-    const limit = isAnimated ? MAX_ANIM_BYTES : MAX_STATIC_BYTES;
-    if (f.size > limit) { alert(`Fichier trop lourd — max ${isAnimated ? "2 Mo" : "1 Mo"}`); return; }
+  const uploadSticker = useCallback(async (blob, ext, type, rawName) => {
     setUploading(true);
     try {
-      const toUpload = isAnimated ? f : await resizeStaticImage(f);
-      const ext = isAnimated ? "gif" : "png";
+      const name = (rawName || "Sticker").slice(0, 40) || "Sticker";
       const path = `stickers/user_${userId}_${Date.now()}.${ext}`;
-      const url = await uploadToR2(toUpload, path);
-      const name = f.name.replace(/\.[^/.]+$/, "").slice(0, 40) || "Sticker";
+      const url = await uploadToR2(blob, path);
       const { data, error } = await sb.from("stickers").insert({
-        name, url, type: isAnimated ? "animated" : "static", format: ext,
+        name, url, type, format: ext,
         author_id: userId, added_by_admin: false, usage_count: 0,
       }).select().single();
       if (error) throw error;
@@ -150,6 +163,42 @@ export default function StickerPicker({ sb, userId, T, onSelect, onClose }) {
       setUploading(false);
     }
   }, [sb, userId]);
+
+  const onFileChosen = useCallback((e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || !userId) return;
+
+    if (f.type.startsWith("video/")) {
+      setPendingVideoName(f.name.replace(/\.[^/.]+$/, ""));
+      setVideoTrimSrc(URL.createObjectURL(f));
+      return;
+    }
+
+    (async () => {
+      const isAnimated = await isFileAnimated(f);
+      const limit = isAnimated ? MAX_ANIM_BYTES : MAX_STATIC_BYTES;
+      if (f.size > limit) { alert(`Fichier trop lourd — max ${isAnimated ? "2 Mo" : "1 Mo"}`); return; }
+      const isWebp = f.type === "image/webp" || f.name.toLowerCase().endsWith(".webp");
+      const toUpload = isAnimated ? f : await resizeStaticImage(f);
+      const ext = isAnimated ? (isWebp ? "webp" : "gif") : "png";
+      await uploadSticker(toUpload, ext, isAnimated ? "animated" : "static", f.name.replace(/\.[^/.]+$/, ""));
+    })();
+  }, [uploadSticker, userId]);
+
+  const onVideoTrimDone = useCallback(async (data) => {
+    setVideoTrimSrc(null);
+    try {
+      let blob = data.file;
+      if (!blob) {
+        const res = await fetch(data.src);
+        blob = await res.blob();
+      }
+      await uploadSticker(blob, "webm", "animated", pendingVideoName);
+    } catch (err) {
+      alert("Erreur : " + err.message);
+    }
+  }, [uploadSticker, pendingVideoName]);
 
   const displayed = searchResults !== null ? searchResults : lists[tab];
   const activeLabel = searchResults !== null ? "Résultats" : TABS.find((t) => t.id === tab)?.label;
@@ -268,7 +317,15 @@ export default function StickerPicker({ sb, userId, T, onSelect, onClose }) {
           <Plus size={16} />
         </button>
       </div>
-      <input ref={fileRef} type="file" accept="image/png,image/webp,image/gif" style={{ display: "none" }} onChange={onFileChosen} disabled={uploading} />
+      <input ref={fileRef} type="file" accept="image/png,image/webp,image/gif,video/*" style={{ display: "none" }} onChange={onFileChosen} disabled={uploading} />
+      {videoTrimSrc && (
+        <VideoTrimModal
+          videoSrc={videoTrimSrc}
+          maxDuration={STICKER_ANIM_MAX_SECS}
+          onClose={() => setVideoTrimSrc(null)}
+          onDone={onVideoTrimDone}
+        />
+      )}
     </div>
   );
 }
