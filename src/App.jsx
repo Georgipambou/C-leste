@@ -488,9 +488,19 @@ const hm = ts => new Date(ts).toLocaleTimeString("fr",{hour:"2-digit",minute:"2-
 const initials = (p="",n="") => ((p[0]||"")+(n[0]||"")).toUpperCase()||"?";
 const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#50A0A0","#A06090"];
 const colorFor = id => PALETTE[(id?.charCodeAt(0)||0)%PALETTE.length];
-const renderTextWithMentions = (text, onMentionClick) => {
+const renderTextWithMentions = (text, mentions=[]) => {
   if (!text) return "";
-  const parts = text.split(/(https?:\/\/[^\s]+|@[a-zA-Z0-9_àâäéèêëîïôöùûüç_]+)/gi);
+  // Les noms mentionnés peuvent contenir des espaces/points/tirets (ex: "M. D.", "Jean-Marc").
+  // On construit donc le motif de découpage à partir des vrais noms enregistrés,
+  // du plus long au plus court, pour ne jamais couper un nom au milieu.
+  const knownNames=[...new Set((mentions||[]).map(m=>m?.name).filter(Boolean))].sort((a,b)=>b.length-a.length);
+  const escapeRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const knownPattern=knownNames.length?knownNames.map(n=>"@"+escapeRe(n)).join("|"):null;
+  const splitRe=knownPattern
+    ?new RegExp(`(https?:\\/\\/[^\\s]+|${knownPattern}|@[a-zA-Z0-9_àâäéèêëîïôöùûüç_]+)`,"gi")
+    :/(https?:\/\/[^\s]+|@[a-zA-Z0-9_àâäéèêëîïôöùûüç_]+)/gi;
+  let mentionCursor=0;
+  const parts = text.split(splitRe);
   return parts.map((part, i) => {
     if (/^https?:\/\//.test(part)) {
       return (
@@ -503,19 +513,22 @@ const renderTextWithMentions = (text, onMentionClick) => {
     }
     if (part.startsWith("@")) {
       const username=part.substring(1).toLowerCase();
+      let resolvedId=null;
+      for(let j=mentionCursor;j<(mentions||[]).length;j++){
+        if((mentions[j]?.name||"").toLowerCase()===username){resolvedId=mentions[j].id;mentionCursor=j+1;break;}
+      }
       return (
         <span key={i}
           onClick={(e)=>{
             e.stopPropagation();
             e.preventDefault();
-            // 1. Chercher dans members (cache local)
+            if(resolvedId){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:resolvedId}}));return;}
             const m=(window.__celesteMembers||[]).find(u=>
               u.prenom?.toLowerCase()===username||
               `${u.prenom||""} ${u.nom||""}`.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,""))||
               u.name?.toLowerCase().replace(/\s+/g,"").includes(username.replace(/\s+/g,""))
             );
             if(m?.id){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}
-            // 2. Fallback : chercher dans Supabase
             sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{
               if(data?.length){
                 const match=data.find(u=>u.prenom?.toLowerCase()===username||(u.prenom?.toLowerCase()||"")+(u.nom?.toLowerCase()||"")===username);
@@ -531,6 +544,20 @@ const renderTextWithMentions = (text, onMentionClick) => {
     }
     return part;
   });
+};
+
+const extractMentions=(text,nameMap)=>{
+  if(!text||!nameMap?.size)return[];
+  const names=[...nameMap.keys()].sort((a,b)=>b.length-a.length);
+  const escapeRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const re=new RegExp(`@(${names.map(escapeRe).join("|")})`,"gi");
+  const found=[];
+  let m;
+  while((m=re.exec(text))){
+    const entry=nameMap.get(m[1].toLowerCase());
+    if(entry)found.push(entry);
+  }
+  return found;
 };
 const normProfile = p => ({
   isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
@@ -1806,8 +1833,9 @@ const filtered=(members||[]).filter(m=>matchQuery(m.fullName,query)).slice(0,8);
     if(member.id==="__loading__")return;
     const textBeforeCursor=value.slice(0,cursorPos);
     const textAfterCursor=value.slice(cursorPos);
-    const newText=textBeforeCursor.replace(/@[\w\u00C0-\u017F]*$/,"@"+(member.prenom||member.name||member.fullName||"")+" ")+textAfterCursor;
-    onChange(newText,member.id);
+    const mentionName=member.prenom||member.name||member.fullName||"";
+    const newText=textBeforeCursor.replace(/@[\w\u00C0-\u017F]*$/,"@"+mentionName+" ")+textAfterCursor;
+    onChange(newText,member.id,mentionName);
     setShowSuggestions(false);
     ref.current?.focus();
   };
@@ -1861,6 +1889,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentI
   const [showStickerPicker,setShowStickerPicker]=useState(false);
   const [openStickerDetail,setOpenStickerDetail]=useState(null);
 const mentionedIdsRef=useRef([]);
+const mentionNameMapRef=useRef(new Map());
   const textareaRef=useRef(null);
   const imgRef=useRef(null);
   const visibleCountRef=useRef(0);
@@ -1876,7 +1905,7 @@ const mentionedIdsRef=useRef([]);
    const from=(page-1)*30;
    const to=Math.max(from+29,minCount-1);
     const{data}=await sb.from("comments")
-      .select("id,post_id,author_id,text,media_url,sticker_id,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
+      .select("id,post_id,author_id,text,mentions,media_url,sticker_id,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
       .eq("post_id",postId)
       .order("created_at",{ascending:true})
       .range(from,to);
@@ -1943,7 +1972,7 @@ useEffect(()=>{
 }
     }
    const uid=(await sb.auth.getUser())?.data?.user?.id;
-const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl});
+const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl,mentions:extractMentions(trimmed,mentionNameMapRef.current)});
     if(!error){
       await sb.rpc("increment_phase_interactions",{post_id:postId});
       setText("");
@@ -1973,6 +2002,7 @@ for(const mentionedId of uniqueIds){
   }
 }
 mentionedIdsRef.current=[];
+mentionNameMapRef.current=new Map();
     }
     setPosting(false);
   };
@@ -2053,7 +2083,7 @@ mentionedIdsRef.current=[];
         </div>
         <MentionInput
           value={text}
-          onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
+          onChange={(val,mentionedId,mentionedName)=>{setText(val);if(mentionedId&&mentionedName){if(!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];mentionNameMapRef.current.set(mentionedName.toLowerCase(),{id:mentionedId,name:mentionedName});}}}
           placeholder="Ajouter un commentaire..."
           members={members||[]}
           onFocus={()=>setHideNav(true)}
@@ -2193,7 +2223,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
         </div>
 
        {/* Texte */}
-        {comment.text&&<><p style={{margin:"0 0 6px",fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,username=>{const m=(members||[]).find(u=>normalizeSearch(u.prenom)===normalizeSearch(username)||normalizeSearch(`${u.prenom||""} ${u.nom||""}`).replace(/\s+/g,"").includes(normalizeSearch(username).replace(/\s+/g,"")));if(m){window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));return;}sb.from("profiles").select("id,prenom,nom").ilike("prenom",`${username}%`).limit(5).then(({data})=>{if(data?.length){const match=data.find(u=>u.prenom?.toLowerCase()===username)||(data[0]);if(match?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:match.id}}));}});})}</p><TranslateBtn text={comment.text}/></>}
+        {comment.text&&<><p style={{margin:"0 0 6px",fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,comment.mentions)}</p><TranslateBtn text={comment.text}/></>}
 {comment.sticker_id&&comment.media_url&&(
   <img src={comment.media_url} alt="" onClick={()=>setOpenStickerDetail(comment.sticker_id)} style={{width:90,height:90,objectFit:"contain",display:"block",marginBottom:8,cursor:"pointer"}}/>
 )}
@@ -2349,7 +2379,7 @@ useEffect(()=>{
                 {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
               </div>
               :<>
-              {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>normalizeSearch(u.prenom)===normalizeSearch(username)||matchQuery(`${u.prenom||""} ${u.nom||""}`, username));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>}
+              {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,post.mentions)}</p>}
   {(()=>{
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   if(allMedia.length===0)return null;
@@ -2462,6 +2492,7 @@ useEffect(()=>{
 },[]);
 const vRef=useRef();
 const mentionedIdsRef=useRef([]);
+const mentionNameMapRef=useRef(new Map());
 const lastVideoFileRef=useRef(null);
 const {members}=useApp();
 
@@ -2551,7 +2582,8 @@ try {
       is_private:isPrivate||false,
 whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
 contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
-expires_at:isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null
+expires_at:isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null,
+      mentions:extractMentions(text.trim(),mentionNameMapRef.current)
     });
     setBusy(false);
 if(!error){
@@ -2584,6 +2616,7 @@ if(!error){
       sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un post`}});
     }
     mentionedIdsRef.current=[];
+    mentionNameMapRef.current=new Map();
   }
   onPost();
 }
@@ -2674,7 +2707,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
             {/* Zone texte */}
            <MentionInput
   value={text}
-  onChange={(val,mentionedId)=>{setText(val);if(mentionedId&&!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];}}
+  onChange={(val,mentionedId,mentionedName)=>{setText(val);if(mentionedId&&mentionedName){if(!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];mentionNameMapRef.current.set(mentionedName.toLowerCase(),{id:mentionedId,name:mentionedName});}}}
   placeholder="Quoi de neuf ?"
   rows={4}
   members={members||[]}
@@ -3207,17 +3240,17 @@ if(isMe){
           </div>
         )}
         {current.text&&(
-  current.text_background?(
+  (current.text_background||!current.mediaUrl)?(
     <div style={{
       position:"absolute",inset:0,zIndex:1,
-      background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[current.text_background]||"#000",
+      background:current.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[current.text_background]||"transparent"):"transparent",
       display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 32px",overflow:"hidden"
     }}>
       <p style={{margin:0,maxWidth:"100%",maxHeight:"100%",overflow:"hidden",fontSize:current.text?.length>140?20:(current.text?.length>70?24:28),fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center",whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"anywhere"}}>{current.text}</p>
     </div>
   ):(
     <div style={{position:"absolute",bottom:160,left:16,right:16,zIndex:1,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
-      <p style={{margin:"0 0 4px",fontSize:18,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400,textShadow:"0 1px 8px rgba(0,0,0,0.8)",whiteSpace:"pre-wrap",wordBreak:"break-word",display:textExpanded?"block":"-webkit-box",WebkitLineClamp:textExpanded?"unset":3,WebkitBoxOrient:"vertical",overflow:textExpanded?"visible":"hidden"}}>{renderTextWithMentions(current.text,()=>{})}</p>
+      <p style={{margin:"0 0 4px",fontSize:18,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400,textShadow:"0 1px 8px rgba(0,0,0,0.8)",whiteSpace:"pre-wrap",wordBreak:"break-word",display:textExpanded?"block":"-webkit-box",WebkitLineClamp:textExpanded?"unset":3,WebkitBoxOrient:"vertical",overflow:textExpanded?"visible":"hidden"}}>{renderTextWithMentions(current.text)}</p>
       {current.text?.length>90&&<button onClick={e=>{e.stopPropagation();setTextExpanded(x=>!x);}} style={{background:"none",border:"none",padding:0,color:"#fff",fontSize:13,fontWeight:700,textShadow:"0 1px 8px rgba(0,0,0,0.8)",cursor:"pointer"}}>{textExpanded?"Voir moins ▲":"Voir plus ▼"}</button>}
     </div>
   )
@@ -4116,7 +4149,7 @@ const openPostFromSound=(post,soundPosts)=>{
     const vids=list.filter(isVideoFn);
     const idx=vids.findIndex(v=>v.id===post.id);
     setReelsViewerPosts(vids);
-    pushNav(()=>setReelsIndex(null));
+    if(reelsIndex===null)pushNav(()=>setReelsIndex(null));
     setReelsIndex(idx>=0?idx:0);
   }else{
     const photos=list.filter(p=>!isVideoFn(p));
@@ -4124,7 +4157,7 @@ const openPostFromSound=(post,soundPosts)=>{
     setPhotoViewerPosts(photos);
     setPhotoStartMedia(0);
     if(detailPost){popNav();setDetailPost(null);}
-    pushNav(()=>setPhotoIndex(null));
+    if(photoIndex===null)pushNav(()=>setPhotoIndex(null));
     setPhotoIndex(idx>=0?idx:0);
   }
 };
@@ -4194,7 +4227,7 @@ useEffect(()=>{
       const{postId,commentId}=e.detail;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
         const mapped={
           id:data.id,by:data.author_id,
@@ -4666,7 +4699,7 @@ const [showDeleteReasons,setShowDeleteReasons]=useState(false);
       <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",textOverflow:"ellipsis"}}>{post.text}</p>
     </div>
   ):(
-    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,username=>{const m=(members||[]).find(u=>u.prenom?.toLowerCase()===username.toLowerCase()||`${u.prenom||""} ${u.nom||""}`.toLowerCase().includes(username.toLowerCase()));if(m)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:m.id}}));})}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
+    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,post.mentions)}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,post.mentions)}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
   )
 )}
               {(()=>{
@@ -4798,7 +4831,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -5670,7 +5703,7 @@ const handleFile=async(e,isImg)=>{
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
 {m.type==="video"&&(m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>}
-                  {m.text&&<><p style={{margin:0,fontSize:14,fontWeight:600,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text,()=>{})}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
+                  {m.text&&<><p style={{margin:0,fontSize:14,fontWeight:600,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
                 {inlinePickerMsgId===m.id&&(
@@ -5943,7 +5976,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -6202,7 +6235,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -6331,7 +6364,7 @@ if(blocked||blockedByOther) return(
         title={user.org_name||user.fullName}
         subtitle={<>{orgTypeLabel} · 🌍 {user.org_country||user.paroisse}</>}
         extraLines={<>
-          {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(user.bio,()=>{})}</p>}
+          {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio)}</p>}
           {user.org_desc&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.6,fontStyle:"italic"}}>{user.org_desc}</p>}
         </>}
         stats={[
@@ -7375,7 +7408,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -7541,7 +7574,7 @@ const [myPostsLoading,setMyPostsLoading]=useState(true);
 const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data){
       const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
@@ -7588,7 +7621,7 @@ const openPostFromSound=(post,soundPosts)=>{
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   
@@ -7716,7 +7749,7 @@ const openPostFromSound=(post,soundPosts)=>{
   {myProfile?.badge&&<Badge type={myProfile.badge}/>}
 </div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={13}/>{myProfile?.paroisse}</p>
-           {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio,()=>{})}</p>}
+           {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio)}</p>}
             {myProfile?.shop_link&&(
               <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
                 🛍️ Ma boutique
@@ -8679,7 +8712,7 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
       setTimeout(async()=>{
         const post=(posts||[]).find(p=>p.id===postId);
         if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
-        const{data}=await sb.from("posts").select("id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+        const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
         if(data){
           const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,_targetCommentId:commentId||null};
           pushNav(()=>setDetailPost(null));setDetailPost(mapped);
@@ -8900,7 +8933,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
@@ -8978,7 +9011,7 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>{

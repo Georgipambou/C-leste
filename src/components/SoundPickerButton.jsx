@@ -54,6 +54,7 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
     const { data, error } = await sb
       .from("sounds")
       .select("id,title,url,usage_count,author_name,tags")
+      .eq("is_deleted", false)
       .or(`title.ilike.%${term}%,author_name.ilike.%${term}%,tags.cs.{${term}}`)
       .limit(30);
     if (!error) setLists((l) => ({ ...l, search: data || [] }));
@@ -64,7 +65,7 @@ export default function SoundPickerButton({ sb, value, onChange, userId, T }) {
     if (!sb) return;
     setLoading(true);
     try {
-      let q = sb.from("sounds").select("id,title,url,usage_count,created_by,created_at");
+      let q = sb.from("sounds").select("id,title,url,usage_count,created_by,created_at").eq("is_deleted", false);
       if (which === "trending") q = q.order("usage_count", { ascending: false }).limit(20);
       else if (which === "recent") q = q.order("created_at", { ascending: false }).limit(20);
       else if (which === "mine") {

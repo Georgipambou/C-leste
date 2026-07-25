@@ -13,7 +13,7 @@ export default function AdminSoundsPanel({ sb, notify, T }) {
   const [uploading, setUploading] = useState(false);
 
   const loadSounds = useCallback(async () => {
-    const { data } = await sb.from("sounds").select("*").order("created_at", { ascending: false }).limit(200);
+    const { data } = await sb.from("sounds").select("*").eq("is_deleted", false).order("created_at", { ascending: false }).limit(200);
     setSounds(data || []);
   }, [sb]);
 
@@ -56,12 +56,10 @@ export default function AdminSoundsPanel({ sb, notify, T }) {
   };
 
   const remove = async (s) => {
-    if (!window.confirm(`Supprimer "${s.title}" de toute l'application ?`)) return;
-    const { error } = await sb.from("sounds").delete().eq("id", s.id);
+    if (!window.confirm(`Supprimer "${s.title}" ?\n\nLes publications existantes qui l'utilisent continueront de fonctionner, mais il ne sera plus proposable pour de nouvelles publications.`)) return;
+    const { error } = await sb.from("sounds").update({ is_deleted: true }).eq("id", s.id);
     if (error) {
-      notify(error.code === "23503"
-        ? "Impossible : ce son est encore utilisé par des publications"
-        : "Erreur : " + error.message);
+      notify("Erreur : " + error.message);
       return;
     }
     setSounds((p) => p.filter((x) => x.id !== s.id));

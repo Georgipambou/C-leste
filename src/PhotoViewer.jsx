@@ -258,15 +258,18 @@ export default function PhotoViewer({
     if (activeIdx >= displayPosts.length) setActiveIdx(displayPosts.length - 1);
   }, [displayPosts.length]);
 
-  // ── Scroll initial (vertical + horizontal du post de départ) ──
+  // ── Scroll initial + re-synchronisation quand le parent envoie un
+  // nouveau point de départ (ex: navigation depuis la modale d'un son) ──
   useEffect(() => {
+    setActiveIdx(startIndex);
+    setMediaIdxMap(m => ({ ...m, [startIndex]: startMediaIndex || 0 }));
     const el = containerRef.current;
     if (el) el.scrollTo({ top: startIndex * window.innerHeight, behavior: "auto" });
     const carEl = carouselRefs.current[startIndex];
-    if (carEl && startMediaIndex > 0) {
-      carEl.scrollTo({ left: startMediaIndex * carEl.clientWidth, behavior: "auto" });
+    if (carEl) {
+      carEl.scrollTo({ left: (startMediaIndex || 0) * carEl.clientWidth, behavior: "auto" });
     }
-  }, []);
+  }, [startIndex]);
 
   // ── IntersectionObserver scroll snap (vertical, entre posts) ──
   useEffect(() => {

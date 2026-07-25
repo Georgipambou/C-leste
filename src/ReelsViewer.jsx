@@ -282,11 +282,13 @@ export default function ReelsViewer({
     });
   }, [activeIdx, displayPosts, session?.user?.id]);
 
-  // ── Scroll initial ────────────────────────────────────────────
+  // ── Scroll initial + re-synchronisation quand le parent envoie un
+  // nouveau point de départ (ex: navigation depuis la modale d'un son) ──
   useEffect(() => {
+    setActiveIdx(startIndex);
     const el = containerRef.current;
     if (el) el.scrollTo({ top: startIndex * window.innerHeight, behavior: "auto" });
-  }, []);
+  }, [startIndex]);
 
   // ── IntersectionObserver scroll snap ─────────────────────────
   useEffect(() => {
