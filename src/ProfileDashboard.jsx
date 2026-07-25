@@ -169,6 +169,18 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
       }
     } catch (_) {}
 
+    // Repli : si les 3 signaux ne remplissent pas assez, on complète avec
+    // des profils découvrables au hasard pour que le carrousel ne soit jamais vide/pauvre.
+    const need = 12 - pool.size;
+    if (need > 0) {
+      const excludeAndPoolIds = [...excludeIds, ...pool.keys()];
+      let q = sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,is_discoverable").neq("is_discoverable", false).limit(need * 5);
+      if (excludeAndPoolIds.length > 0) q = q.not("id", "in", `(${excludeAndPoolIds.join(",")})`);
+      const { data: extra } = await q;
+      const shuffledExtra = (extra || []).sort(() => Math.random() - 0.5).slice(0, need);
+      shuffledExtra.forEach(p => { if (!pool.has(p.id)) pool.set(p.id, { id: p.id, reason: "discover" }); });
+    }
+
     const candidateIds = [...pool.keys()];
     if (candidateIds.length === 0) { setSuggestions([]); setLoading(false); return; }
 
@@ -198,7 +210,7 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
     await sb.from("dismissed_suggestions").upsert({ user_id: session?.user?.id, dismissed_id: id }, { onConflict: "user_id,dismissed_id" });
   };
 
-  const reasonLabel = { followsYou: "Vous suit déjà", match: "Compatible avec vous", likesYou: "Aime vos publications" };
+  const reasonLabel = { followsYou: "Vous suit déjà", match: "Compatible avec vous", likesYou: "Aime vos publications", discover: "À découvrir" };
   if (!loading && suggestions.length === 0) return null;
 
   return (

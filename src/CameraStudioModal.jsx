@@ -361,6 +361,11 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const [soundEnd,    setSoundEnd]    = useState(0);   // point de fin (s) du segment choisi dans le son ajouté
   const [selectedSoundDuration, setSelectedSoundDuration] = useState(0);
   const [pendingTrim,  setPendingTrim]  = useState(null); // {file,url,duration} — vidéo importée en attente de recadrage
+  const [pendingCrop,  setPendingCrop]  = useState(null); // {file,url,naturalW,naturalH} — photo importée en attente de rognage
+  const [cropScale,    setCropScale]    = useState(1);
+  const [cropX,        setCropX]        = useState(0);
+  const [cropY,        setCropY]        = useState(0);
+  const cropFrameRef = useRef(null);
   const [trimStart,    setTrimStart]    = useState(0);
   const [trimEnd,      setTrimEnd]      = useState(0);
   const [trimming,     setTrimming]     = useState(false);
@@ -542,7 +547,16 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const onGalleryPick = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
     e.target.value = "";
-    if (!f.type.startsWith("video/")) { finish(f, URL.createObjectURL(f), false); return; }
+    if (!f.type.startsWith("video/")) {
+      const img = new Image();
+      img.src = URL.createObjectURL(f);
+      img.onload = () => {
+        setPendingCrop({ file: f, url: img.src, naturalW: img.naturalWidth, naturalH: img.naturalHeight });
+        setCropScale(1); setCropX(0); setCropY(0);
+        setPhase("crop");
+      };
+      return;
+    }
     const tmp = document.createElement("video");
     tmp.src = URL.createObjectURL(f);
     tmp.onloadedmetadata = () => {
@@ -553,7 +567,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     };
   };
 
-  const cancelTrim = () => { setPendingTrim(null); setPhase("camera"); };
+  const cancelTrim = () => {
+    if (blob) { setPhase("preview"); return; }
+    setPendingTrim(null); setPhase("camera");
+  };
 
   const confirmTrim = async () => {
     if (!pendingTrim) return;
@@ -563,7 +580,6 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     if (noRealCut) {
       setVideoDuration(pendingTrim.duration);
       finish(pendingTrim.file, pendingTrim.url, true);
-      setPendingTrim(null);
       return;
     }
     setTrimming(true);
@@ -573,9 +589,71 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     if (!cut) return;
     setVideoDuration(trimEnd - trimStart);
     finish(cut, URL.createObjectURL(cut), true);
-    setPendingTrim(null);
   };
 
+  // ── Rognage photo (zoom + déplacement dans le cadre 9:16) ────────
+  const cropBounds = () => {
+    const frame = cropFrameRef.current;
+    if (!frame || !pendingCrop) return { maxX: 0, maxY: 0 };
+    const fw = frame.clientWidth, fh = frame.clientHeight;
+    const cover = Math.max(fw / pendingCrop.naturalW, fh / pendingCrop.naturalH);
+    const total = cover * cropScale;
+    const dw = pendingCrop.naturalW * total, dh = pendingCrop.naturalH * total;
+    return { maxX: Math.max(0, (dw - fw) / 2), maxY: Math.max(0, (dh - fh) / 2) };
+  };
+  const clampCrop = (x, y) => {
+    const { maxX, maxY } = cropBounds();
+    return { x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) };
+  };
+  const onCropScale = (v) => {
+    setCropScale(v);
+    setCropX((x) => clampCrop(x, cropY).x);
+    setCropY((y) => clampCrop(cropX, y).y);
+  };
+  const cropDown = (e) => {
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    const pointerId = e.pointerId;
+    const startX = e.clientX, startY = e.clientY;
+    const ox = cropX, oy = cropY;
+    const mv = (e2) => {
+      if (e2.pointerId !== pointerId) return;
+      const c = clampCrop(ox + (e2.clientX - startX), oy + (e2.clientY - startY));
+      setCropX(c.x); setCropY(c.y);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", mv);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  const cancelCrop = () => {
+    if (blob) { setPhase("preview"); return; }
+    setPendingCrop(null); setPhase("camera");
+  };
+  const confirmCrop = () => {
+    const frame = cropFrameRef.current;
+    if (!frame || !pendingCrop) return;
+    const fw = frame.clientWidth, fh = frame.clientHeight;
+    const cover = Math.max(fw / pendingCrop.naturalW, fh / pendingCrop.naturalH);
+    const total = cover * cropScale;
+    const dw = pendingCrop.naturalW * total, dh = pendingCrop.naturalH * total;
+    const imgLeft = (fw - dw) / 2 + cropX, imgTop = (fh - dh) / 2 + cropY;
+    const sx = -imgLeft / total, sy = -imgTop / total;
+    const sw = fw / total, sh = fh / total;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080; canvas.height = Math.round(1080 * (fh / fw));
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((b) => { if (b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.92);
+    };
+    img.src = pendingCrop.url;
+  };
   const pickOverlayImg = () => imgRef.current?.click();
   const onOverlayImg = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -881,6 +959,38 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
               background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)", color: "#000", fontWeight: 800,
               fontSize: 15, cursor: "pointer", boxShadow: "0 4px 24px rgba(201,149,42,0.55)" }}>
             Publier
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "crop" && pendingCrop) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 600, background: "#000", display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div ref={cropFrameRef} style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}
+            onPointerDown={cropDown}>
+            <img src={pendingCrop.url} alt="" draggable={false}
+              style={{ position: "absolute", top: "50%", left: "50%", width: "100%", height: "100%", objectFit: "cover",
+                transform: `translate(-50%,-50%) translate(${cropX}px,${cropY}px) scale(${cropScale})`,
+                pointerEvents: "none", userSelect: "none" }} />
+          </div>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "52px 16px 0", display: "flex", justifyContent: "space-between", pointerEvents: "none" }}>
+            <button onClick={cancelCrop} style={{ ...Ic(), pointerEvents: "auto" }}><X size={18} /></button>
+            <span style={{ color: "#fff", fontSize: 13, fontWeight: 700, background: "rgba(0,0,0,0.5)", padding: "8px 14px", borderRadius: 20 }}>
+              Déplace et zoome l'image
+            </span>
+          </div>
+        </div>
+        <div style={{ background: "rgba(6,6,6,0.97)", padding: "18px 20px 34px" }}>
+          <input type="range" min={1} max={3} step={0.01} value={cropScale}
+            onChange={(e) => onCropScale(Number(e.target.value))}
+            style={{ width: "100%" }} />
+          <button onClick={confirmCrop}
+            style={{ marginTop: 16, width: "100%", padding: "14px", borderRadius: 20, border: "none",
+              background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)", color: "#000", fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+            Valider ce cadrage
           </button>
         </div>
       </div>
@@ -1269,12 +1379,26 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
             )}
 
             {phase === "preview" && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 28px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 28px 0", gap: 8 }}>
                 <button onClick={retake}
                   style={{ height: 46, borderRadius: 23, padding: "0 20px", background: "rgba(255,255,255,0.1)",
                     border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: 14, cursor: "pointer" }}>
                   Reprendre
                 </button>
+                {isVid && pendingTrim && (
+                  <button onClick={() => setPhase("trim")}
+                    style={{ height: 46, borderRadius: 23, padding: "0 18px", background: "rgba(255,255,255,0.1)",
+                      border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+                    Ajuster la coupe
+                  </button>
+                )}
+                {!isVid && pendingCrop && (
+                  <button onClick={() => setPhase("crop")}
+                    style={{ height: 46, borderRadius: 23, padding: "0 18px", background: "rgba(255,255,255,0.1)",
+                      border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+                    Ajuster le cadrage
+                  </button>
+                )}
                 <button onClick={exportFinal}
                   style={{ height: 50, borderRadius: 25, padding: "0 36px", border: "none",
                     background: "linear-gradient(135deg,#C9952A 0%,#E8B84B 100%)", color: "#000", fontWeight: 800, fontSize: 15,
