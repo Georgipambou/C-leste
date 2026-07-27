@@ -71,8 +71,9 @@ import EasyCrop from "react-easy-crop";
 import ReelsViewer from "./ReelsViewer";
 import PhotoViewer from "./PhotoViewer";
 import CameraStudioModal from "./CameraStudioModal";
+import ContentQuizModal from "./components/ContentQuizModal";
 import { pauseOtherVideos as __pauseOtherPostVideos, releaseActiveVideo as __releaseActivePostVideo } from "./videoRegistry";
-import { fetchRankingData, rankPosts } from "./lib/recommendation/useFeedRanking";
+import { fetchRankingData, rankPosts, fetchCommunityIds, fetchFrequentlyVisitedIds } from "./lib/recommendation/useFeedRanking";
 import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
 import SoundDetailModal from "./components/SoundDetailModal";
@@ -562,6 +563,7 @@ const extractMentions=(text,nameMap)=>{
 const normProfile = p => ({
   isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
 country:p.country||null,
+quiz_completed:p.quiz_completed||false,
   followersCount:p.followersCount||0,
 joined_at:p.joined_at||null,
   latitude:p.latitude||null,
@@ -580,6 +582,10 @@ longitude:p.longitude||null,
   org_name:p.org_name||null, org_type:p.org_type||null,
   org_country:p.org_country||null, org_desc:p.org_desc||null,
 });
+
+function mapDbPost(p, followedIds) {
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+}
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
 const normalizeSearch = s => (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -1557,6 +1563,7 @@ function NotifsScreen({myProfile,session,members}){
     comment_like:"a aimé ton commentaire",
     follow:"a commencé à te suivre",
     mention:"t'a mentionné",
+    new_post_favorite:"a publié du nouveau contenu",
     status_like:"a aimé ton statut",
     status_view:"a vu ton statut",
     post_deleted:n.text||"Une de tes publications a été supprimée",
@@ -1578,6 +1585,8 @@ function NotifsScreen({myProfile,session,members}){
     warning:"⚠️",
     approved:"✅",
     earning:"💰",
+    new_post_favorite:"✦",
+    friend_online:"🟢",
   }[n.type]||"🔔");
 
   const SYSTEM_TYPES=["post_deleted","warning","approved","earning"];
@@ -1588,6 +1597,8 @@ function NotifsScreen({myProfile,session,members}){
     comment_like:{icon:"💛",label:"aimé un commentaire"},
     reply:{icon:"↩️",label:"répondu à un commentaire"},
     mention:{icon:"@",label:"mentionné dans une publication"},
+    new_post_favorite:{icon:"✦",label:"a publié du nouveau contenu"},
+    friend_online:{icon:"🟢",label:"vient de se connecter"},
   };
   const [expandedGroups,setExpandedGroups]=useState({});
 
@@ -2514,7 +2525,7 @@ const handlePick=async e=>{
       }
       if(f.type.startsWith("video/")&&f.size>75*1024*1024){alert("Vidéo trop volumineuse (max 75MB)");continue;}
       if(f.type.startsWith("video/")&&f._fromCamera){
-        const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+        const src=URL.createObjectURL(f);
         setPreviews(p=>[...p,{url:src,type:"video"}]);
         setType("photo");
         setUploading(true);setUploadPct(0);
@@ -2602,7 +2613,7 @@ if(!error){
         const soundMime=selectedSound.blob.type||"audio/webm";
         const soundExt=soundMime.includes("mp4")?"m4a":soundMime.includes("mpeg")?"mp3":soundMime.includes("wav")?"wav":soundMime.includes("ogg")?"ogg":"webm";
         const soundFile=new File([selectedSound.blob],`son-${postId}.${soundExt}`,{type:soundMime});
-        const soundUrl=await uploadToR2(soundFile,`sounds/${postId}.${soundExt}`);
+        const soundUrl=await uploadToR2(soundFile,"sounds");
         const{data:newSound}=await sb.from("sounds").insert({title:selectedSound.title,url:soundUrl,source_post_id:postId,usage_count:1,created_by:uid}).select("id").single();
         if(newSound?.id) await sb.from("posts").update({sound_id:newSound.id}).eq("id",postId);
       } else if(selectedSound.id){
@@ -2614,6 +2625,14 @@ if(!error){
     for(const mentionedId of uniqueIds){
       await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
       sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un post`}});
+    }
+    const{data:frequentViewers}=await sb.from("profile_views").select("viewer_id").eq("viewed_id",uid).gte("created_at",new Date(Date.now()-30*86400000).toISOString()).limit(500);
+    const viewCounts=new Map();
+    (frequentViewers||[]).forEach(r=>viewCounts.set(r.viewer_id,(viewCounts.get(r.viewer_id)||0)+1));
+    const favIds=[...viewCounts.entries()].filter(([id,c])=>c>=3&&id!==uid).map(([id])=>id);
+    for(const targetId of favIds){
+      await sb.from("notifications").insert({user_id:targetId,from_id:uid,type:"new_post_favorite",post_id:postId,read:false});
+      sb.functions.invoke('send-push',{body:{targetUserId:targetId,title:"✦ Nouvelle publication",body:`${myProfile?.prenom||"Quelqu'un"} vient de publier`}});
     }
     mentionedIdsRef.current=[];
     mentionNameMapRef.current=new Map();
@@ -2914,7 +2933,7 @@ const handlePick=async e=>{
     }
     if(f.type.startsWith("video/")){
       if(f.size>200*1024*1024){alert("Vidéo max 200MB");return;}
-      const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+      const src=URL.createObjectURL(f);
       const trimData=await new Promise(resolve=>setStatusTrimSrc({src,resolve}));
       setStatusTrimSrc(null);
       if(!trimData)return;
@@ -4104,7 +4123,7 @@ function SkeletonPost(){
   );
 }
 
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,viewedPostIdsRef}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef}){
 
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
@@ -4172,6 +4191,17 @@ useEffect(()=>{
 },[photoPosts]);
 const [searching,setSearching]=useState(false);
 const [searchQuery,setSearchQuery]=useState("");
+const [searchResults,setSearchResults]=useState(null);
+useEffect(()=>{
+  if(!searchQuery.trim()){setSearchResults(null);return;}
+  let cancelled=false;
+  const t=setTimeout(async()=>{
+    const q=searchQuery.trim();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or(`text.ilike.%${q}%,event_title.ilike.%${q}%`).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(30);
+    if(!cancelled)setSearchResults((data||[]).map(p=>mapDbPost(p,new Set())));
+  },300);
+  return()=>{cancelled=true;clearTimeout(t);};
+},[searchQuery]);
 const bottomRef=useRef();
 const observer=useRef();
 
@@ -4418,13 +4448,20 @@ useEffect(()=>{
           </div>
         )}
 
-        {(posts||[]).filter(p=>{
-          if(!searchQuery)return true;
-          const author=getM(p.by);
-          return matchQuery(p.text,searchQuery)||matchQuery(p.title,searchQuery)||matchQuery(author?.fullName,searchQuery)||matchQuery(author?.paroisse,searchQuery);
-        }).map((p,i)=>(
+       {(()=>{
+  if(!searchQuery.trim())return posts||[];
+  const q=searchQuery.trim();
+  const localMatches=(posts||[]).filter(p=>{
+    const author=getM(p.by);
+    return matchQuery(p.text,q)||matchQuery(p.title,q)||matchQuery(author?.fullName,q)||matchQuery(author?.paroisse,q);
+  });
+  const seen=new Set(localMatches.map(p=>p.id));
+  const remoteOnly=(searchResults||[]).filter(p=>!seen.has(p.id));
+  return[...localMatches,...remoteOnly];
+})().map((p,i)=>(
           <div key={p.id} data-post-id={p.id}>
 <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
+onMuteAuthor={onMuteAuthor}
            onDetail={p=>{const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));if(isVid&&!p._forceComments){const idx=videoPosts.findIndex(v=>v.id===p.id);pushNav(()=>setReelsIndex(null));setReelsIndex(idx>=0?idx:0);}else if(p._forceComments){setDetailPost(p);}else{const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);}}}
             onLike={toggleLike}
             onSave={toggleSave}
@@ -4483,7 +4520,7 @@ function TranslateBtn({text,dark=false}){
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 const POST_REPORT_REASONS=["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Autre"];
 const ADMIN_DELETE_REASONS=["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Contenu réutilisé d'une autre plateforme (filigrane visible)","Signalement non fondé mais retiré pour une autre raison","Autre"];
-const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect}){
+const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect,onMuteAuthor}){
   const{members}=useApp();
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
   const [expanded,setExpanded]=useState(false);
@@ -4588,6 +4625,7 @@ const [showDeleteReasons,setShowDeleteReasons]=useState(false);
     const{error}=await sb.from("muted_authors").insert({muter_id:session?.user?.id,muted_id:post.by});
     if(error&&error.code!=="23505"){notify("Erreur, réessaie");return;}
     setPosts?.(prev=>(prev||[]).filter(p=>p.by!==post.by));
+onMuteAuthor?.(post.by);
     notify("Tu ne verras plus les publications de cette personne");
   };
  
@@ -4831,7 +4869,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -5976,7 +6014,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -6235,7 +6273,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -7408,7 +7446,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
@@ -7621,7 +7659,7 @@ const openPostFromSound=(post,soundPosts)=>{
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   
@@ -8647,6 +8685,7 @@ function CelesteApp(){
   const [myFollowers,setMyFollowers]=useState([]);
   const [blockedUserIds,setBlockedUserIds]=useState([]);
   const [mutedAuthorIds,setMutedAuthorIds]=useState([]);
+  const [feedPreloaded,setFeedPreloaded]=useState(false);
   const [onlinePresenceIds,setOnlinePresenceIds]=useState(()=>new Set());
 
   const [chatDrafts,setChatDrafts]=useState({});
@@ -8930,23 +8969,26 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const t=setInterval(()=>setPosts(prev=>(prev||[]).slice(-50)),5*60*1000);
     return()=>clearInterval(t);
   },[]);
-
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
-   const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+   const mapped=data.map(p=>mapDbPost(p,followedIds));
    const blockedSet=new Set([...blockedUserIds,...mutedAuthorIds]);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
+const{data:completedRows}=myId?await sb.from("video_engagement_events").select("post_id").eq("viewer_id",myId).eq("completed",true):{data:[]};
+const completedIds=new Set((completedRows||[]).map(r=>r.post_id));
+
 const visible=mapped.filter(p=>{
   if(blockedSet.has(p.by))return false;
   if(p.author?.status==="suspended")return false;
+  if(completedIds.has(p.id)&&!p.pinned)return false; // déjà vu en entier → exclu du feed
   if(p.pinned)return true;
 if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by))return false;
   return true;
@@ -8965,9 +9007,12 @@ const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility!=="vi
 const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
 const seenIds=new Set(JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]"));
 const rankingData=await fetchRankingData(sb,{postIds:visible.map(p=>p.id),viewerId:session?.user?.id});
-const viralShuffled=rankPosts(viral,rankingData);
-const badgeShuffled=rankPosts(withBadge,rankingData);
-const noBadgeShuffled=rankPosts(noBadge,rankingData);
+const viewerLocation=(myProfile?.latitude!=null&&myProfile?.longitude!=null)?{lat:myProfile.latitude,lon:myProfile.longitude}:null;
+const communityIds=await fetchCommunityIds(sb,session?.user?.id);
+const frequentIds=await fetchFrequentlyVisitedIds(sb,session?.user?.id);
+const viralShuffled=rankPosts(viral,rankingData,viewerLocation,communityIds,frequentIds);
+const badgeShuffled=rankPosts(withBadge,rankingData,viewerLocation,communityIds,frequentIds);
+const noBadgeShuffled=rankPosts(noBadge,rankingData,viewerLocation,communityIds,frequentIds);
 const feed=[];
 let vi=0,bi=0,ni=0;
 while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
@@ -8976,6 +9021,7 @@ while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.lengt
   if(bi<badgeShuffled.length){feed.push(badgeShuffled[bi++]);}
   if(ni<noBadgeShuffled.length){feed.push(noBadgeShuffled[ni++]);}
 }
+
 const mixed=[];
 let pi=0,fi=0;
 // Mettre le premier post épinglé tout en haut
@@ -9011,7 +9057,7 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>{
@@ -9040,12 +9086,15 @@ return updated;
       return filtered;
     }return null;
   },[]);
+  useEffect(()=>{
+  if(session===null||(session&&isPending))setFeedPreloaded(true);
+},[session,isPending]);
 useEffect(()=>{
   if(session?.user?.id&&myProfile?.id&&!isPending){
     loadMembers();
     loadConnections(session.user.id);
     loadUnreadNotifs(session.user.id);
-    loadBlockedUsers().then(ids=>{loadPosts(1,ids);loadConvs(session.user.id);});
+    loadBlockedUsers().then(ids=>{loadPosts(1,ids).finally(()=>setFeedPreloaded(true));loadConvs(session.user.id);});
     loadMutedAuthors();
     const loadUnreadStatuses=async()=>{
       const since=new Date(Date.now()-24*60*60*1000).toISOString();
@@ -9164,8 +9213,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   },[session?.user?.id,members]);
 
   const goTab=t=>{
- if(t==="home"&&tab==="home"){loadPosts(1);feedScrollRef.current=0;}
- if(t==="statuses")setUnreadStatuses(0);
+ if(t==="home"){loadPosts(1);feedScrollRef.current=0;document.querySelector("[data-feed-scroll]")?.scrollTo({top:0,behavior:"smooth"});} if(t==="statuses")setUnreadStatuses(0);
 if(t!=="home")feedScrollRef.current=document.querySelector("[data-feed-scroll]")?.scrollTop||feedScrollRef.current;
 setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNav(false);
 };
@@ -9186,9 +9234,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   };
 
   // Splash screen
-  if(session===undefined) return(
-    <SplashScreen/>
-  );
+  if(session===undefined||(session&&!isPending&&!feedPreloaded)) return(<SplashScreen/>);
 
   if(!session) return(<><style>{getGS()}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}}/></>);
 
@@ -9217,6 +9263,9 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 <VerificationInfoModal/>
       </div>
     </div>
+  );
+  if(myProfile&&!myProfile.quiz_completed) return(
+    <ContentQuizModal sb={sb} userId={session.user.id} T={T} onDone={()=>setMyProfile(p=>({...p,quiz_completed:true}))}/>
   );
   return(
     <AppContext.Provider value={appCtx}>
@@ -9291,7 +9340,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} viewedPostIdsRef={viewedPostIdsRef}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={authorId=>setMutedAuthorIds(prev=>[...new Set([...prev,authorId])])} viewedPostIdsRef={viewedPostIdsRef}/>
 </div>
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>

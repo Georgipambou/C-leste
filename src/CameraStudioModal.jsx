@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect, useCallback } from "react";
 import {
   X, Type, Image as ImageIcon, Check,
-  Video, Music2, Share2, Archive,
+  Video, Music2, Share2, Archive, Sticker as StickerIcon,
 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Share } from "@capacitor/share";
@@ -32,6 +32,7 @@ import previewDark from "./assets/preview.webp";
 import previewLight from "./assets/preview-light.webp";
 import SoundPickerButton from "./components/SoundPickerButton";
 import SoundPreviewButton from "./components/SoundPreviewButton";
+import StickerPicker from "./components/StickerPicker";
 
 function isLightBg(hex) {
   if (!hex || hex[0] !== "#") return false;
@@ -90,16 +91,46 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
 
     const loaded = await Promise.all(
       ovs.map(async (ov) => {
-        if (ov.type === "image") {
-          const img = new Image();
-          img.src = ov.value;
-          await new Promise((r) => { img.onload = r; img.onerror = r; });
-          return { ...ov, el: img };
-        }
+        if (ov.type === "video") {
+  const v = document.createElement("video");
+  v.crossOrigin = "anonymous";
+  let broken = false;
+  await new Promise((r) => {
+    v.onloadedmetadata = r;
+    v.onerror = () => { broken = true; r(); };
+    v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
+  });
+  if (broken) { console.warn("Overlay vidéo illisible, ignoré au bake :", ov.value); return { ...ov, el: v, broken: true }; }
+  const trimStart = ov.trimStart || 0;
+  const trimEnd = ov.trimEnd && ov.trimEnd > trimStart ? ov.trimEnd : v.duration;
+  v.currentTime = trimStart;
+  v.addEventListener("timeupdate", () => {
+    if (v.currentTime >= trimEnd) v.currentTime = trimStart;
+  });
+  return { ...ov, el: v, trimStart, trimEnd, broken: false };
+}if (ov.type === "video") {
+  const v = document.createElement("video");
+  v.crossOrigin = "anonymous";
+  let broken = false;
+  await new Promise((r) => {
+    v.onloadedmetadata = r;
+    v.onerror = () => { broken = true; r(); };
+    v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
+  });
+  if (broken) { console.warn("Overlay vidéo illisible, ignoré au bake :", ov.value); return { ...ov, el: v, broken: true }; }
+  const trimStart = ov.trimStart || 0;
+  const trimEnd = ov.trimEnd && ov.trimEnd > trimStart ? ov.trimEnd : v.duration;
+  v.currentTime = trimStart;
+  v.addEventListener("timeupdate", () => {
+    if (v.currentTime >= trimEnd) v.currentTime = trimStart;
+  });
+  return { ...ov, el: v, trimStart, trimEnd, broken: false };
+}
         if (ov.type === "video") {
           const v = document.createElement("video");
           // Le son de l'overlay est mixé séparément via Web Audio si !ov.muted —
           // l'élément lui-même reste toujours muted pour éviter un double-son.
+          v.crossOrigin = "anonymous";
           v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
           await new Promise((r) => { v.onloadedmetadata = r; v.onerror = r; });
           const trimStart = ov.trimStart || 0;
@@ -170,7 +201,7 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
       "video/mp4",
     ];
     const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "video/mp4";
-    const rec = new MediaRecorder(canvasStream, { mimeType: mime });
+    const rec = new MediaRecorder(canvasStream, { mimeType: mime, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 });
     const chunks = [];
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
@@ -203,9 +234,10 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           wrapText(ctx, ov.value, ov.x * s + offsetX, ov.y * s + offsetY, 0.72 * canvas.width, ov.size * s * 1.2, ov.bg, true);
-        } else if (ov.el) {
-          ctx.drawImage(ov.el, ov.x * s + offsetX, ov.y * s + offsetY, ov.size * s, ov.size * s);
-        }
+        } else if (ov.el && !ov.broken) {
+  try { ctx.drawImage(ov.el, ov.x * s + offsetX, ov.y * s + offsetY, ov.size * s, ov.size * s); }
+  catch (e) { /* overlay cassé : on l'ignore plutôt que d'arrêter tout le bake */ }
+}
       });
       requestAnimationFrame(draw);
     };
@@ -346,6 +378,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   const [isVid,      setIsVid]      = useState(false);
   const [videoDuration, setVideoDuration] = useState(0); // durée réelle de la vidéo choisie/recadrée
   const [overlays,   setOverlays]   = useState([]);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [activeOv,   setActiveOv]   = useState(null);
   const [panel,      setPanel]      = useState(null);
   const [newText,    setNewText]    = useState("");
@@ -660,6 +693,11 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     addOverlay({ type: "image", value: URL.createObjectURL(f), size: 120 });
     e.target.value = ""; setPanel(null);
   };
+  const onStickerPicked = (sticker) => {
+    addOverlay({ type: "image", value: sticker.url, size: 120 });
+    setShowStickerPicker(false); setPanel(null);
+    if (sticker.id) Promise.resolve(sb?.rpc?.("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
+  };
 
   const pickOverlayVideo = () => vidOvRef.current?.click();
   const onOverlayVideo = (e) => {
@@ -819,10 +857,16 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
           wrapText(ctx, ov.value, ov.x * s + offsetX, ov.y * s + offsetY, 0.72 * c.width, ov.size * s * 1.2, ov.bg, true);
         } else if (ov.type === "image" || ov.type === "video") {
-          const oi = ov.el || new Image();
-          if (!ov.el) { oi.src = ov.value; await new Promise((r) => { oi.onload = r; oi.onerror = r; }); }
-          ctx.drawImage(oi, ov.x * s + offsetX, ov.y * s + offsetY, ov.size * s, ov.size * s);
-        }
+  const oi = ov.el || new Image();
+  if (!ov.el) { oi.crossOrigin = "anonymous"; oi.src = ov.value; await new Promise((r) => { oi.onload = r; oi.onerror = r; }); }
+  const broken = oi.tagName === "IMG" ? oi.naturalWidth === 0 : oi.videoWidth === 0;
+  if (!broken) {
+    try { ctx.drawImage(oi, ov.x * s + offsetX, ov.y * s + offsetY, ov.size * s, ov.size * s); }
+    catch (e) { console.warn("Overlay illisible, ignoré :", ov.value, e); }
+  } else {
+    console.warn("Overlay illisible (URL invalide ?), ignoré :", ov.value);
+  }
+}
       }
       c.toBlob((b) => onDone({ file: new File([b], "celeste-photo.jpg", { type: "image/jpeg" }), type: "image", sound: selectedSound }), "image/jpeg", 0.95);
       return;
@@ -1123,6 +1167,14 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
               <button onClick={() => { setNewText(""); setTxtBg(null); setActiveOv(null); setPanel("text"); }} style={Ic(panel === "text")}><Type size={16} /></button>
               <button onClick={pickOverlayImg} style={Ic()}><ImageIcon size={16} /></button>
               {isVid && <button onClick={pickOverlayVideo} style={Ic()}><Video size={16} /></button>}
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowStickerPicker(v => !v)} style={Ic(showStickerPicker)}><StickerIcon size={16} /></button>
+                {showStickerPicker && (
+                  <div style={{ position: "absolute", top: 0, right: "calc(100% + 8px)", width: 280, maxWidth: "80vw", zIndex: 50 }}>
+                    <StickerPicker sb={sb} userId={userId} T={T} onClose={() => setShowStickerPicker(false)} onSelect={onStickerPicked} />
+                  </div>
+                )}
+              </div>
              <SoundPickerButton sb={sb} value={selectedSound} onChange={handleSoundPicked} userId={userId} T={T} />
               {selectedSound && isVid && (
                 <button onClick={() => setPanel("sound-mix")} style={Ic(panel === "sound-mix")}><Music2 size={16} /></button>

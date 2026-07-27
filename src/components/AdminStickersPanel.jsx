@@ -82,8 +82,7 @@ export default function AdminStickersPanel({ sb, notify, T }) {
       }
       const isWebp = file.type === "image/webp" || file.name.toLowerCase().endsWith(".webp");
       const ext = detectedType === "animated" ? (isWebp ? "webp" : "gif") : "png";
-      const path = `stickers/admin_${Date.now()}.${ext}`;
-      const url = await uploadToR2(toUpload, path);
+      const url = await uploadToR2(toUpload, "stickers");
       const tagList = tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
       const { error } = await sb.from("stickers").insert({
         name: name.trim(),

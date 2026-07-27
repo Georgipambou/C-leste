@@ -146,8 +146,7 @@ export default function StickerPicker({ sb, userId, T, onSelect, onClose }) {
     setUploading(true);
     try {
       const name = (rawName || "Sticker").slice(0, 40) || "Sticker";
-      const path = `stickers/user_${userId}_${Date.now()}.${ext}`;
-      const url = await uploadToR2(blob, path);
+      const url = await uploadToR2(blob, "stickers");
       const { data, error } = await sb.from("stickers").insert({
         name, url, type, format: ext,
         author_id: userId, added_by_admin: false, usage_count: 0,
