@@ -85,61 +85,41 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
 
     const mainVideo = document.createElement("video");
     mainVideo.src = URL.createObjectURL(sourceBlob);
-    mainVideo.muted = true;
+    
     mainVideo.playsInline = true;
     await new Promise((r) => { mainVideo.onloadedmetadata = r; });
 
     const loaded = await Promise.all(
       ovs.map(async (ov) => {
-        if (ov.type === "video") {
-  const v = document.createElement("video");
-  v.crossOrigin = "anonymous";
-  let broken = false;
-  await new Promise((r) => {
-    v.onloadedmetadata = r;
-    v.onerror = () => { broken = true; r(); };
-    v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
-  });
-  if (broken) { console.warn("Overlay vidéo illisible, ignoré au bake :", ov.value); return { ...ov, el: v, broken: true }; }
-  const trimStart = ov.trimStart || 0;
-  const trimEnd = ov.trimEnd && ov.trimEnd > trimStart ? ov.trimEnd : v.duration;
-  v.currentTime = trimStart;
-  v.addEventListener("timeupdate", () => {
-    if (v.currentTime >= trimEnd) v.currentTime = trimStart;
-  });
-  return { ...ov, el: v, trimStart, trimEnd, broken: false };
-}if (ov.type === "video") {
-  const v = document.createElement("video");
-  v.crossOrigin = "anonymous";
-  let broken = false;
-  await new Promise((r) => {
-    v.onloadedmetadata = r;
-    v.onerror = () => { broken = true; r(); };
-    v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
-  });
-  if (broken) { console.warn("Overlay vidéo illisible, ignoré au bake :", ov.value); return { ...ov, el: v, broken: true }; }
-  const trimStart = ov.trimStart || 0;
-  const trimEnd = ov.trimEnd && ov.trimEnd > trimStart ? ov.trimEnd : v.duration;
-  v.currentTime = trimStart;
-  v.addEventListener("timeupdate", () => {
-    if (v.currentTime >= trimEnd) v.currentTime = trimStart;
-  });
-  return { ...ov, el: v, trimStart, trimEnd, broken: false };
-}
+        if (ov.type === "image") {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          let broken = false;
+          await new Promise((r) => {
+            img.onload = () => { broken = img.naturalWidth === 0; r(); };
+            img.onerror = () => { broken = true; r(); };
+            img.src = ov.value;
+          });
+          if (broken) console.warn("Sticker illisible, ignoré au bake :", ov.value);
+          return { ...ov, el: img, broken };
+        }
         if (ov.type === "video") {
           const v = document.createElement("video");
-          // Le son de l'overlay est mixé séparément via Web Audio si !ov.muted —
-          // l'élément lui-même reste toujours muted pour éviter un double-son.
           v.crossOrigin = "anonymous";
-          v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
-          await new Promise((r) => { v.onloadedmetadata = r; v.onerror = r; });
+          let broken = false;
+          await new Promise((r) => {
+            v.onloadedmetadata = r;
+            v.onerror = () => { broken = true; r(); };
+            v.src = ov.value; v.muted = true; v.loop = true; v.playsInline = true;
+          });
+          if (broken) { console.warn("Overlay vidéo illisible, ignoré au bake :", ov.value); return { ...ov, el: v, broken: true }; }
           const trimStart = ov.trimStart || 0;
           const trimEnd = ov.trimEnd && ov.trimEnd > trimStart ? ov.trimEnd : v.duration;
           v.currentTime = trimStart;
           v.addEventListener("timeupdate", () => {
             if (v.currentTime >= trimEnd) v.currentTime = trimStart;
           });
-          return { ...ov, el: v, trimStart, trimEnd };
+          return { ...ov, el: v, trimStart, trimEnd, broken: false };
         }
         return ov;
       })
@@ -163,6 +143,7 @@ async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToke
     let soundEl = null;
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
+if (actx.state === "suspended") await actx.resume();
       const dest = actx.createMediaStreamDestination();
 
       const mainGain = actx.createGain();
@@ -277,6 +258,7 @@ async function trimVideoBlob(sourceFile, start, end, onProgress, cancelToken) {
 
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
+if (actx.state === "suspended") await actx.resume();
       const dest = actx.createMediaStreamDestination();
       actx.createMediaElementSource(mainVideo).connect(dest);
       dest.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));

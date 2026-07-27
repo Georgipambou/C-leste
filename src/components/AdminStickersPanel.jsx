@@ -31,7 +31,22 @@ const resizeStaticImage = (file) => new Promise((resolve, reject) => {
   img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image invalide")); };
   img.src = url;
 });
-
+async function isFileAnimated(file) {
+  const isGif = file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif");
+  if (isGif) return true;
+  const isWebp = file.type === "image/webp" || file.name.toLowerCase().endsWith(".webp");
+  if (!isWebp) return false;
+  try {
+    const buf = await file.slice(0, 40).arrayBuffer();
+    const b = new Uint8Array(buf);
+    const str = (start, len) => String.fromCharCode(...b.slice(start, start + len));
+    if (str(0, 4) !== "RIFF" || str(8, 4) !== "WEBP") return false;
+    if (str(12, 4) === "VP8X") return !!(b[20] & 0x02);
+    return false;
+  } catch {
+    return false;
+  }
+}
 export default function AdminStickersPanel({ sb, notify, T }) {
   const [stickers, setStickers] = useState([]);
   const [search, setSearch] = useState("");

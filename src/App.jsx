@@ -880,7 +880,12 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
   const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
   const showRing=ring||!!_statusId;
-  const handleStatusCapture=e=>{};
+  const handleStatusCapture=e=>{
+    if(!showRing||!_statusId)return;
+    e.stopPropagation();
+    window.__celesteSetTab?.("statuses");
+    setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})),400);
+  };
   return(
     <div onClick={onClick} onClickCapture={handleStatusCapture} style={{position:"relative",flexShrink:0,width:size,height:size,cursor:onClick?"pointer":"default"}}>
       {showRing && (
@@ -1898,6 +1903,7 @@ function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentI
   const [posting,setPosting]=useState(false);
   const [mediaFile,setMediaFile]=useState(null);
   const [mediaPreview,setMediaPreview]=useState(null);
+  const [pendingSticker,setPendingSticker]=useState(null);
   const [showStickerPicker,setShowStickerPicker]=useState(false);
   const [openStickerDetail,setOpenStickerDetail]=useState(null);
 const mentionedIdsRef=useRef([]);
@@ -1972,11 +1978,15 @@ useEffect(()=>{
   },[postId,load]);
 
   const submit=async()=>{
-    if((!text.trim()&&!mediaFile)||posting)return;
+    if((!text.trim()&&!mediaFile&&!pendingSticker)||posting)return;
     setPosting(true);
     const trimmed=text.trim();
     let mediaUrl=null;
-    if(mediaFile){
+    let stickerId=null;
+    if(pendingSticker){
+      mediaUrl=pendingSticker.url;
+      stickerId=pendingSticker.id;
+    }else if(mediaFile){
      try {
   mediaUrl = await uploadToR2(mediaFile, "comments");
 } catch(e) {
@@ -1984,12 +1994,14 @@ useEffect(()=>{
 }
     }
    const uid=(await sb.auth.getUser())?.data?.user?.id;
-const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl,mentions:extractMentions(trimmed,mentionNameMapRef.current)});
+const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:trimmed,media_url:mediaUrl,sticker_id:stickerId,mentions:extractMentions(trimmed,mentionNameMapRef.current)});
     if(!error){
       await sb.rpc("increment_phase_interactions",{post_id:postId});
+      if(stickerId)Promise.resolve(sb.rpc("increment_sticker_usage",{sticker_id:stickerId})).catch(()=>{});
       setText("");
       setMediaFile(null);
       setMediaPreview(null);
+      setPendingSticker(null);
       load(1,visibleCountRef.current+1);
       // Notifier l'auteur du post
 const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
@@ -2018,22 +2030,10 @@ mentionNameMapRef.current=new Map();
     }
     setPosting(false);
   };
- const submitSticker=async(sticker)=>{
+ const selectSticker=(sticker)=>{
   setShowStickerPicker(false);
-  const uid=(await sb.auth.getUser())?.data?.user?.id;
-  const optimistic={id:"tmp_"+Date.now(),post_id:postId,author_id:uid,text:"",media_url:sticker.url,sticker_id:sticker.id,created_at:new Date().toISOString(),author:getM?.(uid)||null};
-  setComments(prev=>[...prev,optimistic]);
-  const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text:"",media_url:sticker.url,sticker_id:sticker.id});
-  if(!error){
-    Promise.resolve(sb.rpc("increment_sticker_usage",{sticker_id:sticker.id})).catch(()=>{});
-    load(1,visibleCountRef.current+1);
-    const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
-    if(postData?.author_id&&postData.author_id!==uid){
-      await sb.from("notifications").insert({user_id:postData.author_id,from_id:uid,type:"comment",post_id:postId,read:false});
-    }
-  }else{
-    setComments(prev=>prev.filter(c=>c.id!==optimistic.id));
-  }
+  setMediaFile(null);setMediaPreview(null);
+  setPendingSticker(sticker);
 };
 
   return(
@@ -2067,6 +2067,12 @@ mentionNameMapRef.current=new Map();
           <Btn onClick={()=>{setMediaPreview(null);setMediaFile(null);}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:26,height:26,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={12}/></Btn>
         </div>
       )}
+      {pendingSticker&&(
+        <div style={{position:"relative",marginBottom:6,display:"inline-flex"}}>
+          <img src={pendingSticker.url} alt="" style={{width:70,height:70,objectFit:"contain"}}/>
+          <Btn onClick={()=>setPendingSticker(null)} style={{position:"absolute",top:-6,right:-6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:22,height:22,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={11}/></Btn>
+        </div>
+      )}*
       {hasMoreCmts&&<div ref={bottomRef} style={{display:"flex",justifyContent:"center",padding:"10px 0"}}>{cmtPage>1&&loadingCmts&&<div style={{width:16,height:16,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/>}</div>}
       </>
     );
@@ -2089,7 +2095,7 @@ mentionNameMapRef.current=new Map();
           </Btn>
           {showStickerPicker&&(
             <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:280,maxWidth:"85vw",zIndex:20}}>
-              <StickerPicker sb={sb} userId={sessionUserId} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={submitSticker}/>
+              <StickerPicker sb={sb} userId={sessionUserId} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={selectSticker}/>
             </div>
           )}
         </div>
@@ -2101,7 +2107,7 @@ mentionNameMapRef.current=new Map();
           onFocus={()=>setHideNav(true)}
           onBlur={()=>setTimeout(()=>setHideNav(false),150)}
         />
-        <Btn onClick={submit} disabled={posting||(!text.trim()&&!mediaFile)} style={{background:(text.trim()||mediaFile)?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:(text.trim()||mediaFile)?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",flexShrink:0,marginBottom:2}}>
+        <Btn onClick={submit} disabled={posting||(!text.trim()&&!mediaFile&&!pendingSticker)} style={{background:(text.trim()||mediaFile||pendingSticker)?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:34,height:34,color:(text.trim()||mediaFile||pendingSticker)?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.4,0,0.2,1)",flexShrink:0,marginBottom:2}}>
           <Send size={13} style={{transform:"translateX(0.5px)"}}/>
         </Btn>
       </div>
@@ -2234,16 +2240,24 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
           )}
         </div>
 
-       {/* Texte */}
-        {comment.text&&<><p style={{margin:"0 0 6px",fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{renderTextWithMentions(comment.text,comment.mentions)}</p><TranslateBtn text={comment.text}/></>}
-{comment.sticker_id&&comment.media_url&&(
-  <img src={comment.media_url} alt="" onClick={()=>setOpenStickerDetail(comment.sticker_id)} style={{width:90,height:90,objectFit:"contain",display:"block",marginBottom:8,cursor:"pointer"}}/>
-)}
-{!comment.sticker_id&&comment.media_url&&(
-  <div style={{marginBottom:8,borderRadius:10,overflow:"hidden",maxWidth:200}}>
-    <MediaPlayer url={comment.media_url} style={{borderRadius:10,maxHeight:160}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
-  </div>
-)}
+       {/* Texte + média, côte à côte quand les deux existent */}
+        {(comment.text||comment.media_url)&&(
+          <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
+            {comment.media_url&&(
+              comment.sticker_id
+                ?<img src={comment.media_url} alt="" onClick={()=>setOpenStickerDetail(comment.sticker_id)} style={{width:64,height:64,objectFit:"contain",flexShrink:0,cursor:"pointer"}}/>
+                :<div style={{borderRadius:10,overflow:"hidden",width:64,height:64,flexShrink:0}}>
+                    <MediaPlayer url={comment.media_url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
+                  </div>
+            )}
+            {comment.text&&(
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word",textAlign:"left"}}>{renderTextWithMentions(comment.text,comment.mentions)}</p>
+                <TranslateBtn text={comment.text}/>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions : date + Répondre + like */}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
@@ -2290,7 +2304,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
                       <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{ra.name}</span>
                       {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
                     </div>
-                    <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word"}}>{r.text}</p>
+                    <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word",textAlign:"left"}}>{r.text}</p>
                     <div style={{display:"flex",alignItems:"center",gap:14}}>
                       <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
                       <Btn onClick={()=>{setReplyText(`@${ra.name} `);setReplying(true);}} style={{color:T.muted,fontSize:11,fontWeight:700}}>Répondre</Btn>
@@ -4389,7 +4403,7 @@ useEffect(()=>{
 )}
       
 
-    <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
+    <div ref={scrollRef} data-feed-scroll style={{flex:1,overflowY:"auto",background:T.bg}}
       onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;onScrollChange?.(e.currentTarget.scrollTop);}}>
 
       {/* Header */}
@@ -9039,6 +9053,11 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
     const followedIds=new Set((conns||[]).map(c=>c.to_id));
    const mapped=data.map(p=>mapDbPost(p,followedIds));
+   if(page===1){
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).eq("pinned",true).not("visibility","eq","hidden");
+     const existingIds=new Set(mapped.map(p=>p.id));
+     (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
+   }
    const blockedSet=new Set([...blockedUserIds,...mutedAuthorIds]);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
@@ -9117,16 +9136,10 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
-    setPosts(prev=>{
-  const map=new Map((prev||[]).map(p=>[p.id,p]));
-  map.set(pid,updated);
-  const order=postOrderRef.current;
-  if(order.length)return order.map(id=>map.get(id)).filter(Boolean);
-  return (prev||[]).map(p=>p.id===pid?updated:p);
-});
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+    setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));
 return updated;
   },[]);
 
