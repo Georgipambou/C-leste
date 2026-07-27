@@ -71,6 +71,7 @@ import EasyCrop from "react-easy-crop";
 import ReelsViewer from "./ReelsViewer";
 import PhotoViewer from "./PhotoViewer";
 import CameraStudioModal from "./CameraStudioModal";
+import SharePostModal from "./SharePostModal";
 import ContentQuizModal from "./components/ContentQuizModal";
 import { pauseOtherVideos as __pauseOtherPostVideos, releaseActiveVideo as __releaseActivePostVideo } from "./videoRegistry";
 import { fetchRankingData, rankPosts, fetchCommunityIds, fetchFrequentlyVisitedIds } from "./lib/recommendation/useFeedRanking";
@@ -2309,7 +2310,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800,fromReel=false,onPhotoView}){
   
-const {members}=useApp();
+const {members,convs}=useApp();
 useEffect(()=>{
   if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
   const ch=sb.channel(`privacy_post_${post?.by}-${Math.random()}`)
@@ -2325,6 +2326,8 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
 const [cmtCount,setCmtCount]=useState((post.comments||[]).length);
 const [views,setViews]=useState(0);
 const [slideIdx,setSlideIdx]=useState(0);
+const [shareCount,setShareCount]=useState(0);
+const [showShareModal,setShowShareModal]=useState(false);
 
 useEffect(()=>{
   if(!post?.id||!session?.user?.id)return;
@@ -2336,6 +2339,12 @@ useEffect(()=>{
       .then(({count})=>setViews(count||0));
   });
 },[post?.id,session?.user?.id]);
+
+useEffect(()=>{
+  if(!post?.id||post.type!=="text")return;
+  sb.from("post_shares").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+    .then(({count})=>setShareCount(count||0));
+},[post?.id,post.type]);
 useEffect(()=>{
     const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
     [slideIdx-1,slideIdx,slideIdx+1].forEach(i=>{
@@ -2433,6 +2442,11 @@ useEffect(()=>{
     <Eye size={14}/>{views}
   </span>
 )}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setShowShareModal(true)} style={{display:"flex",alignItems:"center",gap:6,color:T.sub,fontSize:13,fontWeight:600}}>
+                <Share2 size={18}/>
+                {post.type==="text"&&shareCount>0&&<span>{shareCount}</span>}
+              </Btn>
             </div>
             <CommentsSection
   postId={post.id}
@@ -2446,6 +2460,20 @@ useEffect(()=>{
           </div>
         </div>
       </div>
+      {showShareModal&&(
+        <SharePostModal
+          post={post}
+          sb={sb}
+          session={session}
+          T={T}
+          Av={Av}
+          members={members}
+          convs={convs}
+          notify={notify}
+          onClose={()=>setShowShareModal(false)}
+          onShared={()=>{setShowShareModal(false);setShareCount(c=>c+1);notify("Partagé ✦");}}
+        />
+      )}
     </>
   );
 }
@@ -4253,34 +4281,6 @@ localStorage.setItem("celeste_seen_posts",JSON.stringify(updated));
 const feedScrollRef=useRef(initialScroll);
 
 useEffect(()=>{
-    const handler=async e=>{
-      const{postId,commentId}=e.detail;
-      const post=(posts||[]).find(p=>p.id===postId);
-      if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
-      if(data){
-        const mapped={
-          id:data.id,by:data.author_id,
-          author:normProfile(data.author||{}),
-          type:data.type,text:data.text||"",
-          img:data.img_url||null,
-          media_urls:data.media_urls||[],
-          likes:(data.likes||[]).map(l=>l.user_id),
-          comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),
-          ts:new Date(data.created_at).getTime(),
-          pinned:data.pinned||false,
-          text_background:data.text_background||null,
-          is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,
-          whatsapp_contact:data.whatsapp_contact||null,
-          _targetCommentId:commentId||null
-        };
-        pushNav(()=>setDetailPost(null));setDetailPost(mapped);
-      }
-    };
-    window.addEventListener("celeste_open_post",handler);
-    return()=>window.removeEventListener("celeste_open_post",handler);
-  },[]);
-  useEffect(()=>{
     if(!bottomRef.current||!hasMore)return;
     observer.current=new IntersectionObserver(entries=>{if(entries[0].isIntersecting)loadMore();},{threshold:.5});
     observer.current.observe(bottomRef.current);
@@ -4387,27 +4387,7 @@ useEffect(()=>{
     }}
   />
 )}
-      {detailPost&&(
-        <PostDetailModal
-          post={detailPost} myProfile={myProfile} session={session} getM={getM}
-          zIndex={(reelsCommentPost||photoCommentPost)?1300:800}
-          
-          onPhotoView={openPhotoViewer}
-          onClose={()=>{
-            popNav();
-            const pos=savedScroll.current;
-            setDetailPost(null);
-            setReelsCommentPost(null);
-            setPhotoCommentPost(null);
-            if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
-            setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=pos;},80);
-          }}
-          onLike={async pid=>{await toggleLike(pid);const u=await refreshPost(pid);if(u)setDetailPost(u);}}
-          onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
-          notify={notify}
-        />
-      )}
+      
 
     <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:T.bg}}
       onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;onScrollChange?.(e.currentTarget.scrollTop);}}>
@@ -4486,6 +4466,24 @@ onMuteAuthor={onMuteAuthor}
         <div style={{height:80}}/>
       </div>
    </div>
+
+      {detailPost&&(
+        <PostDetailModal
+          post={detailPost}
+          myProfile={myProfile}
+          session={session}
+          getM={getM}
+          onClose={()=>{popNav();setDetailPost(null);}}
+          onLike={async pid=>{
+            await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+            const u=await refreshPost(pid);
+            if(u){setDetailPost(u);setPosts(prev=>prev.map(x=>x.id===pid?u:x));}
+          }}
+          onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
+          notify={notify}
+          onPhotoView={(post,url)=>openPhotoViewer(post,url)}
+        />
+      )}
     </>
   );
 }
@@ -4521,12 +4519,14 @@ function TranslateBtn({text,dark=false}){
 const POST_REPORT_REASONS=["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Autre"];
 const ADMIN_DELETE_REASONS=["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Contenu réutilisé d'une autre plateforme (filigrane visible)","Signalement non fondé mais retiré pour une autre raison","Autre"];
 const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect,onMuteAuthor}){
-  const{members}=useApp();
+  const{members,convs}=useApp();
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
   const [expanded,setExpanded]=useState(false);
   const [showMenu,setShowMenu]=useState(false);
 const [saved,setSaved]=useState(false);
   const [slideIdx,setSlideIdx]=useState(0);
+  const [showShareModal,setShowShareModal]=useState(false);
+  const [shareCount,setShareCount]=useState(0);
   const swipeStartRef=useRef(null);
   const liked=(post.likes||[]).some(l=>(l.user_id||l)===session?.user?.id);
   const isMine=post.by===session?.user?.id;
@@ -4548,6 +4548,12 @@ const [saved,setSaved]=useState(false);
     sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
       .then(({count})=>setViews(count||0));
   },[post.id,session?.user?.id]);
+
+  useEffect(()=>{
+    if(post.type!=="text")return;
+    sb.from("post_shares").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+      .then(({count})=>setShareCount(count||0));
+  },[post.id,post.type]);
 
   const handleSave=async()=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle();
@@ -4648,6 +4654,7 @@ onMuteAuthor?.(post.by);
     );
   }
   return(
+    <>
     <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px",animation:`fadeUp .4s ease ${animDelay}s both`,cursor:"pointer"}} onClick={()=>onDetail?.(post)}>
       <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
         {/* Avatar */}
@@ -4809,6 +4816,10 @@ onMuteAuthor?.(post.by);
   </div>
 )}
             <div style={{flex:1}}/>
+            <Btn onClick={e=>{e.stopPropagation();setShowShareModal(true);}} style={{padding:"7px 10px",borderRadius:20,color:T.muted,transition:"all .2s",display:"flex",alignItems:"center",gap:4}}>
+              <Share2 size={16}/>
+              {post.type==="text"&&shareCount>0&&<span style={{fontSize:12}}>{shareCount}</span>}
+            </Btn>
             <Btn onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.muted,transition:"all .2s",display:"flex",alignItems:"center",gap:4}}>
               <Bookmark size={16} fill={saved?"currentColor":"none"}/>
               {savesCount>0&&<span style={{fontSize:12}}>{savesCount}</span>}
@@ -4817,6 +4828,21 @@ onMuteAuthor?.(post.by);
         </div>
       </div>
     </div>
+    {showShareModal&&(
+      <SharePostModal
+        post={post}
+        sb={sb}
+        session={session}
+        T={T}
+        Av={Av}
+        members={members}
+        convs={convs}
+        notify={notify}
+        onClose={()=>setShowShareModal(false)}
+        onShared={()=>{setShowShareModal(false);setShareCount(c=>c+1);notify("Partagé ✦");}}
+      />
+    )}
+    </>
   );
 }
 );
@@ -4921,12 +4947,12 @@ return(
         {reelsIndex!==null&&toggleLike&&toggleSave&&(
           <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={[]} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
+            onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
         {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
           <PhotoViewer posts={photoViewerFallback||posts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={[]} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
+            onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
         {(reelsCommentPost||photoCommentPost)&&(
           <CommentsOnlyModal
@@ -5733,6 +5759,24 @@ const handleFile=async(e,isImg)=>{
     </div>
   </div>
 )}
+                  {m.type==="post_share"&&(
+                    <div onClick={e=>{e.stopPropagation();m.shared_post_id&&window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:m.shared_post_id}}));}}
+                      style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"8px 10px",cursor:m.shared_post_id?"pointer":"default",maxWidth:240,width:"100%",boxSizing:"border-box"}}>
+                      <div style={{width:44,height:44,borderRadius:8,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {m.reply_metadata?.mediaUrl
+                          ?<img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          :<FileText size={18} color={T.goldL}/>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{margin:0,fontSize:11,fontWeight:700,color:mine?"rgba(0,0,0,0.55)":T.goldL}}>
+                          Publication{m.reply_metadata?.authorName?` de ${m.reply_metadata.authorName}`:""}
+                        </p>
+                        <p style={{margin:0,fontSize:12,color:mine?"rgba(0,0,0,0.6)":T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {m.reply_metadata?.previewText||"Voir la publication"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
                   {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" onClick={e=>{e.stopPropagation();m.sticker_id&&setOpenStickerDetail(m.sticker_id);}} style={{width:100,height:100,objectFit:"contain",display:"block",cursor:m.sticker_id?"pointer":"default"}}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
@@ -6107,7 +6151,7 @@ if(user?.status==="suspended") return(
           onUser={()=>{}}
           onOpenComments={(p,onReelsCb)=>{setUserReelsCommentPost(p);setUserReelsCloseCallback(()=>onReelsCb);}}
           myConnections={myConnections}
-          onConnect={()=>{}}
+          onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
         />
       )}
@@ -6125,7 +6169,7 @@ if(user?.status==="suspended") return(
           onUser={()=>{}}
           onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
           myConnections={myConnections}
-          onConnect={()=>{}}
+          onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
         />
       )}
@@ -6356,7 +6400,7 @@ if(blocked||blockedByOther) return(
           onUser={()=>{}}
           onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
           myConnections={myConnections}
-          onConnect={()=>{}}
+          onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
         />
       )}
@@ -6374,7 +6418,7 @@ if(blocked||blockedByOther) return(
           onUser={()=>{}}
           onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
           myConnections={myConnections}
-          onConnect={()=>{}}
+          onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
         />
       )}
@@ -7434,7 +7478,7 @@ useEffect(()=>{
     </div>
   );
 }
-function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,toggleLike,toggleSave}){
+function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,onConnect,toggleLike,toggleSave}){
   const [likedPosts,setLikedPosts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [detailPost,setDetailPost]=useState(null);
@@ -7502,12 +7546,12 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
       {reelsIndex!==null&&toggleLike&&toggleSave&&(
         <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
+          onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
         <PhotoViewer posts={photoViewerFallback||likedPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={()=>{}} onOpenSound={setOpenSoundId}/>
+          onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
       )}
       {(reelsCommentPost||photoCommentPost)&&(
         <CommentsOnlyModal
@@ -7554,7 +7598,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   );
 }
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
-function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave}){
+function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave,onConnect}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
  const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||""});
@@ -7731,6 +7775,7 @@ const openPostFromSound=(post,soundPosts)=>{
     if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
     if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
   }}
+
   onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
       {/* Cover */}
       <div style={{height:160,background:`linear-gradient(135deg,${myProfile?.color||T.gold}22,${T.goldD}11)`,position:"relative",overflow:"hidden",cursor:"pointer"}} onClick={()=>cvRef.current.click()}>
@@ -7977,7 +8022,7 @@ const openPostFromSound=(post,soundPosts)=>{
             </div>
         )}
         {tab==="likes"&&(
-          <LikedPostsTab session={session} notify={notify} onImageView={onImageView} myProfile={myProfile} getM={getM} myConnections={myConnections} toggleLike={toggleLike} toggleSave={toggleSave}/>
+          <LikedPostsTab session={session} notify={notify} onImageView={onImageView} myProfile={myProfile} getM={getM} myConnections={myConnections} onConnect={onConnect} toggleLike={toggleLike} toggleSave={toggleSave}/>
         )}
         {tab==="saved"&&(
           <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView} toggleLike={toggleLike} toggleSave={toggleSave}/>
@@ -8744,19 +8789,32 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
     return()=>window.removeEventListener("celeste_open_conv",handler);
   },[session?.user?.id]);
   useEffect(()=>{
+    const isVideoPost=p=>(p.img||"").match(/\.(mp4|mov|webm|ogg|avi)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));
+    const isPhotoPost=p=>{
+      const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
+      return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
+    };
+    const openResolved=(finalPost,commentId)=>{
+      if(finalPost.type==="text"||finalPost.type==="event"){
+        pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null});
+        return;
+      }
+      if(isVideoPost(finalPost)){setGlobalReelsPost(finalPost);return;}
+      if(isPhotoPost(finalPost)){setGlobalPhotoPost(finalPost);return;}
+      pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null});
+    };
     const handler=async e=>{
       const{postId,commentId}=e.detail||{};
       if(!postId)return;
-      setTab("home");
-      setTimeout(async()=>{
-        const post=(posts||[]).find(p=>p.id===postId);
-        if(post){pushNav(()=>setDetailPost(null));setDetailPost({...post,_targetCommentId:commentId||null});return;}
-        const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
-        if(data){
-          const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,_targetCommentId:commentId||null};
-          pushNav(()=>setDetailPost(null));setDetailPost(mapped);
-        }
-      },300);
+      const post=(posts||[]).find(p=>p.id===postId);
+      if(post){openResolved(post,commentId);return;}
+      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      if(data){
+        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+        openResolved(mapped,commentId);
+      }else{
+        notify("Cette publication n'est plus disponible");
+      }
     };
     window.addEventListener("celeste_open_post",handler);
     return()=>window.removeEventListener("celeste_open_post",handler);
@@ -8789,6 +8847,8 @@ const [pendingSound,setPendingSound]=useState(null);
   const [loadingMore,setLoadingMore]=useState(false);
   const [inAppNotifs,setInAppNotifs]=useState([]);
  const [viewImg,setViewImg]=useState(null);
+const [globalReelsPost,setGlobalReelsPost]=useState(null);
+const [globalPhotoPost,setGlobalPhotoPost]=useState(null);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
@@ -9073,13 +9133,13 @@ return updated;
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId),
       sb.from("blocks").select("blocker_id").eq("blocked_id",myId)
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem("celeste_convs_cache",JSON.stringify(filtered));}catch(e){}
@@ -9226,7 +9286,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   // AppContext value
   const appCtx={
     session,myProfile,setMyProfile:()=>{},
-    setTab,members,posts,
+    setTab,members,posts,convs,
     notify,
     chatDrafts,setChatDrafts,
     hideNav,setHideNav,
@@ -9347,12 +9407,35 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
-             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>}
+             {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify}/>
-{detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
             </div>
         </div>
-
+        {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
+{globalReelsPost&&(
+  <ReelsViewer
+    posts={[globalReelsPost]} sb={sb} startIndex={0}
+    session={session} myProfile={myProfile} notify={notify}
+    toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
+    toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
+    onUser={id=>{setGlobalReelsPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}}
+    myConnections={myConnections}
+    onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}
+    onClose={()=>setGlobalReelsPost(null)}
+  />
+)}
+{globalPhotoPost&&(
+  <PhotoViewer
+    posts={[globalPhotoPost]} sb={sb} startIndex={0}
+    session={session} myProfile={myProfile} notify={notify}
+    toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
+    toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
+    onUser={id=>{setGlobalPhotoPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}}
+    myConnections={myConnections}
+    onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}
+    onClose={()=>setGlobalPhotoPost(null)}
+  />
+)}
         {/* Bottom nav premium */}
        {!openConvId&&!openUserId&&!hideNav&&(
           <div style={{height:72,background:"rgba(10,10,10,0.75)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderTop:`1px solid rgba(255,255,255,0.08)`,display:"flex",flexShrink:0,zIndex:30,boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -20px 60px rgba(0,0,0,0.4)",position:"relative",margin:"0 12px 8px",borderRadius:24,border:`1px solid rgba(255,255,255,0.08)`}}>

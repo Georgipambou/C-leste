@@ -9,7 +9,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { X, Heart, MessageCircle, Bookmark, MoreVertical, Trash2, Flag, EyeOff, Eye, Volume2, VolumeX } from "lucide-react";
+import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye, Check, Share2 } from "lucide-react";
+import SharePostModal from "./SharePostModal";
 import { useVideoEngagement } from "./lib/recommendation/useVideoEngagement";
 import SoundBadge from "./components/SoundBadge";
 import SoundDiscBadge from "./components/SoundDiscBadge";
@@ -192,6 +193,7 @@ export default function PhotoViewer({
   const [photoModalOpen,  setPhotoModalOpen]  = useState(false);
   const [hiddenPostIds,   setHiddenPostIds]   = useState(() => new Set());
   const [menuPostId,      setMenuPostId]      = useState(null);
+  const [shareModalPostId, setShareModalPostId] = useState(null);
   const [reportPost,      setReportPost]      = useState(null);
   const [deleteReasonPost, setDeleteReasonPost] = useState(null);
   const [savedIds,        setSavedIds]        = useState(
@@ -203,6 +205,7 @@ export default function PhotoViewer({
     return m;
   });
   const [hearts, setHearts] = useState([]); // [{id, x, y}]
+  const [connectAnimId, setConnectAnimId] = useState(null); // id de l'auteur en cours d'animation "connecté"
   const [viewCounts, setViewCounts] = useState({});
 
   const containerRef  = useRef(null);
@@ -367,6 +370,12 @@ export default function PhotoViewer({
     setHearts(h => h.filter(hh => hh.id !== id));
   }, []);
 
+  const handleConnectClick = useCallback((userId) => {
+    onConnect?.(userId);
+    setConnectAnimId(userId);
+    setTimeout(() => setConnectAnimId(prev => (prev === userId ? null : prev)), 900);
+  }, [onConnect]);
+
   // ── Supprimer / signaler / masquer ────────────────────────────
   const handleDeletePost = useCallback(async (post) => {
     setMenuPostId(null);
@@ -406,6 +415,7 @@ export default function PhotoViewer({
   }, [uid, reportPost, notify, engagement]);
 
   const menuPost = displayPosts.find(p => p.id === menuPostId) || null;
+  const shareModalPost = displayPosts.find(p => p.id === shareModalPostId) || null;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "#000" }}>
@@ -472,6 +482,7 @@ export default function PhotoViewer({
               style={{
                 height: "100vh", width: "100%",
                 scrollSnapAlign: "start",
+                scrollSnapStop: "always",
                 position: "relative",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: "#000", flexShrink: 0, overflow: "hidden",
@@ -584,12 +595,26 @@ export default function PhotoViewer({
               <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 22, zIndex: 2 }}>
 
                 {/* Avatar + bouton connect */}
-                <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <div style={{ position: "relative", width: 46, height: 46 }}>
                   <div onClick={() => onUser?.(post.by)} style={{ width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.2)", overflow: "hidden", border: "2px solid #fff", cursor: "pointer" }}>
                     {post.author?.avatar_url && <img src={post.author.avatar_url} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} alt="" />}
                   </div>
                   {!isMe && !isConnected && (
-                    <button onClick={() => onConnect?.(post.by)} style={{ background: "#ff2d55", border: "2px solid #fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, color: "#fff", fontSize: 14, fontWeight: 900, lineHeight: 1 }}>+</button>
+                    <button
+                      onClick={() => handleConnectClick(post.by)}
+                      style={{
+                        position: "absolute", right: -4, bottom: -4,
+                        background: connectAnimId === post.by ? "#4ade80" : "#ff2d55",
+                        border: "2px solid #fff", borderRadius: "50%", width: 22, height: 22,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", padding: 0, color: "#fff",
+                        fontSize: 14, fontWeight: 900, lineHeight: 1,
+                        transform: connectAnimId === post.by ? "scale(1.35)" : "scale(1)",
+                        transition: "transform 0.3s cubic-bezier(.34,1.56,.64,1), background 0.25s ease",
+                      }}
+                    >
+                      {connectAnimId === post.by ? <Check size={13} /> : "+"}
+                    </button>
                   )}
                 </div>
 
@@ -628,6 +653,11 @@ export default function PhotoViewer({
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{saveCountMap[post.id] ?? post.savesCount ?? 0}</span>
                 </div>
 
+                {/* Partager */}
+                <button onClick={() => setShareModalPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}>
+                  <Share2 size={27} />
+                </button>
+
                 {/* Menu "..." */}
                 <button onClick={() => setMenuPostId(post.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, marginTop: 2, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}>
                   <MoreVertical size={26} />
@@ -656,6 +686,17 @@ export default function PhotoViewer({
           onDelete={() => handleDeletePost(menuPost)}
           onReport={() => { setReportPost(menuPost); setMenuPostId(null); }}
           onMute={() => handleMuteAuthor(menuPost)}
+        />
+      )}
+
+      {shareModalPost && (
+        <SharePostModal
+          post={shareModalPost}
+          sb={sb}
+          session={session}
+          notify={notify}
+          onClose={() => setShareModalPostId(null)}
+          onShared={() => setShareModalPostId(null)}
         />
       )}
 
