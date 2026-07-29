@@ -723,6 +723,8 @@ const getGS = () => `
   @keyframes notifIn{from{opacity:0;transform:translateY(-24px) scale(0.94);}to{opacity:1;transform:none;}}
   @keyframes ripple{0%{transform:scale(0);opacity:0.4;}100%{transform:scale(2.5);opacity:0;}}
   @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+  .action-icon-btn{transition:transform .18s cubic-bezier(.34,1.56,.64,1),opacity .12s ease;}
+  .action-icon-btn:active{transform:scale(.8);opacity:.65;}
  @keyframes badgePulse {
   0%,100% { box-shadow: 0 0 0 2px rgba(29,161,242,0.3), 0 0 10px rgba(29,161,242,0.8), 0 0 20px rgba(29,161,242,0.4); }
   50% { box-shadow: 0 0 0 3px rgba(29,161,242,0.5), 0 0 16px rgba(29,161,242,1), 0 0 32px rgba(29,161,242,0.6); }
@@ -5059,8 +5061,8 @@ onMuteAuthor?.(post.by);
 )}
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
-            <Btn onClick={e=>{e.stopPropagation();onLike(post.id);}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.08)":"transparent",color:liked?T.gold:T.muted,fontSize:13,fontWeight:liked?700:400,transition:"all .2s",border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
-              <Heart size={16} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
+            <Btn className="action-icon-btn" onClick={e=>{e.stopPropagation();onLike(post.id);}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.1)":"transparent",color:liked?T.gold:T.text,fontSize:13,fontWeight:700,border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
+              <Heart size={17} strokeWidth={2.4} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.text,filter:liked?"none":"drop-shadow(0 1px 2px rgba(0,0,0,0.35))",animation:liked?"pulse .3s ease":"none"}}/>
               {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
             </Btn>
             <div style={{position:"relative"}}
@@ -5069,8 +5071,8 @@ onMuteAuthor?.(post.by);
               onPointerUp={e=>{e.stopPropagation();endLongPress();}}
               onPointerLeave={()=>{if(reactOpen)endLongPress();else cancelLongPress();}}
               style={{touchAction:reactOpen?"none":"auto"}}>
-              <Btn onClick={()=>{if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
-                <MessageCircle size={16}/>
+              <Btn className="action-icon-btn" onClick={()=>{if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.text,fontSize:13,fontWeight:700}}>
+                <MessageCircle size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
                 {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
               </Btn>
               {reactOpen&&(
@@ -5097,17 +5099,17 @@ onMuteAuthor?.(post.by);
             </div>
            {(getM(session?.user?.id)?.badge==="confirmed"||getM(session?.user?.id)?.badge==="friend")&&(
   <div style={{display:"flex",alignItems:"center",gap:4,padding:"7px 12px",color:T.muted,fontSize:13}}>
-    <Eye size={16}/>
-    <span>{views||0}</span>
+    <Eye size={17} strokeWidth={2.4} color={T.text} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
+    <span style={{fontWeight:700,color:T.text,textShadow:"0 1px 2px rgba(0,0,0,0.35)"}}>{views||0}</span>
   </div>
 )}
             <div style={{flex:1}}/>
-            <Btn onClick={e=>{e.stopPropagation();setShowShareModal(true);}} style={{padding:"7px 10px",borderRadius:20,color:T.muted,transition:"all .2s",display:"flex",alignItems:"center",gap:4}}>
-              <Share2 size={16}/>
+            <Btn className="action-icon-btn" onClick={e=>{e.stopPropagation();setShowShareModal(true);}} style={{padding:"7px 10px",borderRadius:20,color:T.text,display:"flex",alignItems:"center",gap:4,fontWeight:700}}>
+              <Share2 size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
               {post.type==="text"&&shareCount>0&&<span style={{fontSize:12}}>{shareCount}</span>}
             </Btn>
-            <Btn onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.muted,transition:"all .2s",display:"flex",alignItems:"center",gap:4}}>
-              <Bookmark size={16} fill={saved?"currentColor":"none"}/>
+            <Btn className="action-icon-btn" onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.text,display:"flex",alignItems:"center",gap:4,fontWeight:700}}>
+              <Bookmark size={17} strokeWidth={2.4} fill={saved?"currentColor":"none"} style={{filter:saved?"none":"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
               {savesCount>0&&<span style={{fontSize:12}}>{savesCount}</span>}
             </Btn>
           </div>
