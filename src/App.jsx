@@ -647,6 +647,7 @@ const getGS = () => `
   @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
+@font-face{font-family:'Sora';src:url('/fonts/sora.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @media(prefers-reduced-motion:reduce){*{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
   
   *, *::before, *::after {
@@ -675,6 +676,7 @@ const getGS = () => `
 
   body {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    font-family: 'Sora', sans-serif;
   }
 
   ::-webkit-scrollbar {
@@ -4720,6 +4722,51 @@ const [saved,setSaved]=useState(false);
   const swipeStartRef=useRef(null);
   const lastTapRef=useRef(0);
   const dtTimeoutRef=useRef(null);
+  const [reactOpen,setReactOpen]=useState(false);
+  const [reactDir,setReactDir]=useState(null);
+  const reactStartRef=useRef(null);
+  const longPressTimerRef=useRef(null);
+  const quickReactions=[
+    {key:"up",dx:0,dy:-1,emoji:"👏",text:"👏 Bravo, superbe !"},
+    {key:"down",dx:0,dy:1,emoji:"🙏",text:"🙏 Merci pour ce partage"},
+    {key:"left",dx:-1,dy:0,emoji:"✨",text:"✨ J'ai adoré !"},
+    {key:"right",dx:1,dy:0,emoji:"😲",text:"😲 Waouh, incroyable !"}
+  ];
+  const sendQuickComment=async text=>{
+    const uid=session?.user?.id;
+    if(!uid)return;
+    const{data,error}=await sb.from("comments").insert({post_id:post.id,author_id:uid,text}).select("id,text,created_at,author:profiles(id,prenom,nom,avatar_url)").single();
+    if(!error&&data){
+      setPosts?.(prev=>prev.map(p=>p.id===post.id?{...p,comments:[...(p.comments||[]),{...data,repliesCount:0}]}:p));
+    }
+  };
+  const startLongPress=e=>{
+    reactStartRef.current={x:e.clientX,y:e.clientY};
+    longPressTimerRef.current=setTimeout(()=>{setReactOpen(true);setReactDir(null);},380);
+  };
+  const moveLongPress=e=>{
+    if(!reactOpen||!reactStartRef.current)return;
+    const dx=e.clientX-reactStartRef.current.x;
+    const dy=e.clientY-reactStartRef.current.y;
+    const dist=Math.hypot(dx,dy);
+    if(dist<24){setReactDir(null);return;}
+    const angle=Math.atan2(dy,dx);
+    let dir;
+    if(angle>-Math.PI/4&&angle<=Math.PI/4)dir="right";
+    else if(angle>Math.PI/4&&angle<=3*Math.PI/4)dir="down";
+    else if(angle>-3*Math.PI/4&&angle<=-Math.PI/4)dir="up";
+    else dir="left";
+    setReactDir(dir);
+  };
+  const endLongPress=()=>{
+    clearTimeout(longPressTimerRef.current);
+    if(reactOpen&&reactDir){
+      const choice=quickReactions.find(q=>q.key===reactDir);
+      if(choice)sendQuickComment(choice.text);
+    }
+    setReactOpen(false);setReactDir(null);reactStartRef.current=null;
+  };
+  const cancelLongPress=()=>{clearTimeout(longPressTimerRef.current);};
   const [burstIdx,setBurstIdx]=useState(null);
   const liked=(post.likes||[]).some(l=>(l.user_id||l)===session?.user?.id);
   const isMine=post.by===session?.user?.id;
@@ -5016,10 +5063,38 @@ onMuteAuthor?.(post.by);
               <Heart size={16} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
               {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
             </Btn>
-            <Btn onClick={()=>onDetail?.({...post,_forceComments:true})} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
-              <MessageCircle size={16}/>
-              {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
-            </Btn>
+            <div style={{position:"relative"}}
+              onPointerDown={e=>{e.stopPropagation();startLongPress(e);}}
+              onPointerMove={e=>{e.stopPropagation();moveLongPress(e);}}
+              onPointerUp={e=>{e.stopPropagation();endLongPress();}}
+              onPointerLeave={()=>{if(reactOpen)endLongPress();else cancelLongPress();}}
+              style={{touchAction:reactOpen?"none":"auto"}}>
+              <Btn onClick={()=>{if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.muted,fontSize:13,transition:"all .2s"}}>
+                <MessageCircle size={16}/>
+                {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
+              </Btn>
+              {reactOpen&&(
+                <div style={{position:"absolute",left:"50%",top:"50%",width:0,height:0,zIndex:50,pointerEvents:"none"}}>
+                  {quickReactions.map(q=>{
+                    const active=reactDir===q.key;
+                    const offset=54;
+                    const tx=q.dx*offset-20, ty=q.dy*offset-20;
+                    return(
+                      <div key={q.key} style={{
+                        position:"absolute",left:0,top:0,
+                        transform:`translate(${tx}px,${ty}px) scale(${active?1.3:1})`,
+                        width:40,height:40,borderRadius:"50%",
+                        background:active?T.gold:"rgba(20,20,20,0.92)",
+                        border:`1px solid ${T.gold}55`,
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:18,transition:"transform .15s ease,background .15s ease",
+                        boxShadow:active?`0 0 16px ${T.gold}88`:"0 4px 12px rgba(0,0,0,0.4)"
+                      }}>{q.emoji}</div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
            {(getM(session?.user?.id)?.badge==="confirmed"||getM(session?.user?.id)?.badge==="friend")&&(
   <div style={{display:"flex",alignItems:"center",gap:4,padding:"7px 12px",color:T.muted,fontSize:13}}>
     <Eye size={16}/>
