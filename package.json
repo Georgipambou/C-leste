@@ -17,6 +17,7 @@
     "@capacitor/core": "^8.3.4",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/geolocation": "^8.2.0",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.3.4",
     "@capacitor/share": "^8.0.1",
     "@emailjs/browser": "^4.4.1",
@@ -35,6 +36,7 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-easy-crop": "^5.5.7",
+    "react-virtuoso": "^4.18.11",
     "send-intent": "^7.0.0",
     "sharp": "^0.34.5"
   },

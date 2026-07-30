@@ -50,7 +50,7 @@ import {
   Play, Pause, Volume2,  VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck, Copy, ChevronDown,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2
 
 } from "lucide-react";
 
@@ -67,6 +67,7 @@ import { Share } from "@capacitor/share";
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import EasyCrop from "react-easy-crop";
 import ReelsViewer from "./ReelsViewer";
 import PhotoViewer from "./PhotoViewer";
@@ -76,6 +77,7 @@ import SharePostModal from "./SharePostModal";
 import ContentQuizModal from "./components/ContentQuizModal";
 import { pauseOtherVideos as __pauseOtherPostVideos, releaseActiveVideo as __releaseActivePostVideo } from "./videoRegistry";
 import { fetchRankingData, rankPosts, fetchCommunityIds, fetchFrequentlyVisitedIds } from "./lib/recommendation/useFeedRanking";
+import { Virtuoso } from "react-virtuoso";
 import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
 import SoundDetailModal from "./components/SoundDetailModal";
@@ -98,6 +100,17 @@ const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON;
 if(!SUPABASE_URL||!SUPABASE_ANON)console.error("Variables Supabase manquantes !");
 const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"");
+const haptic=async(style="light")=>{
+  try{
+    if(Capacitor.isNativePlatform()){
+      const map={light:ImpactStyle.Light,medium:ImpactStyle.Medium,heavy:ImpactStyle.Heavy};
+      await Haptics.impact({style:map[style]||ImpactStyle.Light});
+    }else if(navigator.vibrate){
+      const durations={light:10,medium:20,heavy:35};
+      navigator.vibrate(durations[style]||10);
+    }
+  }catch(_){}
+};
 
 const playChatSound=(type)=>{
   try{
@@ -586,12 +599,20 @@ longitude:p.longitude||null,
 });
 
 function mapDbPost(p, followedIds) {
-  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length})),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
 }
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
 const normalizeSearch = s => (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 const matchQuery = (text,query) => !query || normalizeSearch(text).includes(normalizeSearch(query));
+const formatEventDate=iso=>{
+  if(!iso)return null;
+  const d=new Date(iso+"T00:00:00");
+  if(isNaN(d))return null;
+  const days=["DIMANCHE","LUNDI","MARDI","MERCREDI","JEUDI","VENDREDI","SAMEDI"];
+  const months=["JANV.","FÉVR.","MARS","AVR.","MAI","JUIN","JUIL.","AOÛT","SEPT.","OCT.","NOV.","DÉC."];
+  return{dayName:days[d.getDay()],dayNum:d.getDate(),month:months[d.getMonth()]};
+};
 
 const compressImage = file => new Promise(resolve=>{
   const img = new window.Image(), url = URL.createObjectURL(file);
@@ -1061,18 +1082,26 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     if (!el) return;
 
     let isMounted = true;
+    let playTimer = null;
 
     const obs = new IntersectionObserver(([entry]) => {
       if (!isMounted || fullscreenRef.current) return;
+      clearTimeout(playTimer);
       if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-        if (!pausedRef.current) { __pauseOtherPostVideos(el); el.play().catch(() => {}); setPlaying(true); }
-      } else { el.pause(); setPlaying(false); __releaseActivePostVideo(el); }
+        playTimer = setTimeout(() => {
+          if (!isMounted || fullscreenRef.current) return;
+          if (!pausedRef.current) { __pauseOtherPostVideos(el); el.play().catch(() => {}); setPlaying(true); }
+        }, 180);
+      } else {
+        el.pause(); setPlaying(false); __releaseActivePostVideo(el);
+      }
     }, { threshold: 0.5 });
 
     obs.observe(el);
 
     return () => {
       isMounted = false;
+      clearTimeout(playTimer);
       obs.unobserve(el);
       obs.disconnect();
       __releaseActivePostVideo(el);
@@ -2395,7 +2424,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
 }
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
-function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onComment,notify,zIndex=800,fromReel=false,onPhotoView}){
+function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onParticipate,onComment,notify,zIndex=800,fromReel=false,onPhotoView}){
   
 const {members,convs}=useApp();
 useEffect(()=>{
@@ -2444,6 +2473,9 @@ useEffect(()=>{
   const bottomRef=useRef();
   const auth=post.author||getM(post.by);
   const liked=(post.likes||[]).includes(session?.user?.id);
+  const participating=(post.participants||[]).includes(session?.user?.id);
+  const participantsCount=(post.participants||[]).length;
+  const evDateParts=formatEventDate(post.eventDate);
 
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[]);
   if(post?.is_private&&!isNative&&post?.by!==session?.user?.id){
@@ -2479,11 +2511,48 @@ useEffect(()=>{
           </div>
           <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
             {post.type==="event"
-              ?<div style={{margin:"12px 0",background:T.goldBg,borderRadius:16,padding:16,border:`1px solid ${T.gold}22`}}>
-                <p style={{margin:"0 0 6px",fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:600,color:T.text}}>{post.title}</p>
-                {post.text&&<p style={{margin:"0 0 8px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
-                {post.eventDate&&<p style={{margin:"0 0 3px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
-                {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.sub,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
+              ?<div style={{margin:"12px 0",borderRadius:18,overflow:"hidden",border:`1px solid ${T.gold}22`,background:T.goldBg}}>
+                {post.img&&(
+                  <div style={{position:"relative",width:"100%",height:200}}>
+                    <img src={post.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    <div style={{position:"absolute",top:10,left:10,display:"flex",alignItems:"center",gap:5,background:"linear-gradient(90deg,#ff3d6e,#ff8a3d)",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
+                      <Calendar size={13}/> ÉVÉNEMENT
+                    </div>
+                  </div>
+                )}
+                <div style={{padding:16}}>
+                  <div style={{display:"flex",gap:12,marginBottom:14}}>
+                    {evDateParts&&(
+                      <div style={{flexShrink:0,width:64,textAlign:"center",border:`1px solid ${T.gold}55`,borderRadius:12,padding:"9px 4px",background:"rgba(255,255,255,0.02)"}}>
+                        <div style={{fontSize:10,fontWeight:700,color:T.gold,letterSpacing:.5}}>{evDateParts.dayName}</div>
+                        <div style={{fontSize:23,fontWeight:800,color:T.text,lineHeight:1.1}}>{evDateParts.dayNum}</div>
+                        <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:.5}}>{evDateParts.month}</div>
+                      </div>
+                    )}
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{margin:"0 0 6px",fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:T.text,lineHeight:1.25}}>{post.title}</p>
+                      {post.text&&<p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+                    {post.eventLoc&&(
+                      <div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:20,padding:"6px 10px",fontSize:12,color:T.sub}}>
+                        <MapPin size={12}/> {post.eventLoc}
+                      </div>
+                    )}
+                    {post.eventTime&&(
+                      <div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:20,padding:"6px 10px",fontSize:12,color:T.sub}}>
+                        <Clock size={12}/> {post.eventTime}
+                      </div>
+                    )}
+                    <div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:20,padding:"6px 10px",fontSize:12,color:T.sub}}>
+                      <Users size={12}/> {participantsCount} participant{participantsCount>1?"s":""}
+                    </div>
+                  </div>
+                  <button onClick={()=>onParticipate(post.id)} style={{width:"100%",border:"none",borderRadius:14,padding:"13px",fontSize:14,fontWeight:700,color:participating?T.gold:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:participating?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#ff3d6e,#ff8a3d)",border:participating?`1px solid ${T.gold}55`:"none"}}>
+                    {participating?<><Check size={16}/> Vous participez</>:<><UserPlus size={16}/> Participer</>}
+                  </button>
+                </div>
               </div>
               :<>
               {post.text&&<p style={{margin:"12px 0 8px",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-line"}}>{renderTextWithMentions(post.text,post.mentions)}</p>}
@@ -2597,8 +2666,35 @@ const [videoTrimSrc,setVideoTrimSrc]=useState(null);
 const [showCameraStudio,setShowCameraStudio]=useState(false);
 const [evTitle,setEvTitle]=useState("");
 const [evDate,setEvDate]=useState(""); const [evLoc,setEvLoc]=useState("");
+const [evTime,setEvTime]=useState("");
+const [evImgPreview,setEvImgPreview]=useState(null);
+const [evImgUrl,setEvImgUrl]=useState(null);
+const [evImgUploading,setEvImgUploading]=useState(false);
+const evImgRef=useRef();
+const handleEventImagePick=async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+  const croppedFile=await cropImage(src);
+  const file=croppedFile||await compressImage(f);
+  setEvImgUploading(true);
+  try{
+    const publicUrl=await uploadToR2(file,"posts",()=>{});
+    setEvImgUrl(publicUrl);
+    const previewSrc=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(file);});
+    setEvImgPreview(previewSrc);
+  }catch(err){console.error(err);}
+  finally{setEvImgUploading(false);}
+  e.target.value="";
+};
 const [busy,setBusy]=useState(false);
 const [textBg,setTextBg]=useState(null);
+const [pollOptions,setPollOptions]=useState(["",""]);
+const [pollMultiple,setPollMultiple]=useState(false);
+const [pollDuration,setPollDuration]=useState("2");
+const updatePollOption=(i,val)=>setPollOptions(prev=>prev.map((o,idx)=>idx===i?val:o));
+const addPollOption=()=>setPollOptions(prev=>prev.length<6?[...prev,""]:prev);
+const removePollOption=i=>setPollOptions(prev=>prev.length>2?prev.filter((_,idx)=>idx!==i):prev);
 const [selectedCategories,setSelectedCategories]=useState([]);
 const [selectedSound,setSelectedSound]=useState(initialSound);
 const [showDrafts, setShowDrafts] = useState(false);
@@ -2638,7 +2734,7 @@ const handlePick=async e=>{
         const croppedFile=await cropImage(src);
         file=croppedFile||await compressImage(f);
       }
-      if(f.type.startsWith("video/")&&f.size>75*1024*1024){alert("Vidéo trop volumineuse (max 75MB)");continue;}
+      if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo trop volumineuse (max 50MB)");continue;}
       if(f.type.startsWith("video/")&&f._fromCamera){
         const src=URL.createObjectURL(f);
         setPreviews(p=>[...p,{url:src,type:"video"}]);
@@ -2694,21 +2790,24 @@ try {
       return;
     }
     setBusy(true);
+   const pollExpiresAt=type==="poll"&&pollDuration!=="0"?new Date(Date.now()+parseFloat(pollDuration)*24*60*60*1000).toISOString():null;
    const{error}=await sb.from("posts").insert({
       author_id:session?.user?.id,type,
       visibility:"testing",
       text:text.trim()||"",
-      img_url:mediaUrls.length===1?(mediaUrls[0]||null):null,
+      img_url:type==="event"?(evImgUrl||null):(mediaUrls.length===1?(mediaUrls[0]||null):null),
       media_urls:mediaUrls.length>1?mediaUrls:null,
       event_title:type==="event"?evTitle.trim():null,
       event_date:type==="event"?evDate:null,
+      event_time:type==="event"?(evTime||null):null,
       event_loc:type==="event"?evLoc:null,
       text_background:textBg||null,
       is_for_sale:isForSale||false,
       is_private:isPrivate||false,
 whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
 contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
-expires_at:isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null,
+expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
+      poll_multiple:type==="poll"?pollMultiple:false,
       mentions:extractMentions(text.trim(),mentionNameMapRef.current)
     });
     setBusy(false);
@@ -2717,6 +2816,10 @@ if(!error){
   const{data:postData}=await sb.from("posts").select("id").eq("author_id",uid).order("created_at",{ascending:false}).limit(1).single();
   const postId=postData?.id;
   if(postId){
+    if(type==="poll"){
+      const optsToInsert=pollOptions.map(o=>o.trim()).filter(Boolean).map((label,position)=>({post_id:postId,label,position}));
+      if(optsToInsert.length>=2)await sb.from("poll_options").insert(optsToInsert);
+    }
     if(selectedCategories.length>0){
       await sb.from("post_categories").insert(selectedCategories.map(category=>({post_id:postId,category,source:"manual"})));
     }
@@ -2758,12 +2861,13 @@ if(!error){
 
   const canSell=!!myProfile?.badge;
 const [saleExpiry,setSaleExpiry]=useState("30");
-const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:evTitle.trim().length>0;
+const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:type==="poll"?(text.trim().length>0&&pollOptions.filter(o=>o.trim()).length>=2):evTitle.trim().length>0;
 
   return(
     <>
 {videoTrimSrc&&<VideoTrimModal
   videoSrc={videoTrimSrc.src}
+  maxDuration={600}
   onClose={()=>{setVideoTrimSrc(null);videoTrimSrc.resolve(null);}}
   onDone={data=>{videoTrimSrc.resolve(data);}}
 />}
@@ -2803,6 +2907,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
 />}<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
       <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePick}/>
+      <input ref={evImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleEventImagePick}/>
 <input ref={vRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={handlePick}/>
 
       {/* ── Header ── */}
@@ -2842,7 +2947,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
            <MentionInput
   value={text}
   onChange={(val,mentionedId,mentionedName)=>{setText(val);if(mentionedId&&mentionedName){if(!mentionedIdsRef.current.includes(mentionedId))mentionedIdsRef.current=[...mentionedIdsRef.current,mentionedId];mentionNameMapRef.current.set(mentionedName.toLowerCase(),{id:mentionedId,name:mentionedName});}}}
-  placeholder="Quoi de neuf ?"
+  placeholder={type==="poll"?"Pose ta question…":"Quoi de neuf ?"}
   rows={4}
   members={members||[]}
   style={{width:"100%",background:"transparent",border:"none",color:T.text,fontSize:16,outline:"none",resize:"none",lineHeight:1.7,fontFamily:"inherit",padding:0,
@@ -2972,8 +3077,54 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
             {type==="event"&&(
               <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
                 <input value={evTitle} onChange={e=>setEvTitle(e.target.value)} placeholder="Titre de l'événement *" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
-                <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
+                <div style={{display:"flex",gap:8}}>
+                  <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
+                  <input type="time" value={evTime} onChange={e=>setEvTime(e.target.value)} style={{width:110,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
+                </div>
                 <input value={evLoc} onChange={e=>setEvLoc(e.target.value)} placeholder="📍 Lieu" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
+                {evImgPreview?(
+                  <div style={{position:"relative",width:"100%",height:150,borderRadius:14,overflow:"hidden"}}>
+                    <img src={evImgPreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    <button onClick={()=>{setEvImgPreview(null);setEvImgUrl(null);}} style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,0.6)",color:"#fff",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><X size={14}/></button>
+                    {evImgUploading&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:12}}>Envoi...</div>}
+                  </div>
+                ):(
+                  <button onClick={()=>evImgRef.current.click()} style={{width:"100%",height:72,borderRadius:14,border:`2px dashed ${T.gold}44`,background:T.goldBg,color:T.gold,fontSize:12.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer"}}>
+                    <Image size={17}/> Ajouter une image de couverture (optionnel)
+                  </button>
+                )}
+              </div>
+            )}
+            {/* Sondage */}
+            {type==="poll"&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10,animation:"fadeUp .3s ease"}}>
+                {pollOptions.map((opt,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,animation:"popIn .3s cubic-bezier(0.34,1.56,0.64,1) both",animationDelay:`${i*40}ms`}}>
+                    <span style={{width:22,height:22,flexShrink:0,borderRadius:"50%",background:`${POLL_COLORS[i%POLL_COLORS.length]}22`,color:POLL_COLORS[i%POLL_COLORS.length],fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
+                    <input value={opt} onChange={e=>updatePollOption(i,e.target.value)} placeholder={`Option ${i+1}`} maxLength={60} style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 14px",color:T.text,fontSize:13,outline:"none",transition:"border-color .2s"}}/>
+                    {pollOptions.length>2&&(
+                      <button onClick={()=>removePollOption(i)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",padding:4,display:"flex"}}><X size={15}/></button>
+                    )}
+                  </div>
+                ))}
+                {pollOptions.length<6&&(
+                  <button onClick={addPollOption} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px dashed ${T.gold}44`,borderRadius:12,padding:"9px 14px",color:T.gold,fontSize:12.5,fontWeight:600,cursor:"pointer",justifyContent:"center",transition:"transform .15s ease"}}>
+                    <Plus size={14}/> Ajouter une option
+                  </button>
+                )}
+
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"10px 14px",borderRadius:12,background:"rgba(255,255,255,0.03)"}}>
+                  <span style={{fontSize:12.5,color:T.sub}}>Choix multiple</span>
+                  <button onClick={()=>setPollMultiple(m=>!m)} style={{width:38,height:22,borderRadius:20,border:"none",cursor:"pointer",background:pollMultiple?T.gradGold:"rgba(255,255,255,0.12)",position:"relative",transition:"background .25s ease",padding:0}}>
+                    <span style={{position:"absolute",top:2,left:pollMultiple?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .22s cubic-bezier(0.34,1.56,0.64,1)",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
+                  </button>
+                </div>
+
+                <div style={{display:"flex",gap:6,marginTop:2}}>
+                  {[{v:"1",l:"24h"},{v:"2",l:"2j"},{v:"7",l:"7j"},{v:"0",l:"Illimité"}].map(d=>(
+                    <button key={d.v} onClick={()=>setPollDuration(d.v)} style={{flex:1,padding:"9px 4px",borderRadius:11,background:pollDuration===d.v?T.goldBg:"rgba(255,255,255,0.03)",color:pollDuration===d.v?T.goldL:T.muted,fontSize:12,fontWeight:pollDuration===d.v?700:500,border:pollDuration===d.v?`1px solid ${T.gold}44`:"1px solid transparent",cursor:"pointer",transition:"all .2s ease"}}>{d.l}</button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -2993,6 +3144,10 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ev
         <button onClick={()=>{setType("event");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="event"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span style={{fontSize:9,letterSpacing:.5}}>Événement</span>
+        </button>
+        <button onClick={()=>{setType("poll");setTextBg(null);}} style={{background:"none",border:"none",cursor:"pointer",color:type==="poll"?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
+          <BarChart3 size={20}/>
+          <span style={{fontSize:9,letterSpacing:.5}}>Sondage</span>
         </button>
         <button onClick={()=>setShowCameraStudio(true)} style={{background:"none",border:"none",cursor:"pointer",color:showCameraStudio?T.goldL:T.muted,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:0,transition:"color .2s"}}>
           <Wrench size={22}/>
@@ -3047,7 +3202,7 @@ const handlePick=async e=>{
       f=croppedFile||await compressImage(f);
     }
     if(f.type.startsWith("video/")){
-      if(f.size>200*1024*1024){alert("Vidéo max 200MB");return;}
+      if(f.size>50*1024*1024){alert("Vidéo max 50MB");return;}
       const src=URL.createObjectURL(f);
       const trimData=await new Promise(resolve=>setStatusTrimSrc({src,resolve}));
       setStatusTrimSrc(null);
@@ -3656,7 +3811,7 @@ useEffect(()=>{
         <StatusCreatorModal myProfile={myProfile} session={session} myStatuses={myStatuses}
           onClose={()=>{popNav();setCreating(false);setHideNav(false);}} onDone={()=>{popNav();setCreating(false);load();notify("Statut publié ✦");setHideNav(false);}}/>
       )}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
         <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Statuts</h2>
       </div>
       <div style={{maxWidth:640,margin:"0 auto",padding:"16px"}}>
@@ -4311,43 +4466,27 @@ function TypewriterText({text,style}){
   return <p style={style}>{text.slice(0,shown)}</p>;
 }
 
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef,refreshing}){
 
 const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
 const [reelsCommentPost,setReelsCommentPost]=useState(null);
 const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
-const videoPosts=posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i)));
+const videoPosts=useMemo(()=>posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i))),[posts]);
 const [photoIndex,setPhotoIndex]=useState(null);
 const [photoStartMedia,setPhotoStartMedia]=useState(0);
 const [photoViewerPosts,setPhotoViewerPosts]=useState(null);
 const [reelsViewerPosts,setReelsViewerPosts]=useState(null);
 const [openSoundId,setOpenSoundId]=useState(null);
 
-const [mysteryRevealed,setMysteryRevealed]=useState(()=>{
-  try{return localStorage.getItem("celeste_mystery_"+new Date().toDateString())==="1";}catch{return false;}
-});
-const [mysteryDrag,setMysteryDrag]=useState(0);
-const mysteryDragRef=useRef(null);
-const mysteryPost=useMemo(()=>{
-  if(!posts||posts.length===0)return null;
-  const dayKey=new Date().toDateString();
-  let seed=0;for(let i=0;i<dayKey.length;i++)seed=(seed*31+dayKey.charCodeAt(i))>>>0;
-  const withContent=posts.filter(p=>p.img||p.media_urls?.[0]||p.text);
-  const pool=withContent.length>0?withContent:posts;
-  return pool[seed%pool.length];
-},[posts]);
-const revealMystery=()=>{
-  setMysteryRevealed(true);
-  try{localStorage.setItem("celeste_mystery_"+new Date().toDateString(),"1");}catch{}
-};
+
 
 const [photoCommentPost,setPhotoCommentPost]=useState(null);
 const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
-const photoPosts=posts.filter(p=>{
+const photoPosts=useMemo(()=>posts.filter(p=>{
   const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
   return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
-});
+}),[posts]);
 const openPhotoViewer=(post,url)=>{
   let idx=photoPosts.findIndex(p=>p.id===post.id);
   if(idx<0){
@@ -4411,13 +4550,11 @@ useEffect(()=>{
   return()=>window.removeEventListener("celeste_open_photo_viewer",handler);
 },[photoPosts]);
 const [searchOpen,setSearchOpen]=useState(false);
-const bottomRef=useRef();
-const observer=useRef();
-
-useEffect(()=>{if(scrollRef.current&&initialScroll>0){scrollRef.current.scrollTop=initialScroll;}},[]);
-const scrollRef=useRef();
-const savedScroll=useRef(initialScroll);
+const scrollerRef=useRef(null);
+const scrollInitialized=useRef(false);
 const viewedPostIds=viewedPostIdsRef||useRef(new Set());
+const rangeTimerRef=useRef(null);
+const lastRangeRef=useRef({startIndex:0,endIndex:0});
 const postsRef=useRef(posts);
 useEffect(()=>{postsRef.current=posts;},[posts]);
 useEffect(()=>{
@@ -4439,39 +4576,26 @@ useEffect(()=>{
   return()=>clearTimeout(timer);
 },[posts?.length]);
 
-useEffect(()=>{
-  const timer=setTimeout(()=>{
-    const viewObserver=new IntersectionObserver(entries=>{
-      entries.forEach(async entry=>{
-        if(!entry.isIntersecting)return;
-        const postId=entry.target.dataset.postId;
-        if(!postId||viewedPostIds.current.has(postId))return;
-viewedPostIds.current.add(postId);
-const prev=JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]");
-const updated=[...new Set([...prev,postId])].slice(-500);
-localStorage.setItem("celeste_seen_posts",JSON.stringify(updated));
-        viewObserver.unobserve(entry.target);
-        await sb.rpc("increment_phase_views",{post_id:postId});
-      });
-    },{threshold:0.6});
-    document.querySelectorAll("[data-post-id]").forEach(el=>viewObserver.observe(el));
-    return()=>viewObserver.disconnect();
-  },300);
-  return()=>clearTimeout(timer);
-},[posts.length]);
-const feedScrollRef=useRef(initialScroll);
+const handleRangeChanged=useCallback(({startIndex,endIndex})=>{
+  lastRangeRef.current={startIndex,endIndex};
+  clearTimeout(rangeTimerRef.current);
+  rangeTimerRef.current=setTimeout(()=>{
+    const{startIndex:s,endIndex:e}=lastRangeRef.current;
+    const currentPosts=postsRef.current||[];
+    for(let i=s;i<=e;i++){
+      const p=currentPosts[i];
+      if(!p||viewedPostIds.current.has(p.id))continue;
+      viewedPostIds.current.add(p.id);
+      const prev=JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]");
+      const updated=[...new Set([...prev,p.id])].slice(-500);
+      localStorage.setItem("celeste_seen_posts",JSON.stringify(updated));
+      sb.rpc("increment_phase_views",{post_id:p.id});
+    }
+  },600);
+},[]);
 
-useEffect(()=>{
-    if(!bottomRef.current||!hasMore)return;
-    observer.current=new IntersectionObserver(entries=>{if(entries[0].isIntersecting)loadMore();},{threshold:.5});
-    observer.current.observe(bottomRef.current);
-    return()=>observer.current?.disconnect();
-  },[hasMore,loadMore]);
-
-  const toggleLike=async pid=>{
-   
-    const post=(posts||[]).find(p=>p.id===pid);
-    
+  const toggleLike=useCallback(async pid=>{
+    const post=(postsRef.current||[]).find(p=>p.id===pid);
     if(!post)return;
     const uid=session?.user?.id;
     const liked=(post.likes||[]).some(l=>(l.user_id||l)===uid);
@@ -4507,14 +4631,30 @@ useEffect(()=>{
         }});
       }
     }catch(e){console.warn("toggleLike error:",e);}
-  };
-
-  const toggleSave=async pid=>{
+  },[session?.user?.id,myProfile?.prenom]);
+const toggleParticipate=useCallback(async pid=>{
+    const post=(postsRef.current||[]).find(p=>p.id===pid);
+    if(!post)return;
+    const uid=session?.user?.id;
+    const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+    setPosts(prev=>(prev||[]).map(p=>p.id!==pid?p:{...p,participants:participating?(p.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(p.participants||[]),uid]}));
+    try{
+      if(participating){
+        await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+      }else{
+        await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+        if(post.by!==uid){
+          sb.functions.invoke('send-push',{body:{targetUserId:post.by,title:"✦ Nouveau participant",body:`${myProfile?.prenom||"Quelqu'un"} participe à ton événement`}});
+        }
+      }
+    }catch(e){console.warn("toggleParticipate error:",e);}
+  },[session?.user?.id,myProfile?.prenom]);
+  const toggleSave=useCallback(async pid=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();
     if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);
     else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});
     notify(ex?"Retiré des sauvegardes":"Sauvegardé ✦");
-  };
+  },[session?.user?.id,notify]);
 
   return(
     <>
@@ -4570,26 +4710,48 @@ useEffect(()=>{
 )}
       
 
-    <div ref={scrollRef} data-feed-scroll style={{flex:1,overflowY:"auto",background:T.bg}}
-      onScroll={e=>{savedScroll.current=e.currentTarget.scrollTop;onScrollChange?.(e.currentTarget.scrollTop);}}>
-
-      {/* Header */}
-      <div style={{position:"sticky",top:0,zIndex:10,background:"${T.bg2}",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-    <div onClick={()=>{pushNav(()=>setSearchOpen(false));setSearchOpen(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
-  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Actu, <span style={{color:T.goldL}}>{myProfile?.prenom||""}</span></span>
-  <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
+    <div style={{position:"relative",flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+<div style={{background:T.bg,zIndex:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+  <div onClick={()=>{pushNav(()=>setSearchOpen(false));setSearchOpen(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
+    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
+    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Actu, <span style={{color:T.goldL}}>{myProfile?.prenom||""}</span></span>
+    <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
+  </div>
+  <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
+    <Plus size={16}/>Publier
+  </Btn>
 </div>
-    <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
-      <Plus size={16}/>Publier
-    </Btn>
-      </div>
-     {searchOpen&&<SearchExplorer sb={sb} T={T} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
-        onClose={()=>{popNav();setSearchOpen(false);}}
-        onOpenPost={openPostFromSound}
-        onUseSound={onUseSoundForPost}
-      />}
+{searchOpen&&<SearchExplorer sb={sb} T={T} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
+  onClose={()=>{popNav();setSearchOpen(false);}}
+  onOpenPost={openPostFromSound}
+  onUseSound={onUseSoundForPost}
+/>}
 
+{refreshing&&(
+  <div style={{position:"absolute",top:64,left:"50%",transform:"translateX(-50%)",zIndex:20,display:"flex",alignItems:"center",gap:8,background:"rgba(10,10,10,0.9)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"6px 14px",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 8px 24px rgba(0,0,0,0.4)",animation:"notifIn .3s ease"}}>
+    <span style={{fontSize:14,color:T.gold,display:"inline-block",animation:"spin 1s linear infinite"}}>✦</span>
+    <span style={{fontSize:12,color:T.text,fontWeight:600}}>Actualisation…</span>
+  </div>
+)}
+<Virtuoso
+  style={{flex:1}}
+  data={posts||[]}
+  computeItemKey={(index,p)=>p.id}
+  endReached={loadMore}
+  rangeChanged={handleRangeChanged}
+  overscan={400}
+  scrollerRef={ref=>{
+    if(!ref)return;
+    scrollerRef.current=ref;
+    ref.setAttribute("data-feed-scroll","");
+    if(!scrollInitialized.current){
+      scrollInitialized.current=true;
+      if(initialScroll>0)ref.scrollTop=initialScroll;
+    }
+    ref.onscroll=()=>{onScrollChange?.(ref.scrollTop);};
+  }}
+  components={{
+    Header:()=>(
       <div style={{maxWidth:640,margin:"0 auto"}}>
         {(posts||[]).length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
@@ -4598,70 +4760,42 @@ useEffect(()=>{
             <p style={{fontSize:13,marginTop:8}}>Soyez le premier à partager</p>
           </div>
         )}
-
-       {mysteryPost&&(
-        <div style={{margin:"14px 16px 22px",borderRadius:20,overflow:"hidden",position:"relative",background:"linear-gradient(160deg,#150524 0%,#000 70%)",border:`1px solid ${T.gold}33`,animation:"fadeUp .4s ease both",cursor:mysteryRevealed?"pointer":"default"}}
-        onClick={()=>{if(mysteryRevealed)openPost(mysteryPost);}}>
-          <div style={{padding:"26px 20px",minHeight:150,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:8,textAlign:"center"}}>
-            {mysteryPost.img||mysteryPost.media_urls?.[0]
-              ?<img src={mysteryPost.img||mysteryPost.media_urls[0]} alt="" style={{width:"100%",maxHeight:170,objectFit:"cover",borderRadius:14}}/>
-              :<p style={{margin:0,fontSize:16,color:T.text,lineHeight:1.5,fontFamily:"'Cormorant Garamond',serif"}}>{mysteryPost.text}</p>
-            }
-            <p style={{margin:"6px 0 0",fontSize:12,color:T.muted}}>— {mysteryPost.author?.name||"Anonyme"}</p>
-          </div>
-          {!mysteryRevealed&&(
-          <div
-            onPointerDown={e=>{mysteryDragRef.current=e.clientX;}}
-            onPointerMove={e=>{
-              if(mysteryDragRef.current==null)return;
-              const d=e.clientX-mysteryDragRef.current;
-              setMysteryDrag(Math.max(0,Math.min(1,d/140)));
-            }}
-            onPointerUp={()=>{
-              if(mysteryDrag>0.55)revealMystery();
-              else setMysteryDrag(0);
-              mysteryDragRef.current=null;
-            }}
-            style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,cursor:"grab",touchAction:"pan-y",
-              backdropFilter:`blur(${18-mysteryDrag*18}px)`,WebkitBackdropFilter:`blur(${18-mysteryDrag*18}px)`,
-              background:`rgba(0,0,0,${0.6-mysteryDrag*0.6})`,transition:mysteryDrag===0?"backdrop-filter .3s,background .3s":"none"}}>
-            <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:30,color:T.gold,opacity:1-mysteryDrag}}>✦</span>
-            <p style={{margin:0,fontSize:15,fontWeight:600,color:T.text,fontFamily:"'Cormorant Garamond',serif",letterSpacing:1,opacity:1-mysteryDrag}}>Mystère du jour</p>
-            <p style={{margin:0,fontSize:12,color:T.muted,opacity:1-mysteryDrag}}>Glisse pour révéler</p>
-          </div>
-          )}
-        </div>
-       )}
-       {(posts||[]).map((p,i)=>(
-          <div key={p.id} data-post-id={p.id}>
-<PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-onMuteAuthor={onMuteAuthor}
-           onDetail={openPost}
-            onLike={toggleLike}
-            onSave={toggleSave}
-            onUser={onUser}
-            onImageView={onImageView}
-            notify={notify}
-            refresh={refreshPost}
-            setPosts={setPosts}
-            animDelay={0}
-            myConnections={myConnections}
-            onConnect={onConnect}
-          />
-</div>
-        ))}
-
+       
+      </div>
+    ),
+    Footer:()=>(
+      <div style={{maxWidth:640,margin:"0 auto"}}>
         {loadingMore&&(
           <div style={{display:"flex",justifyContent:"center",padding:"24px"}}>
             <StarFieldLoader/>
           </div>
         )}
-        <div ref={bottomRef} style={{height:4}}/>
         <div style={{height:80}}/>
       </div>
-   </div>
-
-      {detailPost&&(
+    )
+  }}
+  itemContent={(index,p)=>(
+    <div key={p.id} data-post-id={p.id} style={{maxWidth:640,margin:"0 auto"}}>
+      <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
+        onMuteAuthor={onMuteAuthor}
+        onDetail={openPost}
+        onLike={toggleLike}
+        onParticipate={toggleParticipate}
+        onSave={toggleSave}
+        onUser={onUser}
+        onImageView={onImageView}
+        notify={notify}
+        refresh={refreshPost}
+        setPosts={setPosts}
+        animDelay={0}
+        myConnections={myConnections}
+        onConnect={onConnect}
+      />
+    </div>
+  )}
+/>
+</div>
+{detailPost&&(
         <PostDetailModal
           post={detailPost}
           myProfile={myProfile}
@@ -4670,6 +4804,14 @@ onMuteAuthor={onMuteAuthor}
           onClose={()=>{popNav();setDetailPost(null);}}
           onLike={async pid=>{
             await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+            const u=await refreshPost(pid);
+            if(u){setDetailPost(u);setPosts(prev=>prev.map(x=>x.id===pid?u:x));}
+          }}
+          onParticipate={async pid=>{
+            const uid=session?.user?.id;
+            const participating=(detailPost.participants||[]).some(x=>(x.user_id||x)===uid);
+            if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+            else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
             const u=await refreshPost(pid);
             if(u){setDetailPost(u);setPosts(prev=>prev.map(x=>x.id===pid?u:x));}
           }}
@@ -4707,12 +4849,118 @@ function TranslateBtn({text,dark=false}){
     </div>
   );
 }
+// ── SONDAGES ───────────────────────────────────────────────
+const POLL_COLORS=["#8b5cf6","#22c55e","#f97316","#3b82f6","#ec4899","#eab308","#14b8a6","#f43f5e"];
+function formatPollTimeLeft(expiresAt){
+  if(!expiresAt)return"Illimité";
+  const diff=new Date(expiresAt).getTime()-Date.now();
+  if(diff<=0)return"Terminé";
+  const days=Math.floor(diff/86400000);
+  if(days>=1)return`${days}j restant${days>1?"s":""}`;
+  const hours=Math.floor(diff/3600000);
+  if(hours>=1)return`${hours}h restante${hours>1?"s":""}`;
+  const mins=Math.max(1,Math.floor(diff/60000));
+  return`${mins}min restante${mins>1?"s":""}`;
+}
+const PollCard=React.memo(function PollCard({post,session}){
+  const uid=session?.user?.id;
+  const[options,setOptions]=useState([]);
+  const[votes,setVotes]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[pending,setPending]=useState(false);
+  const[justVoted,setJustVoted]=useState(null);
+  const expired=post.expires_at?new Date(post.expires_at).getTime()<=Date.now():false;
 
+  useEffect(()=>{
+    let cancelled=false;
+    const hasInitialData=Array.isArray(post.poll_options);
+    if(hasInitialData){
+      setOptions(post.poll_options||[]);setVotes(post.poll_votes||[]);setLoading(false);
+    }else{
+      (async()=>{
+        const[{data:opts},{data:v}]=await Promise.all([
+          sb.from("poll_options").select("id,label,position").eq("post_id",post.id).order("position",{ascending:true}),
+          sb.from("poll_votes").select("option_id,voter_id").eq("post_id",post.id)
+        ]);
+        if(cancelled)return;
+        setOptions(opts||[]);setVotes(v||[]);setLoading(false);
+      })();
+    }
+    const channel=sb.channel(`poll_votes_${post.id}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"poll_votes",filter:`post_id=eq.${post.id}`},payload=>{
+        setVotes(prev=>{
+          if(payload.eventType==="INSERT")return[...prev,{option_id:payload.new.option_id,voter_id:payload.new.voter_id}];
+          if(payload.eventType==="DELETE")return prev.filter(x=>!(x.option_id===payload.old.option_id&&x.voter_id===payload.old.voter_id));
+          return prev;
+        });
+      }).subscribe();
+    return()=>{cancelled=true;sb.removeChannel(channel);};
+  },[post.id]);
+
+  const totalVotes=useMemo(()=>new Set(votes.map(v=>v.voter_id)).size,[votes]);
+  const countsByOption=useMemo(()=>{
+    const m={};options.forEach(o=>m[o.id]=0);
+    votes.forEach(v=>{m[v.option_id]=(m[v.option_id]||0)+1;});
+    return m;
+  },[votes,options]);
+  const myOptionIds=useMemo(()=>new Set(votes.filter(v=>v.voter_id===uid).map(v=>v.option_id)),[votes,uid]);
+
+  const handleVote=async optId=>{
+    if(!uid||pending||expired)return;
+    setPending(true);setJustVoted(optId);
+    setTimeout(()=>setJustVoted(null),450);
+    const alreadyMine=myOptionIds.has(optId);
+    if(alreadyMine){
+      setVotes(prev=>prev.filter(v=>!(v.option_id===optId&&v.voter_id===uid)));
+      await sb.from("poll_votes").delete().eq("post_id",post.id).eq("option_id",optId).eq("voter_id",uid);
+    }else if(!post.poll_multiple&&myOptionIds.size>0){
+      setVotes(prev=>[...prev.filter(v=>v.voter_id!==uid),{option_id:optId,voter_id:uid}]);
+      await sb.from("poll_votes").delete().eq("post_id",post.id).eq("voter_id",uid);
+      await sb.from("poll_votes").insert({post_id:post.id,option_id:optId,voter_id:uid});
+    }else{
+      setVotes(prev=>[...prev,{option_id:optId,voter_id:uid}]);
+      await sb.from("poll_votes").insert({post_id:post.id,option_id:optId,voter_id:uid});
+    }
+    setPending(false);
+  };
+
+  if(loading)return<div style={{padding:"20px 0",textAlign:"center"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",margin:"0 auto",animation:"spin .7s linear infinite"}}/></div>;
+
+  return(
+    <div style={{marginBottom:10}} onClick={e=>e.stopPropagation()}>
+      {post.text&&<p style={{margin:"0 0 4px",fontSize:15,fontWeight:700,color:T.text,lineHeight:1.4}}>{post.text}</p>}
+      <p style={{margin:"0 0 12px",fontSize:12,color:T.muted}}>{expired?"Sondage terminé":(post.poll_multiple?"Vous pouvez choisir plusieurs options":"Vous pouvez choisir une option")}</p>
+      {options.map((opt,i)=>{
+        const count=countsByOption[opt.id]||0;
+        const pct=totalVotes>0?Math.round((count/totalVotes)*100):0;
+        const mine=myOptionIds.has(opt.id);
+        const color=POLL_COLORS[i%POLL_COLORS.length];
+        return(
+          <button key={opt.id} disabled={expired||pending} onClick={()=>handleVote(opt.id)}
+            style={{display:"block",width:"100%",position:"relative",overflow:"hidden",border:`1px solid ${mine?color+"77":T.border}`,borderRadius:14,padding:"12px 14px",marginBottom:8,background:"rgba(255,255,255,0.03)",cursor:expired?"default":"pointer",textAlign:"left",transition:"transform .18s cubic-bezier(0.34,1.56,0.64,1), border-color .3s ease",transform:justVoted===opt.id?"scale(0.96)":"scale(1)",animation:"popIn .35s cubic-bezier(0.34,1.56,0.64,1) both",animationDelay:`${i*55}ms`}}>
+            <div style={{position:"absolute",inset:0,width:`${pct}%`,background:`linear-gradient(90deg,${color}35,${color}15)`,transition:"width .7s cubic-bezier(0.22,1,0.36,1)"}}/>
+            <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}>
+                {mine
+                  ?<CheckCircle2 size={16} color={color} style={{flexShrink:0,animation:"popIn .3s cubic-bezier(0.34,1.56,0.64,1)"}}/>
+                  :<span style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${color}77`,flexShrink:0,transition:"border-color .3s ease"}}/>
+                }
+                <span style={{fontSize:13.5,color:T.text,fontWeight:mine?700:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{opt.label}</span>
+              </div>
+              <span style={{fontSize:13,fontWeight:800,color:mine?color:T.sub,flexShrink:0,transition:"color .3s ease"}}>{pct}%</span>
+            </div>
+          </button>
+        );
+      })}
+      <p style={{margin:"2px 0 0",fontSize:11.5,color:T.muted}}>{totalVotes} vote{totalVotes>1?"s":""} · {formatPollTimeLeft(post.expires_at)}</p>
+    </div>
+  );
+});
 
 // ── POST CARD (ENRICHI depuis App 9) ─────────────────────
 const POST_REPORT_REASONS=["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Autre"];
 const ADMIN_DELETE_REASONS=["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Contenu réutilisé d'une autre plateforme (filigrane visible)","Signalement non fondé mais retiré pour une autre raison","Autre"];
-const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect,onMuteAuthor}){
+const PostCard=React.memo(function PostCard({post,myProfile,session,getM,onDetail,onLike,onParticipate,onSave,onUser,onImageView,notify,refresh,setPosts,animDelay=0,myConnections,onConnect,onMuteAuthor}){
   const{members,convs}=useApp();
   const [savesCount,setSavesCount]=useState(post.savesCount||0);
   const [expanded,setExpanded]=useState(false);
@@ -4734,43 +4982,105 @@ const [saved,setSaved]=useState(false);
     {key:"left",dx:-1,dy:0,emoji:"✨",text:"✨ J'ai adoré !"},
     {key:"right",dx:1,dy:0,emoji:"😲",text:"😲 Waouh, incroyable !"}
   ];
+  const haptic=pattern=>{try{navigator.vibrate&&navigator.vibrate(pattern);}catch(_){}};
+  const lastReactDirRef=useRef(null);
   const sendQuickComment=async text=>{
     const uid=session?.user?.id;
     if(!uid)return;
     const{data,error}=await sb.from("comments").insert({post_id:post.id,author_id:uid,text}).select("id,text,created_at,author:profiles(id,prenom,nom,avatar_url)").single();
     if(!error&&data){
-      setPosts?.(prev=>prev.map(p=>p.id===post.id?{...p,comments:[...(p.comments||[]),{...data,repliesCount:0}]}:p));
+      setPosts?.(prev=>prev.map(p=>p.id===post.id?{...p,comments:[...(p.comments||[]),{...data,repliesCount:0}],commentsCount:(p.commentsCount??(p.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0))+1}:p));
     }
   };
   const startLongPress=e=>{
     reactStartRef.current={x:e.clientX,y:e.clientY};
-    longPressTimerRef.current=setTimeout(()=>{setReactOpen(true);setReactDir(null);},380);
+    lastReactDirRef.current=null;
+    longPressTimerRef.current=setTimeout(()=>{setReactOpen(true);setReactDir(null);haptic("light");},380);
   };
   const moveLongPress=e=>{
     if(!reactOpen||!reactStartRef.current)return;
     const dx=e.clientX-reactStartRef.current.x;
     const dy=e.clientY-reactStartRef.current.y;
     const dist=Math.hypot(dx,dy);
-    if(dist<24){setReactDir(null);return;}
+    if(dist<24){
+      if(lastReactDirRef.current){lastReactDirRef.current=null;setReactDir(null);}
+      return;
+    }
     const angle=Math.atan2(dy,dx);
     let dir;
     if(angle>-Math.PI/4&&angle<=Math.PI/4)dir="right";
     else if(angle>Math.PI/4&&angle<=3*Math.PI/4)dir="down";
     else if(angle>-3*Math.PI/4&&angle<=-Math.PI/4)dir="up";
     else dir="left";
+    if(dir!==reactDir)haptic("light");
     setReactDir(dir);
   };
   const endLongPress=()=>{
     clearTimeout(longPressTimerRef.current);
-    if(reactOpen&&reactDir){
+   if(reactOpen&&reactDir){
       const choice=quickReactions.find(q=>q.key===reactDir);
-      if(choice)sendQuickComment(choice.text);
+      if(choice){sendQuickComment(choice.text);haptic("medium");}
     }
-    setReactOpen(false);setReactDir(null);reactStartRef.current=null;
+    setReactOpen(false);setReactDir(null);reactStartRef.current=null;lastReactDirRef.current=null;
   };
   const cancelLongPress=()=>{clearTimeout(longPressTimerRef.current);};
   const [burstIdx,setBurstIdx]=useState(null);
+  const [likeFill,setLikeFill]=useState(0);
+  const [likeBurst,setLikeBurst]=useState(false);
+  const likeHoldStartRef=useRef(null);
+  const likeHoldFrameRef=useRef(null);
+  const likeBurstFiredRef=useRef(false);
+  const LIKE_HOLD_MS=900;
+  const likeFillStepRef=useRef(0);
+ const likeHalfFiredRef=useRef(false);
+  const startLikeHold=()=>{
+    if(liked)return;
+    likeBurstFiredRef.current=false;
+    likeHalfFiredRef.current=false;
+    haptic("light");
+    likeHoldStartRef.current=performance.now();
+    const tick=()=>{
+      if(!likeHoldStartRef.current)return;
+      const elapsed=performance.now()-likeHoldStartRef.current;
+      const pct=Math.min(100,(elapsed/LIKE_HOLD_MS)*100);
+      setLikeFill(pct);
+      if(pct>=50&&!likeHalfFiredRef.current){
+        likeHalfFiredRef.current=true;
+        haptic("medium");
+      }
+      if(pct>=100){
+        likeBurstFiredRef.current=true;
+        setLikeBurst(true);
+        haptic("heavy");
+        onLike(post.id);
+        likeHoldStartRef.current=null;
+        setTimeout(()=>{setLikeBurst(false);setLikeFill(0);},650);
+        return;
+      }
+      likeHoldFrameRef.current=requestAnimationFrame(tick);
+    };
+    likeHoldFrameRef.current=requestAnimationFrame(tick);
+  };
+  const endLikeHold=()=>{
+    cancelAnimationFrame(likeHoldFrameRef.current);
+    if(likeBurstFiredRef.current){likeBurstFiredRef.current=false;return;}
+    const held=likeHoldStartRef.current?performance.now()-likeHoldStartRef.current:0;
+    setLikeFill(0);
+    likeHoldStartRef.current=null;
+    if(!liked&&held>=180)return;
+    haptic("light");
+    onLike(post.id);
+  };
+  const cancelLikeHold=()=>{
+    cancelAnimationFrame(likeHoldFrameRef.current);
+    likeBurstFiredRef.current=false;
+    setLikeFill(0);
+    likeHoldStartRef.current=null;
+  };
   const liked=(post.likes||[]).some(l=>(l.user_id||l)===session?.user?.id);
+  const participating=(post.participants||[]).some(x=>(x.user_id||x)===session?.user?.id);
+  const participantsCount=(post.participants||[]).length;
+  const evDateParts=formatEventDate(post.eventDate);
   const isMine=post.by===session?.user?.id;
   const isAdmin=myProfile?.is_admin;
   const isLockedForViewer=post.is_private&&!isNative&&!isMine;
@@ -4914,8 +5224,9 @@ onMuteAuthor?.(post.by);
               <Btn onClick={e=>{e.stopPropagation();onUser?.(post.by);}} style={{fontSize:14,fontWeight:700,color:T.text,padding:0,textShadow:post.author?.color?`0 0 10px ${post.author.color}66`:"none"}}>{post.author?.name}</Btn>
               <Badge type={post.author?.badge}/>
               {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
-              {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={10} color={T.goldL}/>Épinglé</span>}
+              {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={1} color={T.goldL}/></span>}
               <span style={{fontSize:11,color:T.muted}}>{ago(post.ts)}</span>
+              {post.type==="poll"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:"#a78bfa",background:"rgba(139,92,246,0.14)",border:"1px solid rgba(139,92,246,0.35)",padding:"3px 9px",borderRadius:20}}><BarChart3 size={11}/> Sondage</span>}
             </div>
             <div style={{position:"relative",flexShrink:0}}>
               <Btn onClick={e=>{e.stopPropagation();setShowMenu(s=>!s);}} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}>
@@ -4968,12 +5279,54 @@ onMuteAuthor?.(post.by);
           </div>
 
           {/* Content */}
-          {post.type==="event"
-            ?<div style={{background:T.goldBg,borderRadius:14,padding:14,border:`1px solid ${T.gold}22`,marginBottom:10}}>
-              <p style={{margin:"0 0 5px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:600,color:T.text}}>{post.title}</p>
-              {post.text&&<p style={{margin:"0 0 6px",fontSize:13,color:T.sub,lineHeight:1.7}}>{post.text}</p>}
-              {post.eventDate&&<p style={{margin:"0 0 2px",fontSize:12,color:T.gold}}>🗓 {post.eventDate}</p>}
-              {post.eventLoc&&<p style={{margin:0,fontSize:12,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={12}/>{post.eventLoc}</p>}
+          {post.type==="poll"
+            ?<PollCard post={post} session={session}/>
+            :post.type==="event"
+            ?<div style={{borderRadius:18,overflow:"hidden",border:`1px solid ${T.gold}22`,marginBottom:10,background:T.goldBg}}>
+              {post.img&&(
+                <div style={{position:"relative",width:"100%",height:180}}>
+                  <img src={post.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  <div style={{position:"absolute",top:10,left:10,display:"flex",alignItems:"center",gap:5,background:"linear-gradient(90deg,#ff3d6e,#ff8a3d)",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
+                    <Calendar size={13}/> ÉVÉNEMENT
+                  </div>
+                  <button onClick={e=>{e.stopPropagation();onSave(post.id);}} style={{position:"absolute",top:10,right:10,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.45)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <Bookmark size={16} color="#fff" fill={saved?"#fff":"none"}/>
+                  </button>
+                </div>
+              )}
+              <div style={{padding:14}}>
+                <div style={{display:"flex",gap:12,marginBottom:12}}>
+                  {evDateParts&&(
+                    <div style={{flexShrink:0,width:60,textAlign:"center",border:`1px solid ${T.gold}55`,borderRadius:12,padding:"8px 4px",background:"rgba(255,255,255,0.02)"}}>
+                      <div style={{fontSize:9.5,fontWeight:700,color:T.gold,letterSpacing:.5}}>{evDateParts.dayName}</div>
+                      <div style={{fontSize:21,fontWeight:800,color:T.text,lineHeight:1.1}}>{evDateParts.dayNum}</div>
+                      <div style={{fontSize:9.5,fontWeight:700,color:T.muted,letterSpacing:.5}}>{evDateParts.month}</div>
+                    </div>
+                  )}
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{margin:"0 0 4px",fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:T.text,lineHeight:1.25}}>{post.title}</p>
+                    {post.text&&<p style={{margin:0,fontSize:12.5,color:T.sub,lineHeight:1.5}}>{post.text}</p>}
+                  </div>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+                  {post.eventLoc&&(
+                    <div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:20,padding:"6px 10px",fontSize:11.5,color:T.sub}}>
+                      <MapPin size={12}/> {post.eventLoc}
+                    </div>
+                  )}
+                  {post.eventTime&&(
+                    <div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:20,padding:"6px 10px",fontSize:11.5,color:T.sub}}>
+                      <Clock size={12}/> {post.eventTime}
+                    </div>
+                  )}
+                  <div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:20,padding:"6px 10px",fontSize:11.5,color:T.sub}}>
+                    <Users size={12}/> {participantsCount} participant{participantsCount>1?"s":""}
+                  </div>
+                </div>
+                <button onClick={e=>{e.stopPropagation();onParticipate(post.id);}} style={{width:"100%",border:"none",borderRadius:14,padding:"12px",fontSize:14,fontWeight:700,color:participating?T.gold:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:participating?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#ff3d6e,#ff8a3d)",border:participating?`1px solid ${T.gold}55`:"none"}}>
+                  {participating?<><Check size={16}/> Vous participez</>:<><UserPlus size={16}/> Participer</>}
+                </button>
+              </div>
             </div>
             :<>
               {post.text&&(
@@ -5003,7 +5356,10 @@ onMuteAuthor?.(post.by);
         }}
         style={{display:"flex",gap:8,overflowX:"auto",scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}
       >
-        {allMedia.map((url,i)=>(
+        {allMedia.map((url,i)=>{
+          const isVideoSlide=/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video");
+          const shouldMountVideo=!isVideoSlide||Math.abs(i-slideIdx)<=1;
+          return(
           <div key={i} onClick={e=>{
               e.stopPropagation();
               const now=Date.now();
@@ -5018,14 +5374,18 @@ onMuteAuthor?.(post.by);
                 dtTimeoutRef.current=setTimeout(()=>onDetail?.(post),300);
               }
             }} style={{flex:allMedia.length>1?"0 0 88%":"0 0 100%",scrollSnapAlign:"center",aspectRatio:"4/5",borderRadius:16,overflow:"hidden",position:"relative",background:T.card}}>
-            <MediaPlayer url={url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onVideoClick={()=>{}}/>
+            {shouldMountVideo
+              ?<MediaPlayer url={url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onVideoClick={()=>{}}/>
+              :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:T.card}}><span style={{fontSize:32,opacity:.35}}>🎬</span></div>
+            }
             {burstIdx===i&&(
               <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
                 <Heart size={72} fill="#fff" color="#fff" style={{filter:"drop-shadow(0 4px 20px rgba(0,0,0,0.4))",animation:"heartBurst .7s ease"}}/>
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
       {allMedia.length>1&&(
         <div style={{display:"flex",justifyContent:"center",gap:4,marginTop:8}}>
@@ -5061,19 +5421,35 @@ onMuteAuthor?.(post.by);
 )}
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
-            <Btn className="action-icon-btn" onClick={e=>{e.stopPropagation();onLike(post.id);}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.1)":"transparent",color:liked?T.gold:T.text,fontSize:13,fontWeight:700,border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
-              <Heart size={17} strokeWidth={2.4} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.text,filter:liked?"none":"drop-shadow(0 1px 2px rgba(0,0,0,0.35))",animation:liked?"pulse .3s ease":"none"}}/>
-              {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
-            </Btn>
             <div style={{position:"relative"}}
+              onPointerDown={e=>{e.stopPropagation();startLikeHold();}}
+              onPointerUp={e=>{e.stopPropagation();endLikeHold();}}
+              onPointerLeave={()=>{e=>{};cancelLikeHold();}}
+              style={{touchAction:"none"}}>
+              <Btn className="action-icon-btn" style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.1)":"transparent",color:liked?T.gold:T.text,fontSize:13,fontWeight:700,border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
+                <div style={{position:"relative",width:17,height:17,flexShrink:0}}>
+                  <Heart size={17} strokeWidth={2.4} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.text,filter:liked?"none":"drop-shadow(0 1px 2px rgba(0,0,0,0.35))",animation:liked?"pulse .3s ease":"none"}}/>
+                  {!liked&&likeFill>0&&(
+                    <div style={{position:"absolute",inset:0,overflow:"hidden",clipPath:`inset(${100-likeFill}% 0 0 0)`}}>
+                      <Heart size={17} strokeWidth={2.4} fill={T.gold} color={T.gold}/>
+                    </div>
+                  )}
+                  {likeBurst&&(
+                    <Heart size={46} fill="#fff" color="#fff" style={{position:"absolute",top:-14.5,left:-14.5,filter:"drop-shadow(0 4px 20px rgba(0,0,0,0.4))",animation:"heartBurst .6s ease",pointerEvents:"none"}}/>
+                  )}
+                </div>
+                {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
+              </Btn>
+            </div>
+            <div
               onPointerDown={e=>{e.stopPropagation();startLongPress(e);}}
               onPointerMove={e=>{e.stopPropagation();moveLongPress(e);}}
-              onPointerUp={e=>{e.stopPropagation();endLongPress();}}
+              onPointerUp={(e)=>{e.stopPropagation();endLongPress();}}
               onPointerLeave={()=>{if(reactOpen)endLongPress();else cancelLongPress();}}
-              style={{touchAction:reactOpen?"none":"auto"}}>
+              style={{position:"relative",touchAction:reactOpen?"none":"auto"}}>
               <Btn className="action-icon-btn" onClick={()=>{if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.text,fontSize:13,fontWeight:700}}>
                 <MessageCircle size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
-                {(post.comments||[]).length>0&&<span>{(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
+                {(post.commentsCount??(post.comments||[]).length)>0&&<span>{post.commentsCount??(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
               </Btn>
               {reactOpen&&(
                 <div style={{position:"absolute",left:"50%",top:"50%",width:0,height:0,zIndex:50,pointerEvents:"none"}}>
@@ -5173,7 +5549,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
         const mapped=(data||[]).map(d=>d.posts).filter(Boolean).map(p=>({
           id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,
           text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,
-          eventDate:p.event_date||null,eventLoc:p.event_loc||null,
+          eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,
           likes:(p.likes||[]).map(l=>l.user_id)||(p.likes||[]),
           comments:[],ts:new Date(p.created_at).getTime(),pinned:p.pinned||false,is_private:p.is_private||false,
           sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null
@@ -5183,9 +5559,9 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
 const [detailPost, setDetailPost] = useState(null);
   const localToggleLike=async pid=>{
@@ -6346,9 +6722,9 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
 const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const localToggleLike=async pid=>{
@@ -6369,9 +6745,9 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
   const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const loadUPosts=useCallback(async()=>{
-    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
-     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,likes:(p.likes||[]).map(l=>l.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
      mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
      setUPosts(mapped);
    }
@@ -6605,9 +6981,9 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
 
  const isMe=session?.user?.id===user.id;
@@ -7830,9 +8206,9 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   };
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const videoPosts=likedPosts.filter(isVid);
@@ -7853,8 +8229,8 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
     }
   };
   useEffect(()=>{
-    sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
-      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
+    sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
       setLoading(false);
     });
   },[session?.user?.id]);
@@ -7996,9 +8372,9 @@ const [myPostsLoading,setMyPostsLoading]=useState(true);
 const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data){
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
       setMyPosts(mapped);
     }
@@ -8043,9 +8419,9 @@ const openPostFromSound=(post,soundPosts)=>{
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
-  return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+  return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
   
 };
   return(
@@ -9150,9 +9526,9 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
       if(!postId)return;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){openResolved(post,commentId);return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
-        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
         openResolved(mapped,commentId);
       }else{
         notify("Cette publication n'est plus disponible");
@@ -9195,6 +9571,7 @@ const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
 const viewedPostIdsRef=useRef(new Set());
+const [feedRefreshing,setFeedRefreshing]=useState(false);
 const [sharedMedia,setSharedMedia]=useState(null);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
 const [unreadStatuses,setUnreadStatuses]=useState(0);
@@ -9367,29 +9744,24 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
   const seenPostIdsRef = useRef(new Set());
   const postOrderRef=useRef([]);
- useEffect(()=>{
-    const t=setInterval(()=>setPosts(prev=>(prev||[]).slice(-50)),5*60*1000);
-    return()=>clearInterval(t);
-  },[]);
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
   if(data){
-    const{data:conns}=await sb.from("connections").select("to_id").eq("from_id",session?.user?.id);
-    const followedIds=new Set((conns||[]).map(c=>c.to_id));
+    const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`).eq("pinned",true).not("visibility","eq","hidden");
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
    const blockedSet=new Set([...blockedUserIds,...mutedAuthorIds]);
 const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
-const{data:completedRows}=myId?await sb.from("video_engagement_events").select("post_id").eq("viewer_id",myId).eq("completed",true):{data:[]};
+const{data:completedRows}=myId?await sb.from("video_engagement_events").select("post_id").eq("viewer_id",myId).eq("completed",true).in("post_id",mapped.map(p=>p.id)):{data:[]};
 const completedIds=new Set((completedRows||[]).map(r=>r.post_id));
 
 const visible=mapped.filter(p=>{
@@ -9413,10 +9785,12 @@ const viral=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility==="viral"
 const withBadge=visible.filter(p=>!p.pinned&&p.author?.badge&&p.visibility!=="viral");
 const noBadge=visible.filter(p=>!p.pinned&&!p.author?.badge);
 const seenIds=new Set(JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]"));
-const rankingData=await fetchRankingData(sb,{postIds:visible.map(p=>p.id),viewerId:session?.user?.id});
 const viewerLocation=(myProfile?.latitude!=null&&myProfile?.longitude!=null)?{lat:myProfile.latitude,lon:myProfile.longitude}:null;
-const communityIds=await fetchCommunityIds(sb,session?.user?.id);
-const frequentIds=await fetchFrequentlyVisitedIds(sb,session?.user?.id);
+const[rankingData,communityIds,frequentIds]=await Promise.all([
+  fetchRankingData(sb,{postIds:visible.map(p=>p.id),viewerId:session?.user?.id}),
+  fetchCommunityIds(sb,session?.user?.id),
+  fetchFrequentlyVisitedIds(sb,session?.user?.id)
+]);
 const viralShuffled=rankPosts(viral,rankingData,viewerLocation,communityIds,frequentIds);
 const badgeShuffled=rankPosts(withBadge,rankingData,viewerLocation,communityIds,frequentIds);
 const noBadgeShuffled=rankPosts(noBadge,rankingData,viewerLocation,communityIds,frequentIds);
@@ -9459,14 +9833,14 @@ if(page===1){
 }
 setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   }
-},[session?.user?.id,blockedUserIds,mutedAuthorIds]);
+},[session?.user?.id,blockedUserIds,mutedAuthorIds,myConnections]);
 
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));
 return updated;
   },[]);
@@ -9614,7 +9988,17 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   },[session?.user?.id,members]);
 
   const goTab=t=>{
- if(t==="home"){loadPosts(1);feedScrollRef.current=0;document.querySelector("[data-feed-scroll]")?.scrollTo({top:0,behavior:"smooth"});} if(t==="statuses")setUnreadStatuses(0);
+ if(t==="home"){
+   feedScrollRef.current=0;
+   document.querySelector("[data-feed-scroll]")?.scrollTo({top:0,behavior:"smooth"});
+   setFeedRefreshing(true);
+   const refreshStart=Date.now();
+   loadPosts(1).finally(()=>{
+     const elapsed=Date.now()-refreshStart;
+     setTimeout(()=>setFeedRefreshing(false),Math.max(0,500-elapsed));
+   });
+ }
+ if(t==="statuses")setUnreadStatuses(0);
 if(t!=="home")feedScrollRef.current=document.querySelector("[data-feed-scroll]")?.scrollTop||feedScrollRef.current;
 setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNav(false);
 };
@@ -9741,7 +10125,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           )}
           <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={authorId=>setMutedAuthorIds(prev=>[...new Set([...prev,authorId])])} viewedPostIdsRef={viewedPostIdsRef}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={authorId=>setMutedAuthorIds(prev=>[...new Set([...prev,authorId])])} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing}/>
 </div>
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
@@ -9752,7 +10136,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme}/>
             </div>
         </div>
-        {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
+        {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
 {globalReelsPost&&(
   <ReelsViewer
     posts={[globalReelsPost]} sb={sb} startIndex={0}
