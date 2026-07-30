@@ -1054,9 +1054,26 @@ const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,
 });
 
 // ── MEDIA PLAYER ─────────────────────────────────────────
+// Volume partagé entre toutes les vidéos du feed : une seule "source de vérité"
+// (au lieu d'un useState local par vidéo, qui obligeait à débloquer le son à chaque poste).
+let __globalVideoMuted = (() => { try { return localStorage.getItem("celeste_video_muted") !== "0"; } catch (_) { return true; } })();
+const __videoMutedListeners = new Set();
+function setGlobalVideoMuted(v) {
+  __globalVideoMuted = v;
+  try { localStorage.setItem("celeste_video_muted", v ? "1" : "0"); } catch (_) {}
+  __videoMutedListeners.forEach(fn => fn(v));
+}
+function useGlobalVideoMuted() {
+  const [m, setM] = useState(__globalVideoMuted);
+  useEffect(() => {
+    __videoMutedListeners.add(setM);
+    return () => __videoMutedListeners.delete(setM);
+  }, []);
+  return [m, setGlobalVideoMuted];
+}
 const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideoClick }) {
   const ref = useRef(null);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useGlobalVideoMuted();
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -1167,7 +1184,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
         {playing && !paused ? <Pause size={15} /> : <Play size={15} style={{ marginLeft: 2 }} />}
       </Btn>
       <div style={{ flex: 1 }} />
-      <Btn onClick={e => { e.stopPropagation(); setMuted(m => !m); }} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+      <Btn onClick={e => { e.stopPropagation(); setMuted(!muted); }} style={{ background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: 34, height: 34, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
         {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
       </Btn>
       {onVideoClick && (
@@ -2457,10 +2474,10 @@ useEffect(()=>{
 },[post?.id,session?.user?.id]);
 
 useEffect(()=>{
-  if(!post?.id||post.type!=="text")return;
+  if(!post?.id)return;
   sb.from("post_shares").select("*",{count:"exact",head:true}).eq("post_id",post.id)
     .then(({count})=>setShareCount(count||0));
-},[post?.id,post.type]);
+},[post?.id]);
 useEffect(()=>{
     const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
     [slideIdx-1,slideIdx,slideIdx+1].forEach(i=>{
@@ -2514,7 +2531,7 @@ useEffect(()=>{
               ?<div style={{margin:"12px 0",borderRadius:18,overflow:"hidden",border:`1px solid ${T.gold}22`,background:T.goldBg}}>
                 {post.img&&(
                   <div style={{position:"relative",width:"100%",height:200}}>
-                    <img src={post.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                   
                     <div style={{position:"absolute",top:10,left:10,display:"flex",alignItems:"center",gap:5,background:"linear-gradient(90deg,#ff3d6e,#ff8a3d)",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
                       <Calendar size={13}/> ÉVÉNEMENT
                     </div>
@@ -2601,7 +2618,7 @@ useEffect(()=>{
               <div style={{flex:1}}/>
               <Btn onClick={()=>setShowShareModal(true)} style={{display:"flex",alignItems:"center",gap:6,color:T.sub,fontSize:13,fontWeight:600}}>
                 <Share2 size={18}/>
-                {post.type==="text"&&shareCount>0&&<span>{shareCount}</span>}
+                {shareCount>0&&<span>{shareCount}</span>}
               </Btn>
             </div>
             <CommentsSection
@@ -4449,7 +4466,28 @@ function StarFieldLoader({size=56}){
     </div>
   );
 }
-
+const SmartImage = memo(function SmartImage({ src, alt = "", style = {}, onClick }) {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+  useEffect(() => { setLoaded(false); setErrored(false); }, [src]);
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#0a0a0a", overflow: "hidden" }} onClick={onClick}>
+      {!loaded && !errored && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <StarFieldLoader size={32} />
+        </div>
+      )}
+      {errored && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted, fontSize: 11 }}>Image indisponible</div>
+      )}
+      {src && !errored && (
+        <img src={src} alt={alt} loading="lazy"
+          onLoad={() => setLoaded(true)} onError={() => setErrored(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", opacity: loaded ? 1 : 0, transition: "opacity .35s ease", display: "block", ...style }} />
+      )}
+    </div>
+  );
+});
 function TypewriterText({text,style}){
   const [shown,setShown]=useState(0);
   const seenRef=useRef(false);
@@ -4739,7 +4777,7 @@ const toggleParticipate=useCallback(async pid=>{
   computeItemKey={(index,p)=>p.id}
   endReached={loadMore}
   rangeChanged={handleRangeChanged}
-  overscan={400}
+  overscan={200}
   scrollerRef={ref=>{
     if(!ref)return;
     scrollerRef.current=ref;
@@ -4972,6 +5010,9 @@ const [saved,setSaved]=useState(false);
   const swipeStartRef=useRef(null);
   const lastTapRef=useRef(0);
   const dtTimeoutRef=useRef(null);
+  const cardRef=useRef(null);
+  const [isVisible,setIsVisible]=useState(false);
+  const hasFetchedStatsRef=useRef(false);
   const [reactOpen,setReactOpen]=useState(false);
   const [reactDir,setReactDir]=useState(null);
   const reactStartRef=useRef(null);
@@ -5088,24 +5129,34 @@ const [saved,setSaved]=useState(false);
  const [views, setViews] = useState(0);
 
   useEffect(()=>{
-    sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle()
-      .then(({data})=>setSaved(!!data));
-    // Enregistrer la vue
-    sb.auth.getUser().then(({data})=>{
-  if(data?.user?.id)sb.from("post_views").upsert({post_id:post.id,viewer_id:data.user.id},{onConflict:"post_id,viewer_id",ignoreDuplicates:true})
-    .then(()=>sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id).then(({count})=>setViews(count||0)));
-  
-});
-    // Charger le nombre de vues
-    sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
-      .then(({count})=>setViews(count||0));
-  },[post.id,session?.user?.id]);
+    const node=cardRef.current;
+    if(!node)return;
+    const observer=new IntersectionObserver(entries=>{
+      if(entries[0]?.isIntersecting){setIsVisible(true);observer.disconnect();}
+    },{rootMargin:"200px 0px"});
+    observer.observe(node);
+    return()=>observer.disconnect();
+  },[]);
 
   useEffect(()=>{
-    if(post.type!=="text")return;
-    sb.from("post_shares").select("*",{count:"exact",head:true}).eq("post_id",post.id)
-      .then(({count})=>setShareCount(count||0));
-  },[post.id,post.type]);
+    if(!isVisible||hasFetchedStatsRef.current)return;
+    hasFetchedStatsRef.current=true;
+    sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle()
+      .then(({data})=>setSaved(!!data));
+    // Enregistrer la vue + charger le compteur (une seule requête de comptage, plus de doublon)
+    sb.auth.getUser().then(({data})=>{
+      if(!data?.user?.id)return;
+      sb.from("post_views").upsert({post_id:post.id,viewer_id:data.user.id},{onConflict:"post_id,viewer_id",ignoreDuplicates:true})
+        .then(()=>sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+          .then(({count})=>setViews(count||0)));
+    });
+  },[isVisible,post.id,session?.user?.id]);
+
+  useEffect(()=>{
+  if(!post?.id)return;
+  sb.from("post_shares").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+    .then(({count})=>setShareCount(count||0));
+},[post.id]);
 
   const handleSave=async()=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle();
@@ -5130,16 +5181,22 @@ const handleDelete=async()=>{
 
 const handleAdminDeleteWithReason=async(reason)=>{
   setShowDeleteReasons(false);
+  const{error:delError}=await sb.from("posts").delete().eq("id",post.id);
+  if(delError){
+    notify("Échec de la suppression — réessaie");
+    console.error("admin post delete error:",delError);
+    return;
+  }
   setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
-  notify("Supprimé");
-  await sb.from("posts").delete().eq("id",post.id);
-  await sb.from("notifications").insert({
+  const{error:notifError}=await sb.from("notifications").insert({
     user_id:post.by,
     from_id:session?.user?.id,
     type:"post_deleted",
     text:`Ta publication a été supprimée par un administrateur (motif : ${reason})`,
     read:false
   });
+  if(notifError)console.error("post_deleted notification error:",notifError);
+  notify("Supprimé");
 };
 
   const handlePin=async()=>{
@@ -5189,7 +5246,7 @@ onMuteAuthor?.(post.by);
  
   if(isLockedForViewer){
     return(
-      <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px",animation:`fadeUp .4s ease ${animDelay}s both`}}>
+      <div style={{borderBottom:`1px solid ${T.border}`,padding:"16px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <Av u={post.author} size={40}/>
           <div style={{flex:1,minWidth:0}}>
@@ -5207,7 +5264,7 @@ onMuteAuthor?.(post.by);
   }
   return(
     <>
-    <div style={{borderBottom:`1px solid ${T.border}`,borderLeft:`2px solid ${post.author?.color||T.border}55`,padding:"16px 16px 16px 14px",animation:`fadeUp .4s ease ${animDelay}s both`,cursor:"pointer"}} onClick={()=>onDetail?.(post)}>
+    <div ref={cardRef} style={{borderBottom:`1px solid ${T.border}`,borderLeft:`2px solid ${post.author?.color||T.border}55`,padding:"16px 16px 16px 14px",cursor:"pointer"}} onClick={()=>onDetail?.(post)}>
       <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
         {/* Avatar */}
         <div style={{position:"relative",display:"inline-block"}}>
@@ -5285,7 +5342,7 @@ onMuteAuthor?.(post.by);
             ?<div style={{borderRadius:18,overflow:"hidden",border:`1px solid ${T.gold}22`,marginBottom:10,background:T.goldBg}}>
               {post.img&&(
                 <div style={{position:"relative",width:"100%",height:180}}>
-                  <img src={post.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  <SmartImage src={post.img} alt=""/>
                   <div style={{position:"absolute",top:10,left:10,display:"flex",alignItems:"center",gap:5,background:"linear-gradient(90deg,#ff3d6e,#ff8a3d)",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
                     <Calendar size={13}/> ÉVÉNEMENT
                   </div>
@@ -5482,7 +5539,7 @@ onMuteAuthor?.(post.by);
             <div style={{flex:1}}/>
             <Btn className="action-icon-btn" onClick={e=>{e.stopPropagation();setShowShareModal(true);}} style={{padding:"7px 10px",borderRadius:20,color:T.text,display:"flex",alignItems:"center",gap:4,fontWeight:700}}>
               <Share2 size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
-              {post.type==="text"&&shareCount>0&&<span style={{fontSize:12}}>{shareCount}</span>}
+              {shareCount>0&&<span style={{fontSize:12}}>{shareCount}</span>}
             </Btn>
             <Btn className="action-icon-btn" onClick={handleSave} style={{padding:"7px 10px",borderRadius:20,color:saved?T.gold:T.text,display:"flex",alignItems:"center",gap:4,fontWeight:700}}>
               <Bookmark size={17} strokeWidth={2.4} fill={saved?"currentColor":"none"} style={{filter:saved?"none":"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
@@ -6912,7 +6969,7 @@ if(user?.status==="suspended") return(
                     <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
                   </div>
                 ):p.img
-                  ?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  ?<SmartImage src={p.img} alt=""/>
                   :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
                     <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
@@ -8679,7 +8736,7 @@ const openPostFromSound=(post,soundPosts)=>{
         }
       }} style={{width:"100%",height:"100%"}}>
         {p.img
-          ?<img src={p.img||(p.media_urls||[])[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          ?<SmartImage src={p.img||(p.media_urls||[])[0]} alt=""/>
           :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",padding:8,background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2}}>
             <p style={{margin:0,fontSize:11,fontWeight:700,color:p.text_background?"#fff":T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text}</p>
           </div>
@@ -8731,7 +8788,7 @@ const openPostFromSound=(post,soundPosts)=>{
               {myVideoPosts.map(p=>(
                 <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}
                   onClick={()=>{const idx=myVideoPosts.findIndex(q=>q.id===p.id);setUserReelsIndex(idx>=0?idx:0);}}>
-                  <img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                 <SmartImage src={p.img} alt=""/>
                   <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
                 </div>
               ))}
@@ -10004,7 +10061,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 };
   const unread=(convs||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
   const pending=(members||[]).filter(m=>m.status==="pending").length;
-  const getM=id=>{if(id==="me"||id===session?.user?.id)return myProfile;return(members||[]).find(m=>m.id===id)||{id:"?",initials:"?",color:"#888",name:"Inconnu",badge:null};};
+  const getM=useCallback(id=>{if(id==="me"||id===session?.user?.id)return myProfile;return(members||[]).find(m=>m.id===id)||{id:"?",initials:"?",color:"#888",name:"Inconnu",badge:null};},[session?.user?.id,myProfile,members]);
   const openConv=(convs||[]).find(c=>c.id===openConvId);
   const openChat=uid=>{setOpenUserId(null);let c=(convs||[]).find(x=>x.uid===uid);if(!c){c={id:"cv"+Date.now(),uid,msgs:[]};setConvs(p=>[...(p||[]),c]);}pushNav(()=>setOpenConvId(null));setOpenConvId(c.id);setTab("messages");};
 
