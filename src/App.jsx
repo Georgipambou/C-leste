@@ -50,7 +50,7 @@ import {
   Play, Pause, Volume2,  VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck, Copy, ChevronDown,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2, MessageCircleOff
 
 } from "lucide-react";
 
@@ -591,6 +591,8 @@ longitude:p.longitude||null,
   joined:p.joined_at?.slice(0,10)||"", bio:p.bio||"",
   avatar_url:p.avatar_url||null, cover_url:p.cover_url||null,
   is_admin:p.is_admin||false,
+  is_super_admin:p.is_super_admin||false,
+  admin_scopes:p.admin_scopes||[],
   is_discoverable:p.is_discoverable!==false,
   whatsapp:p.whatsapp||p.raw_user_meta_data?.whatsapp||null,
   account_type:p.account_type||"membre",screenshot_protection:p.screenshot_protection||false,
@@ -599,7 +601,7 @@ longitude:p.longitude||null,
 });
 
 function mapDbPost(p, followedIds) {
-  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
 }
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
@@ -1695,6 +1697,7 @@ function NotifsScreen({myProfile,session,members}){
     warning:n.text||"Avertissement de l'équipe Céleste",
     approved:"Ton compte a été validé ✦",
     earning:n.text||"Nouveau gain",
+    poll_ended:n.text||"Ton sondage est terminé",
   }[n.type]||n.text||n.type);
 
   const icon=n=>({
@@ -1710,11 +1713,12 @@ function NotifsScreen({myProfile,session,members}){
     warning:"⚠️",
     approved:"✅",
     earning:"💰",
+    poll_ended:"📊",
     new_post_favorite:"✦",
     friend_online:"🟢",
   }[n.type]||"🔔");
 
-  const SYSTEM_TYPES=["post_deleted","warning","approved","earning"];
+  const SYSTEM_TYPES=["post_deleted","warning","approved","earning","poll_ended"];
   const GROUPABLE_TYPES=["like","comment","comment_like","reply","mention"];
   const groupTypeMeta={
     like:{icon:"❤",label:"aimé ta publication"},
@@ -1844,6 +1848,11 @@ function NotifsScreen({myProfile,session,members}){
                     </p>
                     <p style={{margin:0,fontSize:11,color:T.muted}}>{ago(n.created_at)}</p>
                   </div>
+                  {n.type==="post_deleted"&&n.snapshot_img&&(
+                    <div style={{width:44,height:44,borderRadius:8,overflow:"hidden",flexShrink:0,border:`1px solid ${T.border}`}}>
+                      <SmartImage src={n.snapshot_img} alt=""/>
+                    </div>
+                  )}
                   {!n.read&&(<div style={{width:8,height:8,borderRadius:"50%",background:T.gold,flexShrink:0,boxShadow:T.glowGold}}/>)}
                 </div>
               );
@@ -2012,9 +2021,10 @@ const filtered=(members||[]).filter(m=>matchQuery(m.fullName,query)).slice(0,8);
   );
 }
 // ── COMMENTS SECTION ─────────────────────────────────────
-function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false,notify}){
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false,notify,commentsDisabled=false}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
+ const [likedCommentIds,setLikedCommentIds]=useState(new Set());
   const [loadingCmts,setLoadingCmts]=useState(true);
   const [hasMoreCmts,setHasMoreCmts]=useState(false);
   const [cmtPage,setCmtPage]=useState(1);
@@ -2042,25 +2052,35 @@ const mentionNameMapRef=useRef(new Map());
    const from=(page-1)*30;
    const to=Math.max(from+29,minCount-1);
     const{data}=await sb.from("comments")
-      .select("id,post_id,author_id,text,mentions,media_url,sticker_id,created_at,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
+      .select("id,post_id,author_id,text,mentions,media_url,sticker_id,created_at,likes_count,replies_count,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
       .eq("post_id",postId)
+      .order("likes_count",{ascending:false})
       .order("created_at",{ascending:true})
       .range(from,to);
-    if(page===1)setComments(data||[]);
-    else setComments(prev=>[...prev,...(data||[])]);
-    onCountChange?.((data||[]).length);
+    const rows=data||[];
+    const ids=rows.map(c=>c.id);
+    let likedSet=new Set();
+    if(ids.length&&sessionUserId){
+      const{data:myLikes}=await sb.from("comment_likes").select("comment_id").eq("user_id",sessionUserId).in("comment_id",ids);
+      likedSet=new Set((myLikes||[]).map(l=>l.comment_id));
+    }
+    if(page===1){setComments(rows);setLikedCommentIds(likedSet);}
+    else{setComments(prev=>[...prev,...rows]);setLikedCommentIds(prev=>new Set([...prev,...likedSet]));}
+    onCountChange?.(page===1?rows.length:visibleCountRef.current+rows.length);
     setLoadingCmts(false);
-    setHasMoreCmts((data||[]).length===(to-from+1));
-  },[postId,onCountChange]);
+    setHasMoreCmts(rows.length===(to-from+1));
+  },[postId,onCountChange,sessionUserId]);
 
   useEffect(()=>{
     (async()=>{
       if(targetCommentId){
-        const{data:tc}=await sb.from("comments").select("created_at").eq("id",targetCommentId).maybeSingle();
+        const{data:tc}=await sb.from("comments").select("created_at,likes_count").eq("id",targetCommentId).maybeSingle();
         if(tc){
-          const{count}=await sb.from("comments").select("*",{count:"exact",head:true}).eq("post_id",postId).lte("created_at",tc.created_at);
+          const{count:plusLikes}=await sb.from("comments").select("*",{count:"exact",head:true}).eq("post_id",postId).gt("likes_count",tc.likes_count);
+          const{count:memeLikesAvant}=await sb.from("comments").select("*",{count:"exact",head:true}).eq("post_id",postId).eq("likes_count",tc.likes_count).lte("created_at",tc.created_at);
+          const rang=(plusLikes||0)+(memeLikesAvant||0);
           setCmtPage(1);
-          load(1,count||30);
+          load(1,rang||30);
           return;
         }
       }
@@ -2091,13 +2111,30 @@ useEffect(()=>{
 
   useEffect(()=>{
     const ch=sb.channel(`comments-${postId}-${Math.random()}`)
-      .on("postgres_changes",{event:"*",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},()=>load(1,visibleCountRef.current+1))
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+        const newId=payload.new.id;
+        sb.from("comments").select("id,post_id,author_id,text,mentions,media_url,sticker_id,created_at,likes_count,replies_count,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
+          .eq("id",newId).maybeSingle().then(({data})=>{
+            if(!data)return;
+            setComments(prev=>prev.some(c=>c.id===data.id)?prev:[...prev,data]);
+            onCountChange?.(c=>(c||0)+1);
+          });
+      })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+        const delId=payload.old.id;
+        setComments(prev=>prev.some(c=>c.id===delId)?prev.filter(c=>c.id!==delId):prev);
+        onCountChange?.(c=>Math.max((c||1)-1,0));
+      })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+        const updated=payload.new;
+        setComments(prev=>prev.map(c=>c.id===updated.id?{...c,likes_count:updated.likes_count,text:updated.text,media_url:updated.media_url}:c));
+      })
       .subscribe();
     return()=>sb.removeChannel(ch);
-  },[postId,load]);
+  },[postId,onCountChange]);
 
   const submit=async()=>{
-    if((!text.trim()&&!mediaFile&&!pendingSticker)||posting)return;
+    if(commentsDisabled||(!text.trim()&&!mediaFile&&!pendingSticker)||posting)return;
     setPosting(true);
     const trimmed=text.trim();
     let mediaUrl=null;
@@ -2121,7 +2158,7 @@ const{error}=await sb.from("comments").insert({post_id:postId,author_id:uid,text
       setMediaFile(null);
       setMediaPreview(null);
       setPendingSticker(null);
-      load(1,visibleCountRef.current+1);
+      // Le commentaire s'ajoute localement via l'événement realtime INSERT — plus de rechargement complet
       // Notifier l'auteur du post
 const{data:postData}=await sb.from("posts").select("author_id").eq("id",postId).single();
 if(postData?.author_id&&postData.author_id!==uid){
@@ -2175,7 +2212,7 @@ mentionNameMapRef.current=new Map();
   <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
     style={{borderRadius:12,transition:"background .5s",
       background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
-    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members}/>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members} onOpenSticker={setOpenStickerDetail} notify={notify} initialLiked={likedCommentIds.has(c.id)}/>
   </div>
 ))}
     
@@ -2191,12 +2228,16 @@ mentionNameMapRef.current=new Map();
           <img src={pendingSticker.url} alt="" style={{width:70,height:70,objectFit:"contain"}}/>
           <Btn onClick={()=>setPendingSticker(null)} style={{position:"absolute",top:-6,right:-6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:22,height:22,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={11}/></Btn>
         </div>
-      )}*
+      )}
       {hasMoreCmts&&<div ref={bottomRef} style={{display:"flex",justifyContent:"center",padding:"10px 0"}}>{cmtPage>1&&loadingCmts&&<div style={{width:16,height:16,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/>}</div>}
       </>
     );
 
-    const composerBar=(active)=>(
+    const composerBar=(active)=>commentsDisabled?(
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",color:T.muted,fontSize:12,flexShrink:0,marginTop:active==="sticky"?0:8}}>
+        <MessageCircleOff size={14}/> Les commentaires sont désactivés pour cette publication
+      </div>
+    ):(
       <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:active==="sticky"?"0 4px 20px rgba(0,0,0,0.2)":"0 -4px 20px rgba(0,0,0,0.25)",position:active==="sticky"?"sticky":"relative",bottom:active==="sticky"?0:"auto",zIndex:active==="sticky"?10:"auto",flexShrink:0,marginTop:active==="sticky"?0:8}}>
         <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
           const f=e.target.files[0];if(!f)return;
@@ -2255,38 +2296,77 @@ mentionNameMapRef.current=new Map();
 }
 
 // ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
-function CommentItem({comment,sessionUserId,getM,onChange,members}){
-  const [likes,setLikes]=useState(0);
-  const [liked,setLiked]=useState(false);
+function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,notify,initialLiked=false}){
+  const [likes,setLikes]=useState(comment.likes_count||0);
+  const [liked,setLiked]=useState(initialLiked);
+  const [repliesCount,setRepliesCount]=useState(comment.replies_count||0);
   const [replies,setReplies]=useState([]);
+  const [repliesLoaded,setRepliesLoaded]=useState(false);
+  const [repliesPage,setRepliesPage]=useState(1);
+  const [hasMoreReplies,setHasMoreReplies]=useState(false);
+  const [loadingReplies,setLoadingReplies]=useState(false);
+  const [likedReplyIds,setLikedReplyIds]=useState(new Set());
   const [showReplies,setShowReplies]=useState(false);
   const [replyText,setReplyText]=useState("");
   const [replying,setReplying]=useState(false);
+  const [replyToTarget,setReplyToTarget]=useState(null); // {id,name} ou null = réponse au commentaire
+  const [replyMediaFile,setReplyMediaFile]=useState(null);
+  const [replyMediaPreview,setReplyMediaPreview]=useState(null);
+  const [replyPendingSticker,setReplyPendingSticker]=useState(null);
+  const [showReplyStickerPicker,setShowReplyStickerPicker]=useState(false);
+  const replyImgRef=useRef(null);
   const isMine=comment.author_id===sessionUserId;
   const author=comment.author?normProfile(comment.author):getM(comment.author_id);
 
-  const isPending=typeof comment.id==="string"&&comment.id.startsWith("tmp_");
+  const REPLIES_PAGE_SIZE=10;
 
-  const loadMeta=useCallback(async()=>{
-    if(isPending)return;
-    const[{count:lc},{data:ml},{data:rep}]=await Promise.all([
-      sb.from("comment_likes").select("*",{count:"exact",head:true}).eq("comment_id",comment.id),
-      sb.from("comment_likes").select("id").eq("comment_id",comment.id).eq("user_id",sessionUserId).maybeSingle(),
-      sb.from("comment_replies").select("*, author:profiles(*)").eq("parent_comment_id",comment.id).order("created_at"),
-    ]);
-    setLikes(lc||0);setLiked(!!ml);setReplies(rep||[]);
-  },[comment.id,sessionUserId,isPending]);
+  useEffect(()=>{setLikes(comment.likes_count||0);},[comment.likes_count]);
+  useEffect(()=>{setRepliesCount(comment.replies_count||0);},[comment.replies_count]);
+  useEffect(()=>{setLiked(initialLiked);},[initialLiked]);
 
-  useEffect(()=>{loadMeta();},[loadMeta]);
+  const loadReplies=useCallback(async(page=1)=>{
+    setLoadingReplies(true);
+    const from=(page-1)*REPLIES_PAGE_SIZE;
+    const to=from+REPLIES_PAGE_SIZE-1;
+    const{data}=await sb.from("comment_replies")
+      .select("id,parent_comment_id,author_id,text,media_url,sticker_id,reply_to_id,likes_count,created_at,author:profiles(id,prenom,nom,avatar_url,badge)")
+      .eq("parent_comment_id",comment.id)
+      .order("created_at",{ascending:true})
+      .range(from,to);
+    const rows=data||[];
+    const ids=rows.map(r=>r.id);
+    let likedSet=new Set();
+    if(ids.length){
+      const{data:myLikes}=await sb.from("reply_likes").select("reply_id").eq("user_id",sessionUserId).in("reply_id",ids);
+      likedSet=new Set((myLikes||[]).map(l=>l.reply_id));
+    }
+    setReplies(prev=>page===1?rows:[...prev,...rows]);
+    setLikedReplyIds(prev=>page===1?likedSet:new Set([...prev,...likedSet]));
+    setHasMoreReplies(rows.length===REPLIES_PAGE_SIZE);
+    setRepliesLoaded(true);
+    setLoadingReplies(false);
+  },[comment.id,sessionUserId]);
+
+  const toggleShowReplies=()=>{
+    const next=!showReplies;
+    setShowReplies(next);
+    if(next&&!repliesLoaded)loadReplies(1);
+  };
+
+  const loadMoreReplies=()=>{
+    if(loadingReplies||!hasMoreReplies)return;
+    const next=repliesPage+1;setRepliesPage(next);loadReplies(next);
+  };
 
   const toggleLike=async()=>{
     if(liked){
-      await sb.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",sessionUserId);
-      setLiked(false);setLikes(l=>l-1);
+      setLiked(false);setLikes(l=>Math.max(l-1,0));
+      const{error}=await sb.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",sessionUserId);
+      if(error){setLiked(true);setLikes(l=>l+1);notify?.("Erreur, réessaie");}
     } else {
-      await sb.from("comment_likes").insert({comment_id:comment.id,user_id:sessionUserId});
       setLiked(true);setLikes(l=>l+1);
-      // Notifier l'auteur du commentaire
+      const{error}=await sb.from("comment_likes").insert({comment_id:comment.id,user_id:sessionUserId});
+      if(error){setLiked(false);setLikes(l=>Math.max(l-1,0));notify?.("Erreur, réessaie");return;}
       if(comment.author_id&&comment.author_id!==sessionUserId){
         await sb.from("notifications").insert({
           user_id:comment.author_id,
@@ -2300,15 +2380,67 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
     }
   };
 
+  const toggleReplyLike=async(reply)=>{
+    const isLiked=likedReplyIds.has(reply.id);
+    if(isLiked){
+      setLikedReplyIds(prev=>{const s=new Set(prev);s.delete(reply.id);return s;});
+      setReplies(prev=>prev.map(r=>r.id===reply.id?{...r,likes_count:Math.max((r.likes_count||1)-1,0)}:r));
+      const{error}=await sb.from("reply_likes").delete().eq("reply_id",reply.id).eq("user_id",sessionUserId);
+      if(error){
+        setLikedReplyIds(prev=>new Set([...prev,reply.id]));
+        setReplies(prev=>prev.map(r=>r.id===reply.id?{...r,likes_count:(r.likes_count||0)+1}:r));
+        notify?.("Erreur, réessaie");
+      }
+    } else {
+      setLikedReplyIds(prev=>new Set([...prev,reply.id]));
+      setReplies(prev=>prev.map(r=>r.id===reply.id?{...r,likes_count:(r.likes_count||0)+1}:r));
+      const{error}=await sb.from("reply_likes").insert({reply_id:reply.id,user_id:sessionUserId});
+      if(error){
+        setLikedReplyIds(prev=>{const s=new Set(prev);s.delete(reply.id);return s;});
+        setReplies(prev=>prev.map(r=>r.id===reply.id?{...r,likes_count:Math.max((r.likes_count||1)-1,0)}:r));
+        notify?.("Erreur, réessaie");
+        return;
+      }
+      if(reply.author_id&&reply.author_id!==sessionUserId){
+        await sb.from("notifications").insert({
+          user_id:reply.author_id,
+          from_id:sessionUserId,
+          type:"reply_like",
+          post_id:comment.post_id||null,
+          comment_id:comment.id,
+          read:false
+        });
+      }
+    }
+  };
+
   const submitReply=async()=>{
-    if(!replyText.trim())return;
+    if(!replyText.trim()&&!replyMediaFile&&!replyPendingSticker)return;
     const text=replyText.trim();
-    setReplyText("");setReplying(false);
-    await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text});
-    // Notifier l'auteur du commentaire
-    if(comment.author_id&&comment.author_id!==sessionUserId){
+    const target=replyToTarget;
+    let mediaUrl=null;
+    let stickerId=null;
+    if(replyPendingSticker){
+      mediaUrl=replyPendingSticker.url;
+      stickerId=replyPendingSticker.id;
+    }else if(replyMediaFile){
+      try{
+        mediaUrl=await uploadToR2(replyMediaFile,"comments");
+      }catch(e){
+        console.error("Erreur upload réponse:",e);
+      }
+    }
+    setReplyText("");setReplying(false);setReplyToTarget(null);
+    setReplyMediaFile(null);setReplyMediaPreview(null);setReplyPendingSticker(null);
+    const{error}=await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text,media_url:mediaUrl,sticker_id:stickerId,reply_to_id:target?.id||null});
+    if(error){notify?.("Erreur, réessaie");return;}
+    if(stickerId)Promise.resolve(sb.rpc("increment_sticker_usage",{sticker_id:stickerId})).catch(()=>{});
+    const notifyTargetId=target?
+      (replies.find(r=>r.id===target.id)?.author_id)
+      :comment.author_id;
+    if(notifyTargetId&&notifyTargetId!==sessionUserId){
       await sb.from("notifications").insert({
-        user_id:comment.author_id,
+        user_id:notifyTargetId,
         from_id:sessionUserId,
         type:"reply",
         post_id:comment.post_id||null,
@@ -2316,13 +2448,23 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
         read:false
       });
     }
-    loadMeta();setShowReplies(true);
+    setRepliesCount(c=>c+1);
+    setRepliesPage(1);
+    loadReplies(1);
+    setShowReplies(true);
+  };
+
+  const startReplyTo=(target)=>{
+    setReplyToTarget(target);
+    setReplying(true);
   };
 
   const [showCmtMenu,setShowCmtMenu]=useState(false);
   const del=async()=>{
     setShowCmtMenu(false);
     if(!window.confirm("Supprimer ?"))return;
+    await sb.from("comment_likes").delete().eq("comment_id",comment.id);
+    await sb.from("comment_replies").delete().eq("parent_comment_id",comment.id);
     await sb.from("comments").delete().eq("id",comment.id);
     onChange?.("delete");
   };
@@ -2331,19 +2473,21 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
     setShowCmtMenu(false);
   };
 
+  const replyAuthorName=(replyToId)=>{
+    const target=replies.find(r=>r.id===replyToId);
+    return target?.author?normProfile(target.author).name:null;
+  };
+
   return(
     <div style={{display:"flex",gap:10,paddingBottom:4}}>
-      {/* Colonne gauche : avatar + ligne verticale */}
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
         <Av u={author} size={36} onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:author?.id}}))}/>
-        {(replies.length>0||replying)&&(
+        {(repliesCount>0||replying)&&(
           <div style={{width:2,flex:1,minHeight:16,background:"rgba(255,255,255,0.1)",borderRadius:2,marginTop:4}}/>
         )}
       </div>
 
-      {/* Colonne droite : contenu */}
-      <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
-        {/* Header */}
+      <div style={{flex:1,minWidth:0,overflow:showReplyStickerPicker?"visible":"hidden"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
           <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{author?.name||"?"}</span>
           {(isMine||comment.text)&&(
@@ -2359,82 +2503,183 @@ function CommentItem({comment,sessionUserId,getM,onChange,members}){
           )}
         </div>
 
-       {/* Texte + média, côte à côte quand les deux existent */}
         {(comment.text||comment.media_url)&&(
-          <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
-            {comment.media_url&&(
-              comment.sticker_id
-                ?<img src={comment.media_url} alt="" onClick={()=>setOpenStickerDetail(comment.sticker_id)} style={{width:64,height:64,objectFit:"contain",flexShrink:0,cursor:"pointer"}}/>
-                :<div style={{borderRadius:10,overflow:"hidden",width:64,height:64,flexShrink:0}}>
-                    <MediaPlayer url={comment.media_url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
-                  </div>
-            )}
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:8}}>
             {comment.text&&(
-              <div style={{flex:1,minWidth:0}}>
+              <div style={{minWidth:0}}>
                 <p style={{margin:0,fontSize:14,fontWeight:600,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word",textAlign:"left"}}>{renderTextWithMentions(comment.text,comment.mentions)}</p>
                 <TranslateBtn text={comment.text}/>
               </div>
             )}
+            {comment.media_url&&(
+              comment.sticker_id
+                ?<img src={comment.media_url} alt="" onClick={()=>onOpenSticker?.(comment.sticker_id)} style={{width:84,height:84,objectFit:"contain",flexShrink:0,cursor:"pointer"}}/>
+                :<div style={{borderRadius:10,overflow:"hidden",width:64,height:64,flexShrink:0}}>
+                    <MediaPlayer url={comment.media_url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
+                  </div>
+            )}
           </div>
         )}
 
-        {/* Actions : date + Répondre + like */}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
           <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
-          <Btn onClick={()=>setReplying(r=>!r)} style={{color:T.muted,fontSize:12,fontWeight:700}}>Répondre</Btn>
+          <Btn onClick={()=>startReplyTo(null)} style={{color:T.muted,fontSize:12,fontWeight:700}}>Répondre</Btn>
           <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12,marginLeft:"auto"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             {likes>0&&<span>{likes}</span>}
           </Btn>
         </div>
 
-        {/* Champ réponse */}
         {replying&&(
-          <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
-            <textarea autoFocus rows={1} value={replyText}
-              onChange={e=>{setReplyText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,100)+"px";}}
-              placeholder={`Répondre à ${author?.name||""}…`}
-              style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:16,padding:"8px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.4,maxHeight:100,fontFamily:"inherit"}}/>
-            <Btn onClick={submitReply} disabled={!replyText.trim()} style={{background:replyText.trim()?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:32,height:32,color:replyText.trim()?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <Send size={13}/>
-            </Btn>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+            {replyToTarget&&(
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:T.muted}}>
+                <span>En réponse à @{replyToTarget.name}</span>
+                <Btn onClick={()=>setReplyToTarget(null)} style={{color:T.muted,display:"flex"}}><X size={11}/></Btn>
+              </div>
+            )}
+            {replyMediaPreview&&(
+              <div style={{position:"relative",display:"inline-flex"}}>
+                <img src={replyMediaPreview} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:12}}/>
+                <Btn onClick={()=>{setReplyMediaPreview(null);setReplyMediaFile(null);}} style={{position:"absolute",top:-6,right:-6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:20,height:20,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={10}/></Btn>
+              </div>
+            )}
+            {replyPendingSticker&&(
+              <div style={{position:"relative",display:"inline-flex"}}>
+                <img src={replyPendingSticker.url} alt="" style={{width:60,height:60,objectFit:"contain"}}/>
+                <Btn onClick={()=>setReplyPendingSticker(null)} style={{position:"absolute",top:-6,right:-6,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:20,height:20,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={10}/></Btn>
+              </div>
+            )}
+            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+              <input ref={replyImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+                const f=e.target.files[0];if(!f)return;
+                const compressed=await compressImage(f);
+                const r=new FileReader();r.onload=ev=>setReplyMediaPreview(ev.target.result);r.readAsDataURL(compressed);
+                setReplyMediaFile(compressed);
+                setReplyPendingSticker(null);
+                e.target.value="";
+              }}/>
+              <Btn onClick={()=>replyImgRef.current.click()} style={{color:replyMediaFile?T.goldL:T.muted,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}>
+                <Camera size={16}/>
+              </Btn>
+              <div style={{position:"relative",display:"flex",flexShrink:0}}>
+                <Btn onClick={()=>setShowReplyStickerPicker(v=>!v)} style={{color:showReplyStickerPicker?T.goldL:T.muted,padding:"4px",display:"flex",alignItems:"center"}}>
+                  <StickerIcon size={16}/>
+                </Btn>
+                {showReplyStickerPicker&&(
+                  <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:260,maxWidth:"80vw",zIndex:20}}>
+                    <StickerPicker sb={sb} userId={sessionUserId} T={T} onClose={()=>setShowReplyStickerPicker(false)} onSelect={(s)=>{setShowReplyStickerPicker(false);setReplyMediaFile(null);setReplyMediaPreview(null);setReplyPendingSticker(s);}}/>
+                  </div>
+                )}
+              </div>
+              <textarea autoFocus rows={1} value={replyText}
+                onChange={e=>{setReplyText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,100)+"px";}}
+                placeholder={replyToTarget?`Répondre à ${replyToTarget.name}…`:`Répondre à ${author?.name||""}…`}
+                style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:16,padding:"8px 14px",color:T.text,fontSize:13,outline:"none",resize:"none",lineHeight:1.4,maxHeight:100,fontFamily:"inherit"}}/>
+              <Btn onClick={submitReply} disabled={!replyText.trim()&&!replyMediaFile&&!replyPendingSticker} style={{background:(replyText.trim()||replyMediaFile||replyPendingSticker)?T.gradGold:"rgba(255,255,255,0.05)",borderRadius:"50%",width:32,height:32,color:(replyText.trim()||replyMediaFile||replyPendingSticker)?"#000":T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Send size={13}/>
+              </Btn>
+            </div>
           </div>
         )}
 
-        {/* Réponses */}
-        {replies.length>0&&(
-          <Btn onClick={()=>setShowReplies(s=>!s)} style={{fontSize:12,color:T.muted,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+        {repliesCount>0&&(
+          <Btn onClick={toggleShowReplies} style={{fontSize:12,color:T.muted,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:16,height:1,background:T.muted,borderRadius:1}}/>
-            {showReplies?`Masquer les réponses`:`Afficher ${replies.length} réponse${replies.length>1?"s":""}`}
+            {showReplies?`Masquer les réponses`:`Afficher ${repliesCount} réponse${repliesCount>1?"s":""}`}
             <ChevronDown size={13} style={{transform:showReplies?"rotate(180deg)":"none",transition:"transform .2s"}}/>
           </Btn>
         )}
 
         {showReplies&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:8}}>
-            {replies.map(r=>{
-              const ra=r.author?normProfile(r.author):{initials:"?",color:"#888",name:"?"};
-              const isMyReply=r.author_id===sessionUserId;
-              return(
-                <div key={r.id} style={{display:"flex",gap:10}}>
-                  <Av u={ra} size={28}/>
-                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
-                      <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{ra.name}</span>
-                      {isMyReply&&<Btn onClick={async()=>{if(!window.confirm("Supprimer ?"))return;await sb.from("comment_replies").delete().eq("id",r.id);loadMeta();}} style={{color:T.muted,padding:2,marginLeft:"auto",display:"flex"}}><MoreHorizontal size={14}/></Btn>}
-                    </div>
-                    <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word",textAlign:"left"}}>{r.text}</p>
-                    <div style={{display:"flex",alignItems:"center",gap:14}}>
-                      <span style={{fontSize:11,color:T.muted}}>{ago(r.created_at)}</span>
-                      <Btn onClick={()=>{setReplyText(`@${ra.name} `);setReplying(true);}} style={{color:T.muted,fontSize:11,fontWeight:700}}>Répondre</Btn>
-                      <TranslateBtn text={r.text}/>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {loadingReplies&&replies.length===0&&(
+              <div style={{display:"flex",justifyContent:"center",padding:"8px 0"}}><div style={{width:16,height:16,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>
+            )}
+            {replies.map(r=>(
+              <ReplyItem
+                key={r.id}
+                reply={r}
+                sessionUserId={sessionUserId}
+                liked={likedReplyIds.has(r.id)}
+                onToggleLike={()=>toggleReplyLike(r)}
+                onReplyTo={()=>startReplyTo({id:r.id,name:r.author?normProfile(r.author).name:"?"})}
+                onDeleted={()=>{setReplies(prev=>prev.filter(x=>x.id!==r.id));setRepliesCount(c=>Math.max(c-1,0));}}
+                replyToName={r.reply_to_id?replyAuthorName(r.reply_to_id):null}
+                onOpenSticker={onOpenSticker}
+                notify={notify}
+              />
+            ))}
+            {hasMoreReplies&&(
+              <Btn onClick={loadMoreReplies} disabled={loadingReplies} style={{fontSize:12,color:T.goldL,fontWeight:700,alignSelf:"flex-start"}}>
+                {loadingReplies?"Chargement…":"Voir plus de réponses"}
+              </Btn>
+            )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── REPLY ITEM (likes + vrai lien de threading) ─
+function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,replyToName,onOpenSticker,notify}){
+  const ra=reply.author?normProfile(reply.author):{initials:"?",color:"#888",name:"?"};
+  const isMyReply=reply.author_id===sessionUserId;
+  const [showMenu,setShowMenu]=useState(false);
+
+  const del=async()=>{
+    setShowMenu(false);
+    if(!window.confirm("Supprimer ?"))return;
+    const{error}=await sb.from("comment_replies").delete().eq("id",reply.id);
+    if(error){notify?.("Erreur, réessaie");return;}
+    onDeleted?.();
+  };
+  const copy=()=>{
+    navigator.clipboard?.writeText(reply.text||"");
+    setShowMenu(false);
+  };
+
+  return(
+    <div style={{display:"flex",gap:10}}>
+      <Av u={ra} size={28}/>
+      <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+          <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{ra.name}</span>
+          {(isMyReply||reply.text)&&(
+            <div style={{position:"relative",marginLeft:"auto"}}>
+              <Btn onClick={()=>setShowMenu(m=>!m)} style={{color:T.muted,padding:2,display:"flex"}}><MoreHorizontal size={14}/></Btn>
+              {showMenu&&(
+                <div style={{position:"absolute",right:0,top:20,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:12,padding:6,zIndex:50,minWidth:130,boxShadow:"0 8px 30px rgba(0,0,0,0.4)"}}>
+                  {reply.text&&<Btn onClick={copy} style={{width:"100%",padding:"8px 12px",display:"flex",alignItems:"center",gap:8,color:T.text,fontSize:12,textAlign:"left"}}>📋 Copier</Btn>}
+                  {isMyReply&&<Btn onClick={del} style={{width:"100%",padding:"8px 12px",display:"flex",alignItems:"center",gap:8,color:T.err,fontSize:12,textAlign:"left"}}>🗑 Supprimer</Btn>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {replyToName&&(
+          <div style={{fontSize:11,color:T.goldL,marginBottom:2}}>↳ en réponse à @{replyToName}</div>
+        )}
+        {reply.text&&(
+          <p style={{margin:"0 0 4px",fontSize:13,fontWeight:600,color:T.text,lineHeight:1.6,wordBreak:"break-word",overflowWrap:"break-word",textAlign:"left"}}>{reply.text}</p>
+        )}
+        {reply.media_url&&(
+          reply.sticker_id
+            ?<img src={reply.media_url} alt="" onClick={()=>onOpenSticker?.(reply.sticker_id)} style={{width:70,height:70,objectFit:"contain",cursor:"pointer",marginBottom:4}}/>
+            :<div style={{borderRadius:10,overflow:"hidden",width:56,height:56,marginBottom:4}}>
+                <MediaPlayer url={reply.media_url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onImageClick={url=>window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url}}))}/>
+              </div>
+        )}
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <span style={{fontSize:11,color:T.muted}}>{ago(reply.created_at)}</span>
+          <Btn onClick={onReplyTo} style={{color:T.muted,fontSize:11,fontWeight:700}}>Répondre</Btn>
+          <TranslateBtn text={reply.text}/>
+          <Btn onClick={onToggleLike} style={{display:"flex",alignItems:"center",gap:4,color:liked?T.err:T.muted,fontSize:11,marginLeft:"auto"}}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            {(reply.likes_count||0)>0&&<span>{reply.likes_count}</span>}
+          </Btn>
+        </div>
       </div>
     </div>
   );
@@ -2527,11 +2772,13 @@ useEffect(()=>{
             <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
           </div>
           <div style={{overflowY:"auto",flex:1,padding:"0 16px 16px"}}>
-            {post.type==="event"
+            {post.type==="poll"
+              ?<div style={{margin:"12px 0"}}><PollCard post={post} session={session}/></div>
+              :post.type==="event"
               ?<div style={{margin:"12px 0",borderRadius:18,overflow:"hidden",border:`1px solid ${T.gold}22`,background:T.goldBg}}>
                 {post.img&&(
                   <div style={{position:"relative",width:"100%",height:200}}>
-                   
+                    <SmartImage src={post.img} alt=""/>
                     <div style={{position:"absolute",top:10,left:10,display:"flex",alignItems:"center",gap:5,background:"linear-gradient(90deg,#ff3d6e,#ff8a3d)",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
                       <Calendar size={13}/> ÉVÉNEMENT
                     </div>
@@ -2628,6 +2875,7 @@ useEffect(()=>{
   onCountChange={setCmtCount}
   targetCommentId={post._targetCommentId||null}
   notify={notify}
+  commentsDisabled={!!post.comments_disabled}
 />
             <div ref={bottomRef}/>
           </div>
@@ -2662,7 +2910,7 @@ function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify}){
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{flex:1,minHeight:0,overflow:"visible",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
-          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={setCmtCount} targetCommentId={null} standalone notify={notify}/>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={setCmtCount} targetCommentId={null} standalone notify={notify} commentsDisabled={!!post.comments_disabled}/>
         </div>
       </div>
     </div>
@@ -2718,6 +2966,7 @@ const [showDrafts, setShowDrafts] = useState(false);
 const [resumeDraft, setResumeDraft] = useState(null);
 const [isForSale,setIsForSale]=useState(false);
 const [isPrivate,setIsPrivate]=useState(false);
+const [commentsDisabled,setCommentsDisabled]=useState(false);
 const [contactType,setContactType]=useState("whatsapp");
 const [contactLink,setContactLink]=useState("");
 const [whatsappNum,setWhatsappNum]=useState("");
@@ -2821,6 +3070,7 @@ try {
       text_background:textBg||null,
       is_for_sale:isForSale||false,
       is_private:isPrivate||false,
+      comments_disabled:commentsDisabled||false,
 whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
 contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
 expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
@@ -2992,6 +3242,13 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
               <span style={{fontSize:12,color:isPrivate?T.goldL:T.muted,flex:1}}>Publication privée (visible uniquement dans l'app)</span>
               <div style={{width:28,height:16,borderRadius:8,background:isPrivate?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
                 <div style={{position:"absolute",top:2,left:isPrivate?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+              </div>
+            </div>
+            <div onClick={()=>setCommentsDisabled(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
+              <MessageCircleOff size={14} color={commentsDisabled?T.goldL:T.muted}/>
+              <span style={{fontSize:12,color:commentsDisabled?T.goldL:T.muted,flex:1}}>Désactiver les commentaires</span>
+              <div style={{width:28,height:16,borderRadius:8,background:commentsDisabled?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:commentsDisabled?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
               </div>
             </div>
             
@@ -3859,7 +4116,7 @@ useEffect(()=>{
                 <div key={g.author?.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,borderRadius:18,border:`1px solid ${T.border}`,cursor:"pointer",animation:`fadeUp .3s ease ${i*.04}s both`,transition:"all .2s"}}
                   onClick={()=>{pushNav(()=>{setViewing(null);setViewingIdx(-1);setHideNav(false);});setViewing(g);setViewingIdx(i);setHideNav(true);}}>
                   <Av u={g.author} size={52} ring/>
-                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+                  <div style={{flex:1,minWidth:0,overflow:showReplyStickerPicker?"visible":"hidden"}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
                     <p style={{margin:0,fontSize:11,color:T.muted}}><MapPin size={11}/> {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
                   </div>
@@ -4488,6 +4745,18 @@ const SmartImage = memo(function SmartImage({ src, alt = "", style = {}, onClick
     </div>
   );
 });
+const VideoThumb = memo(function VideoThumb({ src }) {
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#0a0a0a" }}>
+      <video src={src} muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Play size={16} color="#fff" fill="#fff" />
+        </div>
+      </div>
+    </div>
+  );
+});
 function TypewriterText({text,style}){
   const [shown,setShown]=useState(0);
   const seenRef=useRef(false);
@@ -4557,7 +4826,7 @@ const openPost=useCallback(p=>{
     const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));
     if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);
   }
-},[videoPosts]);
+},[videoPosts,photoPosts,detailPost]);
 
 const openPostFromSound=(post,soundPosts)=>{
   const list=soundPosts||[post];
@@ -4586,11 +4855,13 @@ useEffect(()=>{
   };
   window.addEventListener("celeste_open_photo_viewer",handler);
   return()=>window.removeEventListener("celeste_open_photo_viewer",handler);
-},[photoPosts]);
+},[photoPosts,detailPost]);
 const [searchOpen,setSearchOpen]=useState(false);
 const scrollerRef=useRef(null);
+const prefetchedUrlsRef=useRef(new Set());
 const scrollInitialized=useRef(false);
-const viewedPostIds=viewedPostIdsRef||useRef(new Set());
+const localViewedPostIdsRef=useRef(new Set());
+const viewedPostIds=viewedPostIdsRef||localViewedPostIdsRef;
 const rangeTimerRef=useRef(null);
 const lastRangeRef=useRef({startIndex:0,endIndex:0});
 const postsRef=useRef(posts);
@@ -4601,7 +4872,8 @@ useEffect(()=>{
     posts.slice(0,8).forEach(p=>{
       const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
       allMedia.forEach(url=>{
-        if(!url)return;
+        if(!url||prefetchedUrlsRef.current.has(url))return;
+        prefetchedUrlsRef.current.add(url);
         const isVideo=/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video");
         const link=document.createElement("link");
         link.rel="prefetch";
@@ -4620,15 +4892,18 @@ const handleRangeChanged=useCallback(({startIndex,endIndex})=>{
   rangeTimerRef.current=setTimeout(()=>{
     const{startIndex:s,endIndex:e}=lastRangeRef.current;
     const currentPosts=postsRef.current||[];
+    const newlySeenIds=[];
     for(let i=s;i<=e;i++){
       const p=currentPosts[i];
       if(!p||viewedPostIds.current.has(p.id))continue;
       viewedPostIds.current.add(p.id);
-      const prev=JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]");
-      const updated=[...new Set([...prev,p.id])].slice(-500);
-      localStorage.setItem("celeste_seen_posts",JSON.stringify(updated));
-      sb.rpc("increment_phase_views",{post_id:p.id});
+      newlySeenIds.push(p.id);
     }
+    if(newlySeenIds.length===0)return;
+    const prev=JSON.parse(localStorage.getItem("celeste_seen_posts")||"[]");
+    const updated=[...new Set([...prev,...newlySeenIds])].slice(-500);
+    localStorage.setItem("celeste_seen_posts",JSON.stringify(updated));
+    newlySeenIds.forEach(id=>sb.rpc("increment_phase_views",{post_id:id}));
   },600);
 },[]);
 
@@ -4693,7 +4968,29 @@ const toggleParticipate=useCallback(async pid=>{
     else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});
     notify(ex?"Retiré des sauvegardes":"Sauvegardé ✦");
   },[session?.user?.id,notify]);
-
+const virtuosoComponents=useMemo(()=>({
+  Header:()=>(
+    <div style={{maxWidth:640,margin:"0 auto"}}>
+      {(posts||[]).length===0&&(
+        <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
+          <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>✦</div>
+          <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune publication</p>
+          <p style={{fontSize:13,marginTop:8}}>Soyez le premier à partager</p>
+        </div>
+      )}
+    </div>
+  ),
+  Footer:()=>(
+    <div style={{maxWidth:640,margin:"0 auto"}}>
+      {loadingMore&&(
+        <div style={{display:"flex",justifyContent:"center",padding:"24px"}}>
+          <StarFieldLoader/>
+        </div>
+      )}
+      <div style={{height:80}}/>
+    </div>
+  )
+}),[posts?.length===0,loadingMore]);
   return(
     <>
 {reelsIndex!==null&&<ReelsViewer
@@ -4775,7 +5072,7 @@ const toggleParticipate=useCallback(async pid=>{
   style={{flex:1}}
   data={posts||[]}
   computeItemKey={(index,p)=>p.id}
-  endReached={loadMore}
+  endReached={()=>{if(!loadingMore&&hasMore)loadMore();}}
   rangeChanged={handleRangeChanged}
   overscan={200}
   scrollerRef={ref=>{
@@ -4788,30 +5085,7 @@ const toggleParticipate=useCallback(async pid=>{
     }
     ref.onscroll=()=>{onScrollChange?.(ref.scrollTop);};
   }}
-  components={{
-    Header:()=>(
-      <div style={{maxWidth:640,margin:"0 auto"}}>
-        {(posts||[]).length===0&&(
-          <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
-            <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>✦</div>
-            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune publication</p>
-            <p style={{fontSize:13,marginTop:8}}>Soyez le premier à partager</p>
-          </div>
-        )}
-       
-      </div>
-    ),
-    Footer:()=>(
-      <div style={{maxWidth:640,margin:"0 auto"}}>
-        {loadingMore&&(
-          <div style={{display:"flex",justifyContent:"center",padding:"24px"}}>
-            <StarFieldLoader/>
-          </div>
-        )}
-        <div style={{height:80}}/>
-      </div>
-    )
-  }}
+  components={virtuosoComponents}
   itemContent={(index,p)=>(
     <div key={p.id} data-post-id={p.id} style={{maxWidth:640,margin:"0 auto"}}>
       <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
@@ -5181,6 +5455,12 @@ const handleDelete=async()=>{
 
 const handleAdminDeleteWithReason=async(reason)=>{
   setShowDeleteReasons(false);
+  // On capture un aperçu AVANT suppression : une fois le post supprimé,
+  // plus moyen de savoir lequel c'était (surtout si la personne a posté
+  // plusieurs fois le même jour).
+  const postDate=post.created_at?new Date(post.created_at).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}):null;
+  const snapshotImg=post.img||(post.media_urls||[])[0]||null;
+  const excerpt=post.text?`« ${post.text.slice(0,60)}${post.text.length>60?"…":""} »`:(snapshotImg?(post.video?"(vidéo)":"(photo)"):"");
   const{error:delError}=await sb.from("posts").delete().eq("id",post.id);
   if(delError){
     notify("Échec de la suppression — réessaie");
@@ -5192,10 +5472,16 @@ const handleAdminDeleteWithReason=async(reason)=>{
     user_id:post.by,
     from_id:session?.user?.id,
     type:"post_deleted",
-    text:`Ta publication a été supprimée par un administrateur (motif : ${reason})`,
+    text:`Ta publication du ${postDate}${excerpt?" "+excerpt:""} a été supprimée par un administrateur (motif : ${reason})`,
+    snapshot_img:snapshotImg,
     read:false
   });
   if(notifError)console.error("post_deleted notification error:",notifError);
+  sb.functions.invoke('send-push',{body:{
+    targetUserId:post.by,
+    title:"🗑️ Publication supprimée",
+    body:`Ta publication du ${postDate} a été supprimée (motif : ${reason})`
+  }});
   notify("Supprimé");
 };
 
@@ -5346,7 +5632,7 @@ onMuteAuthor?.(post.by);
                   <div style={{position:"absolute",top:10,left:10,display:"flex",alignItems:"center",gap:5,background:"linear-gradient(90deg,#ff3d6e,#ff8a3d)",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
                     <Calendar size={13}/> ÉVÉNEMENT
                   </div>
-                  <button onClick={e=>{e.stopPropagation();onSave(post.id);}} style={{position:"absolute",top:10,right:10,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.45)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                  <button onClick={e=>{e.stopPropagation();handleSave();}} style={{position:"absolute",top:10,right:10,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.45)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                     <Bookmark size={16} color="#fff" fill={saved?"#fff":"none"}/>
                   </button>
                 </div>
@@ -5568,7 +5854,7 @@ onMuteAuthor?.(post.by);
 }
 );
 // ── SAVED POSTS (NOUVEAU depuis App 9) ────────────────────
-function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,toggleSave}){
+function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,toggleSave,myConnections,onConnect}){
   const [posts,setPosts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [reelsIndex,setReelsIndex]=useState(null);
@@ -5608,7 +5894,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
           text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,
           eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,
           likes:(p.likes||[]).map(l=>l.user_id)||(p.likes||[]),
-          comments:[],ts:new Date(p.created_at).getTime(),pinned:p.pinned||false,is_private:p.is_private||false,
+          comments:[],ts:new Date(p.created_at).getTime(),pinned:p.pinned||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,
           sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null
         }));
         setPosts(mapped);setLoading(false);
@@ -5616,9 +5902,9 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
 const [detailPost, setDetailPost] = useState(null);
   const localToggleLike=async pid=>{
@@ -5707,12 +5993,17 @@ return(
               }
             }}>
             {p.is_private&&!isNative?<PrivateLockedTile T={T}/>:p.img||p.media_urls?.[0]
-              ?<img src={p.img||p.media_urls[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              ?(isVid(p)?<VideoThumb src={p.img||p.media_urls[0]}/>:<SmartImage src={p.img||p.media_urls[0]} alt=""/>)
               :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
                 <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
                 <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
               </div>
             }
+            {(p.type==="poll"||p.type==="event")&&(
+  <div style={{position:"absolute",top:6,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 8px",fontSize:9,fontWeight:700,color:T.goldL,letterSpacing:.3,backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",whiteSpace:"nowrap"}}>
+    {p.type==="poll"?"Sondage":"Événement"}
+  </div>
+)}
             {/* Icône vidéo */}
             {p.media_urls?.[0]&&/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.media_urls[0])&&(
               <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.6)",borderRadius:6,padding:"2px 6px",fontSize:10,color:"#fff"}}>🎬</div>
@@ -6779,9 +7070,9 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
 const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const localToggleLike=async pid=>{
@@ -6802,9 +7093,9 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
   const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const loadUPosts=useCallback(async()=>{
-    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
-     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
      mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
      setUPosts(mapped);
    }
@@ -6969,12 +7260,17 @@ if(user?.status==="suspended") return(
                     <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
                   </div>
                 ):p.img
-                  ?<SmartImage src={p.img} alt=""/>
+                  ?(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"))?<VideoThumb src={p.img}/>:<SmartImage src={p.img} alt=""/>)
                   :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
                     <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
                   </div>
                 }
+                {(p.type==="poll"||p.type==="event")&&(
+  <div style={{position:"absolute",top:6,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 8px",fontSize:9,fontWeight:700,color:T.goldL,letterSpacing:.3,backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",whiteSpace:"nowrap"}}>
+    {p.type==="poll"?"Sondage":"Événement"}
+  </div>
+)}
                 <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
                   <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
                 </div>
@@ -7038,9 +7334,9 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
 
  const isMe=session?.user?.id===user.id;
@@ -7296,7 +7592,89 @@ function MatchPrivacyToggle({session,notify,myProfile}){
     </>
   );
 }
+function MutedBlockedManager({session,notify,onClose}){
+  const [tab,setTabLocal]=useState("muted");
+  const [muted,setMuted]=useState(null);
+  const [blocked,setBlocked]=useState(null);
 
+  const loadLists=useCallback(async()=>{
+    if(!session?.user?.id)return;
+    const[{data:mutedRows},{data:blockedRows}]=await Promise.all([
+      sb.from("muted_authors").select("muted_id").eq("muter_id",session.user.id),
+      sb.from("blocks").select("blocked_id").eq("blocker_id",session.user.id),
+    ]);
+    const mutedIds=(mutedRows||[]).map(r=>r.muted_id);
+    const blockedIds=(blockedRows||[]).map(r=>r.blocked_id);
+    const allIds=[...new Set([...mutedIds,...blockedIds])];
+    let profilesById={};
+    if(allIds.length){
+      const{data:profs}=await sb.from("profiles").select("*").in("id",allIds);
+      (profs||[]).forEach(p=>{profilesById[p.id]=normProfile(p);});
+    }
+    setMuted(mutedIds.map(id=>profilesById[id]).filter(Boolean));
+    setBlocked(blockedIds.map(id=>profilesById[id]).filter(Boolean));
+  },[session?.user?.id]);
+
+  useEffect(()=>{loadLists();},[loadLists]);
+
+  const unmute=async id=>{
+    setMuted(prev=>(prev||[]).filter(u=>u.id!==id));
+    const{error}=await sb.from("muted_authors").delete().eq("muter_id",session.user.id).eq("muted_id",id);
+    if(error){notify("Erreur — réessaie");loadLists();return;}
+    window.dispatchEvent(new CustomEvent("celeste_mutes_blocks_changed"));
+    notify("Publications réaffichées ✦");
+  };
+  const unblock=async id=>{
+    setBlocked(prev=>(prev||[]).filter(u=>u.id!==id));
+    const{error}=await sb.from("blocks").delete().eq("blocker_id",session.user.id).eq("blocked_id",id);
+    if(error){notify("Erreur — réessaie");loadLists();return;}
+    window.dispatchEvent(new CustomEvent("celeste_mutes_blocks_changed"));
+    notify("Débloqué ✦");
+  };
+
+  const list=tab==="muted"?muted:blocked;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:900,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:16,borderBottom:`1px solid ${T.border}`}}>
+        <Btn onClick={onClose} style={{padding:6}}><ArrowLeft size={22} color={T.text}/></Btn>
+        <p style={{margin:0,fontSize:16,fontWeight:700,color:T.text}}>Comptes masqués & bloqués</p>
+      </div>
+      <div style={{display:"flex",padding:"12px 16px 0",gap:8}}>
+        <Btn onClick={()=>setTabLocal("muted")} style={{flex:1,padding:10,borderRadius:12,background:tab==="muted"?T.goldBg:T.card,border:`1px solid ${tab==="muted"?T.gold+"55":T.border}`,color:tab==="muted"?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <EyeOff size={15}/> Masqués {muted?.length?`(${muted.length})`:""}
+        </Btn>
+        <Btn onClick={()=>setTabLocal("blocked")} style={{flex:1,padding:10,borderRadius:12,background:tab==="blocked"?T.goldBg:T.card,border:`1px solid ${tab==="blocked"?T.gold+"55":T.border}`,color:tab==="blocked"?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <Ban size={15}/> Bloqués {blocked?.length?`(${blocked.length})`:""}
+        </Btn>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:16}}>
+        {list===null?(
+          <div style={{display:"flex",justifyContent:"center",padding:40}}><StarFieldLoader size={40}/></div>
+        ):list.length===0?(
+          <div style={{textAlign:"center",padding:"60px 20px",color:T.muted}}>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>
+              {tab==="muted"?"Aucun compte masqué":"Aucun compte bloqué"}
+            </p>
+          </div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {list.map(u=>(
+              <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14}}>
+                <Av u={u} size={40}/>
+                <p style={{flex:1,margin:0,fontSize:14,color:T.text,fontWeight:600}}>{u.fullName||u.name}</p>
+                <Btn onClick={()=>tab==="muted"?unmute(u.id):unblock(u.id)}
+                  style={{padding:"7px 14px",borderRadius:20,border:`1px solid ${T.gold}55`,background:T.goldBg,color:T.goldL,fontSize:12,fontWeight:600}}>
+                  {tab==="muted"?"Réafficher":"Débloquer"}
+                </Btn>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme}){
   const {session}=useApp();
   const [open,setOpen]=useState(false);
@@ -7307,6 +7685,7 @@ const [hideOnline,setHideOnline]=useState(false);
 const [screenshotProtection,setScreenshotProtection]=useState(false);
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 const [showBugReport,setShowBugReport]=useState(false);
+const [showMutedBlocked,setShowMutedBlocked]=useState(false);
 const [bugText,setBugText]=useState("");
   useEffect(()=>{
     const handler=()=>{setOpen(true);setSection(null);};
@@ -7585,6 +7964,18 @@ const NAV_THEMES=[
 )}
     {/* Céleste Match — activer/désactiver */}
     <MatchPrivacyToggle session={session} notify={notify} myProfile={myProfile}/>
+
+    {/* Comptes masqués & bloqués */}
+    <Btn onClick={()=>setShowMutedBlocked(true)}
+      style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+      <Ban size={20} color={T.goldL}/>
+      <div style={{flex:1,textAlign:"left"}}>
+        <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Comptes masqués & bloqués</p>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Gérer les personnes que tu ne veux plus voir</p>
+      </div>
+      <ChevronRight size={18} color={T.muted}/>
+    </Btn>
+    {showMutedBlocked&&<MutedBlockedManager session={session} notify={notify} onClose={()=>setShowMutedBlocked(false)}/>}
 
     {/* Message d'info pour ceux sans badge */}
     {!myProfile?.badge&&(
@@ -8263,9 +8654,9 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+    return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const videoPosts=likedPosts.filter(isVid);
@@ -8287,7 +8678,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   };
   useEffect(()=>{
     sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
-      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
       setLoading(false);
     });
   },[session?.user?.id]);
@@ -8357,11 +8748,16 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
             }
           }}>
           {p.is_private&&!isNative?<PrivateLockedTile T={T}/>:p.img||(p.media_urls||[])[0]
-            ?<img src={p.img||(p.media_urls||[])[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            ?(isVid(p)?<VideoThumb src={p.img||(p.media_urls||[])[0]}/>:<SmartImage src={p.img||(p.media_urls||[])[0]} alt=""/>)
             :<div style={{width:"100%",height:"100%",background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2,display:"flex",alignItems:"center",justifyContent:"center"}}>
               <span style={{fontSize:11,color:p.text_background?"#fff":T.muted,padding:8,textAlign:"center",overflow:"hidden"}}>{p.text?.slice(0,40)}</span>
             </div>
-          }
+          }/
+          {(p.type==="poll"||p.type==="event")&&(
+  <div style={{position:"absolute",top:6,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 8px",fontSize:9,fontWeight:700,color:T.goldL,letterSpacing:.3,backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",whiteSpace:"nowrap"}}>
+    {p.type==="poll"?"Sondage":"Événement"}
+  </div>
+)}
           <div style={{position:"absolute",bottom:4,left:4,display:"flex",alignItems:"center",gap:3}}>
             <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {(p.likes||[]).length}</span>
           </div>
@@ -8429,9 +8825,9 @@ const [myPostsLoading,setMyPostsLoading]=useState(true);
 const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data){
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
       setMyPosts(mapped);
     }
@@ -8445,7 +8841,7 @@ useEffect(()=>{
 },[loadMyPosts]);
 
 const isVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
-const myPhotoPosts=useMemo(()=>myPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0))),[myPosts]);
+const myPhotoPosts=useMemo(()=>myPosts.filter(p=>!isVid(p)),[myPosts]);
 const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
 const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
 const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
@@ -8476,9 +8872,9 @@ const openPostFromSound=(post,soundPosts)=>{
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
-  return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,ts:new Date(data.created_at).getTime()};
+  return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   
 };
   return(
@@ -8736,11 +9132,16 @@ const openPostFromSound=(post,soundPosts)=>{
         }
       }} style={{width:"100%",height:"100%"}}>
         {p.img
-          ?<SmartImage src={p.img||(p.media_urls||[])[0]} alt=""/>
+          ?(isVid(p)?<VideoThumb src={p.img||(p.media_urls||[])[0]}/>:<SmartImage src={p.img||(p.media_urls||[])[0]} alt=""/>)
           :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",padding:8,background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2}}>
             <p style={{margin:0,fontSize:11,fontWeight:700,color:p.text_background?"#fff":T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text}</p>
           </div>
         }
+        {(p.type==="poll"||p.type==="event")&&(
+  <div style={{position:"absolute",top:6,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.65)",borderRadius:8,padding:"3px 8px",fontSize:9,fontWeight:700,color:T.goldL,letterSpacing:.3,backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",whiteSpace:"nowrap"}}>
+    {p.type==="poll"?"Sondage":"Événement"}
+  </div>
+)}
         <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
           <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
           {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>🔖 {p.savesCount}</span>}
@@ -8788,7 +9189,7 @@ const openPostFromSound=(post,soundPosts)=>{
               {myVideoPosts.map(p=>(
                 <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}
                   onClick={()=>{const idx=myVideoPosts.findIndex(q=>q.id===p.id);setUserReelsIndex(idx>=0?idx:0);}}>
-                 <SmartImage src={p.img} alt=""/>
+                 <VideoThumb src={p.img}/>
                   <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
                 </div>
               ))}
@@ -8798,7 +9199,7 @@ const openPostFromSound=(post,soundPosts)=>{
           <LikedPostsTab session={session} notify={notify} onImageView={onImageView} myProfile={myProfile} getM={getM} myConnections={myConnections} onConnect={onConnect} toggleLike={toggleLike} toggleSave={toggleSave}/>
         )}
         {tab==="saved"&&(
-          <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView} toggleLike={toggleLike} toggleSave={toggleSave}/>
+          <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView} toggleLike={toggleLike} toggleSave={toggleSave} myConnections={myConnections} onConnect={onConnect}/>
         )}
         <div style={{height:80}}/>
       </div>
@@ -8959,15 +9360,38 @@ function WalletComplaints({notify}){
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────
-function AdminPanel({onClose,notify,reload,reloadPosts,session}){
+function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile}){
   const [list,setList]=useState([]);
   const [allReports,setAllReports]=useState([]);
   const [allPosts,setAllPosts]=useState([]);
-  const [filter,setFilter]=useState("pending");
+  const [filter,setFilter]=useState(()=>{
+    const initial=myProfile?.is_super_admin?["pending","members","suspended","reports","stickers","finance"]:(myProfile?.admin_scopes||[]);
+    if(initial.includes("pending"))return"pending";
+    if(initial.includes("members"))return"all";
+    if(initial.includes("suspended"))return"suspended";
+    if(initial.includes("reports"))return"reports";
+    if(initial.includes("stickers"))return"sons";
+    return"none";
+  });
   const [showPosts,setShowPosts]=useState(false);
   const [search,setSearch]=useState("");
   const [postSearch,setPostSearch]=useState("");
   const [deletingReportId,setDeletingReportId]=useState(null);
+  const [permsOpenFor,setPermsOpenFor]=useState(null);
+  const [pendingScopes,setPendingScopes]=useState([]);
+  const [pendingIsAdmin,setPendingIsAdmin]=useState(false);
+
+  const ADMIN_SCOPE_LABELS={pending:"En attente",members:"Membres",suspended:"Suspendus",reports:"Signalements",stickers:"Sons & Stickers",finance:"Finance (retraits, pool, plaintes)"};
+  const myScopes=myProfile?.is_super_admin?["pending","members","suspended","reports","stickers","finance"]:(myProfile?.admin_scopes||[]);
+  const hasScope=s=>myScopes.includes(s);
+
+  const saveAdminPermissions=async targetId=>{
+    const{error}=await sb.rpc("admin_set_permissions",{target_user_id:targetId,new_is_admin:pendingIsAdmin,new_scopes:pendingScopes});
+    if(error){notify("Erreur : "+error.message);return;}
+    setList(prev=>prev.map(x=>x.id===targetId?{...x,is_admin:pendingIsAdmin,admin_scopes:pendingIsAdmin?pendingScopes:[]}:x));
+    setPermsOpenFor(null);
+    notify("Permissions mises à jour ✦");
+  };
 
   useEffect(()=>{
     sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
@@ -9018,7 +9442,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
   const allMembers=(list||[]).filter(m=>m.status!=="pending");
   const pending=(list||[]).filter(m=>m.status==="pending");
   const suspended=(list||[]).filter(m=>m.status==="suspended");
-  const baseList=filter==="pending"?pending:filter==="suspended"?suspended:filter==="reports"?[]:(list||[]).filter(m=>m.id);
+  const baseList=filter==="pending"?pending:filter==="suspended"?suspended:filter==="reports"?[]:hasScope("members")?(list||[]).filter(m=>m.id):[];
   const displayList=search.trim()
     ?baseList.filter(m=>norm(m.fullName||m.name).includes(norm(search))||norm(m.prenom).includes(norm(search))||norm(m.nom).includes(norm(search))||norm(m.whatsapp).includes(norm(search)))
     :baseList;
@@ -9038,7 +9462,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
-          {[{id:"pending",l:`En attente (${pending.length})`},{id:"all",l:"Tous"},{id:"suspended",l:`Suspendus (${suspended.length})`},{id:"reports",l:`Signalements (${otherReports.length})`},{id:"sticker_reports",l:`Stickers signalés (${stickerReports.length})`},{id:"sons",l:"Sons"},{id:"stickers",l:"Stickers"}].map(f=>(
+          {[{id:"pending",l:`En attente (${pending.length})`,scope:"pending"},{id:"all",l:"Tous",scope:"members"},{id:"suspended",l:`Suspendus (${suspended.length})`,scope:"suspended"},{id:"reports",l:`Signalements (${otherReports.length})`,scope:"reports"},{id:"sticker_reports",l:`Stickers signalés (${stickerReports.length})`,scope:"stickers"},{id:"sons",l:"Sons",scope:"stickers"},{id:"stickers",l:"Stickers",scope:"stickers"}].filter(f=>hasScope(f.scope)).map(f=>(
 
           <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
               {f.l}
@@ -9162,11 +9586,40 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
                       <Btn onClick={()=>suspend(m.id,m.status)} style={{padding:"5px 11px",background:m.status==="suspended"?"rgba(64,168,96,0.08)":"rgba(200,64,64,0.08)",border:`1px solid ${m.status==="suspended"?T.ok+"44":T.err+"44"}`,borderRadius:9,color:m.status==="suspended"?T.ok:T.err,fontSize:11,fontWeight:600,marginLeft:"auto"}}>{m.status==="suspended"?"✓ Réactiver":"🚫 Suspendre"}</Btn>
                     </div>
                   }
+                  {myProfile?.is_super_admin&&m.id!==myProfile.id&&(
+                    <div style={{marginTop:8}}>
+                      <Btn onClick={()=>{
+                        if(permsOpenFor===m.id){setPermsOpenFor(null);return;}
+                        setPermsOpenFor(m.id);
+                        setPendingIsAdmin(m.is_admin);
+                        setPendingScopes(m.admin_scopes||[]);
+                      }} style={{fontSize:11,color:T.goldL,padding:"5px 11px",border:`1px solid ${T.gold}33`,borderRadius:9,fontWeight:600}}>
+                        🔑 {permsOpenFor===m.id?"Fermer":"Permissions admin"}
+                      </Btn>
+                      {permsOpenFor===m.id&&(
+                        <div style={{marginTop:8,padding:10,background:"rgba(255,255,255,0.03)",borderRadius:10,border:`1px solid ${T.border}`}}>
+                          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,marginBottom:8}}>
+                            <input type="checkbox" checked={pendingIsAdmin} onChange={e=>setPendingIsAdmin(e.target.checked)}/>
+                            Administrateur
+                          </label>
+                          {pendingIsAdmin&&Object.entries(ADMIN_SCOPE_LABELS).map(([key,label])=>(
+                            <label key={key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,marginBottom:6}}>
+                              <input type="checkbox" checked={pendingScopes.includes(key)}
+                                onChange={e=>setPendingScopes(prev=>e.target.checked?[...prev,key]:prev.filter(s=>s!==key))}/>
+                              {label}
+                            </label>
+                          ))}
+                          <Btn onClick={()=>saveAdminPermissions(m.id)} style={{marginTop:6,width:"100%",padding:"8px",background:T.gradGold,borderRadius:9,color:"#000",fontSize:12,fontWeight:700}}>Enregistrer</Btn>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </>
           }
         </div>
+        {hasScope("finance")&&(
         <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
           <Btn onClick={()=>setShowPosts(!showPosts)} style={{width:"100%",padding:"11px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:12,color:T.goldL,fontSize:13,fontWeight:600}}>
             📌 {showPosts?"Masquer":"Gérer les posts épinglés"}
@@ -9251,6 +9704,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
           <WithdrawalRequests notify={notify}/>
           <WalletComplaints notify={notify}/>
         </div>
+        )}
       </div>
     </div>
     {deletingReportId&&(
@@ -9583,9 +10037,9 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
       if(!postId)return;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){openResolved(post,commentId);return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
-        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
         openResolved(mapped,commentId);
       }else{
         notify("Cette publication n'est plus disponible");
@@ -9798,12 +10252,17 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     setMutedAuthorIds(ids);
     return ids;
   },[session?.user?.id]);
+  useEffect(()=>{
+    const handler=()=>{loadBlockedUsers();loadMutedAuthors();};
+    window.addEventListener("celeste_mutes_blocks_changed",handler);
+    return()=>window.removeEventListener("celeste_mutes_blocks_changed",handler);
+  },[loadBlockedUsers,loadMutedAuthors]);
 
   const seenPostIdsRef = useRef(new Set());
   const postOrderRef=useRef([]);
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
@@ -9811,7 +10270,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
@@ -9895,9 +10354,9 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));
 return updated;
   },[]);
@@ -10045,7 +10504,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   },[session?.user?.id,members]);
 
   const goTab=t=>{
- if(t==="home"){
+ if(t==="home"&&tab==="home"){
    feedScrollRef.current=0;
    document.querySelector("[data-feed-scroll]")?.scrollTo({top:0,behavior:"smooth"});
    setFeedRefreshing(true);
@@ -10133,7 +10592,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   <button onClick={()=>setSharedMedia(null)} style={{color:T.muted,background:"none",border:"none",fontSize:13,cursor:"pointer"}}>Annuler</button>
 </div>}
         {showNewPost&&<NewPostModal myProfile={myProfile} session={session} initialSound={pendingSound} onClose={()=>{popNav();setShowNewPost(false);setPendingSound(null);}} onPost={()=>{loadPosts(1);setShowNewPost(false);setPendingSound(null);notify("Publié ✦");}} notify={notify}/>}
-        {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session}/>}
+        {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session} myProfile={myProfile}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>{popNav();setOpenCeleste(false);}} myProfile={myProfile} session={session}/>}
 
         <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId)?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
