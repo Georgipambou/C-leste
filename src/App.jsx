@@ -2686,7 +2686,7 @@ function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,r
 }
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
-function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onParticipate,onComment,notify,zIndex=800,fromReel=false,onPhotoView}){
+function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onParticipate,onComment,notify,zIndex=800,fromReel=false,onPhotoView,saved=false,onSave}){
   
 const {members,convs}=useApp();
 useEffect(()=>{
@@ -2867,6 +2867,11 @@ useEffect(()=>{
                 <Share2 size={18}/>
                 {shareCount>0&&<span>{shareCount}</span>}
               </Btn>
+              {onSave&&(
+                <Btn onClick={()=>onSave(post.id)} style={{display:"flex",alignItems:"center",color:saved?T.gold:T.sub}}>
+                  <Bookmark size={18} fill={saved?"currentColor":"none"}/>
+                </Btn>
+              )}
             </div>
             <CommentsSection
   postId={post.id}
@@ -5666,7 +5671,7 @@ onMuteAuthor?.(post.by);
                     <Users size={12}/> {participantsCount} participant{participantsCount>1?"s":""}
                   </div>
                 </div>
-                <button onClick={e=>{e.stopPropagation();onParticipate(post.id);}} style={{width:"100%",border:"none",borderRadius:14,padding:"12px",fontSize:14,fontWeight:700,color:participating?T.gold:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:participating?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#ff3d6e,#ff8a3d)",border:participating?`1px solid ${T.gold}55`:"none"}}>
+                <button onClick={e=>{e.stopPropagation();onParticipate(post.id);}} style={{width:"100%",borderRadius:14,padding:"12px",fontSize:14,fontWeight:700,color:participating?T.gold:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:participating?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#ff3d6e,#ff8a3d)",border:participating?`1px solid ${T.gold}55`:"none"}}>
                   {participating?<><Check size={16}/> Vous participez</>:<><UserPlus size={16}/> Participer</>}
                 </button>
               </div>
@@ -5947,6 +5952,8 @@ return(
             }catch(e){console.warn(e);}
           }}
           onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
+          saved={true}
+          onSave={async pid=>{await localToggleSave(pid);setDetailPost(null);notify("Retiré des sauvegardes");}}
           notify={notify}
         />
       )}
@@ -6492,7 +6499,11 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   const sendMsg=async payload=>{
   let convId=conv.id;
   if(navigator.onLine){
-    try{ convId=await ensureConv()||conv.id; }catch(e){ convId=conv.id; }
+    try{
+      const ensured=await ensureConv();
+      if(ensured===null)return;
+      convId=ensured;
+    }catch(e){ convId=conv.id; }
   }
   if(!convId)return;
   enqueueMessage(convId,session?.user?.id,payload);
@@ -7676,7 +7687,7 @@ function MutedBlockedManager({session,notify,onClose}){
   );
 }
 function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme}){
-  const {session}=useApp();
+  const {session,setMyProfile}=useApp();
   const [open,setOpen]=useState(false);
   const [section,setSection]=useState(null);
   const [dnd,setDnd]=useState(false);
@@ -7696,39 +7707,14 @@ const [bugText,setBugText]=useState("");
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
     sb.from("profiles").select("no_messages,is_discoverable,hide_online,screenshot_protection,badge_payment_ref,badge,badge_expires_at")
+      .eq("id",session.user.id)
+      .maybeSingle()
       .then(async({data})=>{
         if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);}
         if(data?.badge_payment_ref&&!data?.badge){
           try{
-            const res=await fetch(`https://api.chariow.com/v1/sales/${data.badge_payment_ref}`,{
-              headers:{"Authorization":"Bearer sk_20hoymvf_531d0d8326423d81026fa2b4b78d6a46"}
-            });
-            const payment=await res.json();
-            const payStatus=payment?.data?.status||payment?.status;
-            if(payStatus==="completed"||payStatus==="paid"){
-              const expiresAt=new Date();
-              expiresAt.setDate(expiresAt.getDate()+40);
-              await sb.from("profiles").update({
-                badge:"confirmed",
-                badge_expires_at:expiresAt.toISOString(),
-                badge_payment_ref:null
-              }).eq("id",session.user.id);
-              const{data:cfg}=await sb.from("app_settings").select("value").eq("key","platform_cut_percent").maybeSingle();
-              const cutPercent=cfg?.value?Number(cfg.value):20;
-              const totalAmount=2000;
-              const platformCut=Math.round(totalAmount*cutPercent/100);
-              const poolShare=totalAmount-platformCut;
-              const month=new Date().toISOString().slice(0,7);
-const{data:existingPool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
-if(existingPool){
-  await sb.from("badge_pool").update({
-    total_collected:existingPool.total_collected+totalAmount,
-    platform_cut:existingPool.platform_cut+platformCut,
-    pool_amount:existingPool.pool_amount+poolShare
-  }).eq("month",month);
-}else{
-  await sb.from("badge_pool").insert({month,total_collected:totalAmount,platform_cut:platformCut,pool_amount:poolShare,distributed:false});
-}
+            const{data:result}=await sb.functions.invoke("verify-badge-payment");
+            if(result?.activated){
               notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><PartyPopper size={14}/>Badge certifié activé ! ✦</span>);
             }
           }catch(e){console.error("Payment check error:",e);}
@@ -7740,6 +7726,7 @@ if(existingPool){
     const next=!dnd;
     setDnd(next);
     await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
+    setMyProfile(p=>p&&({...p,no_messages:next}));
     notify(next?"🔕 Messages bloqués":"✅ Messages activés");
   };
 
@@ -7747,12 +7734,14 @@ if(existingPool){
     const next=!discoverable;
     setDiscoverable(next);
     await sb.from("profiles").update({is_discoverable:next}).eq("id",session.user.id);
+    setMyProfile(p=>p&&({...p,is_discoverable:next}));
     notify(next?"Profil visible":"Profil masqué");
   };
   const toggleHideOnline=async()=>{
     const next=!hideOnline;
     setHideOnline(next);
     await sb.from("profiles").update({hide_online:next}).eq("id",session.user.id);
+    setMyProfile(p=>p&&({...p,hide_online:next}));
     notify(next?"Présence masquée":"Présence visible");
   };
 const NAV_THEMES=[
@@ -8109,24 +8098,13 @@ const NAV_THEMES=[
           if(!phoneInput)return;
           const win=window.open("","_blank");
           try{
-            const res=await fetch("https://api.chariow.com/v1/checkout",{
-  method:"POST",
-  headers:{"Authorization":"Bearer sk_20hoymvf_531d0d8326423d81026fa2b4b78d6a46","Content-Type":"application/json"},
-  body:JSON.stringify({
-    product_id:"prd_h1hcmvq7",
-    email:session?.user?.email||"user@celeste.app",
-    first_name:myProfile?.fullName?.split(" ")[0]||"User",
-    last_name:myProfile?.fullName?.split(" ")[1]||"Celeste",
-    phone:{number:phoneInput.number,country_code:phoneInput.country_code},
-    redirect_url:`https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/notchpay-webhook?badge_user_id=${session?.user?.id}&sale_id={sale_id}`
-  })
-});
-           const data=await res.json();
-console.log("Chariow response:",JSON.stringify(data));
-const checkoutUrl=data?.data?.payment?.checkout_url||data?.checkout_url||data?.data?.checkout_url;
-const saleId=data?.data?.purchase?.id||null;
-if(saleId)await sb.from("profiles").update({badge_payment_ref:saleId}).eq("id",session.user.id);
-console.log("checkout_url trouvé:",checkoutUrl);
+            const{data}=await sb.functions.invoke("create-badge-checkout",{body:{
+              first_name:myProfile?.fullName?.split(" ")[0]||"User",
+              last_name:myProfile?.fullName?.split(" ")[1]||"Celeste",
+              phone_number:phoneInput.number,
+              phone_country_code:phoneInput.country_code
+            }});
+const checkoutUrl=data?.checkout_url;
 if(checkoutUrl){
               win.location.href=checkoutUrl;
               notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
@@ -8699,9 +8677,14 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   if(detailPost)return<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>setDetailPost(null)}
     onLike={async pid=>{
       const liked=(detailPost.likes||[]).includes(session?.user?.id);
-      if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);
-      else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});
-      const u=await refreshPost(pid);if(u)setDetailPost(u);
+      if(liked){
+        await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);
+        setLikedPosts(prev=>prev.filter(p=>p.id!==pid));
+        setDetailPost(null);
+      }else{
+        await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+        const u=await refreshPost(pid);if(u)setDetailPost(u);
+      }
     }}
     onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}}
     notify={notify}/>;
@@ -10222,11 +10205,11 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     return()=>{sb.removeChannel(presenceChannel);};
   },[session?.user?.id,myProfile?.hide_online]);
   useEffect(()=>{
-    setMembers(prev=>prev.map(m=>({...m,isOnline:onlinePresenceIds.has(m.id),online:onlinePresenceIds.has(m.id)})));
+    setMembers(prev=>prev.map(m=>({...m,isOnline:!m.hide_online&&onlinePresenceIds.has(m.id),online:!m.hide_online&&onlinePresenceIds.has(m.id)})));
   },[onlinePresenceIds]);
 
   const loadMembers=useCallback(async()=>{
-  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,joined_at").neq("status","pending");
+  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,hide_online,joined_at").neq("status","pending");
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
@@ -10526,7 +10509,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 
   // AppContext value
   const appCtx={
-    session,myProfile,setMyProfile:()=>{},
+    session,myProfile,setMyProfile,
     setTab,members,posts,convs,
     notify,
     chatDrafts,setChatDrafts,
