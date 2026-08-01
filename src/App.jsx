@@ -2813,7 +2813,7 @@ useEffect(()=>{
                       <Users size={12}/> {participantsCount} participant{participantsCount>1?"s":""}
                     </div>
                   </div>
-                  <button onClick={()=>onParticipate(post.id)} style={{width:"100%",border:"none",borderRadius:14,padding:"13px",fontSize:14,fontWeight:700,color:participating?T.gold:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:participating?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#ff3d6e,#ff8a3d)",border:participating?`1px solid ${T.gold}55`:"none"}}>
+                  <button onClick={()=>onParticipate(post.id)} style={{width:"100%",borderRadius:14,padding:"13px",fontSize:14,fontWeight:700,color:participating?T.gold:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:participating?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#ff3d6e,#ff8a3d)",border:participating?`1px solid ${T.gold}55`:"none"}}>
                     {participating?<><Check size={16}/> Vous participez</>:<><UserPlus size={16}/> Participer</>}
                   </button>
                 </div>
@@ -5198,7 +5198,7 @@ const PollCard=React.memo(function PollCard({post,session}){
         setOptions(opts||[]);setVotes(v||[]);setLoading(false);
       })();
     }
-    const channel=sb.channel(`poll_votes_${post.id}`)
+    const channel=sb.channel(`poll_votes_${post.id}_${Math.random()}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"poll_votes",filter:`post_id=eq.${post.id}`},payload=>{
         setVotes(prev=>{
           if(payload.eventType==="INSERT")return[...prev,{option_id:payload.new.option_id,voter_id:payload.new.voter_id}];
@@ -5764,11 +5764,11 @@ onMuteAuthor?.(post.by);
 )}
           {/* Actions */}
           <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}} onClick={e=>e.stopPropagation()}>
-            <div style={{position:"relative"}}
+            <div
               onPointerDown={e=>{e.stopPropagation();startLikeHold();}}
               onPointerUp={e=>{e.stopPropagation();endLikeHold();}}
-              onPointerLeave={()=>{e=>{};cancelLikeHold();}}
-              style={{touchAction:"none"}}>
+              onPointerLeave={cancelLikeHold}
+              style={{position:"relative",touchAction:"none"}}>
               <Btn className="action-icon-btn" style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,background:liked?"rgba(201,149,42,0.1)":"transparent",color:liked?T.gold:T.text,fontSize:13,fontWeight:700,border:liked?`1px solid ${T.gold}22`:"1px solid transparent"}}>
                 <div style={{position:"relative",width:17,height:17,flexShrink:0}}>
                   <Heart size={17} strokeWidth={2.4} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.text,filter:liked?"none":"drop-shadow(0 1px 2px rgba(0,0,0,0.35))",animation:liked?"pulse .3s ease":"none"}}/>
