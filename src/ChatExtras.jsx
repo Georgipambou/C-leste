@@ -5,6 +5,10 @@
 // => zéro risque de casser l'existant, simple import dans App.jsx.
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  ChevronLeft, User, Search, BellOff, MoreHorizontal,
+  Sparkles, Edit2, Clock, Lock, Users, Flag, ChevronRight, Grid
+} from "lucide-react";
 
 /* ============================================================
    1. SÉPARATEURS DE JOUR ("Aujourd'hui", "Hier", "12 juin")
@@ -451,6 +455,92 @@ export function filterMessagesByQuery(msgs, query) {
   return (msgs || []).filter(m => (m.text || "").toLowerCase().includes(q));
 }
 
+/* ============================================================
+   9. ÉCRAN "INFOS CONVERSATION" (façon Instagram)
+   Ouvert en appuyant sur le nom/avatar dans l'en-tête du chat.
+   Squelette de navigation — chaque section (thème, pseudos,
+   éphémères, confidentialité, médias) sera branchée
+   progressivement ; pour l'instant, placeholders.
+   ============================================================ */
+
+export function ConversationInfoScreen({ T, Av, Btn, user, onBack, onOpenProfile, onCreateGroup, notify }) {
+  const soon = (label) => () => notify?.(`${label} — bientôt disponible ✦`);
+
+  const topActions = [
+    { key: "profil", label: "Profil", Icon: User, onClick: () => onOpenProfile && onOpenProfile(user?.id) },
+    { key: "search", label: "Rechercher", Icon: Search, onClick: soon("Recherche dans la conversation") },
+    { key: "mute", label: "Mettre en s...", Icon: BellOff, onClick: soon("Mise en sourdine") },
+    { key: "options", label: "Options", Icon: MoreHorizontal, onClick: soon("Options") },
+  ];
+
+  const listItems = [
+    { key: "theme", title: "Personnaliser", subtitle: "Thème et police", Icon: Sparkles, onClick: soon("Personnalisation") },
+    { key: "nick", title: "Pseudos", Icon: Edit2, onClick: soon("Pseudos") },
+    { key: "eph", title: "Messages éphémères", subtitle: "Désactivé", Icon: Clock, onClick: soon("Messages éphémères") },
+    { key: "privacy", title: "Confidentialité et sécurité", Icon: Lock, onClick: soon("Confidentialité et sécurité") },
+    { key: "group", title: "Créer une discussion de groupe", Icon: Users, onClick: () => onCreateGroup && onCreateGroup(user) },
+    { key: "report", title: "Quelque chose ne fonctionne pas", Icon: Flag, onClick: soon("Signalement") },
+  ];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 150, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{
+        position: "relative", background: "rgba(0,0,0,0.92)", backdropFilter: "blur(30px)", WebkitBackdropFilter: "blur(30px)",
+        borderBottom: `1px solid ${T.border}`, padding: "10px 14px",
+        paddingTop: "calc(10px + env(safe-area-inset-top,0px))", display: "flex", alignItems: "center", flexShrink: 0
+      }}>
+        <Btn onClick={onBack} style={{ color: T.gold, padding: 6, display: "flex", alignItems: "center" }}>
+          <ChevronLeft size={22} />
+        </Btn>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "10px 0 40px" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 20px 20px" }}>
+          <Av u={user} size={92} />
+          <p style={{ margin: "14px 0 0", fontSize: 19, fontWeight: 700, color: T.text }}>{user?.fullName || user?.name}</p>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", gap: 34, padding: "0 20px 22px" }}>
+          {topActions.map(a => (
+            <div key={a.key} onClick={a.onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <div style={{
+                width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.06)",
+                border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.text
+              }}>
+                <a.Icon size={20} />
+              </div>
+              <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{a.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ borderTop: `1px solid ${T.border}` }}>
+          {listItems.map(it => (
+            <div key={it.key} onClick={it.onClick} style={{
+              display: "flex", alignItems: "center", gap: 14, padding: "14px 20px",
+              borderBottom: `1px solid ${T.border}`, cursor: "pointer"
+            }}>
+              <it.Icon size={20} color={T.muted} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 15, color: T.text }}>{it.title}</p>
+                {it.subtitle && <p style={{ margin: 0, fontSize: 12, color: T.muted }}>{it.subtitle}</p>}
+              </div>
+              <ChevronRight size={18} color={T.muted} />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "20px" }}>
+          <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Médias partagés</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "30px 0", color: T.muted }}>
+            <Grid size={28} />
+            <span style={{ fontSize: 13 }}>Bientôt disponible</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 /* ============================================================
    8. CSS GLOBAL À AJOUTER UNE SEULE FOIS
    ============================================================

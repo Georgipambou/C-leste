@@ -34,10 +34,11 @@ import {
   useTypingIndicatorForConvs,
   editMessage, EditedBadge,
   ChatSearchBar, filterMessagesByQuery,
-  SwipeToReply, useLongPress, InlineReactionPicker
+  SwipeToReply, useLongPress, InlineReactionPicker,
+  ConversationInfoScreen
 } from "./ChatExtras";
 import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
-
+import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen } from "./Groups";
 
 import {
   useState, useRef, useEffect, useCallback, useMemo, memo, createContext, useContext
@@ -55,6 +56,7 @@ import {
 } from "lucide-react";
 
 import { ProfileViewsCard, DiscoverPeopleSection, logProfileView, ProfileHeader } from "./ProfileDashboard";
+import { DuoButton, DuoBadge, DuoPrivacySetting, saveDuoCollaborators } from "./Duo";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react"; 
@@ -2690,14 +2692,14 @@ function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onParticipa
   
 const {members,convs}=useApp();
 useEffect(()=>{
-  if(post?.author?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+  let active=true;
+  const check=()=>sb.rpc("is_post_protected",{p_post_id:post?.id}).then(({data})=>{if(active)(data?enableScreenProtection():disableScreenProtection());});
+  check();
   const ch=sb.channel(`privacy_post_${post?.by}-${Math.random()}`)
-    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${post?.by}`},payload=>{
-      if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
-    })
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${post?.by}`},check)
     .subscribe();
-  return()=>{sb.removeChannel(ch);disableScreenProtection();};
-},[post?.by]);
+  return()=>{active=false;sb.removeChannel(ch);disableScreenProtection();};
+},[post?.id,post?.by]);
 const [viewImg,setViewImg]=useState(null);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
@@ -2967,6 +2969,7 @@ const addPollOption=()=>setPollOptions(prev=>prev.length<6?[...prev,""]:prev);
 const removePollOption=i=>setPollOptions(prev=>prev.length>2?prev.filter((_,idx)=>idx!==i):prev);
 const [selectedCategories,setSelectedCategories]=useState([]);
 const [selectedSound,setSelectedSound]=useState(initialSound);
+const [duoCollaborators,setDuoCollaborators]=useState([]);
 const [showDrafts, setShowDrafts] = useState(false);
 const [resumeDraft, setResumeDraft] = useState(null);
 const [isForSale,setIsForSale]=useState(false);
@@ -3056,7 +3059,7 @@ try {
     if(busy)return;
     const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session?.user?.id);
     const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
-    if(!hasBadge&&count>=50){
+    if(!hasBadge&&count>=50&&duoCollaborators.length===0){
       notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><Lock size={14}/>Limite de 50 posts atteinte — Obtenez le badge certifié pour publier en illimité ✦</span>);
       return;
     }
@@ -3094,6 +3097,9 @@ if(!error){
     }
     if(selectedCategories.length>0){
       await sb.from("post_categories").insert(selectedCategories.map(category=>({post_id:postId,category,source:"manual"})));
+    }
+    if(duoCollaborators.length>0){
+      await saveDuoCollaborators(sb,postId,uid,duoCollaborators);
     }
     if(!selectedSound&&lastVideoFileRef.current){
       autoExtractAndAttachSound({sb,uploadToR2,videoFile:lastVideoFileRef.current,postId,uid,authorName:myProfile?.prenom||myProfile?.fullName});
@@ -3230,6 +3236,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
             <div style={{ margin: "10px 0", display: "flex", flexDirection: "column", gap: 10 }}>
               <CategoryPicker selected={selectedCategories} onChange={setSelectedCategories} T={T}/>
               <SoundPickerButton sb={sb} value={selectedSound} onChange={setSelectedSound} userId={session?.user?.id} T={T}/>
+              <DuoButton sb={sb} T={T} Av={Av} Btn={Btn} Badge={Badge} session={session} value={duoCollaborators} onChange={setDuoCollaborators}/>
             </div>
 
             {/* Option vente (badge doré + Congo uniquement) */}
@@ -5531,6 +5538,10 @@ const [showDeleteReasons,setShowDeleteReasons]=useState(false);
     const{error}=await sb.from("muted_authors").insert({muter_id:session?.user?.id,muted_id:post.by});
     if(error&&error.code!=="23505"){notify("Erreur, réessaie");return;}
     setPosts?.(prev=>(prev||[]).filter(p=>p.by!==post.by));
+sb.from("post_collaborators").select("post_id").eq("collaborator_id",post.by).then(({data})=>{
+  const ids=new Set((data||[]).map(r=>r.post_id));
+  if(ids.size)setPosts?.(prev=>(prev||[]).filter(p=>!ids.has(p.id)));
+});
 onMuteAuthor?.(post.by);
     notify("Tu ne verras plus les publications de cette personne");
   };
@@ -5571,6 +5582,7 @@ onMuteAuthor?.(post.by);
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
               <Btn onClick={e=>{e.stopPropagation();onUser?.(post.by);}} style={{fontSize:14,fontWeight:700,color:T.text,padding:0,textShadow:post.author?.color?`0 0 10px ${post.author.color}66`:"none"}}>{post.author?.name}</Btn>
               <Badge type={post.author?.badge}/>
+              <DuoBadge sb={sb} T={T} Av={Av} postId={post.id}/>
               {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
               {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={1} color={T.goldL}/></span>}
               <span style={{fontSize:11,color:T.muted}}>{ago(post.ts)}</span>
@@ -5907,7 +5919,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -6029,7 +6041,7 @@ return(
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session}){
+function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup}){
   const [q,setQ]=useState("");
   const [queueStatuses,setQueueStatuses]=useState(()=>getConvStatuses());
   useEffect(()=>subscribeQueue(()=>setQueueStatuses(getConvStatuses())),[]);
@@ -6051,6 +6063,7 @@ const openMenu=id=>{setMenuConvId(id);};
 
   const convIds=useMemo(()=>(convs||[]).map(c=>c.id),[convs]);
   const typingMap=useTypingIndicatorForConvs(sb,convIds,session?.user?.id);
+  const {groups}=useMyGroups(sb,session?.user?.id);
  
 
   const filtered=sorted.filter(c=>{
@@ -6089,7 +6102,7 @@ const openMenu=id=>{setMenuConvId(id);};
         </div>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
-          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"}].map(f=>(
+          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"}].map(f=>(
             <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
               {f.l}
               {f.k==="nonlus"&&sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
@@ -6100,7 +6113,25 @@ const openMenu=id=>{setMenuConvId(id);};
 
       {/* Liste conversations */}
       <div style={{maxWidth:640,margin:"0 auto",padding:"8px 0 80px"}}>
-        {filtered.length===0&&(
+        {filter==="groupes"&&(
+          <>
+            <div onClick={onCreateGroup} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
+              <div style={{width:44,height:44,borderRadius:"50%",background:T.goldBg,border:`1px solid ${T.gold}55`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Users size={20} color={T.goldL}/>
+              </div>
+              <p style={{margin:0,fontSize:14,fontWeight:600,color:T.goldL}}>Nouveau groupe</p>
+            </div>
+            {groups.length===0&&(
+              <div style={{textAlign:"center",padding:"60px 20px",color:T.muted}}>
+                <p style={{fontSize:13}}>Tu n'as encore aucun groupe</p>
+              </div>
+            )}
+            {groups.map(g=>(
+              <GroupRow key={g.id} g={g} T={T} Av={Av} onOpen={onOpenGroup}/>
+            ))}
+          </>
+        )}
+        {filter!=="groupes"&&filtered.length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
             <div style={{marginBottom:16,display:"flex",justifyContent:"center",opacity:.3}}><Mail size={48}/></div>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune conversation</p>
@@ -6108,7 +6139,7 @@ const openMenu=id=>{setMenuConvId(id);};
 
           </div>
         )}
-        {filtered.map(c=>{
+        {filter!=="groupes"&&filtered.map(c=>{
           const u=getM(c.uid);
           const last=c.msgs[c.msgs.length-1];
           const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
@@ -6322,7 +6353,7 @@ function VoicePlayer({src,mine}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile,onBack}){
+function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack}){
 const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
@@ -6701,10 +6732,10 @@ const handleFile=async(e,isImg)=>{
 <div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"3px 10px",paddingTop:"calc(3px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
   <Btn onClick={()=>onBack&&onBack()} style={{color:T.gold,padding:"6px 2px 6px 0",display:"flex",alignItems:"center",flexShrink:0}}><ChevronLeft size={22}/></Btn>
   <div style={{position:"relative",flexShrink:0}}>
-    <Av u={user} size={26} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
+    <Av u={user} size={26} onClick={()=>onOpenConvInfo&&onOpenConvInfo(user.id)}/>
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
   </div>
-  <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}>
+  <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenConvInfo&&onOpenConvInfo(user.id)}>
     <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.fullName||user.name}</p>
     <p style={{margin:0,fontSize:11,color:user.online?"#3DB654":T.muted}}>
       {user.online?"En ligne ✦":user.paroisse||"Hors ligne"}
@@ -7081,7 +7112,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -7104,7 +7135,7 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
   const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const loadUPosts=useCallback(async()=>{
-    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
      mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
@@ -7345,7 +7376,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -7694,6 +7725,8 @@ function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme}){
   const [discoverable,setDiscoverable]=useState(true);
 const [hideOnline,setHideOnline]=useState(false);
 const [screenshotProtection,setScreenshotProtection]=useState(false);
+const [duoPermission,setDuoPermission]=useState("everyone");
+const [groupInvitePermission,setGroupInvitePermission]=useState("everyone");
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 const [showBugReport,setShowBugReport]=useState(false);
 const [showMutedBlocked,setShowMutedBlocked]=useState(false);
@@ -7711,6 +7744,7 @@ const [bugText,setBugText]=useState("");
       .maybeSingle()
       .then(async({data})=>{
         if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);}
+        sb.from("profiles").select("duo_permission").eq("id",session.user.id).maybeSingle().then(({data:d})=>{if(d?.duo_permission)setDuoPermission(d.duo_permission);});
         if(data?.badge_payment_ref&&!data?.badge){
           try{
             const{data:result}=await sb.functions.invoke("verify-badge-payment");
@@ -7952,6 +7986,9 @@ const NAV_THEMES=[
   </div>
 )}
     {/* Céleste Match — activer/désactiver */}
+    <DuoPrivacySetting sb={sb} T={T} Btn={Btn} Av={Av} session={session} value={duoPermission} onChange={setDuoPermission} notify={notify}/>
+    <GroupPrivacySetting sb={sb} T={T} Btn={Btn} session={session} value={groupInvitePermission} onChange={setGroupInvitePermission} notify={notify}/>
+
     <MatchPrivacyToggle session={session} notify={notify} myProfile={myProfile}/>
 
     {/* Comptes masqués & bloqués */}
@@ -8632,7 +8669,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -8655,7 +8692,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
     }
   };
   useEffect(()=>{
-    sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
+    sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
       setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
       setLoading(false);
     });
@@ -8808,7 +8845,7 @@ const [myPostsLoading,setMyPostsLoading]=useState(true);
 const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data){
       const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
@@ -8855,7 +8892,7 @@ const openPostFromSound=(post,soundPosts)=>{
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   
@@ -10046,6 +10083,9 @@ CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
     return()=>{delete window.__celesteOpenChat;};
   },[session?.user?.id,convs]);
   const [openConvId,setOpenConvId]=useState(null);
+  const [openConvInfoUid,setOpenConvInfoUid]=useState(null);
+  const [showCreateGroup,setShowCreateGroup]=useState(false);
+  const [openGroup,setOpenGroup]=useState(null);
   const [detailPost,setDetailPost]=useState(null);
   const [openUserId,setOpenUserId]=useState(null);
   const [openUser,setOpenUser]=useState(null);
@@ -10165,7 +10205,7 @@ useEffect(() => {
     if(!openUserId){setOpenUser(null);return;}
     const found=(members||[]).find(m=>m.id===openUserId);
     if(found){setOpenUser(found);return;}
-    sb.from("profiles").select("*").eq("id",openUserId).single().then(({data})=>{if(data)setOpenUser({...normProfile(data),isOnline:onlinePresenceIds.has(data.id),online:onlinePresenceIds.has(data.id)});});
+    sb.from("profiles").select("*").eq("id",openUserId).single().then(({data})=>{if(data)setOpenUser({...normProfile(data),isOnline:!data.hide_online&&onlinePresenceIds.has(data.id),online:!data.hide_online&&onlinePresenceIds.has(data.id)});});
   },[openUserId,members,onlinePresenceIds]);
 
   useEffect(()=>{
@@ -10209,7 +10249,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   },[onlinePresenceIds]);
 
   const loadMembers=useCallback(async()=>{
-  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,hide_online,joined_at").neq("status","pending");
+  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,hide_online,joined_at").neq("status","pending").neq("status","suspended");
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
@@ -10245,7 +10285,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   const postOrderRef=useRef([]);
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
@@ -10253,7 +10293,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
@@ -10262,13 +10302,20 @@ const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
 const{data:completedRows}=myId?await sb.from("video_engagement_events").select("post_id").eq("viewer_id",myId).eq("completed",true).in("post_id",mapped.map(p=>p.id)):{data:[]};
 const completedIds=new Set((completedRows||[]).map(r=>r.post_id));
+const{data:collabRows}=await sb.from("post_collaborators").select("post_id,collaborator_id").in("post_id",mapped.map(p=>p.id));
+const collaboratorsByPost=new Map();
+(collabRows||[]).forEach(r=>{
+  if(!collaboratorsByPost.has(r.post_id))collaboratorsByPost.set(r.post_id,[]);
+  collaboratorsByPost.get(r.post_id).push(r.collaborator_id);
+});
 
 const visible=mapped.filter(p=>{
   if(blockedSet.has(p.by))return false;
+  if((collaboratorsByPost.get(p.id)||[]).some(id=>blockedSet.has(id)))return false;
   if(p.author?.status==="suspended")return false;
   if(completedIds.has(p.id)&&!p.pinned)return false; // déjà vu en entier → exclu du feed
   if(p.pinned)return true;
-if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by))return false;
+if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by)&&!(collaboratorsByPost.get(p.id)||[]).some(id=>followedIds.has(id)))return false;
   return true;
 }).sort((a,b)=>{
   const aLocal=a.is_for_sale&&(a.author?.country||"CG")===myCountry;
@@ -10337,7 +10384,7 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));
@@ -10577,7 +10624,17 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {showNewPost&&<NewPostModal myProfile={myProfile} session={session} initialSound={pendingSound} onClose={()=>{popNav();setShowNewPost(false);setPendingSound(null);}} onPost={()=>{loadPosts(1);setShowNewPost(false);setPendingSound(null);notify("Publié ✦");}} notify={notify}/>}
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session} myProfile={myProfile}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>{popNav();setOpenCeleste(false);}} myProfile={myProfile} session={session}/>}
-
+{showCreateGroup&&(
+  <CreateGroupModal sb={sb} T={T} Av={Av} Btn={Btn} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers}
+    onClose={()=>{popNav();setShowCreateGroup(false);}}
+    onCreated={()=>{}}
+    notify={notify}/>
+)}
+{openGroup&&(
+  <GroupChatScreen sb={sb} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
+    notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
+    onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
+)}
         <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId)?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
           {(openConvId||openUserId)
             ?<>
@@ -10616,13 +10673,31 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
           {openUserId&&openUser&&(
             openUser.account_type==="organisation"
-              ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg}/>
-              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(ids=>setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by))));}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
+              ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
+  setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by)));
+  if(ids.length){
+    const{data}=await sb.from("post_collaborators").select("post_id").in("collaborator_id",ids);
+    const collabPostIds=new Set((data||[]).map(r=>r.post_id));
+    if(collabPostIds.size)setPosts(prev=>(prev||[]).filter(p=>!collabPostIds.has(p.id)));
+  }
+});}} onImageView={setViewImg}/>
+              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
+});}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
-          {!openUserId&&openConvId&&openConv&&(
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onBack={()=>{popNav();setOpenConvId(null);}}/>
+          {!openUserId&&openConvId&&openConv&&!openConvInfoUid&&(
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}}/>
           )}
-          <div style={{display:openUserId||openConvId?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
+          {openConvInfoUid&&(
+            <ConversationInfoScreen
+              T={T} Av={Av} Btn={Btn}
+              user={(members||[]).find(m=>m.id===openConvInfoUid)}
+              onBack={()=>{popNav();setOpenConvInfoUid(null);}}
+              onOpenProfile={uid=>{setOpenConvInfoUid(null);setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
+              onCreateGroup={()=>{setOpenConvInfoUid(null);pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}}
+              notify={notify}
+            />
+          )}
+          <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
   <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={authorId=>setMutedAuthorIds(prev=>[...new Set([...prev,authorId])])} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing}/>
 </div>
@@ -10630,7 +10705,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} members={members} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme}/>
             </div>
