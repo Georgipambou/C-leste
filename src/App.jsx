@@ -38,7 +38,7 @@ import {
   ConversationInfoScreen
 } from "./ChatExtras";
 import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
-import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen } from "./Groups";
+import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen, usePendingGroupInvites, PendingGroupInviteCard } from "./Groups";
 
 import {
   useState, useRef, useEffect, useCallback, useMemo, memo, createContext, useContext
@@ -1718,6 +1718,7 @@ function NotifsScreen({myProfile,session,members}){
     poll_ended:"📊",
     new_post_favorite:"✦",
     friend_online:"🟢",
+    group_invite:"👥",
   }[n.type]||"🔔");
 
   const SYSTEM_TYPES=["post_deleted","warning","approved","earning","poll_ended"];
@@ -1817,6 +1818,12 @@ function NotifsScreen({myProfile,session,members}){
                     if(n.type==="follow"){
                       window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
                       setTimeout(()=>{if(from?.id)window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:from.id}}));},350);
+                      return;
+                    }
+                    if(n.type==="group_invite"){
+                      setTab("messages");
+                      window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+                      setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_groups_tab",{})),350);
                       return;
                     }
                     if(n.type==="status_like"||n.type==="status_view"){
@@ -6064,6 +6071,12 @@ const openMenu=id=>{setMenuConvId(id);};
   const convIds=useMemo(()=>(convs||[]).map(c=>c.id),[convs]);
   const typingMap=useTypingIndicatorForConvs(sb,convIds,session?.user?.id);
   const {groups}=useMyGroups(sb,session?.user?.id);
+  const {invites,reloadInvites}=usePendingGroupInvites(sb,session?.user?.id);
+  useEffect(()=>{
+    const onOpenGroups=()=>setFilter("groupes");
+    window.addEventListener("celeste_open_groups_tab",onOpenGroups);
+    return()=>window.removeEventListener("celeste_open_groups_tab",onOpenGroups);
+  },[]);
  
 
   const filtered=sorted.filter(c=>{
@@ -6111,16 +6124,21 @@ const openMenu=id=>{setMenuConvId(id);};
         </div>
       </div>
 
+      {invites&&invites.length>0&&(
+        <div style={{maxWidth:640,margin:"0 auto",padding:"4px 0"}}>
+          {invites.map(inv=>(
+            <PendingGroupInviteCard key={inv.group_id} sb={sb} T={T} Av={Av} Btn={Btn}
+              invite={inv} userId={session?.user?.id}
+              notify={notify}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Liste conversations */}
       <div style={{maxWidth:640,margin:"0 auto",padding:"8px 0 80px"}}>
         {filter==="groupes"&&(
           <>
-            <div onClick={onCreateGroup} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
-              <div style={{width:44,height:44,borderRadius:"50%",background:T.goldBg,border:`1px solid ${T.gold}55`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Users size={20} color={T.goldL}/>
-              </div>
-              <p style={{margin:0,fontSize:14,fontWeight:600,color:T.goldL}}>Nouveau groupe</p>
-            </div>
             {groups.length===0&&(
               <div style={{textAlign:"center",padding:"60px 20px",color:T.muted}}>
                 <p style={{fontSize:13}}>Tu n'as encore aucun groupe</p>
@@ -10632,6 +10650,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 )}
 {openGroup&&(
   <GroupChatScreen sb={sb} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
+    members={members} myConnections={myConnections} myFollowers={myFollowers}
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
 )}
