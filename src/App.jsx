@@ -35,10 +35,11 @@ import {
   editMessage, EditedBadge,
   ChatSearchBar, filterMessagesByQuery,
   SwipeToReply, useLongPress, InlineReactionPicker,
-  ConversationInfoScreen
+  ConversationInfoScreen, ConvPinGateScreen, isConvLocked, removeConvLock
 } from "./ChatExtras";
 import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
-import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen, usePendingGroupInvites, PendingGroupInviteCard } from "./Groups";
+import { processGroupQueue } from "./lib/groupMessageQueue";
+import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen, usePendingGroupInvites, PendingGroupInviteCard, isGroupPinned } from "./Groups";
 
 import {
   useState, useRef, useEffect, useCallback, useMemo, memo, createContext, useContext
@@ -1555,7 +1556,7 @@ if(data.user){onSuccess?.("pending");}
             <span style={{fontSize:34,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>✦</span>
           </div>
           <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,fontWeight:300,color:T.text,letterSpacing:5,marginBottom:6}}>Céleste</h1>
-          <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vrai personnalitée</p>
+          <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vraie personnalitée</p>
         </div>
 
         <div style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${T.border}`,borderRadius:24,overflow:"hidden",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)"}}>
@@ -1695,6 +1696,8 @@ function NotifsScreen({myProfile,session,members}){
     new_post_favorite:"a publié du nouveau contenu",
     status_like:"a aimé ton statut",
     status_view:"a vu ton statut",
+    group_invite:`t'a invité${n.text?` dans "${n.text}"`:" dans un groupe"}`,
+    group_invite_declined:`a refusé de rejoindre${n.text?` "${n.text}"`:" ton groupe"}`,
     post_deleted:n.text||"Une de tes publications a été supprimée",
     warning:n.text||"Avertissement de l'équipe Céleste",
     approved:"Ton compte a été validé ✦",
@@ -1719,6 +1722,7 @@ function NotifsScreen({myProfile,session,members}){
     new_post_favorite:"✦",
     friend_online:"🟢",
     group_invite:"👥",
+    group_invite_declined:"🚫",
   }[n.type]||"🔔");
 
   const SYSTEM_TYPES=["post_deleted","warning","approved","earning","poll_ended"];
@@ -3251,23 +3255,23 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
               <div onClick={()=>setIsForSale(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
                 <ShoppingBag size={14} color={isForSale?T.goldL:T.muted}/>
                 <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article à vendre</span>
-                <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
-                  <div style={{position:"absolute",top:2,left:isForSale?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+                <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:2,left:isForSale?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}/>
                 </div>
               </div>
             )}
             <div onClick={()=>setIsPrivate(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
               <Lock size={14} color={isPrivate?T.goldL:T.muted}/>
               <span style={{fontSize:12,color:isPrivate?T.goldL:T.muted,flex:1}}>Publication privée (visible uniquement dans l'app)</span>
-              <div style={{width:28,height:16,borderRadius:8,background:isPrivate?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
-                <div style={{position:"absolute",top:2,left:isPrivate?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+              <div style={{width:28,height:16,borderRadius:8,background:isPrivate?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:isPrivate?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}/>
               </div>
             </div>
             <div onClick={()=>setCommentsDisabled(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
               <MessageCircleOff size={14} color={commentsDisabled?T.goldL:T.muted}/>
               <span style={{fontSize:12,color:commentsDisabled?T.goldL:T.muted,flex:1}}>Désactiver les commentaires</span>
-              <div style={{width:28,height:16,borderRadius:8,background:commentsDisabled?T.gold:"rgba(255,255,255,0.1)",position:"relative",transition:"background .3s",flexShrink:0}}>
-                <div style={{position:"absolute",top:2,left:commentsDisabled?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s"}}/>
+              <div style={{width:28,height:16,borderRadius:8,background:commentsDisabled?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:commentsDisabled?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}/>
               </div>
             </div>
             
@@ -3408,7 +3412,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
 
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"10px 14px",borderRadius:12,background:"rgba(255,255,255,0.03)"}}>
                   <span style={{fontSize:12.5,color:T.sub}}>Choix multiple</span>
-                  <button onClick={()=>setPollMultiple(m=>!m)} style={{width:38,height:22,borderRadius:20,border:"none",cursor:"pointer",background:pollMultiple?T.gradGold:"rgba(255,255,255,0.12)",position:"relative",transition:"background .25s ease",padding:0}}>
+                  <button onClick={()=>setPollMultiple(m=>!m)} style={{width:38,height:22,borderRadius:20,border:"none",cursor:"pointer",background:pollMultiple?T.gradGold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.12)"),position:"relative",transition:"background .25s ease",padding:0}}>
                     <span style={{position:"absolute",top:2,left:pollMultiple?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .22s cubic-bezier(0.34,1.56,0.64,1)",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
                   </button>
                 </div>
@@ -6048,7 +6052,7 @@ return(
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup}){
+function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup,notify}){
   const [q,setQ]=useState("");
   const [queueStatuses,setQueueStatuses]=useState(()=>getConvStatuses());
   useEffect(()=>subscribeQueue(()=>setQueueStatuses(getConvStatuses())),[]);
@@ -6071,6 +6075,15 @@ const openMenu=id=>{setMenuConvId(id);};
   const convIds=useMemo(()=>(convs||[]).map(c=>c.id),[convs]);
   const typingMap=useTypingIndicatorForConvs(sb,convIds,session?.user?.id);
   const {groups}=useMyGroups(sb,session?.user?.id);
+  // Liste fusionnée conversations + groupes, triée par dernier message, pour l'onglet "Tous"
+  const unifiedAll=useMemo(()=>{
+    const dmItems=(convs||[]).map(c=>({kind:"dm",id:c.id,ts:c.msgs[c.msgs.length-1]?.ts||0,pinned:pinned.includes(c.id),data:c}));
+    const groupItems=(groups||[]).map(g=>({kind:"group",id:g.id,ts:g.lastMessageAt?new Date(g.lastMessageAt).getTime():0,pinned:isGroupPinned(g.id),data:g}));
+    return[...dmItems,...groupItems].sort((a,b)=>{
+      if(b.pinned!==a.pinned)return(b.pinned?1:0)-(a.pinned?1:0);
+      return b.ts-a.ts;
+    });
+  },[convs,groups,pinned]);
   const {invites,reloadInvites}=usePendingGroupInvites(sb,session?.user?.id);
   useEffect(()=>{
     const onOpenGroups=()=>setFilter("groupes");
@@ -6096,6 +6109,53 @@ const openMenu=id=>{setMenuConvId(id);};
     return d.toLocaleDateString("fr-FR",{weekday:"short"}).replace(".","");
   };
 
+  const renderConvRow=c=>{
+    const u=getM(c.uid);
+    const last=c.msgs[c.msgs.length-1];
+    const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
+    const locked=isConvLocked(c.id);
+    const previewIcon=locked?null:!last?null:last.type==="photo"?<Image size={13}/>:last.type==="file"?<Paperclip size={13}/>:last.type==="voice"?<Mic size={13}/>:null;
+    const prev=locked?"Conversation verrouillée":!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
+    const isFav=favorites.includes(c.id);
+    const peerStatus=typingMap[c.id]||null;
+    const isTyping=peerStatus==="typing";
+    const isRecording=peerStatus==="recording";
+    return(
+      <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:`1px solid ${T.border}`,cursor:"pointer",transition:"background .15s",background:"transparent"}}
+        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"}
+        onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+        onClick={()=>menuConvId?setMenuConvId(null):onOpen(c.id)}
+onContextMenu={e=>{e.preventDefault();openMenu(c.id);}}
+onTouchStart={e=>{const startY=e.touches[0].clientY;const startX=e.touches[0].clientX;pressTimer.current=setTimeout(()=>openMenu(c.id),600);e.currentTarget._startY=startY;e.currentTarget._startX=startX;}}
+onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));const dx=Math.abs(e.touches[0].clientX-(e.currentTarget._startX||0));if(dy>10||dx>10)clearTimeout(pressTimer.current);}}
+onTouchEnd={()=>clearTimeout(pressTimer.current)}>
+        <div style={{position:"relative",flexShrink:0}}>
+          <Av u={u} size={52}/>
+          {u?.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px solid #000"}}/>}
+          {pinned.includes(c.id)&&<Pin size={12} color={T.gold} style={{position:"absolute",top:8,right:36}}/>}
+          {queueStatuses[c.id]==="error"&&<div style={{position:"absolute",top:0,right:0,width:12,height:12,borderRadius:"50%",background:"#e05252",border:"2px solid "+T.bg}}/>}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <p style={{margin:0,fontSize:14,fontWeight:unreads>0?700:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name||"?"}</p>
+              {isFav&&<span style={{fontSize:12}}>⭐</span>}
+              {locked&&<Lock size={11} color={T.muted}/>}
+            </div>
+            <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <p style={{margin:0,fontSize:13,color:(isTyping||isRecording)?T.goldL:(unreads>0?T.sub:T.muted),fontStyle:(isTyping||isRecording)?"italic":"normal",fontWeight:(isTyping||isRecording)?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,display:"flex",alignItems:"center",gap:5}}>
+              {isRecording?(<><Mic size={13}/>enregistre<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):isTyping?(<>écrit<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):(<>{previewIcon}{prev}</>)}
+            </p>
+            {unreads>0&&<div style={{width:20,height:20,borderRadius:"50%",background:"#4A90D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",flexShrink:0,marginLeft:8}}>{unreads}</div>}
+          </div>
+        </div>
+        <ChevronRight size={16} color={T.muted} style={{flexShrink:0}}/>
+      </div>
+    );
+  };
+
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg,position:"relative"}}>
       <InstallBanner/>
@@ -6114,13 +6174,18 @@ const openMenu=id=>{setMenuConvId(id);};
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
         {/* Filtres */}
-        <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
+        <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto",alignItems:"center"}}>
           {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"}].map(f=>(
             <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
               {f.l}
               {f.k==="nonlus"&&sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
             </button>
           ))}
+          {filter==="groupes"&&(
+            <button onClick={onCreateGroup} title="Nouveau groupe" style={{flexShrink:0,marginLeft:"auto",width:32,height:32,borderRadius:"50%",border:`1px solid ${T.gold}`,background:"transparent",color:T.goldL,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <Plus size={16}/>
+            </button>
+          )}
         </div>
       </div>
 
@@ -6144,69 +6209,31 @@ const openMenu=id=>{setMenuConvId(id);};
                 <p style={{fontSize:13}}>Tu n'as encore aucun groupe</p>
               </div>
             )}
-            {groups.map(g=>(
+            {[...groups].sort((a,b)=>(isGroupPinned(b.id)?1:0)-(isGroupPinned(a.id)?1:0)).map(g=>(
               <GroupRow key={g.id} g={g} T={T} Av={Av} onOpen={onOpenGroup}/>
             ))}
           </>
         )}
-        {filter!=="groupes"&&filtered.length===0&&(
+        {filter==="tous"&&unifiedAll.length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
             <div style={{marginBottom:16,display:"flex",justifyContent:"center",opacity:.3}}><Mail size={48}/></div>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune conversation</p>
             <p style={{fontSize:13,marginTop:8}}>Connectez-vous avec d'autres membres</p>
-
           </div>
         )}
-        {filter!=="groupes"&&filtered.map(c=>{
-          const u=getM(c.uid);
-          const last=c.msgs[c.msgs.length-1];
-          const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
-          const previewIcon=!last?null:last.type==="photo"?<Image size={13}/>:last.type==="file"?<Paperclip size={13}/>:last.type==="voice"?<Mic size={13}/>:null;
-          const prev=!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
-          const isFav=favorites.includes(c.id);
-          const peerStatus=typingMap[c.id]||null;
-          const isTyping=peerStatus==="typing";
-          const isRecording=peerStatus==="recording";
-          
-          return(
-  
-            <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:`1px solid ${T.border}`,cursor:"pointer",transition:"background .15s",background:"transparent"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              onClick={()=>menuConvId?setMenuConvId(null):onOpen(c.id)}
-onContextMenu={e=>{e.preventDefault();openMenu(c.id);}}
-onTouchStart={e=>{const startY=e.touches[0].clientY;const startX=e.touches[0].clientX;pressTimer.current=setTimeout(()=>openMenu(c.id),600);e.currentTarget._startY=startY;e.currentTarget._startX=startX;}}
-onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));const dx=Math.abs(e.touches[0].clientX-(e.currentTarget._startX||0));if(dy>10||dx>10)clearTimeout(pressTimer.current);}}
-onTouchEnd={()=>clearTimeout(pressTimer.current)}>
-              {/* Avatar */}
-              <div style={{position:"relative",flexShrink:0}}>
-                <Av u={u} size={52}/>
-                {u?.isOnline&&<div style={{position:"absolute",bottom:1,right:1,width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px solid #000"}}/>}
-                {pinned.includes(c.id)&&<Pin size={12} color={T.gold} style={{position:"absolute",top:8,right:36}}/>}
-                {queueStatuses[c.id]==="error"&&<div style={{position:"absolute",top:0,right:0,width:12,height:12,borderRadius:"50%",background:"#e05252",border:"2px solid "+T.bg}}/>}
-              </div>
-              
-              {/* Infos */}
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <p style={{margin:0,fontSize:14,fontWeight:unreads>0?700:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name||"?"}</p>
-                    {isFav&&<span style={{fontSize:12}}>⭐</span>}
-                  </div>
-                  <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
-                </div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <p style={{margin:0,fontSize:13,color:(isTyping||isRecording)?T.goldL:(unreads>0?T.sub:T.muted),fontStyle:(isTyping||isRecording)?"italic":"normal",fontWeight:(isTyping||isRecording)?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,display:"flex",alignItems:"center",gap:5}}>
-                    {isRecording?(<><Mic size={13}/>enregistre<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):isTyping?(<>écrit<span style={{display:"inline-flex",gap:2}}>{[0,1,2].map(i=>(<span key={i} style={{width:3,height:3,borderRadius:"50%",background:T.goldL,animation:`typingDot .9s ease ${i*0.15}s infinite`}}/>))}</span></>):(<>{previewIcon}{prev}</>)}
-                  </p>
-                  {unreads>0&&<div style={{width:20,height:20,borderRadius:"50%",background:"#4A90D9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",flexShrink:0,marginLeft:8}}>{unreads}</div>}
-                </div>
-              </div>
-              {/* Chevron */}
-              <ChevronRight size={16} color={T.muted} style={{flexShrink:0}}/>
-            </div>
-          );
-        })}
+        {filter==="tous"&&unifiedAll.map(item=>(
+          item.kind==="group"
+            ? <GroupRow key={`g_${item.id}`} g={item.data} T={T} Av={Av} onOpen={onOpenGroup}/>
+            : renderConvRow(item.data)
+        ))}
+        {(filter==="nonlus"||filter==="favoris")&&filtered.length===0&&(
+          <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
+            <div style={{marginBottom:16,display:"flex",justifyContent:"center",opacity:.3}}><Mail size={48}/></div>
+            <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune conversation</p>
+            <p style={{fontSize:13,marginTop:8}}>Connectez-vous avec d'autres membres</p>
+          </div>
+        )}
+        {(filter==="nonlus"||filter==="favoris")&&filtered.map(c=>renderConvRow(c))}
       </div>
 {menuConvId&&(
   <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuConvId(null)}>
@@ -6320,7 +6347,7 @@ CONTACT & SUPPORT :
 TON RÔLE :
 Réponds aux questions des utilisateurs sur l'app avec simplicité et bienveillance. Si tu ne sais pas quelque chose de précis, invite l'utilisateur à contacter le support.`;
 
-function VoicePlayer({src,mine}){
+function VoicePlayer({src,mine,T}){
   const [playing,setPlaying]=useState(false);
   const [progress,setProgress]=useState(0);
   const [duration,setDuration]=useState(0);
@@ -6504,18 +6531,22 @@ const doubleTap=useDoubleTap(m=>{
     sb.from("messages").update({is_read:true}).in("id",ids).then(()=>reload());
   },[conv.id,conv.msgs?.length]);
 
+  const [peerScreenshotProtection,setPeerScreenshotProtection]=useState(false);
   useEffect(()=>{
     sb.from("profiles").select("screenshot_protection").eq("id",conv.uid).single()
-      .then(({data})=>{
-        if(data?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
-      });
+      .then(({data})=>setPeerScreenshotProtection(!!data?.screenshot_protection));
     const ch=sb.channel(`privacy_chat_${conv.uid}`)
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles",filter:`id=eq.${conv.uid}`},payload=>{
-        if(payload.new?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+        setPeerScreenshotProtection(!!payload.new?.screenshot_protection);
       })
       .subscribe();
-    return()=>{sb.removeChannel(ch);disableScreenProtection();};
+    return()=>{sb.removeChannel(ch);};
   },[conv.uid]);
+
+  useEffect(()=>{
+    if(peerScreenshotProtection||conv.secure_mode)enableScreenProtection();else disableScreenProtection();
+    return()=>{disableScreenProtection();};
+  },[peerScreenshotProtection,conv.secure_mode]);
 
   const [isBlocked,setIsBlocked]=useState(false);
   useEffect(()=>{
@@ -6714,6 +6745,21 @@ const handleFile=async(e,isImg)=>{
   };
   const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
 
+  if(conv.secure_mode&&!isNative&&conv.secure_mode_by!==session?.user?.id){
+    return(
+      <div style={{flex:1,display:"flex",flexDirection:"column",background:"#000"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",paddingTop:"calc(10px + env(safe-area-inset-top,0px))",borderBottom:`1px solid ${T.border}`}}>
+          <Btn onClick={onBack} style={{color:T.gold}}><ChevronLeft size={22}/></Btn>
+        </div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:30}}>
+          <Lock size={32} color={T.goldL}/>
+          <p style={{margin:0,fontSize:15,fontWeight:600,color:T.text,textAlign:"center"}}>Conversation privée et sécurisée</p>
+          <p style={{margin:0,fontSize:13,color:T.muted,textAlign:"center"}}>Le mode sécurisé est activé — cette conversation n'est accessible que depuis l'app Céleste.</p>
+        </div>
+      </div>
+    );
+  }
+
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",backgroundImage:`linear-gradient(${isLightBg(T.bg)?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.6)"},${isLightBg(T.bg)?"rgba(255,255,255,0.35)":"rgba(0,0,0,0.6)"}),url(${isLightBg(T.bg)?previewLight:previewDark})`,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat"}}>
       {cropSrc&&(
@@ -6855,7 +6901,7 @@ const handleFile=async(e,isImg)=>{
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
-                  {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine}/>}
+                  {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T}/>}
 {m.type==="video"&&(m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>}
                   {m.text&&<><p style={{margin:0,fontSize:14,fontWeight:600,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
@@ -7591,7 +7637,7 @@ if(blocked||blockedByOther) return(
   );
 }
 const Toggle=({active})=>(
-    <div style={{width:42,height:24,borderRadius:12,background:active?T.gradGold:"rgba(255,255,255,0.1)",border:`1px solid ${T.border}`,position:"relative",transition:"background .3s",flexShrink:0}}>
+    <div style={{width:42,height:24,borderRadius:12,background:active?T.gradGold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),border:`1px solid ${T.border}`,position:"relative",transition:"background .3s",flexShrink:0}}>
       <div style={{position:"absolute",top:2,left:active?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 4px rgba(0,0,0,0.3)"}}/>
     </div>
   );
@@ -9923,7 +9969,7 @@ function SplashScreen(){
       <div style={{position:"absolute",top:"20%",left:"50%",transform:"translateX(-50%)",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,149,42,0.08),transparent 70%)",pointerEvents:"none",animation:"glowPulse 2s ease infinite"}}/>
       <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:90,color:T.gold,animation:"starPulse 2s ease infinite",lineHeight:1,filter:"drop-shadow(0 0 40px rgba(201,149,42,0.6))"}}>✦</div>
       <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.text,letterSpacing:7,margin:"20px 0 8px",animation:"titleReveal .8s ease .3s both"}}>Céleste</h1>
-      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Exprime ta vrai personnalitée</p>
+      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Exprime ta vraie personnalitée</p>
 
       {phase==="warning"&&(
         <div style={{position:"absolute",bottom:60,left:20,right:20,background:"rgba(201,149,42,0.08)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"16px 20px",textAlign:"center",animation:"fadeUp .5s ease"}}>
@@ -10014,6 +10060,7 @@ function CelesteApp(){
         loadPosts(1);
         loadConvs(session.user.id);
         processQueue(sb,notify).then(()=>loadConvs(session.user.id));
+        processGroupQueue(sb,notify);
       }
     };
     const off=()=>setIsOnline(false);
@@ -10418,7 +10465,7 @@ return updated;
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem("celeste_convs_cache",JSON.stringify(filtered));}catch(e){}
@@ -10570,6 +10617,12 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   const pending=(members||[]).filter(m=>m.status==="pending").length;
   const getM=useCallback(id=>{if(id==="me"||id===session?.user?.id)return myProfile;return(members||[]).find(m=>m.id===id)||{id:"?",initials:"?",color:"#888",name:"Inconnu",badge:null};},[session?.user?.id,myProfile,members]);
   const openConv=(convs||[]).find(c=>c.id===openConvId);
+  const [pendingUnlockConvId,setPendingUnlockConvId]=useState(null);
+  const [unlockedConvIds,setUnlockedConvIds]=useState(()=>new Set());
+  const openConvChecked=id=>{
+    if(isConvLocked(id)&&!unlockedConvIds.has(id)){setPendingUnlockConvId(id);return;}
+    pushNav(()=>setOpenConvId(null));setOpenConvId(id);
+  };
   const openChat=uid=>{setOpenUserId(null);let c=(convs||[]).find(x=>x.uid===uid);if(!c){c={id:"cv"+Date.now(),uid,msgs:[]};setConvs(p=>[...(p||[]),c]);}pushNav(()=>setOpenConvId(null));setOpenConvId(c.id);setTab("messages");};
 
   // AppContext value
@@ -10710,10 +10763,38 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
             <ConversationInfoScreen
               T={T} Av={Av} Btn={Btn}
               user={(members||[]).find(m=>m.id===openConvInfoUid)}
+              conv={openConv}
+              sb={sb}
+              myId={session?.user?.id}
               onBack={()=>{popNav();setOpenConvInfoUid(null);}}
               onOpenProfile={uid=>{setOpenConvInfoUid(null);setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
               onCreateGroup={()=>{setOpenConvInfoUid(null);pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}}
               notify={notify}
+              reload={()=>loadConvs(session?.user?.id)}
+            />
+          )}
+          {pendingUnlockConvId&&(
+            <ConvPinGateScreen
+              T={T} Btn={Btn}
+              convId={pendingUnlockConvId}
+              userName={getM((convs||[]).find(c=>c.id===pendingUnlockConvId)?.uid)?.name}
+              onBack={()=>setPendingUnlockConvId(null)}
+              onUnlocked={()=>{
+                const id=pendingUnlockConvId;
+                setUnlockedConvIds(prev=>new Set([...prev,id]));
+                setPendingUnlockConvId(null);
+                pushNav(()=>setOpenConvId(null));
+                setOpenConvId(id);
+              }}
+              onForgotPin={async()=>{
+                const id=pendingUnlockConvId;
+                await sb.from("messages").delete().eq("conv_id",id);
+                await sb.from("conversations").delete().eq("id",id);
+                removeConvLock(id);
+                setConvs(p=>(p||[]).filter(c=>c.id!==id));
+                setPendingUnlockConvId(null);
+                notify("Conversation supprimée");
+              }}
             />
           )}
           <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
@@ -10724,7 +10805,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} members={members} onOpen={id=>{pushNav(()=>setOpenConvId(null));setOpenConvId(id);}} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} members={members} notify={notify} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme}/>
             </div>

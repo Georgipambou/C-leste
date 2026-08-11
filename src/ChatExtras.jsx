@@ -6,9 +6,25 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  ChevronLeft, User, Search, BellOff, MoreHorizontal,
-  Sparkles, Edit2, Clock, Lock, Users, Flag, ChevronRight, Grid
+  ChevronLeft, User, Search, BellOff, Bell, MoreHorizontal,
+  Sparkles, Edit2, Clock, Lock, Users, Flag, ChevronRight, Grid, Check
 } from "lucide-react";
+
+function readIdList(key) { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; } }
+function writeIdList(key, list) { try { localStorage.setItem(key, JSON.stringify(list)); } catch {} }
+
+export function isConvMuted(convId) {
+  return readIdList("celeste_muted_convs").includes(convId);
+}
+export async function toggleConvMute(sb, userId, conv, nextMuted) {
+  const col = conv.user1_id === userId ? "muted_by_user1" : "muted_by_user2";
+  const { error } = await sb.from("conversations").update({ [col]: nextMuted }).eq("id", conv.id);
+  if (error) { console.error("Erreur mute conversation:", error); throw error; }
+  const list = readIdList("celeste_muted_convs");
+  const next = nextMuted ? [...new Set([...list, conv.id])] : list.filter(id => id !== conv.id);
+  writeIdList("celeste_muted_convs", next);
+  return nextMuted;
+}
 
 /* ============================================================
    1. SÉPARATEURS DE JOUR ("Aujourd'hui", "Hier", "12 juin")
@@ -462,30 +478,231 @@ export function filterMessagesByQuery(msgs, query) {
    éphémères, confidentialité, médias) sera branchée
    progressivement ; pour l'instant, placeholders.
    ============================================================ */
+/* ============================================================
+   VERROU LOCAL PAR CODE (4 chiffres) — par appareil, jamais envoyé au serveur
+   ============================================================ */
 
-export function ConversationInfoScreen({ T, Av, Btn, user, onBack, onOpenProfile, onCreateGroup, notify }) {
+function hashPin(pin) {
+  let h = 0;
+  for (let i = 0; i < pin.length; i++) { h = (h * 31 + pin.charCodeAt(i)) | 0; }
+  return String(h);
+}
+
+export function getConvLock(convId) {
+  try { return JSON.parse(localStorage.getItem("celeste_conv_locks") || "{}")[convId] || null; }
+  catch { return null; }
+}
+export function isConvLocked(convId) {
+  return !!getConvLock(convId);
+}
+export function setConvLock(convId, pin) {
+  try {
+    const all = JSON.parse(localStorage.getItem("celeste_conv_locks") || "{}");
+    all[convId] = hashPin(pin);
+    localStorage.setItem("celeste_conv_locks", JSON.stringify(all));
+  } catch {}
+}
+export function removeConvLock(convId) {
+  try {
+    const all = JSON.parse(localStorage.getItem("celeste_conv_locks") || "{}");
+    delete all[convId];
+    localStorage.setItem("celeste_conv_locks", JSON.stringify(all));
+  } catch {}
+}
+export function checkConvPin(convId, pin) {
+  return getConvLock(convId) === hashPin(pin);
+}
+
+function PinPad({ T, value, error, onPress, onDelete }) {
+  return (
+    <>
+      <div style={{ display: "flex", gap: 14 }}>
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} style={{
+            width: 16, height: 16, borderRadius: "50%",
+            border: `2px solid ${error ? "#e05252" : T.gold}`,
+            background: value.length > i ? (error ? "#e05252" : T.gold) : "transparent",
+            transition: "background .15s"
+          }} />
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+        {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d,i) => d === "" ? <div key={i} /> : (
+          <button key={i} onClick={() => d === "⌫" ? onDelete() : onPress(d)}
+            style={{ width: 60, height: 60, borderRadius: "50%", border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.05)", color: T.text, fontSize: 20, cursor: "pointer" }}>
+            {d}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function ConvPinGateScreen({ T, Btn, convId, userName, onUnlocked, onBack, onForgotPin }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const press = (d) => {
+    if (pin.length >= 4) return;
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) {
+      if (checkConvPin(convId, next)) onUnlocked();
+      else { setError(true); setTimeout(() => { setError(false); setPin(""); }, 500); }
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: T.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, padding: 30 }}>
+      <Btn onClick={onBack} style={{ position: "absolute", top: "calc(14px + env(safe-area-inset-top,0px))", left: 14, color: T.muted }}><ChevronLeft size={22} /></Btn>
+      <Lock size={30} color={T.goldL} />
+      <p style={{ margin: 0, fontSize: 15, color: T.text, textAlign: "center" }}>Conversation verrouillée{userName ? ` avec ${userName}` : ""}</p>
+      <PinPad T={T} value={pin} error={error} onPress={press} onDelete={() => setPin(p => p.slice(0, -1))} />
+      {!confirmDelete ? (
+        <Btn onClick={() => setConfirmDelete(true)} style={{ color: T.muted, fontSize: 13, textDecoration: "underline", marginTop: 6 }}>
+          Mot de passe oublié
+        </Btn>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 6 }}>
+          <p style={{ margin: 0, fontSize: 12, color: "#e05252", textAlign: "center", maxWidth: 240 }}>
+            Cette conversation sera supprimée définitivement, pour toi et pour {userName || "l'autre personne"}.
+          </p>
+          <div style={{ display: "flex", gap: 14 }}>
+            <Btn onClick={() => setConfirmDelete(false)} style={{ color: T.muted, fontSize: 13 }}>Annuler</Btn>
+            <Btn onClick={onForgotPin} style={{ color: "#e05252", fontWeight: 700, fontSize: 13 }}>Supprimer la conversation</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   ÉCRAN "CONFIDENTIALITÉ ET SÉCURITÉ" D'UNE CONVERSATION 1-À-1
+   ============================================================ */
+
+export function ConversationPrivacyScreen({ T, Btn, conv, sb, myId, userName, onBack, reload, notify }) {
+  const [secureMode, setSecureMode] = useState(!!conv?.secure_mode);
+  const [saving, setSaving] = useState(false);
+  const [locked, setLocked] = useState(() => conv ? isConvLocked(conv.id) : false);
+  const [pinStep, setPinStep] = useState(null); // null | "set1" | "set2" | "remove"
+  const [pinBuffer, setPinBuffer] = useState("");
+  const [firstPin, setFirstPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+
+  const toggleSecureMode = async () => {
+    if (!conv || saving) return;
+    setSaving(true);
+    const next = !secureMode;
+    const { error } = await sb.from("conversations").update({ secure_mode: next, secure_mode_by: next ? myId : null }).eq("id", conv.id);
+    setSaving(false);
+    if (error) { notify?.("Erreur : impossible de changer le mode sécurisé"); return; }
+    setSecureMode(next);
+    reload?.();
+    notify?.(next ? "Mode sécurisé activé ✦" : "Mode sécurisé désactivé");
+  };
+
+  const press = (d) => {
+    if (pinBuffer.length >= 4) return;
+    const next = pinBuffer + d;
+    setPinBuffer(next);
+    if (next.length < 4) return;
+    if (pinStep === "set1") { setFirstPin(next); setPinBuffer(""); setPinStep("set2"); return; }
+    if (pinStep === "set2") {
+      if (next === firstPin) { setConvLock(conv.id, next); setLocked(true); setPinStep(null); setPinBuffer(""); setFirstPin(""); notify?.("Verrou activé ✦"); }
+      else { setPinError(true); setTimeout(() => { setPinError(false); setPinBuffer(""); setFirstPin(""); setPinStep("set1"); }, 500); }
+      return;
+    }
+    if (pinStep === "remove") {
+      if (checkConvPin(conv.id, next)) { removeConvLock(conv.id); setLocked(false); setPinStep(null); setPinBuffer(""); notify?.("Verrou désactivé"); }
+      else { setPinError(true); setTimeout(() => { setPinError(false); setPinBuffer(""); }, 500); }
+    }
+  };
+
+  if (pinStep) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 210, background: T.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, padding: 30 }}>
+        <Btn onClick={() => { setPinStep(null); setPinBuffer(""); setFirstPin(""); }} style={{ position: "absolute", top: "calc(14px + env(safe-area-inset-top,0px))", left: 14, color: T.muted }}><ChevronLeft size={22} /></Btn>
+        <Lock size={30} color={T.goldL} />
+        <p style={{ margin: 0, fontSize: 15, color: T.text, textAlign: "center" }}>
+          {pinStep === "set1" ? "Choisis un code à 4 chiffres" : pinStep === "set2" ? "Confirme le code" : "Entre le code pour désactiver le verrou"}
+        </p>
+        <PinPad T={T} value={pinBuffer} error={pinError} onPress={press} onDelete={() => setPinBuffer(p => p.slice(0, -1))} />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: T.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
+        <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
+        <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Confidentialité et sécurité</p>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div onClick={toggleSecureMode} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 14, color: T.text }}>Mode sécurisé</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted, maxWidth: 240 }}>
+              {userName || "Cette personne"} doit être sur l'app Céleste (pas le web) pour vous écrire, et les captures sont bloquées sur Android
+            </p>
+          </div>
+          <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${secureMode ? T.gold : T.border}`, background: secureMode ? T.gold : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {secureMode && <Check size={13} color="#000" />}
+          </div>
+        </div>
+
+        <div onClick={() => setPinStep(locked ? "remove" : "set1")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, cursor: "pointer" }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 14, color: T.text }}>Verrouiller cette conversation</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted, maxWidth: 240 }}>
+              Code à 4 chiffres demandé pour l'ouvrir, sur cet appareil uniquement
+            </p>
+          </div>
+          <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${locked ? T.gold : T.border}`, background: locked ? T.gold : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {locked && <Check size={13} color="#000" />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBack, onOpenProfile, onCreateGroup, notify, reload }) {
   const soon = (label) => () => notify?.(`${label} — bientôt disponible ✦`);
+  const [muted, setMuted] = useState(() => conv ? isConvMuted(conv.id) : false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+
+  const toggleMute = async () => {
+    if (!conv) { soon("Mise en sourdine")(); return; }
+    const next = !muted;
+    try { await toggleConvMute(sb, myId, conv, next); setMuted(next); notify?.(next ? "Conversation mise en sourdine ✦" : "Sourdine désactivée"); }
+    catch { notify?.("Impossible de changer la sourdine"); }
+  };
 
   const topActions = [
     { key: "profil", label: "Profil", Icon: User, onClick: () => onOpenProfile && onOpenProfile(user?.id) },
-    { key: "search", label: "Rechercher", Icon: Search, onClick: soon("Recherche dans la conversation") },
-    { key: "mute", label: "Mettre en s...", Icon: BellOff, onClick: soon("Mise en sourdine") },
+    { key: "mute", label: muted ? "Sourdine" : "Mettre en s...", Icon: muted ? BellOff : Bell, onClick: toggleMute },
     { key: "options", label: "Options", Icon: MoreHorizontal, onClick: soon("Options") },
   ];
 
   const listItems = [
     { key: "theme", title: "Personnaliser", subtitle: "Thème et police", Icon: Sparkles, onClick: soon("Personnalisation") },
-    { key: "nick", title: "Pseudos", Icon: Edit2, onClick: soon("Pseudos") },
     { key: "eph", title: "Messages éphémères", subtitle: "Désactivé", Icon: Clock, onClick: soon("Messages éphémères") },
-    { key: "privacy", title: "Confidentialité et sécurité", Icon: Lock, onClick: soon("Confidentialité et sécurité") },
+    { key: "privacy", title: "Confidentialité et sécurité", Icon: Lock, onClick: () => setShowPrivacy(true) },
     { key: "group", title: "Créer une discussion de groupe", Icon: Users, onClick: () => onCreateGroup && onCreateGroup(user) },
-    { key: "report", title: "Quelque chose ne fonctionne pas", Icon: Flag, onClick: soon("Signalement") },
   ];
 
+  if (showPrivacy) {
+    return (
+      <ConversationPrivacyScreen T={T} Btn={Btn} conv={conv} sb={sb} myId={myId}
+        userName={user?.fullName || user?.name} onBack={() => setShowPrivacy(false)} reload={reload} notify={notify} />
+    );
+  }
+
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 150, background: "#000", display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 150, background: T.bg, display: "flex", flexDirection: "column" }}>
       <div style={{
-        position: "relative", background: "rgba(0,0,0,0.92)", backdropFilter: "blur(30px)", WebkitBackdropFilter: "blur(30px)",
+        position: "relative", backdropFilter: "blur(30px)", WebkitBackdropFilter: "blur(30px)",
         borderBottom: `1px solid ${T.border}`, padding: "10px 14px",
         paddingTop: "calc(10px + env(safe-area-inset-top,0px))", display: "flex", alignItems: "center", flexShrink: 0
       }}>
@@ -504,7 +721,7 @@ export function ConversationInfoScreen({ T, Av, Btn, user, onBack, onOpenProfile
           {topActions.map(a => (
             <div key={a.key} onClick={a.onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer" }}>
               <div style={{
-                width: 46, height: 46, borderRadius: "50%", background: "rgba(255,255,255,0.06)",
+                width: 46, height: 46, borderRadius: "50%", background: T.glassMid,
                 border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.text
               }}>
                 <a.Icon size={20} />

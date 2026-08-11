@@ -5,14 +5,67 @@
 // branchée dans une prochaine étape, une fois cette brique validée.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus } from "lucide-react";
+import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon } from "lucide-react";
+import EasyCrop from "react-easy-crop";
+import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
+import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage } from "./lib/groupMessageQueue";
 import StickerPicker from "./components/StickerPicker";
+import { Capacitor } from "@capacitor/core";
+import { PrivacyScreen } from "@capacitor-community/privacy-screen";
+import previewDark from "./assets/preview.webp";
+import previewLight from "./assets/preview-light.webp";
 import {
   groupMessagesByDay, DayDivider, QUICK_REACTIONS, ReactionBar, InlineReactionPicker,
   useLongPress, useDoubleTap, HeartBurst, ReplyComposerBar, MessageReplyQuote,
   useTypingIndicator, TypingIndicator, EditedBadge, SwipeToReply
 } from "./ChatExtras";
+
+// Dupliqué depuis App.jsx (pas de dépendance inverse possible, voir en-tête du fichier)
+function isLightBg(hex) {
+  if (!hex || hex[0] !== "#") return false;
+  const h = hex.length === 4 ? hex.replace(/#(.)(.)(.)/, "#$1$1$2$2$3$3") : hex;
+  const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
+}
+/* ============================================================
+   0. ÉPINGLER / SOURDINE / FOND D'ÉCRAN — préférences locales
+   (par appareil, comme WhatsApp Web : pas de synchronisation serveur)
+   ============================================================ */
+
+const isNative = Capacitor.isNativePlatform();
+const hm = ts => { try { return new Date(ts).toLocaleTimeString("fr", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+
+function readIdList(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; }
+}
+function writeIdList(key, list) {
+  try { localStorage.setItem(key, JSON.stringify(list)); } catch {}
+}
+
+export function isGroupPinned(groupId) {
+  return readIdList("celeste_pinned_groups").includes(groupId);
+}
+export function toggleGroupPin(groupId) {
+  const list = readIdList("celeste_pinned_groups");
+  const next = list.includes(groupId) ? list.filter(id => id !== groupId) : [...list, groupId];
+  writeIdList("celeste_pinned_groups", next);
+  return next.includes(groupId);
+}
+export function isGroupMuted(groupId) {
+  return readIdList("celeste_muted_groups").includes(groupId);
+}
+export async function toggleGroupMute(sb, userId, groupId, nextMuted) {
+  // Écrit en base (source de vérité, utilisée par le serveur pour bloquer les push)
+  // et garde le cache local pour un affichage instantané / hors-ligne.
+  const { error } = await sb.from("group_members").update({ muted: nextMuted }).eq("group_id", groupId).eq("user_id", userId);
+  if (error) { console.error("Erreur mute groupe:", error); throw error; }
+  const list = readIdList("celeste_muted_groups");
+  const next = nextMuted ? [...new Set([...list, groupId])] : list.filter(id => id !== groupId);
+  writeIdList("celeste_muted_groups", next);
+  return nextMuted;
+}
+
 /* ============================================================
    1. RÉGLAGE "QUI PEUT M'AJOUTER À UN GROUPE"
    ============================================================ */
@@ -81,13 +134,33 @@ function formatGroupTime(iso) {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
 }
 
+function groupsCacheKey(userId) { return `celeste_groups_cache_${userId}`; }
+
+function readGroupsCache(userId) {
+  try {
+    const raw = localStorage.getItem(groupsCacheKey(userId));
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function writeGroupsCache(userId, groups) {
+  try { localStorage.setItem(groupsCacheKey(userId), JSON.stringify(groups)); } catch {}
+}
+
 export function useMyGroups(sb, userId) {
-  const [groups, setGroups] = useState([]);
+  // Démarre avec la dernière liste connue en local (téléphone) pour un affichage
+  // immédiat même hors-ligne, exactement comme les conversations normales.
+  const [groups, setGroups] = useState(() => (userId ? readGroupsCache(userId) : []));
   const load = useCallback(async () => {
     if (!userId) return;
     const { data, error } = await sb.rpc("get_my_groups_summary");
-    if (error) { console.error("Erreur chargement des groupes:", error); return; }
-    setGroups((data || []).map(g => ({
+    if (error) {
+      // Pas de réseau ou erreur : on garde la liste en cache déjà affichée,
+      // on ne l'efface surtout pas.
+      console.error("Erreur chargement des groupes:", error);
+      return;
+    }
+    const mapped = (data || []).map(g => ({
       id: g.id,
       name: g.name,
       photo_url: g.photo_url,
@@ -98,9 +171,18 @@ export function useMyGroups(sb, userId) {
       lastSenderId: g.last_sender_id,
       lastSenderName: g.last_sender_name,
       unreadCount: Number(g.unread_count) || 0,
-    })));
+      muted: !!g.muted,
+      secure_mode: !!g.secure_mode, // snake_case volontaire : matche announce_only/EditGroupModal et le verrou de GroupChatScreen
+    }));
+    setGroups(mapped);
+    writeGroupsCache(userId, mapped);
   }, [sb, userId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Au changement d'utilisateur, recharge d'abord le cache propre à ce compte
+    // avant de relancer la requête réseau.
+    if (userId) setGroups(readGroupsCache(userId));
+    load();
+  }, [userId, load]);
   useEffect(() => {
     if (!userId) return;
     const ch = sb.channel(`my_groups_${userId}`)
@@ -115,26 +197,39 @@ export function useMyGroups(sb, userId) {
 export function GroupRow({ g, T, Av, onOpen }) {
   const hasLast = !!g.lastMessageAt;
   const previewBody = g.lastMessageType === "photo" ? "📷 Photo"
+    : g.lastMessageType === "video" ? "🎥 Vidéo"
+    : g.lastMessageType === "file" ? "📎 Fichier"
+    : g.lastMessageType === "voice" ? "🎤 Message vocal"
     : g.lastMessageType === "sticker" ? "Sticker"
     : (g.lastMessageText || "");
-  const preview = hasLast
-    ? (g.lastSenderName ? `${g.lastSenderName} : ${previewBody}` : previewBody)
-    : "Groupe";
+  const preview = (g.secure_mode && !isNative)
+    ? "🔒 Message masqué"
+    : hasLast
+      ? (g.lastSenderName ? `${g.lastSenderName} : ${previewBody}` : previewBody)
+      : "Groupe";
+  const pinned = isGroupPinned(g.id);
+  const muted = g.muted ?? isGroupMuted(g.id);
   const unread = g.unreadCount > 0;
   return (
-    <div onClick={() => onOpen(g)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer" }}>
+    <div onClick={() => onOpen(g)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer", background: pinned ? "rgba(255,255,255,0.03)" : "transparent" }}>
       <Av u={{ name: g.name, avatar_url: g.photo_url, initials: (g.name || "?").slice(0, 2).toUpperCase(), color: "#888" }} size={48} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</p>
+        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+          {pinned && <Pin size={12} color={T.goldL} style={{ flexShrink: 0 }} />}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</span>
+        </p>
         <p style={{ margin: 0, fontSize: 12, color: unread ? T.text : T.muted, fontWeight: unread ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview}</p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
         {hasLast && <span style={{ fontSize: 11, color: unread ? T.goldL : T.muted, fontWeight: unread ? 700 : 400 }}>{formatGroupTime(g.lastMessageAt)}</span>}
-        {unread && (
-          <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: T.gradGold, color: "#000", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {g.unreadCount > 99 ? "99+" : g.unreadCount}
-          </span>
-        )}
+        {muted
+          ? <BellOff size={14} color={T.muted} />
+          : (unread && (
+              <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: T.gradGold, color: "#000", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {g.unreadCount > 99 ? "99+" : g.unreadCount}
+              </span>
+            ))
+        }
       </div>
     </div>
   );
@@ -153,11 +248,18 @@ export async function createGroup(sb, { name, photoUrl, creatorId, memberIds, me
   const { data: group, error } = await sb.from("groups").insert({ name, photo_url: photoUrl || null, created_by: creatorId }).select().single();
   if (error) throw error;
 
-  const rows = [
-    { group_id: group.id, user_id: creatorId, role: "admin", status: "accepted", invited_by: creatorId },
-    ...memberIds.map(uid => ({ group_id: group.id, user_id: uid, role: "member", status: "pending", invited_by: creatorId })),
-  ];
-  await sb.from("group_members").insert(rows);
+  // Le créateur doit être inséré (et commité) séparément en premier : les policies RLS
+  // qui autorisent les invitations exigent que l'inviteur soit déjà membre accepté,
+  // ce qui n'est pas visible tant que cette ligne n'est pas dans une requête à part.
+  const { error: creatorErr } = await sb.from("group_members")
+    .insert({ group_id: group.id, user_id: creatorId, role: "admin", status: "accepted", invited_by: creatorId });
+  if (creatorErr) throw creatorErr;
+
+  if (memberIds.length) {
+    const inviteRows = memberIds.map(uid => ({ group_id: group.id, user_id: uid, role: "member", status: "pending", invited_by: creatorId }));
+    const { error: inviteErr } = await sb.from("group_members").insert(inviteRows);
+    if (inviteErr) throw inviteErr;
+  }
 
   // Notifie chaque invité — adapte les noms de colonnes à ta table `notifications` existante
  for (const uid of memberIds) {
@@ -178,10 +280,16 @@ export async function createGroup(sb, { name, photoUrl, creatorId, memberIds, me
 
 export async function addGroupMembers(sb, { groupId, groupName, inviterId, memberIds, memberNames }) {
   const rows = memberIds.map(uid => ({ group_id: groupId, user_id: uid, role: "member", status: "pending", invited_by: inviterId }));
-  const { error } = await sb.from("group_members").insert(rows);
+  // upsert + ignoreDuplicates : si la personne est déjà membre/déjà invitée (409/23505
+  // sur la clé group_id+user_id), on ignore la ligne au lieu de faire échouer tout le lot.
+  const { data, error } = await sb.from("group_members")
+    .upsert(rows, { onConflict: "group_id,user_id", ignoreDuplicates: true })
+    .select("user_id");
   if (error) throw error;
+  const addedIds = new Set((data || []).map(r => r.user_id));
 
   for (const uid of memberIds) {
+    if (!addedIds.has(uid)) continue; // déjà membre ou déjà invité — pas de nouvelle notif
     const { error: notifErr } = await sb.from("notifications").insert({
       user_id: uid, type: "group_invite", from_id: inviterId,
       group_id: groupId, text: groupName, read: false
@@ -194,6 +302,8 @@ export async function addGroupMembers(sb, { groupId, groupName, inviterId, membe
   }
 }
 
+const MAX_OWNED_GROUPS = 2;
+
 export function CreateGroupModal({ sb, T, Av, Btn, session, members, myConnections, myFollowers, onClose, onCreated, notify }) {
   const [step, setStep] = useState(1); // 1 = choix des membres, 2 = nom + photo
   const [query, setQuery] = useState("");
@@ -202,6 +312,18 @@ export function CreateGroupModal({ sb, T, Av, Btn, session, members, myConnectio
   const [photoUrl, setPhotoUrl] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [ownedCount, setOwnedCount] = useState(null); // null = en cours de vérification
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { count, error } = await sb.from("groups").select("id", { count: "exact", head: true }).eq("created_by", session?.user?.id);
+      if (!cancelled) setOwnedCount(error ? 0 : (count || 0));
+    })();
+    return () => { cancelled = true; };
+  }, [sb, session?.user?.id]);
+
+  const limitReached = ownedCount !== null && ownedCount >= MAX_OWNED_GROUPS;
 
   const candidates = useMemo(() => {
     const known = new Set([...(myConnections || []), ...(myFollowers || [])]);
@@ -251,17 +373,17 @@ export function CreateGroupModal({ sb, T, Av, Btn, session, members, myConnectio
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "#000", display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: T.bg, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
         paddingTop: "calc(10px + env(safe-area-inset-top,0px))",
-        borderBottom: `1px solid ${T.border}`, background: "rgba(0,0,0,0.92)"
+        borderBottom: `1px solid ${T.border}`
       }}>
         <Btn onClick={onClose} style={{ color: T.muted }}><X size={22} /></Btn>
         <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>
           {step === 1 ? "Nouveau groupe" : "Détails du groupe"}
         </p>
-        {step === 1 && (
+        {step === 1 && !limitReached && (
           <Btn onClick={() => selected.length > 0 && setStep(2)} disabled={selected.length === 0}
             style={{ color: selected.length > 0 ? T.goldL : T.muted, fontWeight: 700, fontSize: 14 }}>
             Suivant ({selected.length})
@@ -269,7 +391,17 @@ export function CreateGroupModal({ sb, T, Av, Btn, session, members, myConnectio
         )}
       </div>
 
-      {step === 1 && (
+      {limitReached && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, gap: 12, textAlign: "center" }}>
+          <Lock size={28} color={T.muted} />
+          <p style={{ margin: 0, fontSize: 15, color: T.text, fontWeight: 700 }}>Limite de groupes atteinte</p>
+          <p style={{ margin: 0, fontSize: 13, color: T.muted, maxWidth: 280 }}>
+            Tu es déjà propriétaire de {MAX_OWNED_GROUPS} groupes. Quitte ou supprime l'un d'eux pour pouvoir en créer un nouveau.
+          </p>
+        </div>
+      )}
+
+      {step === 1 && !limitReached && (
         <>
           <div style={{ padding: "10px 14px" }}>
             <div style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "9px 14px", display: "flex", gap: 8, alignItems: "center" }}>
@@ -377,11 +509,11 @@ export function AddMembersModal({ sb, T, Av, Btn, session, members, myConnection
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 310, background: "#000", display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 310, background: T.bg, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
         paddingTop: "calc(10px + env(safe-area-inset-top,0px))",
-        borderBottom: `1px solid ${T.border}`, background: "rgba(0,0,0,0.92)"
+        borderBottom: `1px solid ${T.border}`
       }}>
         <Btn onClick={onClose} style={{ color: T.muted }}><X size={22} /></Btn>
         <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Ajouter des participants</p>
@@ -431,6 +563,7 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
   const [photoUrl, setPhotoUrl] = useState(group.photo_url || null);
   const [photoFile, setPhotoFile] = useState(null);
   const [announceOnly, setAnnounceOnly] = useState(!!group.announce_only);
+  const [secureMode, setSecureMode] = useState(!!group.secure_mode);
   const [saving, setSaving] = useState(false);
 
   const handlePhoto = (e) => {
@@ -458,12 +591,14 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
         patch.photo_url = newPhotoUrl;
       }
       if (announceOnly !== !!group.announce_only) { updates.announce_only = announceOnly; patch.announce_only = announceOnly; }
+      if (secureMode !== !!group.secure_mode) { updates.secure_mode = secureMode; patch.secure_mode = secureMode; }
       if (Object.keys(updates).length > 0) {
         const { error } = await sb.from("groups").update(updates).eq("id", group.id);
         if (error) throw error;
         if (updates.name) await postSystemMessage(sb, group.id, actorId, `a changé le nom du groupe en "${updates.name}"`);
         if (updates.photo_url) await postSystemMessage(sb, group.id, actorId, "a changé la photo du groupe");
         if (updates.announce_only !== undefined) await postSystemMessage(sb, group.id, actorId, updates.announce_only ? "a activé le mode annonce" : "a désactivé le mode annonce");
+        if (updates.secure_mode !== undefined) await postSystemMessage(sb, group.id, actorId, updates.secure_mode ? "a activé le mode sécurisé (captures bloquées, groupe réservé à l'app)" : "a désactivé le mode sécurisé");
       }
       notify?.("Groupe mis à jour ✦");
       onSaved?.(patch);
@@ -476,11 +611,11 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 320, background: "#000", display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 320, background: T.bg, display: "flex", flexDirection: "column" }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
         paddingTop: "calc(10px + env(safe-area-inset-top,0px))",
-        borderBottom: `1px solid ${T.border}`, background: "rgba(0,0,0,0.92)"
+        borderBottom: `1px solid ${T.border}`
       }}>
         <Btn onClick={onClose} style={{ color: T.muted }}><X size={22} /></Btn>
         <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Modifier le groupe</p>
@@ -520,6 +655,21 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
             {announceOnly && <Check size={13} color="#000" />}
           </div>
         </div>
+        <div onClick={() => setSecureMode(v => !v)} style={{
+          width: "100%", maxWidth: 320, display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, cursor: "pointer"
+        }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 14, color: T.text }}>Mode sécurisé</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted }}>Bloque captures d'écran/vidéo (Android) et limite le groupe à l'app</p>
+          </div>
+          <div style={{
+            width: 22, height: 22, borderRadius: 6, border: `2px solid ${secureMode ? T.gold : T.border}`,
+            background: secureMode ? T.gold : "transparent", display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            {secureMode && <Check size={13} color="#000" />}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -527,6 +677,95 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
 /* ============================================================
    4. ÉCRAN DE CHAT DE GROUPE
    ============================================================ */
+
+function ImageCropModal({ imageSrc, onClose, onDone }) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [processing, setProcessing] = useState(false);
+
+  const onCropComplete = useCallback((_, cap) => setCroppedAreaPixels(cap), []);
+
+  const handleDone = async () => {
+    if (!croppedAreaPixels) return;
+    setProcessing(true);
+    try {
+      const image = await new Promise((res, rej) => { const img = new window.Image(); img.crossOrigin = "anonymous"; img.onload = () => res(img); img.onerror = rej; img.src = imageSrc; });
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const maxSize = Math.max(croppedAreaPixels.width, croppedAreaPixels.height);
+      const safeArea = 2 * ((maxSize / 2) * Math.sqrt(2));
+      canvas.width = safeArea; canvas.height = safeArea;
+      ctx.translate(safeArea / 2, safeArea / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.translate(-safeArea / 2, -safeArea / 2);
+      ctx.drawImage(image, safeArea / 2 - image.naturalWidth / 2, safeArea / 2 - image.naturalHeight / 2);
+      const data = ctx.getImageData(0, 0, safeArea, safeArea);
+      canvas.width = croppedAreaPixels.width; canvas.height = croppedAreaPixels.height;
+      ctx.putImageData(data, Math.round(0 - safeArea / 2 + image.naturalWidth * 0.5 - croppedAreaPixels.x), Math.round(0 - safeArea / 2 + image.naturalHeight * 0.5 - croppedAreaPixels.y));
+      canvas.toBlob(blob => {
+        setProcessing(false);
+        onDone(new File([blob], "cropped.jpg", { type: "image/jpeg" }));
+      }, "image/jpeg", 0.92);
+    } catch (e) {
+      setProcessing(false);
+      if (imageSrc.startsWith("blob:")) {
+        const res = await fetch(imageSrc);
+        const blob = await res.blob();
+        onDone(new File([blob], "photo.jpg", { type: "image/jpeg" }));
+      } else {
+        onDone(null);
+      }
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "12px 16px", paddingTop: "calc(12px + env(safe-area-inset-top,0px))", background: "rgba(0,0,0,0.95)", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", fontSize: 15, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, padding: "4px 0" }}>
+          <X size={18} />Garder l'originale
+        </button>
+        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#fff" }}>Recadrer</p>
+        <button onClick={handleDone} disabled={processing} style={{ background: "none", border: "none", color: processing ? "rgba(201,149,42,0.4)" : "#C9952A", fontSize: 15, fontWeight: 700, cursor: processing ? "default" : "pointer", padding: "4px 0" }}>
+          {processing ? "…" : "Valider ✦"}
+        </button>
+      </div>
+      <div style={{ flex: 1, position: "relative", background: "#111" }}>
+        <EasyCrop
+          image={imageSrc}
+          crop={crop}
+          zoom={zoom}
+          rotation={rotation}
+          aspect={1}
+          onCropChange={setCrop}
+          onZoomChange={setZoom}
+          onCropComplete={onCropComplete}
+          showGrid={true}
+          style={{
+            containerStyle: { background: "#111" },
+            cropAreaStyle: { border: "2px solid rgba(201,149,42,0.8)", boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)" },
+          }}
+        />
+      </div>
+      <div style={{ background: "rgba(0,0,0,0.95)", padding: "14px 20px calc(14px + env(safe-area-inset-bottom,0px))", display: "flex", flexDirection: "column", gap: 12, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", minWidth: 36 }}>Zoom</span>
+          <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={e => setZoom(Number(e.target.value))} style={{ flex: 1, accentColor: "#C9952A" }} />
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", minWidth: 28, textAlign: "right" }}>{zoom.toFixed(1)}×</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", minWidth: 36 }}>Rotation</span>
+          <input type="range" min={-180} max={180} step={1} value={rotation} onChange={e => setRotation(Number(e.target.value))} style={{ flex: 1, accentColor: "#C9952A" }} />
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", minWidth: 28, textAlign: "right" }}>{rotation}°</span>
+        </div>
+        <button onClick={() => { setZoom(1); setRotation(0); setCrop({ x: 0, y: 0 }); }} style={{ alignSelf: "center", background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "6px 16px", color: "rgba(255,255,255,0.5)", fontSize: 12, cursor: "pointer" }}>
+          Réinitialiser
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export async function toggleGroupReaction(sb, msgId, userId, emoji, currentReactions) {
   const { data: fresh } = await sb.from("group_messages").select("reactions").eq("id", msgId).single();
@@ -541,12 +780,58 @@ export async function editGroupMessage(sb, msgId, newText) {
   return sb.from("group_messages").update({ text: newText, edited_at: new Date().toISOString() }).eq("id", msgId);
 }
 
-function GroupMessageBubble({ m, mine, T, Av, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn }) {
+function GroupVoicePlayer({ src, mine, T }) {
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const audioRef = useRef(null);
+  const fmt = s => { if (!s || isNaN(s)) return "0:00"; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; };
+  useEffect(() => {
+    const a = new Audio(src);
+    a.playbackRate = speed;
+    audioRef.current = a;
+    a.onloadedmetadata = () => setDuration(a.duration);
+    a.ontimeupdate = () => setProgress(a.duration ? (a.currentTime / a.duration) * 100 : 0);
+    a.onended = () => { setPlaying(false); setProgress(0); };
+    return () => { a.pause(); a.src = ""; };
+  }, [src]);
+  useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
+  const toggle = () => {
+    const a = audioRef.current; if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); } else { a.play(); setPlaying(true); }
+  };
+  const cycleSpeed = e => { e.stopPropagation(); setSpeed(s => (s === 1 ? 1.5 : s === 1.5 ? 2 : 1)); };
+  const seek = e => {
+    const a = audioRef.current; if (!a || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    a.currentTime = pct * duration;
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 180, padding: "4px 0" }}>
+      <button onClick={toggle} style={{ width: 36, height: 36, borderRadius: "50%", background: mine ? "rgba(0,0,0,0.15)" : "rgba(201,149,42,0.15)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: mine ? "#000" : T.goldL }}>
+        {playing
+          ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+          : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
+      </button>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+        <div onClick={seek} style={{ height: 3, background: mine ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.12)", borderRadius: 2, cursor: "pointer", overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${progress}%`, background: mine ? "rgba(0,0,0,0.5)" : T.goldL, borderRadius: 2, transition: "width 0.1s linear" }} />
+        </div>
+        <span style={{ fontSize: 10, color: mine ? "rgba(0,0,0,0.5)" : T.muted }}>{fmt(audioRef.current?.currentTime || 0)} / {fmt(duration)}</span>
+      </div>
+      <button onClick={cycleSpeed} style={{ fontSize: 11, fontWeight: 700, color: mine ? "rgba(0,0,0,0.65)" : T.goldL, background: mine ? "rgba(0,0,0,0.14)" : "rgba(201,149,42,0.15)", border: "none", borderRadius: 10, padding: "3px 7px", cursor: "pointer", flexShrink: 0, lineHeight: 1.4 }}>{speed}×</button>
+    </div>
+  );
+}
+
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted }) {
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
       <div style={{ display: "flex", justifyContent: "center", margin: "10px 0" }}>
-        <span style={{ fontSize: 12, color: T.muted, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "5px 12px", textAlign: "center", maxWidth: "80%" }}>
+       <span style={{ fontSize: 12, fontWeight: 600, color: T.sub, background: T.glassMid, borderRadius: 12, padding: "5px 12px", textAlign: "center", maxWidth: "80%" }}>
           {senderName ? `${senderName} ` : ""}{m.text}
         </span>
       </div>
@@ -554,7 +839,7 @@ function GroupMessageBubble({ m, mine, T, Av, myId, showHeader, onOpenProfile, o
   }
   return (
     <SwipeToReply message={m} onReply={onReply} mine={mine}>
-      <div style={{ display: "flex", gap: 8, marginTop: showHeader ? 10 : 1, flexDirection: mine ? "row-reverse" : "row" }}>
+      <div ref={registerRef} style={{ display: "flex", gap: 8, marginTop: showHeader ? 10 : 1, flexDirection: mine ? "row-reverse" : "row", borderRadius: 14, transition: "background .6s", background: highlighted ? "rgba(201,149,42,0.18)" : "transparent" }}>
         {!mine && (
           <div style={{ width: 28, flexShrink: 0 }}>
             {showHeader && <Av u={m.sender} size={28} onClick={() => onOpenProfile?.(m.sender_id)} />}
@@ -570,22 +855,53 @@ function GroupMessageBubble({ m, mine, T, Av, myId, showHeader, onOpenProfile, o
             {...useLongPress(() => onLongPress(m))}
             onClick={onDoubleTap}
             style={{
-              padding: m.type === "photo" || m.type === "sticker" ? 3 : "9px 13px", borderRadius: 16,
-              background: m.type === "sticker" ? "transparent" : (mine ? T.gradGold : "rgba(255,255,255,0.07)"),
-              color: mine ? "#000" : T.text, fontSize: 14, wordBreak: "break-word", cursor: "pointer", position: "relative"
+              padding: m.type === "photo" || m.type === "sticker" || m.type === "video" ? 3 : "9px 13px", borderRadius: 16,
+              background: m.type === "sticker" ? "transparent" : (mine ? T.gradGold : (isLightBg(T.bg) ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.07)")),
+              color: mine ? "#000" : T.text, fontSize: 14, fontWeight: 500, wordBreak: "break-word", cursor: "pointer", position: "relative"
             }}
           >
             <HeartBurst show={burstOn} />
-            <MessageReplyQuote message={m} mine={mine} T={T} />
+            <MessageReplyQuote message={m} mine={mine} T={T} onClick={() => m.reply_to_id && onScrollToReply?.(m.reply_to_id)} />
             {m.type === "photo" && (
               <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
                 onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />
             )}
+            {m.type === "video" && m.file_url && (
+              <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />
+            )}
+            {m.type === "file" && m.file_url && (
+              <Btn onClick={() => window.open(m.file_url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                <span style={{ display: "flex", flexShrink: 0 }}>
+                  {(m.file_name || "").match(/\.(pdf|docx?)$/i) ? <FileText size={22} color={T.goldL} /> : <Paperclip size={22} color={T.goldL} />}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: mine ? "#000" : T.text, wordBreak: "break-all" }}>{m.file_name || "Fichier"}</span>
+              </Btn>
+            )}
+            {m.type === "voice" && m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} />}
             {m.type === "sticker" && <img src={m.file_url} style={{ width: 100, height: 100, objectFit: "contain", display: "block" }} />}
             {m.type === "text" && m.text}
             {m.type === "text" && <EditedBadge message={m} T={T} />}
+            {m.sending && (m.type === "photo" || m.type === "video" || m.type === "file" || m.type === "voice") && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                  <span style={{ fontSize: 9, color: mine ? "rgba(0,0,0,0.5)" : T.muted }}>Envoi en cours…</span>
+                  <span style={{ fontSize: 9, color: mine ? "rgba(0,0,0,0.5)" : T.muted, fontWeight: 700 }}>{m.pct || 0}%</span>
+                </div>
+                <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,0.12)", borderRadius: 2 }}>
+                  <div style={{ height: "100%", width: `${m.pct || 0}%`, background: "linear-gradient(90deg,#A855F7,#7C3AED)", borderRadius: 2, transition: "width 0.3s" }} />
+                </div>
+              </div>
+            )}
+            {m.blocked && m.tempId && (
+              <span onClick={e => { e.stopPropagation(); onRetry?.(m.tempId); }} style={{ fontSize: 10, color: "#e0a852", fontWeight: 600, cursor: "pointer" }}>🔒 Mode annonce actif — appuie pour réessayer</span>
+            )}
+            {m.error && m.tempId && (
+              <span onClick={e => { e.stopPropagation(); onRetry?.(m.tempId); }} style={{ fontSize: 10, color: "#e05252", fontWeight: 600, cursor: "pointer" }}>⚠️ Échec — appuie pour réessayer</span>
+            )}
+            {m.error && !m.tempId && <span style={{ fontSize: 10, color: "#e05252", fontWeight: 600 }}>⚠️ Échec — réessaie</span>}
           </div>
           <ReactionBar reactions={m.reactions} T={T} myId={myId} mine={mine} onPress={() => onLongPress(m)} />
+          {m.ts && <span style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>{hm(m.ts)}</span>}
         </div>
       </div>
     </SwipeToReply>
@@ -605,20 +921,63 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [burstMsgId, setBurstMsgId] = useState(null);
   const [groupOverride, setGroupOverride] = useState(null);
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
+  const [blockedIds, setBlockedIds] = useState(() => new Set());
   const displayGroup = groupOverride ? { ...group, ...groupOverride } : group;
   const canWrite = !displayGroup.announce_only || isGroupAdmin;
   const bottomRef = useRef(null);
-  const fileRef = useRef(null);
+  const iRef = useRef(null);
+  const fRef = useRef(null);
+  const msgRefs = useRef({});
+  const [highlightMsgId, setHighlightMsgId] = useState(null);
+  const scrollToMessage = useCallback(id => {
+    const el = msgRefs.current[id];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightMsgId(id);
+    setTimeout(() => setHighlightMsgId(h => (h === id ? null : h)), 1500);
+  }, []);
+  const [cropSrc, setCropSrc] = useState(null);
+  const [cropResolve, setCropResolve] = useState(null);
+  const [videoTrimSrc, setVideoTrimSrc] = useState(null);
+  const [sendingFiles, setSendingFiles] = useState([]);
+  const [bgPhoto, setBgPhoto] = useState(null);
+  const bgRef = useRef(null);
   const myId = session?.user?.id;
+  const [recording, setRecording] = useState(false);
+  const [recInitializing, setRecInitializing] = useState(false);
+  const [recPaused, setRecPaused] = useState(false);
+  const [recordSecs, setRecordSecs] = useState(0);
+  const mediaRecRef = useRef(null);
+  const recTimerRef = useRef(null);
+  const cancelledInitRef = useRef(false);
+  const canPauseRec = typeof MediaRecorder !== "undefined" && typeof MediaRecorder.prototype.pause === "function";
+  const mapQueue = q => ({ id: q.tempId, tempId: q.tempId, ...q.payload, sender_id: q.senderId, ts: q.ts, sending: q.status !== "error" && q.status !== "blocked", error: q.status === "error", blocked: q.status === "blocked" });
+  const [sendingMsgs, setSendingMsgs] = useState(() => getQueueForGroup(group.id).map(mapQueue));
+  useEffect(() => subscribeGroupQueue(() => {
+    setSendingMsgs(getQueueForGroup(group.id).map(mapQueue));
+  }), [group.id]);
   const { peerTyping, notifyTyping } = useTypingIndicator(sb, `group_${group.id}`, session);
 
   useEffect(() => {
     if (!group?.id || !myId) return;
-    sb.from("groups").select("announce_only").eq("id", group.id).maybeSingle()
-      .then(({ data }) => { if (data) setGroupOverride(prev => ({ ...(prev || {}), announce_only: !!data.announce_only })); });
+    sb.from("groups").select("announce_only,secure_mode").eq("id", group.id).maybeSingle()
+      .then(({ data }) => { if (data) setGroupOverride(prev => ({ ...(prev || {}), announce_only: !!data.announce_only, secure_mode: !!data.secure_mode })); });
     sb.from("group_members").select("role").eq("group_id", group.id).eq("user_id", myId).eq("status", "accepted").maybeSingle()
       .then(({ data }) => setIsGroupAdmin(data?.role === "admin" || group.created_by === myId));
+    sb.from("blocks").select("blocked_id").eq("blocker_id", myId)
+      .then(({ data }) => setBlockedIds(new Set((data || []).map(b => b.blocked_id))));
   }, [sb, group?.id, myId]);
+  
+
+  useEffect(() => {
+    // FLAG_SECURE côté Android : écran noir sur capture/enregistrement tant que
+    // secure_mode est actif sur ce groupe. Se désactive aussi si l'admin le
+    // repasse à false pendant que le chat est ouvert.
+    if (displayGroup.secure_mode) { PrivacyScreen.enable().catch(() => {}); }
+    else { PrivacyScreen.disable().catch(() => {}); }
+    return () => { PrivacyScreen.disable().catch(() => {}); };
+  }, [displayGroup.secure_mode]);
+
 
   const load = useCallback(async () => {
     const { data } = await sb
@@ -644,40 +1003,163 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     Promise.resolve(sb.rpc("mark_group_read", { p_group_id: group.id })).catch(() => {});
   }, [sb, group?.id, myId]);
 
+  useEffect(() => {
+    processGroupQueue(sb, notify).then(load);
+    const onOnline = () => processGroupQueue(sb, notify).then(load);
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [sb, group.id]);
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [msgs.length]);
+
+  useEffect(() => {
+    try { const s = localStorage.getItem(`chat_bg_group_${group.id}`); if (s) setBgPhoto(s); } catch (_) {}
+  }, [group.id]);
+
+  const handleBgPhoto = e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => { setBgPhoto(ev.target.result); try { localStorage.setItem(`chat_bg_group_${group.id}`, ev.target.result); } catch (_) {} };
+    r.readAsDataURL(f);
+    e.target.value = "";
+  };
 
   const send = async () => {
     const t = text.trim();
     if (!t || sending) return;
-    setSending(true);
     setText("");
     if (editingMsg) {
+      setSending(true);
       await editGroupMessage(sb, editingMsg.id, t);
       setEditingMsg(null); setSending(false); return;
     }
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
-    const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, text: t, type: "text", ...replyPayload });
-    if (error) { notify?.("Message non envoyé"); setText(t); }
+    enqueueGroupMessage(group.id, myId, { type: "text", text: t, ...replyPayload });
     setReplyTo(null);
-    setSending(false);
+    processGroupQueue(sb, notify).then(load);
+  };
+  const retryOwnMessage = tempId => { retryGroupMessage(sb, tempId, notify).then(load); };
+
+  const cropImage = src => new Promise(resolve => { setCropSrc(src); setCropResolve({ fn: resolve }); });
+
+  const handleFile = async (e, isMedia) => {
+    let f = e.target.files?.[0];
+    if (!f) return;
+    const input = e.target;
+    if (f.size > 50 * 1024 * 1024) { notify?.("Fichier trop lourd (max 50MB)"); input.value = ""; return; }
+    if (isMedia && f.type.startsWith("image/")) {
+      const reader = new FileReader();
+      const src = await new Promise(res => { reader.onload = ev => res(ev.target.result); reader.readAsDataURL(f); });
+      const croppedFile = await cropImage(src);
+      if (croppedFile) f = croppedFile;
+    }
+    if (f.type.startsWith("video/")) {
+      const src = await new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); });
+      const trimData = await new Promise(resolve => setVideoTrimSrc({ src, resolve }));
+      setVideoTrimSrc(null);
+      if (!trimData) { input.value = ""; return; }
+      if (trimData.file) f = trimData.file;
+    }
+    const tempId = "tmp_gfile_" + Date.now();
+    const fileType = f.type.startsWith("video/") ? "video" : (isMedia ? "photo" : "file");
+    const fileName = f.name;
+    setSendingFiles(p => [...p, { id: tempId, type: fileType, file_name: fileName, sender_id: myId, ts: Date.now(), sending: true, pct: 0 }]);
+    input.value = "";
+
+    const attempt = async (tries = 0) => {
+      try {
+        const url = await uploadToR2(f, "group_messages", pct => {
+          setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
+        });
+        const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: fileType, file_url: url, file_name: fileName, text: "" });
+        if (error) throw error;
+        setSendingFiles(p => p.filter(x => x.id !== tempId));
+        load();
+      } catch (err) {
+        if (tries < 2) {
+          setTimeout(() => attempt(tries + 1), 1500 * (tries + 1));
+        } else {
+          setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, sending: false, error: true } : x));
+          notify?.("Échec de l'envoi — vérifie ta connexion");
+        }
+      }
+    };
+    attempt();
   };
 
-  const sendImage = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    e.target.value = "";
+  const sendSticker = (sticker) => {
+    setShowStickerPicker(false);
+    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id });
+    processGroupQueue(sb, notify).then(load);
+    Promise.resolve(sb.rpc("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
+  };
+
+  const startRecording = async () => {
+    cancelledInitRef.current = false;
+    setRecording(true); setRecordSecs(0); setRecInitializing(true);
     try {
-      const url = await uploadToR2(f, "group_messages");
-      await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "photo", file_url: url, text: "" });
-    } catch (err) {
-      notify?.("Erreur d'envoi de l'image");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (cancelledInitRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+      const mimeType = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
+        const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+        const audioFile = new File([blob], `voice_group_${Date.now()}.${ext}`, { type: mimeType });
+        const tempId = "tmp_gvoice_" + Date.now();
+        setSendingFiles(p => [...p, { id: tempId, type: "voice", sender_id: myId, ts: Date.now(), sending: true, pct: 0 }]);
+        const attempt = async (tries = 0) => {
+          try {
+            const url = await uploadToR2(audioFile, "group_messages", pct => {
+              setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
+            });
+            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "" });
+            if (error) throw error;
+            setSendingFiles(p => p.filter(x => x.id !== tempId));
+            load();
+          } catch (err) {
+            if (tries < 2) { setTimeout(() => attempt(tries + 1), 1500 * (tries + 1)); }
+            else {
+              setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, sending: false, error: true } : x));
+              notify?.("Échec de l'envoi du vocal");
+            }
+          }
+        };
+        attempt();
+      };
+      rec.start(250); mediaRecRef.current = rec;
+      setRecInitializing(false);
+      recTimerRef.current = setInterval(() => setRecordSecs(s => s + 1), 1000);
+    } catch {
+      setRecording(false); setRecInitializing(false);
+      notify?.("Microphone non accessible");
     }
   };
-
-  const sendSticker = async (sticker) => {
-    setShowStickerPicker(false);
-    await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "sticker", file_url: sticker.url, sticker_id: sticker.id, text: "" });
-    Promise.resolve(sb.rpc("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
+  const cancelRecording = () => {
+    if (mediaRecRef.current) { mediaRecRef.current.onstop = null; mediaRecRef.current.stop(); }
+    else cancelledInitRef.current = true;
+    clearInterval(recTimerRef.current);
+    setRecording(false); setRecordSecs(0); setRecPaused(false); setRecInitializing(false);
+  };
+  const stopRecording = () => {
+    mediaRecRef.current?.stop();
+    clearInterval(recTimerRef.current);
+    setRecording(false); setRecordSecs(0); setRecPaused(false);
+  };
+  const pauseRecording = () => {
+    if (!canPauseRec || mediaRecRef.current?.state !== "recording") return;
+    try { mediaRecRef.current.pause(); } catch { return; }
+    clearInterval(recTimerRef.current);
+    setRecPaused(true);
+  };
+  const resumeRecording = () => {
+    if (!canPauseRec || mediaRecRef.current?.state !== "paused") return;
+    try { mediaRecRef.current.resume(); } catch { return; }
+    recTimerRef.current = setInterval(() => setRecordSecs(s => s + 1), 1000);
+    setRecPaused(false);
   };
 
   const doubleTap = useDoubleTap(m => {
@@ -686,29 +1168,68 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   });
 
   const displayList = useMemo(() => {
-    const withDividers = groupMessagesByDay(msgs);
+    const visibleMsgs = msgs.filter(m => m.type === "system" || !blockedIds.has(m.sender_id));
+    const withDividers = groupMessagesByDay(visibleMsgs);
     let lastSender = null;
-    return withDividers.map(item => {
+    const mapped = withDividers.map(item => {
       if (item._divider) { lastSender = null; return item; }
       if (item.type === "system") { lastSender = null; return { ...item, showHeader: false }; }
       const showHeader = lastSender !== item.sender_id;
       lastSender = item.sender_id;
       return { ...item, showHeader };
     });
-  }, [msgs]);
+    return [...mapped, ...sendingMsgs.map(m => ({ ...m, showHeader: true })), ...sendingFiles.map(f => ({ ...f, showHeader: true }))];
+  }, [msgs, blockedIds, sendingMsgs, sendingFiles]);
+
+  if (displayGroup.secure_mode && !isNative && !isGroupAdmin) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "#000", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
+          <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 30 }}>
+          <Lock size={32} color={T.goldL} />
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text, textAlign: "center" }}>Groupe privé et sécurisé</p>
+          <p style={{ margin: 0, fontSize: 13, color: T.muted, textAlign: "center" }}>L'admin a activé le mode sécurisé — ce groupe n'est accessible que depuis l'app Céleste.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 250, background: "#000", display: "flex", flexDirection: "column" }}>
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 250, display: "flex", flexDirection: "column",
+      backgroundImage: `linear-gradient(${isLightBg(T.bg) ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.6)"},${isLightBg(T.bg) ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.6)"}),url(${isLightBg(T.bg) ? previewLight : previewDark})`,
+      backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat"
+    }}>
+      {bgPhoto && <div style={{ position: "absolute", inset: 0, zIndex: 0, backgroundImage: `url(${bgPhoto})`, backgroundSize: "cover", backgroundPosition: "center", opacity: 0.35, pointerEvents: "none" }} />}
+      {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          onClose={() => { setCropSrc(null); cropResolve?.fn(null); setCropResolve(null); }}
+          onDone={file => { setCropSrc(null); cropResolve?.fn(file); setCropResolve(null); }}
+        />
+      )}
+      {videoTrimSrc && (
+        <VideoTrimModal
+          videoSrc={videoTrimSrc.src}
+          maxDuration={600}
+          onClose={() => { const r = videoTrimSrc.resolve; setVideoTrimSrc(null); r(null); }}
+          onDone={data => { videoTrimSrc.resolve(data); }}
+        />
+      )}
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
         paddingTop: "calc(10px + env(safe-area-inset-top,0px))",
         borderBottom: `1px solid ${T.border}`, background: "rgba(0,0,0,0.92)"
       }}>
         <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
-        <div onClick={() => setShowGroupInfo(true)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+        <div onClick={() => setShowGroupInfo(true)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flex: 1 }}>
           <Av u={{ name: displayGroup.name, avatar_url: displayGroup.photo_url, initials: (displayGroup.name || "?").slice(0, 2).toUpperCase(), color: "#888" }} size={34} />
           <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.text }}>{displayGroup.name}</p>
         </div>
+        <input ref={bgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleBgPhoto} />
+        <Btn onClick={() => bgRef.current?.click()} style={{ color: T.muted, padding: "6px", display: "flex", alignItems: "center" }}><ImageIcon size={18} /></Btn>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
@@ -717,12 +1238,16 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
             ? <DayDivider key={item.key} label={item.label} T={T} />
             : (
               <GroupMessageBubble
-                key={item.id} m={item} mine={item.sender_id === myId} T={T} Av={Av} myId={myId}
+                key={item.id} m={item} mine={item.sender_id === myId} T={T} Av={Av} Btn={Btn} myId={myId}
                 showHeader={item.showHeader} onOpenProfile={onOpenProfile}
                 onReply={m => setReplyTo(m)}
                 onLongPress={m => setActionMsg(m)}
                 onDoubleTap={() => doubleTap(item)}
                 burstOn={burstMsgId === item.id}
+                onRetry={retryOwnMessage}
+                onScrollToReply={scrollToMessage}
+                registerRef={el => { if (el) msgRefs.current[item.id] = el; }}
+                highlighted={highlightMsgId === item.id}
               />
             )
         )}
@@ -734,9 +1259,13 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
       {canWrite ? (
       <div style={{ display: "flex", gap: 8, padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom,0px))", borderTop: `1px solid ${T.border}`, position: "relative" }}>
-        <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={sendImage} />
-        <Btn onClick={() => fileRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+        <input type="file" accept="image/*,video/*" ref={iRef} style={{ display: "none" }} onChange={e => handleFile(e, true)} />
+        <input type="file" accept="*/*" ref={fRef} style={{ display: "none" }} onChange={e => handleFile(e, false)} />
+        <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Camera size={20} />
+        </Btn>
+        <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+          <Paperclip size={20} />
         </Btn>
         <Btn onClick={() => setShowStickerPicker(v => !v)} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: showStickerPicker ? T.goldL : T.muted }}>
           <Smile size={20} />
@@ -746,20 +1275,47 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
             <StickerPicker sb={sb} userId={myId} T={T} onClose={() => setShowStickerPicker(false)} onSelect={sendSticker} />
           </div>
         )}
-        <input
-          value={text}
-          onChange={e => { setText(e.target.value); notifyTyping(); }}
-          onKeyDown={e => e.key === "Enter" && send()}
-          placeholder={editingMsg ? "Modifier le message…" : "Message…"}
-          style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "10px 16px", color: T.text, fontSize: 14, outline: "none" }}
-        />
-        <Btn onClick={send} disabled={!text.trim()} style={{
-          width: 40, height: 40, borderRadius: "50%",
-          background: text.trim() ? T.gradGold : "rgba(255,255,255,0.08)",
-          color: text.trim() ? "#000" : T.muted, display: "flex", alignItems: "center", justifyContent: "center"
-        }}>
-          <Send size={17} />
-        </Btn>
+        {recording ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(200,64,64,0.08)", border: `1px solid ${T.err || "#c84040"}44`, borderRadius: 20, padding: "10px 16px", flex: 1 }}>
+            <span style={{ flex: 1, color: T.err || "#c84040", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.err || "#c84040", display: "inline-block" }} />
+              {recInitializing ? "Connexion micro…" : `${recordSecs}s${recPaused ? " (pause)" : ""}`}
+            </span>
+            {canPauseRec && (
+              <Btn onClick={recPaused ? resumeRecording : pauseRecording} disabled={recInitializing} style={{ color: T.err || "#c84040", padding: "8px", display: "flex", alignItems: "center", opacity: recInitializing ? 0.4 : 1 }}>
+                {recPaused ? <Play size={18} /> : <Pause size={18} />}
+              </Btn>
+            )}
+            <Btn onClick={cancelRecording} style={{ color: T.err || "#c84040", padding: "8px", display: "flex", alignItems: "center" }}><Trash2 size={20} /></Btn>
+            <Btn onClick={stopRecording} disabled={recInitializing} style={{ background: T.gradGold, borderRadius: 20, padding: "8px 16px", color: "#000", fontWeight: 700, fontSize: 13, opacity: recInitializing ? 0.5 : 1 }}>Envoyer</Btn>
+          </div>
+        ) : (
+          <>
+            <input
+              value={text}
+              onChange={e => { setText(e.target.value); notifyTyping(); }}
+              onKeyDown={e => e.key === "Enter" && send()}
+              placeholder={editingMsg ? "Modifier le message…" : "Message…"}
+              style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "10px 16px", color: T.text, fontSize: 14, outline: "none" }}
+            />
+            {text.trim()
+              ? (
+                <Btn onClick={send} style={{
+                  width: 40, height: 40, borderRadius: "50%",
+                  background: T.gradGold, color: "#000", display: "flex", alignItems: "center", justifyContent: "center"
+                }}>
+                  <Send size={17} />
+                </Btn>
+              ) : (
+                <Btn onClick={startRecording} style={{
+                  width: 40, height: 40, borderRadius: "50%",
+                  background: "rgba(255,255,255,0.08)", color: T.muted, display: "flex", alignItems: "center", justifyContent: "center"
+                }}>
+                  <Mic size={17} />
+                </Btn>
+              )}
+          </>
+        )}
       </div>
       ) : (
       <div style={{ padding: "12px 16px", paddingBottom: "calc(12px + env(safe-area-inset-bottom,0px))", borderTop: `1px solid ${T.border}`, textAlign: "center" }}>
@@ -789,6 +1345,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <GroupInfoScreen sb={sb} T={T} Av={Av} Btn={Btn} group={displayGroup} session={session} notify={notify}
           allMembers={members} myConnections={myConnections} myFollowers={myFollowers}
           onGroupUpdated={patch => setGroupOverride(prev => ({ ...(prev || {}), ...patch }))}
+          onOpenProfile={onOpenProfile}
           onBack={() => setShowGroupInfo(false)}
           onLeftGroup={() => { setShowGroupInfo(false); onBack(); }}
           onDeletedGroup={() => { setShowGroupInfo(false); onBack(); }}
@@ -846,7 +1403,7 @@ function MemberActionSheet({ T, member, onPromote, onDemote, onKick, onClose }) 
   );
 }
 
-export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack, onLeftGroup, onDeletedGroup, allMembers, myConnections, myFollowers, onGroupUpdated }) {
+export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack, onLeftGroup, onDeletedGroup, allMembers, myConnections, myFollowers, onGroupUpdated, onOpenProfile }) {
   const [members, setMembers] = useState([]);
   const [showReport, setShowReport] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -854,6 +1411,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [actionMember, setActionMember] = useState(null);
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [showEditGroup, setShowEditGroup] = useState(false);
+  const [muted, setMuted] = useState(() => isGroupMuted(group.id));
+  const [pinned, setPinned] = useState(() => isGroupPinned(group.id));
   const myId = session?.user?.id;
   const isCreator = group.created_by === myId;
   const myMembership = members.find(m => m.user_id === myId);
@@ -894,14 +1453,19 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const leave = async () => {
-    await sb.from("group_members").delete().eq("group_id", group.id).eq("user_id", myId);
+    // Le message système doit être posté AVANT la suppression : une fois la ligne
+    // group_members supprimée, la policy RLS sur group_messages (réservée aux
+    // membres acceptés) bloque l'insertion et personne n'est prévenu.
+    await postSystemMessage(sb, group.id, myId, "a quitté le groupe");
+    const { error } = await sb.from("group_members").delete().eq("group_id", group.id).eq("user_id", myId);
+    if (error) { notify?.("Impossible de quitter le groupe"); console.error("Erreur leave:", error); return; }
     notify?.("Tu as quitté le groupe");
-    postSystemMessage(sb, group.id, myId, "a quitté le groupe");
     onLeftGroup?.();
   };
 
   const remove = async () => {
-    await sb.from("groups").delete().eq("id", group.id);
+    const { error } = await sb.from("groups").delete().eq("id", group.id);
+    if (error) { notify?.("Impossible de supprimer le groupe"); console.error("Erreur remove:", error); return; }
     notify?.("Groupe supprimé");
     onDeletedGroup?.();
   };
@@ -913,8 +1477,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 270, background: "#000", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}`, background: "rgba(0,0,0,0.92)" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 270, background: T.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
         <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
       </div>
 
@@ -933,6 +1497,36 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
             <p onClick={() => setShowEditGroup(true)} style={{ margin: "0 0 4px", fontSize: 12, color: T.goldL, cursor: "pointer" }}>Modifier le groupe</p>
           )}
           <p style={{ margin: 0, fontSize: 13, color: T.muted }}>Groupe · {members.length} membre{members.length !== 1 ? "s" : ""}</p>
+          {group.secure_mode && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6 }}>
+              <Lock size={12} color={T.goldL} />
+              <p style={{ margin: 0, fontSize: 12, color: T.goldL, fontWeight: 600 }}>Groupe privé et sécurisé</p>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6 }}>
+            <Lock size={12} color={T.goldL} />
+            <p style={{ margin: 0, fontSize: 12, color: T.goldL, fontWeight: 600 }}>Groupe privé et sécurisé</p>
+          </div>
+        </div>
+
+        <div style={{ padding: "0 20px 16px" }}>
+          <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Paramètres</p>
+          <div style={{ borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, overflow: "hidden" }}>
+            <div onClick={async () => { const next = !muted; try { await toggleGroupMute(sb, myId, group.id, next); setMuted(next); } catch { notify?.("Impossible de changer la sourdine"); } }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", borderBottom: `1px solid ${T.border}` }}>
+              {muted ? <BellOff size={18} color={T.muted} /> : <Bell size={18} color={T.muted} />}
+              <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>Mettre en sourdine</p>
+              <div style={{ width: 40, height: 24, borderRadius: 12, background: muted ? T.gradGold : (isLightBg(T.bg) ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.12)"), position: "relative", transition: "background .2s" }}>
+                <div style={{ position: "absolute", top: 2, left: muted ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: muted ? "#000" : "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
+              </div>
+            </div>
+            <div onClick={() => setPinned(toggleGroupPin(group.id))} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer" }}>
+              <Pin size={18} color={T.muted} />
+              <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>Épingler le groupe</p>
+              <div style={{ width: 40, height: 24, borderRadius: 12, background: pinned ? T.gradGold : (isLightBg(T.bg) ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.12)"), position: "relative", transition: "background .2s" }}>
+                <div style={{ position: "absolute", top: 2, left: pinned ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: pinned ? "#000" : "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
+              </div>
+            </div>
+          </div>
         </div>
 
         {isAdmin && (
@@ -949,8 +1543,9 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
             return (
               <div key={m.user_id} onClick={() => canManage && setActionMember(m)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", cursor: canManage ? "pointer" : "default" }}>
-                <Av u={m.profiles} size={40} />
-                <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>{m.profiles?.prenom} {m.profiles?.nom}</p>
+                <Av u={m.profiles} size={40} onClick={e => { e.stopPropagation(); onOpenProfile?.(m.user_id); }} />
+                <p onClick={e => { e.stopPropagation(); onOpenProfile?.(m.user_id); }}
+                  style={{ margin: 0, fontSize: 14, color: T.text, flex: 1, cursor: "pointer" }}>{m.profiles?.prenom} {m.profiles?.nom}</p>
                 {m.role === "admin" && <span style={{ fontSize: 11, color: T.goldL, marginRight: canManage ? 4 : 0 }}>Admin</span>}
                 {canManage && <ChevronRight size={14} color={T.muted} />}
               </div>
@@ -958,21 +1553,24 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           })}
         </div>
 
-        <div style={{ padding: "20px" }}>
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 10 }}>
           {!isCreator && (
             <>
-              <Btn onClick={() => setShowReport(true)} style={{ width: "100%", padding: "13px", borderRadius: 14, background: "rgba(255,255,255,0.05)", color: T.text, fontSize: 15, marginBottom: 10, textAlign: "left" }}>
+              <Btn onClick={() => setShowReport(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, color: T.text, fontSize: 15, textAlign: "left" }}>
+                <Flag size={17} />
                 Signaler le groupe
               </Btn>
-              <Btn onClick={() => setConfirmLeave(true)} style={{ width: "100%", padding: "13px", borderRadius: 14, background: "rgba(200,64,64,0.1)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
+              <Btn onClick={() => setConfirmLeave(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(200,64,64,0.1)", border: "1px solid rgba(200,64,64,0.25)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
+                <LogOut size={17} />
                 Quitter le groupe
               </Btn>
             </>
           )}
           {isCreator && (
-            <Btn onClick={() => setConfirmDelete(true)} style={{ width: "100%", padding: "13px", borderRadius: 14, background: "rgba(200,64,64,0.1)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
-              Supprimer le groupe
-            </Btn>
+            <Btn onClick={() => setConfirmDelete(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(200,64,64,0.1)", border: "1px solid rgba(200,64,64,0.25)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
+                <Trash2 size={17} />
+                Supprimer le groupe
+              </Btn>
           )}
         </div>
       </div>
@@ -1039,7 +1637,16 @@ export function PendingGroupInviteCard({ sb, T, Av, Btn, invite, userId, notify 
       await sb.from("group_members").update({ status: "accepted" }).eq("group_id", invite.group_id).eq("user_id", userId);
       notify?.(`Tu as rejoint "${g.name}" ✦`);
     } else {
+      const { data: me } = await sb.from("profiles").select("prenom,nom").eq("id", userId).maybeSingle();
+      const myName = me ? `${me.prenom || ""} ${me.nom || ""}`.trim() : "";
       await sb.from("group_members").delete().eq("group_id", invite.group_id).eq("user_id", userId);
+      if (invite.invited_by) {
+        const { error: notifErr } = await sb.from("notifications").insert({
+          user_id: invite.invited_by, type: "group_invite_declined", from_id: userId,
+          group_id: invite.group_id, text: g?.name || "", read: false,
+        });
+        if (notifErr) console.error("Notif refus non envoyée:", notifErr);
+      }
       notify?.("Invitation refusée");
     }
   };

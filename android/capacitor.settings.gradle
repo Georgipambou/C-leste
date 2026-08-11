@@ -17,6 +17,9 @@ project(':capacitor-geolocation').projectDir = new File('../node_modules/@capaci
 include ':capacitor-haptics'
 project(':capacitor-haptics').projectDir = new File('../node_modules/@capacitor/haptics/android')
 
+include ':capacitor-privacy-screen'
+project(':capacitor-privacy-screen').projectDir = new File('../node_modules/@capacitor/privacy-screen/android')
+
 include ':capacitor-share'
 project(':capacitor-share').projectDir = new File('../node_modules/@capacitor/share/android')
 
