@@ -6586,13 +6586,20 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     }catch(e){ convId=conv.id; }
   }
   if(!convId)return;
-  enqueueMessage(convId,session?.user?.id,payload);
+  const finalPayload=conv.ephemeral_ttl_seconds?{...payload,expires_at:new Date(Date.now()+conv.ephemeral_ttl_seconds*1000).toISOString()}:payload;
+  enqueueMessage(convId,session?.user?.id,finalPayload);
   setAttach(false);playChatSound("send");
   processQueue(sb,notify).then(reload);
 };
 
   const [sending,setSending]=useState(false);
   const [showStickerPicker,setShowStickerPicker]=useState(false);
+  const [viewOnceNext,setViewOnceNext]=useState(false);
+  const [revealedOnce,setRevealedOnce]=useState(()=>new Set());
+  const revealOnce=async(m)=>{
+    setRevealedOnce(p=>new Set([...p,m.id]));
+    try{await sb.from("messages").update({viewed_at:new Date().toISOString()}).eq("id",m.id);}catch{}
+  };
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
     if(editingMsg){
@@ -6622,6 +6629,8 @@ const cropImage=src=>new Promise(resolve=>{
 const handleFile=async(e,isImg)=>{
     let f=e.target.files[0]; if(!f)return;
     const input=e.target;
+    const wantViewOnce=viewOnceNext;
+    setViewOnceNext(false);
     if(f.size>50*1024*1024){notify("Fichier trop lourd (max 50MB)");return;}
     // Recadrage image
     if(isImg&&f.type.startsWith("image/")){
@@ -6656,7 +6665,7 @@ const handleFile=async(e,isImg)=>{
       }
       let error,attempt=0;
       while(attempt<3){
-        const res=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:""});
+        const res=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:"",view_once:wantViewOnce&&fileType!=="file",expires_at:conv.ephemeral_ttl_seconds?new Date(Date.now()+conv.ephemeral_ttl_seconds*1000).toISOString():null});
         error=res.error;
         if(!error)break;
         attempt++;
@@ -6747,7 +6756,7 @@ const handleFile=async(e,isImg)=>{
 
   if(conv.secure_mode&&!isNative&&conv.secure_mode_by!==session?.user?.id){
     return(
-      <div style={{flex:1,display:"flex",flexDirection:"column",background:"#000"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",paddingTop:"calc(10px + env(safe-area-inset-top,0px))",borderBottom:`1px solid ${T.border}`}}>
           <Btn onClick={onBack} style={{color:T.gold}}><ChevronLeft size={22}/></Btn>
         </div>
@@ -6895,14 +6904,34 @@ const handleFile=async(e,isImg)=>{
                       </div>
                     </div>
                   )}
-                  {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>}
+                  {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&(
+                    m.view_once
+                      ? (mine
+                          ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Photo vue unique envoyée</span></div>
+                          : (revealedOnce.has(m.id)
+                              ? <MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>
+                              : <Btn onClick={()=>revealOnce(m)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>Appuyer pour voir · vue unique</span></Btn>
+                            )
+                        )
+                      : <MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>
+                  )}
                   {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" onClick={e=>{e.stopPropagation();m.sticker_id&&setOpenStickerDetail(m.sticker_id);}} style={{width:100,height:100,objectFit:"contain",display:"block",cursor:m.sticker_id?"pointer":"default"}}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T}/>}
-{m.type==="video"&&(m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>}
+{m.type==="video"&&(m.img||m.file_url)&&(
+                    m.view_once
+                      ? (mine
+                          ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vidéo vue unique envoyée</span></div>
+                          : (revealedOnce.has(m.id)
+                              ? <video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>
+                              : <Btn onClick={()=>revealOnce(m)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>Appuyer pour voir · vue unique</span></Btn>
+                            )
+                        )
+                      : <video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>
+                  )}
                   {m.text&&<><p style={{margin:0,fontSize:14,fontWeight:600,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
                 </div>
                 <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
@@ -6947,6 +6976,9 @@ const handleFile=async(e,isImg)=>{
         <div style={{position:"relative",zIndex:2,background:"rgba(0,0,0,0.96)",borderTop:`1px solid ${T.border}`,padding:"12px 16px",display:"flex",gap:12,animation:"slideUp .2s ease"}}>
           <Btn onClick={()=>{iRef.current.click();setAttach(false);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,color:T.goldL,fontSize:12,fontWeight:600}}>
             <Camera size={20}/>Média
+          </Btn>
+          <Btn onClick={()=>setViewOnceNext(v=>!v)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:viewOnceNext?T.gradGold:T.glassMid,border:`1px solid ${viewOnceNext?T.gold:T.border}`,borderRadius:14,color:viewOnceNext?"#000":T.sub,fontSize:12,fontWeight:600}}>
+            <Eye size={20}/>Vue unique
           </Btn>
           <Btn onClick={()=>{fRef.current.click();setAttach(false);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:12,fontWeight:600}}>
             <Paperclip size={20}/>Fichier
@@ -10459,13 +10491,13 @@ return updated;
  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id,view_once,viewed_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId),
       sb.from("blocks").select("blocker_id").eq("blocked_id",myId)
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,ephemeral_ttl_seconds:c.ephemeral_ttl_seconds||null,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null,view_once:!!m.view_once,viewed_at:m.viewed_at||null}))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem("celeste_convs_cache",JSON.stringify(filtered));}catch(e){}
@@ -10623,7 +10655,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     if(isConvLocked(id)&&!unlockedConvIds.has(id)){setPendingUnlockConvId(id);return;}
     pushNav(()=>setOpenConvId(null));setOpenConvId(id);
   };
-  const openChat=uid=>{setOpenUserId(null);let c=(convs||[]).find(x=>x.uid===uid);if(!c){c={id:"cv"+Date.now(),uid,msgs:[]};setConvs(p=>[...(p||[]),c]);}pushNav(()=>setOpenConvId(null));setOpenConvId(c.id);setTab("messages");};
+  const openChat=uid=>{setOpenUserId(null);let c=(convs||[]).find(x=>x.uid===uid);if(!c){c={id:"cv"+Date.now(),uid,msgs:[]};setConvs(p=>[...(p||[]),c]);}if(isConvLocked(c.id)&&!unlockedConvIds.has(c.id)){setPendingUnlockConvId(c.id);setTab("messages");return;}pushNav(()=>setOpenConvId(null));setOpenConvId(c.id);setTab("messages");};
 
   // AppContext value
   const appCtx={

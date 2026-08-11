@@ -5,7 +5,7 @@
 // branchée dans une prochaine étape, une fois cette brique validée.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon } from "lucide-react";
+import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon, Eye, EyeOff } from "lucide-react";
 import EasyCrop from "react-easy-crop";
 import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
@@ -564,6 +564,9 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
   const [photoFile, setPhotoFile] = useState(null);
   const [announceOnly, setAnnounceOnly] = useState(!!group.announce_only);
   const [secureMode, setSecureMode] = useState(!!group.secure_mode);
+  const EPH_OPTIONS = [{ value: 0, label: "Désactivé" }, { value: 86400, label: "24 heures" }, { value: 604800, label: "7 jours" }, { value: 7776000, label: "90 jours" }];
+  const [ephemeralTtl, setEphemeralTtl] = useState(group.ephemeral_ttl_seconds || 0);
+  const cycleEphemeral = () => { const idx = EPH_OPTIONS.findIndex(o => o.value === ephemeralTtl); setEphemeralTtl(EPH_OPTIONS[(idx + 1) % EPH_OPTIONS.length].value); };
   const [saving, setSaving] = useState(false);
 
   const handlePhoto = (e) => {
@@ -592,6 +595,7 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
       }
       if (announceOnly !== !!group.announce_only) { updates.announce_only = announceOnly; patch.announce_only = announceOnly; }
       if (secureMode !== !!group.secure_mode) { updates.secure_mode = secureMode; patch.secure_mode = secureMode; }
+      if (ephemeralTtl !== (group.ephemeral_ttl_seconds || 0)) { updates.ephemeral_ttl_seconds = ephemeralTtl || null; patch.ephemeral_ttl_seconds = ephemeralTtl || null; }
       if (Object.keys(updates).length > 0) {
         const { error } = await sb.from("groups").update(updates).eq("id", group.id);
         if (error) throw error;
@@ -599,6 +603,7 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
         if (updates.photo_url) await postSystemMessage(sb, group.id, actorId, "a changé la photo du groupe");
         if (updates.announce_only !== undefined) await postSystemMessage(sb, group.id, actorId, updates.announce_only ? "a activé le mode annonce" : "a désactivé le mode annonce");
         if (updates.secure_mode !== undefined) await postSystemMessage(sb, group.id, actorId, updates.secure_mode ? "a activé le mode sécurisé (captures bloquées, groupe réservé à l'app)" : "a désactivé le mode sécurisé");
+        if (updates.ephemeral_ttl_seconds !== undefined) await postSystemMessage(sb, group.id, actorId, updates.ephemeral_ttl_seconds ? `a activé les messages éphémères (${EPH_OPTIONS.find(o => o.value === updates.ephemeral_ttl_seconds)?.label})` : "a désactivé les messages éphémères");
       }
       notify?.("Groupe mis à jour ✦");
       onSaved?.(patch);
@@ -669,6 +674,16 @@ export function EditGroupModal({ sb, T, Av, Btn, group, actorId, onClose, onSave
           }}>
             {secureMode && <Check size={13} color="#000" />}
           </div>
+        </div>
+        <div onClick={cycleEphemeral} style={{
+          width: "100%", maxWidth: 320, display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 16px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, cursor: "pointer"
+        }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 14, color: T.text }}>Messages éphémères</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted }}>Supprime automatiquement les nouveaux messages du groupe</p>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: T.goldL }}>{EPH_OPTIONS.find(o => o.value === ephemeralTtl)?.label}</p>
         </div>
       </div>
     </div>
@@ -826,7 +841,7 @@ function GroupVoicePlayer({ src, mine, T }) {
   );
 }
 
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted }) {
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, onRevealOnce }) {
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
@@ -863,11 +878,28 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
             <HeartBurst show={burstOn} />
             <MessageReplyQuote message={m} mine={mine} T={T} onClick={() => m.reply_to_id && onScrollToReply?.(m.reply_to_id)} />
             {m.type === "photo" && (
-              <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
-                onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />
+              m.view_once
+                ? (mine
+                    ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Photo vue unique envoyée</span></div>
+                    : (revealedOnce?.has(m.id)
+                        ? <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
+                            onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />
+                        : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>Appuyer pour voir · vue unique</span></Btn>
+                      )
+                  )
+                : <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
+                    onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />
             )}
             {m.type === "video" && m.file_url && (
-              <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />
+              m.view_once
+                ? (mine
+                    ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vidéo vue unique envoyée</span></div>
+                    : (revealedOnce?.has(m.id)
+                        ? <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />
+                        : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>Appuyer pour voir · vue unique</span></Btn>
+                      )
+                  )
+                : <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />
             )}
             {m.type === "file" && m.file_url && (
               <Btn onClick={() => window.open(m.file_url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
@@ -960,8 +992,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   useEffect(() => {
     if (!group?.id || !myId) return;
-    sb.from("groups").select("announce_only,secure_mode").eq("id", group.id).maybeSingle()
-      .then(({ data }) => { if (data) setGroupOverride(prev => ({ ...(prev || {}), announce_only: !!data.announce_only, secure_mode: !!data.secure_mode })); });
+    sb.from("groups").select("announce_only,secure_mode,ephemeral_ttl_seconds").eq("id", group.id).maybeSingle()
+      .then(({ data }) => { if (data) setGroupOverride(prev => ({ ...(prev || {}), announce_only: !!data.announce_only, secure_mode: !!data.secure_mode, ephemeral_ttl_seconds: data.ephemeral_ttl_seconds || null })); });
     sb.from("group_members").select("role").eq("group_id", group.id).eq("user_id", myId).eq("status", "accepted").maybeSingle()
       .then(({ data }) => setIsGroupAdmin(data?.role === "admin" || group.created_by === myId));
     sb.from("blocks").select("blocked_id").eq("blocker_id", myId)
@@ -982,7 +1014,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const load = useCallback(async () => {
     const { data } = await sb
       .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
       .eq("group_id", group.id)
       .order("created_at", { ascending: true })
       .limit(300);
@@ -1024,6 +1056,12 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     e.target.value = "";
   };
 
+  const [viewOnceNext, setViewOnceNext] = useState(false);
+  const [revealedOnce, setRevealedOnce] = useState(() => new Set());
+  const revealOnce = async (msgId) => {
+    setRevealedOnce(p => new Set([...p, msgId]));
+    try { await sb.from("group_message_views").insert({ message_id: msgId, viewer_id: myId }); } catch {}
+  };
   const send = async () => {
     const t = text.trim();
     if (!t || sending) return;
@@ -1034,7 +1072,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       setEditingMsg(null); setSending(false); return;
     }
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
-    enqueueGroupMessage(group.id, myId, { type: "text", text: t, ...replyPayload });
+    const ephPayload = displayGroup.ephemeral_ttl_seconds ? { expires_at: new Date(Date.now() + displayGroup.ephemeral_ttl_seconds * 1000).toISOString() } : {};
+    enqueueGroupMessage(group.id, myId, { type: "text", text: t, ...replyPayload, ...ephPayload });
     setReplyTo(null);
     processGroupQueue(sb, notify).then(load);
   };
@@ -1046,6 +1085,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     let f = e.target.files?.[0];
     if (!f) return;
     const input = e.target;
+    const wantViewOnce = viewOnceNext;
+    setViewOnceNext(false);
     if (f.size > 50 * 1024 * 1024) { notify?.("Fichier trop lourd (max 50MB)"); input.value = ""; return; }
     if (isMedia && f.type.startsWith("image/")) {
       const reader = new FileReader();
@@ -1071,7 +1112,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         const url = await uploadToR2(f, "group_messages", pct => {
           setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
         });
-        const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: fileType, file_url: url, file_name: fileName, text: "" });
+        const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: fileType, file_url: url, file_name: fileName, text: "", view_once: wantViewOnce && fileType !== "file", expires_at: displayGroup.ephemeral_ttl_seconds ? new Date(Date.now() + displayGroup.ephemeral_ttl_seconds * 1000).toISOString() : null });
         if (error) throw error;
         setSendingFiles(p => p.filter(x => x.id !== tempId));
         load();
@@ -1089,7 +1130,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   const sendSticker = (sticker) => {
     setShowStickerPicker(false);
-    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id });
+    const ephPayload = displayGroup.ephemeral_ttl_seconds ? { expires_at: new Date(Date.now() + displayGroup.ephemeral_ttl_seconds * 1000).toISOString() } : {};
+    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id, ...ephPayload });
     processGroupQueue(sb, notify).then(load);
     Promise.resolve(sb.rpc("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
   };
@@ -1248,6 +1290,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 onScrollToReply={scrollToMessage}
                 registerRef={el => { if (el) msgRefs.current[item.id] = el; }}
                 highlighted={highlightMsgId === item.id}
+                revealedOnce={revealedOnce}
+                onRevealOnce={revealOnce}
               />
             )
         )}
@@ -1263,6 +1307,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <input type="file" accept="*/*" ref={fRef} style={{ display: "none" }} onChange={e => handleFile(e, false)} />
         <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Camera size={20} />
+        </Btn>
+        <Btn onClick={() => setViewOnceNext(v => !v)} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: viewOnceNext ? T.goldL : T.muted }}>
+          <Eye size={20} />
         </Btn>
         <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Paperclip size={20} />

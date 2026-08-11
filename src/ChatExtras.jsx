@@ -640,7 +640,7 @@ export function ConversationPrivacyScreen({ T, Btn, conv, sb, myId, userName, on
         <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Confidentialité et sécurité</p>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-        <div onClick={toggleSecureMode} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
+        <div onClick={toggleSecureMode} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
           <div>
             <p style={{ margin: 0, fontSize: 14, color: T.text }}>Mode sécurisé</p>
             <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted, maxWidth: 240 }}>
@@ -652,7 +652,7 @@ export function ConversationPrivacyScreen({ T, Btn, conv, sb, myId, userName, on
           </div>
         </div>
 
-        <div onClick={() => setPinStep(locked ? "remove" : "set1")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, cursor: "pointer" }}>
+        <div onClick={() => setPinStep(locked ? "remove" : "set1")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, cursor: "pointer" }}>
           <div>
             <p style={{ margin: 0, fontSize: 14, color: T.text }}>Verrouiller cette conversation</p>
             <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted, maxWidth: 240 }}>
@@ -667,10 +667,55 @@ export function ConversationPrivacyScreen({ T, Btn, conv, sb, myId, userName, on
     </div>
   );
 }
+export function EphemeralSettingsScreen({ T, Btn, conv, sb, onBack, reload, notify }) {
+  const [ttl, setTtl] = useState(conv?.ephemeral_ttl_seconds || 0);
+  const [saving, setSaving] = useState(false);
+  const options = [
+    { value: 0, label: "Désactivé" },
+    { value: 86400, label: "24 heures" },
+    { value: 604800, label: "7 jours" },
+    { value: 7776000, label: "90 jours" },
+  ];
+
+  const choose = async (value) => {
+    if (!conv || saving || value === ttl) return;
+    setSaving(true);
+    const { error } = await sb.from("conversations").update({ ephemeral_ttl_seconds: value || null }).eq("id", conv.id);
+    setSaving(false);
+    if (error) { notify?.("Erreur : impossible de changer le réglage"); return; }
+    setTtl(value);
+    reload?.();
+    notify?.(value ? "Messages éphémères activés ✦" : "Messages éphémères désactivés");
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: T.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
+        <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
+        <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Messages éphémères</p>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+        <p style={{ margin: "0 0 16px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
+          Les nouveaux messages envoyés dans cette conversation seront supprimés automatiquement après la durée choisie, pour vous deux. Les anciens messages ne sont pas concernés.
+        </p>
+        <div style={{ borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, overflow: "hidden", opacity: saving ? 0.6 : 1 }}>
+          {options.map((o, i) => (
+            <div key={o.value} onClick={() => choose(o.value)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", cursor: "pointer", borderBottom: i < options.length - 1 ? `1px solid ${T.border}` : "none" }}>
+              <p style={{ margin: 0, fontSize: 14, color: T.text }}>{o.label}</p>
+              {ttl === o.value && <Check size={16} color={T.gold} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBack, onOpenProfile, onCreateGroup, notify, reload }) {
   const soon = (label) => () => notify?.(`${label} — bientôt disponible ✦`);
   const [muted, setMuted] = useState(() => conv ? isConvMuted(conv.id) : false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showEphemeral, setShowEphemeral] = useState(false);
+  const ephemeralLabel = conv?.ephemeral_ttl_seconds === 86400 ? "24 heures" : conv?.ephemeral_ttl_seconds === 604800 ? "7 jours" : conv?.ephemeral_ttl_seconds === 7776000 ? "90 jours" : "Désactivé";
 
   const toggleMute = async () => {
     if (!conv) { soon("Mise en sourdine")(); return; }
@@ -687,7 +732,7 @@ export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBac
 
   const listItems = [
     { key: "theme", title: "Personnaliser", subtitle: "Thème et police", Icon: Sparkles, onClick: soon("Personnalisation") },
-    { key: "eph", title: "Messages éphémères", subtitle: "Désactivé", Icon: Clock, onClick: soon("Messages éphémères") },
+    { key: "eph", title: "Messages éphémères", subtitle: ephemeralLabel, Icon: Clock, onClick: () => setShowEphemeral(true) },
     { key: "privacy", title: "Confidentialité et sécurité", Icon: Lock, onClick: () => setShowPrivacy(true) },
     { key: "group", title: "Créer une discussion de groupe", Icon: Users, onClick: () => onCreateGroup && onCreateGroup(user) },
   ];
@@ -696,6 +741,13 @@ export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBac
     return (
       <ConversationPrivacyScreen T={T} Btn={Btn} conv={conv} sb={sb} myId={myId}
         userName={user?.fullName || user?.name} onBack={() => setShowPrivacy(false)} reload={reload} notify={notify} />
+    );
+  }
+
+  if (showEphemeral) {
+    return (
+      <EphemeralSettingsScreen T={T} Btn={Btn} conv={conv} sb={sb}
+        onBack={() => setShowEphemeral(false)} reload={reload} notify={notify} />
     );
   }
 
