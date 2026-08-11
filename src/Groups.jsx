@@ -5,7 +5,7 @@
 // branchée dans une prochaine étape, une fois cette brique validée.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon, Eye, EyeOff } from "lucide-react";
+import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon, Eye, EyeOff, Sparkles, Grid } from "lucide-react";
 import EasyCrop from "react-easy-crop";
 import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
@@ -18,7 +18,8 @@ import previewLight from "./assets/preview-light.webp";
 import {
   groupMessagesByDay, DayDivider, QUICK_REACTIONS, ReactionBar, InlineReactionPicker,
   useLongPress, useDoubleTap, HeartBurst, ReplyComposerBar, MessageReplyQuote,
-  useTypingIndicator, TypingIndicator, EditedBadge, SwipeToReply
+  useTypingIndicator, TypingIndicator, EditedBadge, SwipeToReply,
+  ChatPersonalizationScreen
 } from "./ChatExtras";
 
 // Dupliqué depuis App.jsx (pas de dépendance inverse possible, voir en-tête du fichier)
@@ -1072,8 +1073,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       setEditingMsg(null); setSending(false); return;
     }
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
-    const ephPayload = displayGroup.ephemeral_ttl_seconds ? { expires_at: new Date(Date.now() + displayGroup.ephemeral_ttl_seconds * 1000).toISOString() } : {};
-    enqueueGroupMessage(group.id, myId, { type: "text", text: t, ...replyPayload, ...ephPayload });
+    enqueueGroupMessage(group.id, myId, { type: "text", text: t, ...replyPayload });
     setReplyTo(null);
     processGroupQueue(sb, notify).then(load);
   };
@@ -1112,7 +1112,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         const url = await uploadToR2(f, "group_messages", pct => {
           setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
         });
-        const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: fileType, file_url: url, file_name: fileName, text: "", view_once: wantViewOnce && fileType !== "file", expires_at: displayGroup.ephemeral_ttl_seconds ? new Date(Date.now() + displayGroup.ephemeral_ttl_seconds * 1000).toISOString() : null });
+        const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: fileType, file_url: url, file_name: fileName, text: "", view_once: wantViewOnce && fileType !== "file" });
         if (error) throw error;
         setSendingFiles(p => p.filter(x => x.id !== tempId));
         load();
@@ -1130,8 +1130,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   const sendSticker = (sticker) => {
     setShowStickerPicker(false);
-    const ephPayload = displayGroup.ephemeral_ttl_seconds ? { expires_at: new Date(Date.now() + displayGroup.ephemeral_ttl_seconds * 1000).toISOString() } : {};
-    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id, ...ephPayload });
+    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id });
     processGroupQueue(sb, notify).then(load);
     Promise.resolve(sb.rpc("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
   };
@@ -1450,6 +1449,62 @@ function MemberActionSheet({ T, member, onPromote, onDemote, onKick, onClose }) 
   );
 }
 
+function GroupSharedMediaScreen({ T, Btn, group, sb, onBack }) {
+  const [items, setItems] = useState(null);
+  const [playingVideo, setPlayingVideo] = useState(null);
+
+  useEffect(() => {
+    if (!group?.id) return;
+    sb.from("group_messages").select("id,type,file_url,created_at")
+      .eq("group_id", group.id).in("type", ["photo", "video"]).eq("view_once", false)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setItems(data || []));
+  }, [group?.id, sb]);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 280, background: T.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
+        <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
+        <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Médias partagés</p>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 2 }}>
+        {items === null ? (
+          <p style={{ textAlign: "center", color: T.muted, fontSize: 13, marginTop: 40 }}>Chargement…</p>
+        ) : items.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "60px 0", color: T.muted }}>
+            <Grid size={28} />
+            <span style={{ fontSize: 13 }}>Aucun média partagé pour l'instant</span>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+            {items.map(it => (
+              <div key={it.id} onClick={() => it.type === "video" ? setPlayingVideo(it.file_url) : window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: it.file_url } }))}
+                style={{ position: "relative", aspectRatio: "1", cursor: "pointer", background: T.glassMid }}>
+                {it.type === "video"
+                  ? <video src={it.file_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} muted />
+                  : <img src={it.file_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                }
+                {it.type === "video" && (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderLeft: "9px solid #fff", marginLeft: 2 }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {playingVideo && (
+        <div onClick={() => setPlayingVideo(null)} style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <video src={playingVideo} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "100%" }} onClick={e => e.stopPropagation()} />
+          <Btn onClick={() => setPlayingVideo(null)} style={{ position: "absolute", top: "calc(14px + env(safe-area-inset-top,0px))", right: 14, color: "#fff", padding: 8 }}><X size={26} /></Btn>
+        </div>
+      )}
+    </div>
+  );
+}
 export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack, onLeftGroup, onDeletedGroup, allMembers, myConnections, myFollowers, onGroupUpdated, onOpenProfile }) {
   const [members, setMembers] = useState([]);
   const [showReport, setShowReport] = useState(false);
@@ -1460,6 +1515,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [showEditGroup, setShowEditGroup] = useState(false);
   const [muted, setMuted] = useState(() => isGroupMuted(group.id));
   const [pinned, setPinned] = useState(() => isGroupPinned(group.id));
+  const [showTheme, setShowTheme] = useState(false);
+  const [showMedia, setShowMedia] = useState(false);
   const myId = session?.user?.id;
   const isCreator = group.created_by === myId;
   const myMembership = members.find(m => m.user_id === myId);
@@ -1550,15 +1607,11 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
               <p style={{ margin: 0, fontSize: 12, color: T.goldL, fontWeight: 600 }}>Groupe privé et sécurisé</p>
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6 }}>
-            <Lock size={12} color={T.goldL} />
-            <p style={{ margin: 0, fontSize: 12, color: T.goldL, fontWeight: 600 }}>Groupe privé et sécurisé</p>
-          </div>
         </div>
 
         <div style={{ padding: "0 20px 16px" }}>
           <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Paramètres</p>
-          <div style={{ borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}`, overflow: "hidden" }}>
+          <div style={{ borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, overflow: "hidden" }}>
             <div onClick={async () => { const next = !muted; try { await toggleGroupMute(sb, myId, group.id, next); setMuted(next); } catch { notify?.("Impossible de changer la sourdine"); } }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", borderBottom: `1px solid ${T.border}` }}>
               {muted ? <BellOff size={18} color={T.muted} /> : <Bell size={18} color={T.muted} />}
               <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>Mettre en sourdine</p>
@@ -1566,12 +1619,17 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 <div style={{ position: "absolute", top: 2, left: muted ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: muted ? "#000" : "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
               </div>
             </div>
-            <div onClick={() => setPinned(toggleGroupPin(group.id))} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer" }}>
+            <div onClick={() => setPinned(toggleGroupPin(group.id))} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", borderBottom: `1px solid ${T.border}` }}>
               <Pin size={18} color={T.muted} />
               <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>Épingler le groupe</p>
               <div style={{ width: 40, height: 24, borderRadius: 12, background: pinned ? T.gradGold : (isLightBg(T.bg) ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.12)"), position: "relative", transition: "background .2s" }}>
                 <div style={{ position: "absolute", top: 2, left: pinned ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: pinned ? "#000" : "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
               </div>
+            </div>
+            <div onClick={() => setShowTheme(true)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer" }}>
+              <Sparkles size={18} color={T.muted} />
+              <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>Personnaliser</p>
+              <ChevronRight size={16} color={T.muted} />
             </div>
           </div>
         </div>
@@ -1600,10 +1658,19 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           })}
         </div>
 
+        <div onClick={() => setShowMedia(true)} style={{ padding: "20px", cursor: "pointer" }}>
+          <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Médias partagés</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 0", color: T.muted }}>
+            <Grid size={20} />
+            <span style={{ fontSize: 13 }}>Voir les photos et vidéos</span>
+            <ChevronRight size={16} />
+          </div>
+        </div>
+
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 10 }}>
           {!isCreator && (
             <>
-              <Btn onClick={() => setShowReport(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, color: T.text, fontSize: 15, textAlign: "left" }}>
+              <Btn onClick={() => setShowReport(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, color: T.text, fontSize: 15, textAlign: "left" }}>
                 <Flag size={17} />
                 Signaler le groupe
               </Btn>
@@ -1648,6 +1715,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           notify={notify}
         />
       )}
+      {showTheme && <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} onBack={() => setShowTheme(false)} />}
+      {showMedia && <GroupSharedMediaScreen T={T} Btn={Btn} group={group} sb={sb} onBack={() => setShowMedia(false)} />}
     </div>
   );
 }

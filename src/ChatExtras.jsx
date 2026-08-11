@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   ChevronLeft, User, Search, BellOff, Bell, MoreHorizontal,
-  Sparkles, Edit2, Clock, Lock, Users, Flag, ChevronRight, Grid, Check
+  Sparkles, Edit2, Clock, Lock, Users, Flag, ChevronRight, Grid, Check, X
 } from "lucide-react";
 
 function readIdList(key) { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; } }
@@ -710,11 +710,127 @@ export function EphemeralSettingsScreen({ T, Btn, conv, sb, onBack, reload, noti
     </div>
   );
 }
+const BUBBLE_COLORS = [
+  { id: "gold", value: null, swatch: "linear-gradient(135deg,#D4AF37,#C9952A)" },
+  { id: "blue", value: "#4A90D9", swatch: "#4A90D9" },
+  { id: "purple", value: "#7C3AED", swatch: "#7C3AED" },
+  { id: "pink", value: "#E0559A", swatch: "#E0559A" },
+  { id: "red", value: "#E05252", swatch: "#E05252" },
+  { id: "orange", value: "#E08A3C", swatch: "#E08A3C" },
+  { id: "teal", value: "#2FA88F", swatch: "#2FA88F" },
+  { id: "green", value: "#3DB654", swatch: "#3DB654" },
+];
+const FONT_SIZE_OPTIONS = [{ key: "small", label: "Petit" }, { key: "normal", label: "Normal" }, { key: "large", label: "Grand" }];
+
+export function ChatPersonalizationScreen({ T, Btn, conv, onBack }) {
+  const [color, setColor] = useState(() => { try { return localStorage.getItem(`chat_color_${conv.id}`) || null; } catch { return null; } });
+  const [fontSizeKey, setFontSizeKeyState] = useState(() => { try { return localStorage.getItem(`chat_fontsize_${conv.id}`) || "normal"; } catch { return "normal"; } });
+
+  const applyColor = (value) => {
+    setColor(value);
+    try { if (value) localStorage.setItem(`chat_color_${conv.id}`, value); else localStorage.removeItem(`chat_color_${conv.id}`); } catch {}
+    window.dispatchEvent(new CustomEvent("celeste_chat_style_change", { detail: { convId: conv.id } }));
+  };
+  const applyFontSize = (key) => {
+    setFontSizeKeyState(key);
+    try { localStorage.setItem(`chat_fontsize_${conv.id}`, key); } catch {}
+    window.dispatchEvent(new CustomEvent("celeste_chat_style_change", { detail: { convId: conv.id } }));
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: T.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
+        <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
+        <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Personnaliser</p>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+        <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Couleur des bulles</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 26 }}>
+          {BUBBLE_COLORS.map(c => (
+            <div key={c.id} onClick={() => applyColor(c.value)} style={{ width: 40, height: 40, borderRadius: "50%", background: c.swatch, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", border: color === c.value ? `2px solid ${T.text}` : "2px solid transparent" }}>
+              {color === c.value && <Check size={16} color="#fff" />}
+            </div>
+          ))}
+        </div>
+        <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Taille du texte</p>
+        <div style={{ borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+          {FONT_SIZE_OPTIONS.map((o, i) => (
+            <div key={o.key} onClick={() => applyFontSize(o.key)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", cursor: "pointer", borderBottom: i < FONT_SIZE_OPTIONS.length - 1 ? `1px solid ${T.border}` : "none" }}>
+              <p style={{ margin: 0, fontSize: 14, color: T.text }}>{o.label}</p>
+              {fontSizeKey === o.key && <Check size={16} color={T.gold} />}
+            </div>
+          ))}
+        </div>
+        <p style={{ margin: "16px 4px 0", fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
+          Ce réglage n'est visible que sur cet appareil, comme le fond d'écran de la discussion.
+        </p>
+      </div>
+    </div>
+  );
+}
+export function SharedMediaScreen({ T, Btn, conv, sb, onBack }) {
+  const [items, setItems] = useState(null);
+  const [playingVideo, setPlayingVideo] = useState(null);
+
+  useEffect(() => {
+    if (!conv?.id) return;
+    sb.from("messages").select("id,type,file_url,created_at")
+      .eq("conv_id", conv.id).in("type", ["photo", "video"]).eq("view_once", false)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setItems(data || []));
+  }, [conv?.id, sb]);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: T.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
+        <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
+        <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>Médias partagés</p>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 2 }}>
+        {items === null ? (
+          <p style={{ textAlign: "center", color: T.muted, fontSize: 13, marginTop: 40 }}>Chargement…</p>
+        ) : items.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "60px 0", color: T.muted }}>
+            <Grid size={28} />
+            <span style={{ fontSize: 13 }}>Aucun média partagé pour l'instant</span>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+            {items.map(it => (
+              <div key={it.id} onClick={() => it.type === "video" ? setPlayingVideo(it.file_url) : window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: it.file_url } }))}
+                style={{ position: "relative", aspectRatio: "1", cursor: "pointer", background: T.glassMid }}>
+                {it.type === "video"
+                  ? <video src={it.file_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} muted />
+                  : <img src={it.file_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                }
+                {it.type === "video" && (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderLeft: "9px solid #fff", marginLeft: 2 }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {playingVideo && (
+        <div onClick={() => setPlayingVideo(null)} style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <video src={playingVideo} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "100%" }} onClick={e => e.stopPropagation()} />
+          <Btn onClick={() => setPlayingVideo(null)} style={{ position: "absolute", top: "calc(14px + env(safe-area-inset-top,0px))", right: 14, color: "#fff", padding: 8 }}><X size={26} /></Btn>
+        </div>
+      )}
+    </div>
+  );
+}
 export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBack, onOpenProfile, onCreateGroup, notify, reload }) {
   const soon = (label) => () => notify?.(`${label} — bientôt disponible ✦`);
   const [muted, setMuted] = useState(() => conv ? isConvMuted(conv.id) : false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showEphemeral, setShowEphemeral] = useState(false);
+  const [showTheme, setShowTheme] = useState(false);
+  const [showMedia, setShowMedia] = useState(false);
   const ephemeralLabel = conv?.ephemeral_ttl_seconds === 86400 ? "24 heures" : conv?.ephemeral_ttl_seconds === 604800 ? "7 jours" : conv?.ephemeral_ttl_seconds === 7776000 ? "90 jours" : "Désactivé";
 
   const toggleMute = async () => {
@@ -731,7 +847,7 @@ export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBac
   ];
 
   const listItems = [
-    { key: "theme", title: "Personnaliser", subtitle: "Thème et police", Icon: Sparkles, onClick: soon("Personnalisation") },
+    { key: "theme", title: "Personnaliser", subtitle: "Thème et police", Icon: Sparkles, onClick: () => setShowTheme(true) },
     { key: "eph", title: "Messages éphémères", subtitle: ephemeralLabel, Icon: Clock, onClick: () => setShowEphemeral(true) },
     { key: "privacy", title: "Confidentialité et sécurité", Icon: Lock, onClick: () => setShowPrivacy(true) },
     { key: "group", title: "Créer une discussion de groupe", Icon: Users, onClick: () => onCreateGroup && onCreateGroup(user) },
@@ -749,6 +865,10 @@ export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBac
       <EphemeralSettingsScreen T={T} Btn={Btn} conv={conv} sb={sb}
         onBack={() => setShowEphemeral(false)} reload={reload} notify={notify} />
     );
+  }
+
+  if (showTheme) {
+    return <ChatPersonalizationScreen T={T} Btn={Btn} conv={conv} onBack={() => setShowTheme(false)} />;
   }
 
   return (
@@ -799,14 +919,18 @@ export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBac
           ))}
         </div>
 
-        <div style={{ padding: "20px" }}>
+       <div onClick={() => setShowMedia(true)} style={{ padding: "20px", cursor: "pointer" }}>
           <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Médias partagés</p>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "30px 0", color: T.muted }}>
-            <Grid size={28} />
-            <span style={{ fontSize: 13 }}>Bientôt disponible</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 0", color: T.muted }}>
+            <Grid size={20} />
+            <span style={{ fontSize: 13 }}>Voir les photos et vidéos</span>
+            <ChevronRight size={16} />
           </div>
         </div>
       </div>
+      {showMedia && <SharedMediaScreen T={T} Btn={Btn} conv={conv} sb={sb} onBack={() => setShowMedia(false)} />}
+      {showPrivacy && <ConversationPrivacyScreen T={T} Btn={Btn} conv={conv} sb={sb} myId={myId}
+        userName={user?.fullName || user?.name} onBack={() => setShowPrivacy(false)} reload={reload} notify={notify} />}
     </div>
   );
 }

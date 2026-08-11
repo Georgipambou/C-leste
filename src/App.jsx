@@ -35,7 +35,8 @@ import {
   editMessage, EditedBadge,
   ChatSearchBar, filterMessagesByQuery,
   SwipeToReply, useLongPress, InlineReactionPicker,
-  ConversationInfoScreen, ConvPinGateScreen, isConvLocked, removeConvLock
+  ConversationInfoScreen, ConvPinGateScreen, isConvLocked, removeConvLock,
+  isConvMuted
 } from "./ChatExtras";
 import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
 import { processGroupQueue } from "./lib/groupMessageQueue";
@@ -6141,6 +6142,8 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               <p style={{margin:0,fontSize:14,fontWeight:unreads>0?700:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name||"?"}</p>
               {isFav&&<span style={{fontSize:12}}>⭐</span>}
               {locked&&<Lock size={11} color={T.muted}/>}
+              {isConvMuted(c.id)&&<BellOff size={11} color={T.muted}/>}
+              {c.ephemeral_ttl_seconds&&<Clock size={11} color={T.muted}/>}
             </div>
             <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
           </div>
@@ -6586,8 +6589,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     }catch(e){ convId=conv.id; }
   }
   if(!convId)return;
-  const finalPayload=conv.ephemeral_ttl_seconds?{...payload,expires_at:new Date(Date.now()+conv.ephemeral_ttl_seconds*1000).toISOString()}:payload;
-  enqueueMessage(convId,session?.user?.id,finalPayload);
+  enqueueMessage(convId,session?.user?.id,payload);
   setAttach(false);playChatSound("send");
   processQueue(sb,notify).then(reload);
 };
@@ -6596,6 +6598,17 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   const [showStickerPicker,setShowStickerPicker]=useState(false);
   const [viewOnceNext,setViewOnceNext]=useState(false);
   const [revealedOnce,setRevealedOnce]=useState(()=>new Set());
+  const [bubbleColor,setBubbleColor]=useState(()=>{try{return localStorage.getItem(`chat_color_${conv.id}`)||null;}catch{return null;}});
+  const [fontSizeKey,setFontSizeKey]=useState(()=>{try{return localStorage.getItem(`chat_fontsize_${conv.id}`)||"normal";}catch{return"normal";}});
+  useEffect(()=>{
+    const h=e=>{
+      if(e.detail?.convId!==conv.id)return;
+      try{setBubbleColor(localStorage.getItem(`chat_color_${conv.id}`)||null);setFontSizeKey(localStorage.getItem(`chat_fontsize_${conv.id}`)||"normal");}catch{}
+    };
+    window.addEventListener("celeste_chat_style_change",h);
+    return()=>window.removeEventListener("celeste_chat_style_change",h);
+  },[conv.id]);
+  const FONT_SIZES={small:13,normal:14,large:17};
   const revealOnce=async(m)=>{
     setRevealedOnce(p=>new Set([...p,m.id]));
     try{await sb.from("messages").update({viewed_at:new Date().toISOString()}).eq("id",m.id);}catch{}
@@ -6665,7 +6678,7 @@ const handleFile=async(e,isImg)=>{
       }
       let error,attempt=0;
       while(attempt<3){
-        const res=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:"",view_once:wantViewOnce&&fileType!=="file",expires_at:conv.ephemeral_ttl_seconds?new Date(Date.now()+conv.ephemeral_ttl_seconds*1000).toISOString():null});
+        const res=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:"",view_once:wantViewOnce&&fileType!=="file"});
         error=res.error;
         if(!error)break;
         attempt++;
@@ -6809,7 +6822,10 @@ const handleFile=async(e,isImg)=>{
     {user.online&&<span style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#3DB654",border:"2px solid #000"}}/>}
   </div>
   <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onOpenConvInfo&&onOpenConvInfo(user.id)}>
-    <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.fullName||user.name}</p>
+    <div style={{display:"flex",alignItems:"center",gap:5}}>
+      <p style={{margin:0,fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.fullName||user.name}</p>
+      {conv.ephemeral_ttl_seconds&&<Clock size={12} color={T.goldL}/>}
+    </div>
     <p style={{margin:0,fontSize:11,color:user.online?"#3DB654":T.muted}}>
       {user.online?"En ligne ✦":user.paroisse||"Hors ligne"}
     </p>
@@ -6849,11 +6865,11 @@ const handleFile=async(e,isImg)=>{
   onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
   onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}>
                <div style={{
-  background:m.type==="sticker"?"transparent":(mine?T.gradGold:"rgba(255,255,255,0.09)"),
+  background:m.type==="sticker"?"transparent":(mine?(bubbleColor||T.gradGold):"rgba(255,255,255,0.09)"),
   borderRadius:m.type==="sticker"?0:(mine?"18px 18px 4px 18px":"18px 18px 18px 4px"),
   padding:m.type==="sticker"?0:"10px 14px",
   border:m.type==="sticker"?"none":(mine?"none":`1px solid ${T.border}`),
-  boxShadow:m.type==="sticker"?"none":(mine?"0 4px 20px rgba(201,149,42,0.25)":"0 2px 8px rgba(0,0,0,0.3)")
+  boxShadow:m.type==="sticker"?"none":(mine?(bubbleColor?`0 4px 20px ${bubbleColor}40`:"0 4px 20px rgba(201,149,42,0.25)"):"0 2px 8px rgba(0,0,0,0.3)")
 }}>
                   <HeartBurst show={burstMsgId===m.id}/>
                   <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>m.reply_to_id&&scrollToMessage(m.reply_to_id)}/>
@@ -6932,7 +6948,7 @@ const handleFile=async(e,isImg)=>{
                         )
                       : <video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>
                   )}
-                  {m.text&&<><p style={{margin:0,fontSize:14,fontWeight:600,color:mine?"#000":T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine}/></>}
+                  {m.text&&<><p style={{margin:0,fontSize:FONT_SIZES[fontSizeKey],fontWeight:600,color:mine?(bubbleColor?"#fff":"#000"):T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine&&!bubbleColor}/></>}
                 </div>
                 <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
                 {inlinePickerMsgId===m.id&&(
@@ -6977,9 +6993,7 @@ const handleFile=async(e,isImg)=>{
           <Btn onClick={()=>{iRef.current.click();setAttach(false);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:14,color:T.goldL,fontSize:12,fontWeight:600}}>
             <Camera size={20}/>Média
           </Btn>
-          <Btn onClick={()=>setViewOnceNext(v=>!v)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:viewOnceNext?T.gradGold:T.glassMid,border:`1px solid ${viewOnceNext?T.gold:T.border}`,borderRadius:14,color:viewOnceNext?"#000":T.sub,fontSize:12,fontWeight:600}}>
-            <Eye size={20}/>Vue unique
-          </Btn>
+          
           <Btn onClick={()=>{fRef.current.click();setAttach(false);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"12px 16px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.sub,fontSize:12,fontWeight:600}}>
             <Paperclip size={20}/>Fichier
           </Btn>
@@ -7008,6 +7022,7 @@ const handleFile=async(e,isImg)=>{
 </div>}
          <div style={{display:"flex",gap:6,alignItems:"flex-end",position:"relative"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
+  <Btn onClick={()=>setViewOnceNext(v=>!v)} style={{color:viewOnceNext?"#000":T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:viewOnceNext?T.gradGold:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Eye size={18}/></Btn>
   <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
   {showStickerPicker&&(
     <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
