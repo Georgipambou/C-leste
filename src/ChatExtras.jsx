@@ -351,7 +351,7 @@ export function SwipeToReply({ children, message, onReply, mine }) {
   const locked = useRef(null); // 'horizontal' | 'vertical' | null
   const elRef = useRef(null);
   const triggered = useRef(false);
-  const THRESHOLD = Math.min(80, Math.max(45, window.innerWidth * 0.12));
+  const THRESHOLD = Math.min(100, Math.max(65, window.innerWidth * 0.16));
 
   const onTouchStart = (e) => {
     startX.current = e.touches[0].clientX;
@@ -366,8 +366,8 @@ export function SwipeToReply({ children, message, onReply, mine }) {
     const dy = e.touches[0].clientY - startY.current;
 
     // Détermine la direction dominante une seule fois, dès qu'un mouvement net apparaît
-    if (locked.current === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      locked.current = Math.abs(dx) > Math.abs(dy) * 1.5 ? "horizontal" : "vertical";
+    if (locked.current === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      locked.current = Math.abs(dx) > Math.abs(dy) * 2.2 ? "horizontal" : "vertical";
     }
 
     // Si c'est un scroll vertical, on annule et on laisse la liste scroller normalement

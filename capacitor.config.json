@@ -1,5 +1,11 @@
 {
   "appId": "social.celesteapp",
   "appName": "Céleste",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "PrivacyScreen": {
+      "enable": true,
+      "preventScreenshots": true
+    }
+  }
 }

@@ -801,7 +801,10 @@ function GroupVoicePlayer({ src, mine, T }) {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
+  const [bars, setBars] = useState(null);
   const audioRef = useRef(null);
+  const barsRef = useRef(null);
+  const draggingRef = useRef(false);
   const fmt = s => { if (!s || isNaN(s)) return "0:00"; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; };
   useEffect(() => {
     const a = new Audio(src);
@@ -813,27 +816,65 @@ function GroupVoicePlayer({ src, mine, T }) {
     return () => { a.pause(); a.src = ""; };
   }, [src]);
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) throw new Error("no AudioContext");
+        const res = await fetch(src);
+        const buf = await res.arrayBuffer();
+        const ctx = new AudioCtx();
+        const decoded = await ctx.decodeAudioData(buf);
+        const raw = decoded.getChannelData(0);
+        const barCount = 32;
+        const step = Math.floor(raw.length / barCount) || 1;
+        const peaks = [];
+        for (let i = 0; i < barCount; i++) {
+          let max = 0;
+          for (let j = i * step; j < Math.min((i + 1) * step, raw.length); j++) { const v = Math.abs(raw[j]); if (v > max) max = v; }
+          peaks.push(max);
+        }
+        const maxPeak = Math.max(...peaks, 0.01);
+        if (!cancelled) setBars(peaks.map(p => Math.max(0.15, p / maxPeak)));
+        ctx.close();
+      } catch { if (!cancelled) setBars(Array.from({ length: 32 }, () => 0.4)); }
+    })();
+    return () => { cancelled = true; };
+  }, [src]);
   const toggle = () => {
     const a = audioRef.current; if (!a) return;
     if (playing) { a.pause(); setPlaying(false); } else { a.play(); setPlaying(true); }
   };
   const cycleSpeed = e => { e.stopPropagation(); setSpeed(s => (s === 1 ? 1.5 : s === 1.5 ? 2 : 1)); };
-  const seek = e => {
-    const a = audioRef.current; if (!a || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
+  const seekAtClientX = clientX => {
+    const a = audioRef.current, el = barsRef.current; if (!a || !el || !duration) return;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     a.currentTime = pct * duration;
+    setProgress(pct * 100);
   };
+  const onPointerDown = e => { draggingRef.current = true; seekAtClientX(e.touches ? e.touches[0].clientX : e.clientX); };
+  const onPointerMove = e => { if (!draggingRef.current) return; seekAtClientX(e.touches ? e.touches[0].clientX : e.clientX); };
+  const onPointerUp = () => { draggingRef.current = false; };
+  const displayBars = bars || Array.from({ length: 32 }, () => 0.4);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 180, padding: "4px 0" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 200, padding: "4px 0" }}>
       <button onClick={toggle} style={{ width: 36, height: 36, borderRadius: "50%", background: mine ? "rgba(0,0,0,0.15)" : "rgba(201,149,42,0.15)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: mine ? "#000" : T.goldL }}>
         {playing
           ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
           : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
       </button>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
-        <div onClick={seek} style={{ height: 3, background: mine ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.12)", borderRadius: 2, cursor: "pointer", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${progress}%`, background: mine ? "rgba(0,0,0,0.5)" : T.goldL, borderRadius: 2, transition: "width 0.1s linear" }} />
+        <div ref={barsRef}
+          onMouseDown={onPointerDown} onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp}
+          onTouchStart={onPointerDown} onTouchMove={onPointerMove} onTouchEnd={onPointerUp}
+          style={{ display: "flex", alignItems: "center", gap: 2, height: 24, cursor: "pointer", touchAction: "none" }}>
+          {displayBars.map((h, i) => {
+            const barPct = (i / displayBars.length) * 100;
+            const played = barPct <= progress;
+            return (<div key={i} style={{ flex: 1, minWidth: 2, height: `${Math.round(h * 22) + 2}px`, borderRadius: 2, background: played ? (mine ? "rgba(0,0,0,0.55)" : T.goldL) : (mine ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.15)") }} />);
+          })}
         </div>
         <span style={{ fontSize: 10, color: mine ? "rgba(0,0,0,0.5)" : T.muted }}>{fmt(audioRef.current?.currentTime || 0)} / {fmt(duration)}</span>
       </div>
@@ -955,6 +996,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [groupOverride, setGroupOverride] = useState(null);
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [blockedIds, setBlockedIds] = useState(() => new Set());
+  const [revealedOnce, setRevealedOnce] = useState(() => new Set());
   const displayGroup = groupOverride ? { ...group, ...groupOverride } : group;
   const canWrite = !displayGroup.announce_only || isGroupAdmin;
   const bottomRef = useRef(null);
@@ -1004,12 +1046,13 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   useEffect(() => {
     // FLAG_SECURE côté Android : écran noir sur capture/enregistrement tant que
-    // secure_mode est actif sur ce groupe. Se désactive aussi si l'admin le
-    // repasse à false pendant que le chat est ouvert.
-    if (displayGroup.secure_mode) { PrivacyScreen.enable().catch(() => {}); }
+    // secure_mode est actif sur ce groupe, OU qu'un média vue-unique est
+    // actuellement révélé à l'écran (sinon la vue unique ne protège de rien).
+    // Se désactive aussi si l'admin repasse secure_mode à false pendant que le chat est ouvert.
+    if (displayGroup.secure_mode || revealedOnce.size > 0) { PrivacyScreen.enable().catch(() => {}); }
     else { PrivacyScreen.disable().catch(() => {}); }
     return () => { PrivacyScreen.disable().catch(() => {}); };
-  }, [displayGroup.secure_mode]);
+  }, [displayGroup.secure_mode, revealedOnce]);
 
 
   const load = useCallback(async () => {
@@ -1031,9 +1074,15 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     return () => { sb.removeChannel(ch); };
   }, [sb, group.id, load]);
 
+  const [lastReadAt, setLastReadAt] = useState(undefined); // undefined = pas encore chargé, null = jamais lu
+  const initialScrollRef = useRef(false);
   useEffect(() => {
     if (!group?.id || !myId) return;
-    Promise.resolve(sb.rpc("mark_group_read", { p_group_id: group.id })).catch(() => {});
+    sb.from("group_members").select("last_read_at").eq("group_id", group.id).eq("user_id", myId).maybeSingle()
+      .then(({ data }) => {
+        setLastReadAt(data?.last_read_at || null);
+        Promise.resolve(sb.rpc("mark_group_read", { p_group_id: group.id })).catch(() => {});
+      });
   }, [sb, group?.id, myId]);
 
   useEffect(() => {
@@ -1043,7 +1092,25 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     return () => window.removeEventListener("online", onOnline);
   }, [sb, group.id]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [msgs.length]);
+  useEffect(() => {
+    if (!msgs.length || lastReadAt === undefined) return;
+    if (!initialScrollRef.current) {
+      initialScrollRef.current = true;
+      const firstUnread = lastReadAt
+        ? msgs.find(m => m.sender_id !== myId && new Date(m.created_at) > new Date(lastReadAt))
+        : null;
+      const target = firstUnread ? msgRefs.current[firstUnread.id] : null;
+      if (target) {
+        target.scrollIntoView({ block: "start" });
+        setHighlightMsgId(firstUnread.id);
+        setTimeout(() => setHighlightMsgId(h => (h === firstUnread.id ? null : h)), 1500);
+      } else {
+        bottomRef.current?.scrollIntoView({ block: "end" });
+      }
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [msgs.length, lastReadAt, myId]);
 
   useEffect(() => {
     try { const s = localStorage.getItem(`chat_bg_group_${group.id}`); if (s) setBgPhoto(s); } catch (_) {}
@@ -1058,7 +1125,6 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const [viewOnceNext, setViewOnceNext] = useState(false);
-  const [revealedOnce, setRevealedOnce] = useState(() => new Set());
   const revealOnce = async (msgId) => {
     setRevealedOnce(p => new Set([...p, msgId]));
     try { await sb.from("group_message_views").insert({ message_id: msgId, viewer_id: myId }); } catch {}
@@ -1130,7 +1196,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   const sendSticker = (sticker) => {
     setShowStickerPicker(false);
-    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id });
+    const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
+    enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id, ...replyPayload });
+    setReplyTo(null);
     processGroupQueue(sb, notify).then(load);
     Promise.resolve(sb.rpc("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
   };
@@ -1580,6 +1648,9 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     notify?.("Signalement envoyé ✦");
   };
 
+  if (showTheme) return <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} onBack={() => setShowTheme(false)} />;
+  if (showMedia) return <GroupSharedMediaScreen T={T} Btn={Btn} group={group} sb={sb} onBack={() => setShowMedia(false)} />;
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 270, background: T.bg, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
@@ -1715,9 +1786,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           notify={notify}
         />
       )}
-      {showTheme && <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} onBack={() => setShowTheme(false)} />}
-      {showMedia && <GroupSharedMediaScreen T={T} Btn={Btn} group={group} sb={sb} onBack={() => setShowMedia(false)} />}
-    </div>
+      </div>
   );
 }
 /* ============================================================
