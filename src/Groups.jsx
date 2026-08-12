@@ -53,6 +53,22 @@ export function toggleGroupPin(groupId) {
   writeIdList("celeste_pinned_groups", next);
   return next.includes(groupId);
 }
+export function isGroupFavorite(groupId) {
+  return readIdList("celeste_favorite_groups").includes(groupId);
+}
+export function toggleGroupFavorite(groupId) {
+  const list = readIdList("celeste_favorite_groups");
+  const next = list.includes(groupId) ? list.filter(id => id !== groupId) : [...list, groupId];
+  writeIdList("celeste_favorite_groups", next);
+  return next.includes(groupId);
+}
+export function isGroupHidden(groupId) {
+  return readIdList("celeste_hidden_groups").includes(groupId);
+}
+export function hideGroupForMe(groupId) {
+  const list = readIdList("celeste_hidden_groups");
+  writeIdList("celeste_hidden_groups", [...new Set([...list, groupId])]);
+}
 export function isGroupMuted(groupId) {
   return readIdList("celeste_muted_groups").includes(groupId);
 }
@@ -195,7 +211,7 @@ export function useMyGroups(sb, userId) {
   return { groups, reloadGroups: load };
 }
 
-export function GroupRow({ g, T, Av, onOpen }) {
+export function GroupRow({ g, T, Av, onOpen, onLongPress }) {
   const hasLast = !!g.lastMessageAt;
   const previewBody = g.lastMessageType === "photo" ? "📷 Photo"
     : g.lastMessageType === "video" ? "🎥 Vidéo"
@@ -209,15 +225,23 @@ export function GroupRow({ g, T, Av, onOpen }) {
       ? (g.lastSenderName ? `${g.lastSenderName} : ${previewBody}` : previewBody)
       : "Groupe";
   const pinned = isGroupPinned(g.id);
+  const fav = isGroupFavorite(g.id);
   const muted = g.muted ?? isGroupMuted(g.id);
   const unread = g.unreadCount > 0;
+  const pressTimerRef = useRef(null);
   return (
-    <div onClick={() => onOpen(g)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer", background: pinned ? "rgba(255,255,255,0.03)" : "transparent" }}>
+    <div onClick={() => onOpen(g)}
+      onContextMenu={e => { e.preventDefault(); onLongPress?.(g.id); }}
+      onTouchStart={e => { const startY = e.touches[0].clientY; const startX = e.touches[0].clientX; pressTimerRef.current = setTimeout(() => onLongPress?.(g.id), 600); e.currentTarget._startY = startY; e.currentTarget._startX = startX; }}
+      onTouchMove={e => { const dy = Math.abs(e.touches[0].clientY - (e.currentTarget._startY || 0)); const dx = Math.abs(e.touches[0].clientX - (e.currentTarget._startX || 0)); if (dy > 10 || dx > 10) clearTimeout(pressTimerRef.current); }}
+      onTouchEnd={() => clearTimeout(pressTimerRef.current)}
+      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer", background: pinned ? "rgba(255,255,255,0.03)" : "transparent" }}>
       <Av u={{ name: g.name, avatar_url: g.photo_url, initials: (g.name || "?").slice(0, 2).toUpperCase(), color: "#888" }} size={48} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
           {pinned && <Pin size={12} color={T.goldL} style={{ flexShrink: 0 }} />}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</span>
+          {fav && <span style={{ fontSize: 12, flexShrink: 0 }}>⭐</span>}
         </p>
         <p style={{ margin: 0, fontSize: 12, color: unread ? T.text : T.muted, fontWeight: unread ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview}</p>
       </div>
@@ -883,7 +907,7 @@ function GroupVoicePlayer({ src, mine, T }) {
   );
 }
 
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, onRevealOnce }) {
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, onRevealOnce, bubbleColor, fontSizeKey }) {
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
@@ -913,8 +937,8 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
             onClick={onDoubleTap}
             style={{
               padding: m.type === "photo" || m.type === "sticker" || m.type === "video" ? 3 : "9px 13px", borderRadius: 16,
-              background: m.type === "sticker" ? "transparent" : (mine ? T.gradGold : (isLightBg(T.bg) ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.07)")),
-              color: mine ? "#000" : T.text, fontSize: 14, fontWeight: 500, wordBreak: "break-word", cursor: "pointer", position: "relative"
+              background: m.type === "sticker" ? "transparent" : (mine ? (bubbleColor || T.gradGold) : (isLightBg(T.bg) ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.07)")),
+              color: mine ? (bubbleColor ? "#fff" : "#000") : T.text, fontSize: { small: 13, normal: 14, large: 17 }[fontSizeKey] || 14, fontWeight: 500, wordBreak: "break-word", cursor: "pointer", position: "relative"
             }}
           >
             <HeartBurst show={burstOn} />
@@ -997,6 +1021,16 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [blockedIds, setBlockedIds] = useState(() => new Set());
   const [revealedOnce, setRevealedOnce] = useState(() => new Set());
+  const [bubbleColor, setBubbleColor] = useState(() => { try { return localStorage.getItem(`chat_color_${group.id}`) || null; } catch { return null; } });
+  const [fontSizeKey, setFontSizeKey] = useState(() => { try { return localStorage.getItem(`chat_fontsize_${group.id}`) || "normal"; } catch { return "normal"; } });
+  useEffect(() => {
+    const h = e => {
+      if (e.detail?.convId !== group.id) return;
+      try { setBubbleColor(localStorage.getItem(`chat_color_${group.id}`) || null); setFontSizeKey(localStorage.getItem(`chat_fontsize_${group.id}`) || "normal"); } catch {}
+    };
+    window.addEventListener("celeste_chat_style_change", h);
+    return () => window.removeEventListener("celeste_chat_style_change", h);
+  }, [group.id]);
   const displayGroup = groupOverride ? { ...group, ...groupOverride } : group;
   const canWrite = !displayGroup.announce_only || isGroupAdmin;
   const bottomRef = useRef(null);
@@ -1359,6 +1393,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 highlighted={highlightMsgId === item.id}
                 revealedOnce={revealedOnce}
                 onRevealOnce={revealOnce}
+                bubbleColor={bubbleColor}
+                fontSizeKey={fontSizeKey}
               />
             )
         )}

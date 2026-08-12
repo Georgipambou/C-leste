@@ -40,7 +40,7 @@ import {
 } from "./ChatExtras";
 import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
 import { processGroupQueue } from "./lib/groupMessageQueue";
-import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen, usePendingGroupInvites, PendingGroupInviteCard, isGroupPinned } from "./Groups";
+import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen, usePendingGroupInvites, PendingGroupInviteCard, isGroupPinned, toggleGroupPin, isGroupFavorite, toggleGroupFavorite, isGroupHidden, hideGroupForMe } from "./Groups";
 
 import {
   useState, useRef, useEffect, useCallback, useMemo, memo, createContext, useContext
@@ -940,8 +940,9 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
   const handleStatusCapture=e=>{
     if(!showRing||!_statusId)return;
     e.stopPropagation();
-    window.__celesteSetTab?.("statuses");
-    setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})),400);
+    const originTab=window.__celesteGetTab?.();
+    if(originTab&&originTab!=="statuses")window.__celesteStatusReturnTab=originTab;
+    window.__celesteSetTab?.("statuses",()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})));
   };
   return(
     <div onClick={onClick} onClickCapture={handleStatusCapture} style={{position:"relative",flexShrink:0,width:size,height:size,cursor:onClick?"pointer":"default"}}>
@@ -1843,9 +1844,8 @@ function NotifsScreen({myProfile,session,members}){
                       return;
                     }
                     if(n.type==="group_invite"){
-                      setTab("messages");
                       window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
-                      setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_groups_tab",{})),350);
+                      window.__celesteSetTab?.("messages",()=>window.dispatchEvent(new CustomEvent("celeste_open_groups_tab",{})));
                       return;
                     }
                     if(n.type==="status_like"||n.type==="status_view"){
@@ -1853,8 +1853,7 @@ function NotifsScreen({myProfile,session,members}){
                       const{data}=await sb.from("statuses").select("id").eq("id",n.status_id).maybeSingle();
                       if(!data){alert("Ce statut n'existe plus.");return;}
                       window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
-                      setTab("statuses");
-                      setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:n.status_id}})),400);
+                      window.__celesteSetTab?.("statuses",()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:n.status_id}})));
                       return;
                     }
                     if(n.post_id){
@@ -2518,7 +2517,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
         )}
       </div>
 
-      <div style={{flex:1,minWidth:0,overflow:showReplyStickerPicker?"visible":"hidden"}}>
+      <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
           <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{author?.name||"?"}</span>
           {(isMine||comment.text)&&(
@@ -3547,8 +3546,10 @@ setUploading(false);setUploadPct(0);
     if(type==="text"&&!text.trim())return;
     if(type!=="text"&&!mediaUrl)return;
     setBusy(true);
-    await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null,sound_id:selectedSound?.id||null});
-    setBusy(false);onDone();
+    const{error}=await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null,sound_id:selectedSound?.id||null});
+    setBusy(false);
+    if(error){console.error("Erreur publication statut:",error);return;}
+    onDone();
   };
 
   return(
@@ -3669,6 +3670,7 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,onNextGroup,onPrevG
   const [soundDuration,setSoundDuration]=useState(null);
   const [soundBlocked,setSoundBlocked]=useState(false);
   const viewed=useRef(new Set());
+  useEffect(()=>{viewed.current=new Set();},[author?.id]);
   const closingRef=useRef(false);
   const lastTapRef=useRef({time:0,x:0});
   const tapTimerRef=useRef(null);
@@ -3741,7 +3743,11 @@ if(isMe){
     if(isVideo&&(!videoRef.current||videoRef.current.readyState<1))return;
     if(!mediaReady)return;
     const hasSound=!!(current?.sound?.url&&!isVideo);
-    if(hasSound&&soundDuration===null)return;
+    if(hasSound&&soundDuration===null){
+      const step=100/(10000/50);
+      progressRef.current=setInterval(()=>{setProgress(p=>Math.min(p+step,100));},50);
+      return()=>clearInterval(progressRef.current);
+    }
     const duration=isVideo&&videoRef.current?.duration?Math.min(videoRef.current.duration,90)*1000:(hasSound?soundDuration:(current.type==="text"?5000:10000));
     const step=100/(duration/50);
     progressRef.current=setInterval(()=>{
@@ -4124,7 +4130,7 @@ useEffect(()=>{
           author={viewing.author}
           isMe={viewing.author?.id===session?.user?.id}
           onDelete={delStatus}
-          onClose={()=>{popNav();setViewing(null);setViewingIdx(-1);load();setHideNav(false);}}
+          onClose={()=>{popNav();setViewing(null);setViewingIdx(-1);load();setHideNav(false);if(window.__celesteStatusReturnTab){const rt=window.__celesteStatusReturnTab;window.__celesteStatusReturnTab=null;window.__celesteSetTab?.(rt);}}}
           onNextGroup={viewingIdx>=0?()=>goToGroupOffset(1):undefined}
           onPrevGroup={viewingIdx>=0?()=>goToGroupOffset(-1):undefined}
           session={session}
@@ -4166,7 +4172,7 @@ useEffect(()=>{
                 <div key={g.author?.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,borderRadius:18,border:`1px solid ${T.border}`,cursor:"pointer",animation:`fadeUp .3s ease ${i*.04}s both`,transition:"all .2s"}}
                   onClick={()=>{pushNav(()=>{setViewing(null);setViewingIdx(-1);setHideNav(false);});setViewing(g);setViewingIdx(i);setHideNav(true);}}>
                   <Av u={g.author} size={52} ring={!g.allViewed}/>
-                  <div style={{flex:1,minWidth:0,overflow:showReplyStickerPicker?"visible":"hidden"}}>
+                  <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                     <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:T.text}}>{g.author?.name}</p>
                     <p style={{margin:0,fontSize:11,color:T.muted}}><MapPin size={11}/> {g.author?.paroisse} · {ago(g.statuses[0]?.ts)}</p>
                   </div>
@@ -6087,6 +6093,7 @@ function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,member
   const [favorites,setFavorites]=useState(()=>{try{return JSON.parse(localStorage.getItem(celesteScopedKey("celeste_favs"))||"[]");}catch{return[];}});
 const [pinned,setPinned]=useState(()=>{try{return JSON.parse(localStorage.getItem(celesteScopedKey("celeste_pins"))||"[]");}catch{return[];}});
 const [menuConvId,setMenuConvId]=useState(null);
+const [menuGroupId,setMenuGroupId]=useState(null);
 const pressTimer=useRef(null);
 
   const toggleFav=id=>{const next=favorites.includes(id)?favorites.filter(f=>f!==id):[...favorites,id];setFavorites(next);localStorage.setItem(celesteScopedKey("celeste_favs"),JSON.stringify(next));};
@@ -6118,7 +6125,7 @@ const openMenu=id=>{setMenuConvId(id);};
     return matchQuery(u?.fullName,q)||matchQuery(u?.paroisse,q);
   };
   const visibleUnifiedAll=useMemo(()=>unifiedAll.filter(matchItem),[unifiedAll,q]);
-  const visibleGroups=useMemo(()=>(groups||[]).filter(g=>!q||matchQuery(g.name,q)),[groups,q]);
+  const visibleGroups=useMemo(()=>(groups||[]).filter(g=>!isGroupHidden(g.id)&&(!q||matchQuery(g.name,q))),[groups,q]);
   const {invites,reloadInvites}=usePendingGroupInvites(sb,session?.user?.id);
   useEffect(()=>{
     const onOpenGroups=()=>setFilter("groupes");
@@ -6135,6 +6142,7 @@ const openMenu=id=>{setMenuConvId(id);};
     return true;
   });
   const unreadGroups=(groups||[]).filter(g=>g.unreadCount>0&&(!q||matchQuery(g.name,q)));
+  const favoriteGroups=(groups||[]).filter(g=>isGroupFavorite(g.id)&&(!q||matchQuery(g.name,q)));
 
   const fmtTime=ts=>{
     if(!ts)return"";
@@ -6150,8 +6158,8 @@ const openMenu=id=>{setMenuConvId(id);};
     const last=c.msgs[c.msgs.length-1];
     const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
     const locked=isConvLocked(c.id);
-    const previewIcon=locked?null:!last?null:last.type==="photo"?<Image size={13}/>:last.type==="file"?<Paperclip size={13}/>:last.type==="voice"?<Mic size={13}/>:null;
-    const prev=locked?"Conversation verrouillée":!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
+    const previewIcon=locked?null:!last?null:last.type==="photo"?<Image size={13}/>:last.type==="file"?<Paperclip size={13}/>:last.type==="voice"?<Mic size={13}/>:last.type==="sticker"?<span style={{fontSize:13}}>🙂</span>:last.type==="post_share"?<Share2 size={13}/>:null;
+    const prev=locked?"Conversation verrouillée":!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.type==="sticker"?"Autocollant":last.type==="post_share"?"Publication partagée":last.type==="status_reply"?"A répondu à votre statut":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
     const isFav=favorites.includes(c.id);
     const peerStatus=typingMap[c.id]||null;
     const isTyping=peerStatus==="typing";
@@ -6248,7 +6256,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               </div>
             )}
             {[...visibleGroups].sort((a,b)=>(isGroupPinned(b.id)?1:0)-(isGroupPinned(a.id)?1:0)).map(g=>(
-              <GroupRow key={g.id} g={g} T={T} Av={Av} onOpen={onOpenGroup}/>
+              <GroupRow key={g.id} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
             ))}
           </>
         )}
@@ -6261,13 +6269,16 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         )}
         {filter==="tous"&&visibleUnifiedAll.map(item=>(
           item.kind==="group"
-            ? <GroupRow key={`g_${item.id}`} g={item.data} T={T} Av={Av} onOpen={onOpenGroup}/>
+            ? <GroupRow key={`g_${item.id}`} g={item.data} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
             : renderConvRow(item.data)
         ))}
         {filter==="nonlus"&&unreadGroups.map(g=>(
-          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup}/>
+          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
         ))}
-        {(filter==="nonlus"||filter==="favoris")&&filtered.length===0&&unreadGroups.length===0&&(
+        {filter==="favoris"&&favoriteGroups.map(g=>(
+          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
+        ))}
+        {(filter==="nonlus"||filter==="favoris")&&filtered.length===0&&unreadGroups.length===0&&favoriteGroups.length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
             <div style={{marginBottom:16,display:"flex",justifyContent:"center",opacity:.3}}><Mail size={48}/></div>
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune conversation</p>
@@ -6284,6 +6295,22 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         {ic:<Star size={20}/>,label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);setMenuConvId(null);}},
         {ic:<Pin size={20}/>,label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
         {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);setMenuConvId(null);},danger:true},
+      ].map(opt=>(
+        <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
+          <span style={{display:"flex",alignItems:"center"}}>{opt.ic}</span>{opt.label}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
+{menuGroupId&&(
+  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuGroupId(null)}>
+    <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"24px 24px 0 0",padding:"20px 0 40px"}} onClick={e=>e.stopPropagation()}>
+      <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
+      {[
+        {ic:<Star size={20}/>,label:isGroupFavorite(menuGroupId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleGroupFavorite(menuGroupId);setMenuGroupId(null);}},
+        {ic:<Pin size={20}/>,label:isGroupPinned(menuGroupId)?"Désépingler":"Épingler",action:()=>{toggleGroupPin(menuGroupId);setMenuGroupId(null);}},
+        {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{hideGroupForMe(menuGroupId);setMenuGroupId(null);},danger:true},
       ].map(opt=>(
         <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
           <span style={{display:"flex",alignItems:"center"}}>{opt.ic}</span>{opt.label}
@@ -6655,6 +6682,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   };
 
   const sendMsg=async payload=>{
+  if(isBlocked){notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><Ban size={14}/>Impossible d'envoyer ce message</span>);return;}
   let convId=conv.id;
   if(navigator.onLine){
     try{
@@ -6951,7 +6979,7 @@ const handleFile=async(e,isImg)=>{
                   <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>m.reply_to_id&&scrollToMessage(m.reply_to_id)}/>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
-    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.dispatchEvent(new CustomEvent("celeste_close_conv"));window.__celesteSetTab?.("statuses");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})),400);}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
+    <div onClick={()=>{if(!m.reply_metadata?.statusId)return;window.dispatchEvent(new CustomEvent("celeste_close_conv"));window.__celesteSetTab?.("statuses",()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:m.reply_metadata.statusId}})));}} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4,cursor:m.reply_metadata?.statusId?"pointer":"default"}}>
       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",flexShrink:0,background:"rgba(0,0,0,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {m.reply_metadata?.mediaUrl&&m.reply_metadata?.type!=="video"&&(
           <img src={m.reply_metadata.mediaUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
@@ -10149,7 +10177,18 @@ function CelesteApp(){
 };
 checkShared();
 CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
-  useEffect(()=>{window.__celesteSetTab=setTab;return()=>{delete window.__celesteSetTab;};},[]);
+  useEffect(()=>{
+  window.__celesteSetTab=(t,cb)=>{
+    if(cb&&tab===t){cb();return;}
+    setTab(t);
+    if(cb)window.__celesteTabChangeCb=cb;
+  };
+  window.__celesteGetTab=()=>tab;
+  return()=>{delete window.__celesteSetTab;delete window.__celesteGetTab;};
+},[tab]);
+useEffect(()=>{
+  if(window.__celesteTabChangeCb){const cb=window.__celesteTabChangeCb;window.__celesteTabChangeCb=null;cb();}
+},[tab]);
   useEffect(()=>{
     const h=()=>{setOpenConvId(null);setOpenUserId(null);};
     window.addEventListener("celeste_close_conv",h);
@@ -10603,7 +10642,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           if(cv.id!==nm.conv_id)return cv;
           const alreadyExists=(cv.msgs||[]).some(m=>m.id===nm.id);
           if(alreadyExists)return cv;
-          const newMsg={id:nm.id,f:nm.sender_id===myId?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:nm.reply_metadata||null};
+          const newMsg={id:nm.id,f:nm.sender_id===myId?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:typeof nm.reply_metadata==="string"?JSON.parse(nm.reply_metadata):nm.reply_metadata||null,reply_to_id:nm.reply_to_id||null,reply_to_text:nm.reply_to_text||null,reply_to_author:nm.reply_to_author||null,reactions:nm.reactions||null,edited_at:nm.edited_at||null,sticker_id:nm.sticker_id||null,shared_post_id:nm.shared_post_id||null,view_once:!!nm.view_once,viewed_at:nm.viewed_at||null};
           return{...cv,msgs:[...(cv.msgs||[]),newMsg]};
         }));
         if(nm.sender_id===myId)return;
@@ -10618,7 +10657,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         const updated=payload.new;
         setConvs(prev=>(prev||[]).map(c=>({
           ...c,
-          msgs:(c.msgs||[]).map(m=>m.id===updated.id?{...m,...updated}:m)
+          msgs:(c.msgs||[]).map(m=>m.id===updated.id?{...m,text:updated.text??m.text,read:updated.is_read,reactions:updated.reactions||null,edited_at:updated.edited_at||null,view_once:!!updated.view_once,viewed_at:updated.viewed_at||null}:m)
         })));
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},payload=>{
