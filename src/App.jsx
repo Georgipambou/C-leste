@@ -53,7 +53,8 @@ import {
   Play, Pause, Volume2,  VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck, Copy, ChevronDown,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2, MessageCircleOff
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2, MessageCircleOff,
+  Globe
 
 } from "lucide-react";
 
@@ -619,6 +620,7 @@ longitude:p.longitude||null,
   account_type:p.account_type||"membre",screenshot_protection:p.screenshot_protection||false,
   org_name:p.org_name||null, org_type:p.org_type||null,
   org_country:p.org_country||null, org_desc:p.org_desc||null,
+  links:Array.isArray(p.links)?p.links.slice(0,5):[],
 });
 
 function mapDbPost(p, followedIds) {
@@ -932,13 +934,13 @@ function FlagSelector({selected,onChange}){
 let _unseenStatusMap=new Map();
 const _statusListeners=new Set();
 function _setUnseenStatusMap(m){_unseenStatusMap=m;_statusListeners.forEach(fn=>fn());}
-const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
+const Av = memo(function Av({u,size=40,online=false,ring=false,onClick,noStatus=false}){
   const [,_forceTick]=useState(0);
   useEffect(()=>{const fn=()=>_forceTick(t=>t+1);_statusListeners.add(fn);return()=>_statusListeners.delete(fn);},[]);
-  const _statusId=u?.id?_unseenStatusMap.get(u.id):null;
+  const _statusId=(!noStatus&&u?.id)?_unseenStatusMap.get(u.id):null;
   const showRing=ring||!!_statusId;
   const handleStatusCapture=e=>{
-    if(!showRing||!_statusId)return;
+    if(noStatus||!showRing||!_statusId)return;
     e.stopPropagation();
     const originTab=window.__celesteGetTab?.();
     if(originTab&&originTab!=="statuses")window.__celesteStatusReturnTab=originTab;
@@ -973,6 +975,160 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick}){
     </div>
   );
 });
+
+function NoteComposerModal({sb,userId,existingText,onClose,onSaved,onDeleted,notify}){
+  const[text,setText]=useState(existingText||"");
+  const[saving,setSaving]=useState(false);
+  const[duration,setDuration]=useState(24);
+  const DURATIONS=[{label:"1h",h:1},{label:"6h",h:6},{label:"24h",h:24},{label:"3j",h:72},{label:"7j",h:168}];
+  const save=async()=>{
+    const trimmed=text.trim();
+    if(!trimmed){notify("Écris quelque chose");return;}
+    setSaving(true);
+    const{error}=await sb.from("notes").upsert({user_id:userId,text:trimmed,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+duration*3600*1000).toISOString()},{onConflict:"user_id"});
+    setSaving(false);
+    if(error){notify("Erreur · "+error.message);return;}
+    onSaved(trimmed);onClose();
+  };
+  const del=async()=>{
+    setSaving(true);
+    const{error}=await sb.from("notes").delete().eq("user_id",userId);
+    setSaving(false);
+    if(error){notify("Erreur · "+error.message);return;}
+    onDeleted();onClose();
+  };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none"}}>
+       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Ta note</p>
+          <Btn onClick={onClose} style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:T.muted}}><X size={14}/></Btn>
+        </div>
+        <textarea value={text} maxLength={60} onChange={e=>setText(e.target.value)} placeholder="Partage une pensée..." autoFocus
+          style={{width:"100%",minHeight:70,resize:"none",background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:14,padding:12,color:T.text,fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+        <p style={{textAlign:"right",fontSize:11,color:T.muted,margin:"4px 0 10px"}}>{text.length}/60</p>
+        <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto"}}>
+          {DURATIONS.map(d=>(
+            <Btn key={d.h} onClick={()=>setDuration(d.h)} style={{padding:"6px 12px",borderRadius:12,fontSize:12,fontWeight:600,flexShrink:0,background:duration===d.h?T.gradGold:"rgba(255,255,255,0.06)",color:duration===d.h?"#000":T.text,border:`1px solid ${duration===d.h?"transparent":T.border}`}}>{d.label}</Btn>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          {existingText&&<Btn onClick={del} disabled={saving} style={{flex:1,padding:"12px",borderRadius:14,background:"rgba(255,80,80,0.12)",color:"#ff6b6b",fontWeight:600,textAlign:"center"}}>Supprimer</Btn>}
+          <Btn onClick={save} disabled={saving||!text.trim()} style={{flex:2,padding:"12px",borderRadius:14,background:T.gradGold,color:"#000",fontWeight:700,textAlign:"center"}}>{saving?"...":"Publier"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoteReplyModal({sb,session,note,onClose,notify}){
+  const[text,setText]=useState("");
+  const[sending,setSending]=useState(false);
+  const send=async()=>{
+    const trimmed=text.trim();
+    if(!trimmed||sending)return;
+    setSending(true);
+    try{
+      const{data:convRes}=await sb.from("conversations").select("id")
+        .or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${note.user_id}),and(user1_id.eq.${note.user_id},user2_id.eq.${session?.user?.id})`)
+        .maybeSingle();
+      let convId=convRes?.id;
+      if(!convId){
+        const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:note.user_id}).select().single();
+        convId=created?.id;
+      }
+      await sb.from("messages").insert({
+        conv_id:convId,sender_id:session?.user?.id,type:"note_reply",text:trimmed,
+        reply_metadata:{isReplyToNote:true,noteId:note.id,noteText:note.text}
+      });
+      notify("Réponse envoyée ✦");
+      onClose();
+      setTimeout(()=>{window.dispatchEvent(new CustomEvent("celeste_open_conv",{detail:{convId}}));},200);
+    }catch(err){notify("Erreur · "+(err?.message||"réessaie"));}
+    finally{setSending(false);}
+  };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <Av u={note.author} size={36} noStatus/>
+          <div style={{background:"rgba(255,255,255,0.06)",borderRadius:14,padding:"8px 12px",fontSize:13,color:T.text,flex:1}}>{renderTextWithMentions(note.text)}</div>
+          <Btn onClick={onClose} style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:T.muted}}><X size={14}/></Btn>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <input value={text} onChange={e=>setText(e.target.value)} placeholder="Répondre..." autoFocus
+            style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,borderRadius:20,padding:"12px 16px",color:T.text,fontSize:14,outline:"none"}}/>
+          <Btn onClick={send} disabled={sending||!text.trim()} style={{width:44,height:44,borderRadius:"50%",background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Send size={18} color="#000"/></Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
+  const[myNote,setMyNote]=useState(null);
+  const[notes,setNotes]=useState([]);
+  const[showComposer,setShowComposer]=useState(false);
+  const[replyNote,setReplyNote]=useState(null);
+  const load=useCallback(()=>{
+    if(!session?.user?.id)return;
+    sb.from("notes").select("*").eq("user_id",session.user.id).gt("expires_at",new Date().toISOString()).maybeSingle().then(({data})=>setMyNote(data||null));
+    if((myConnections||[]).length){
+      sb.from("notes").select("*,author:profiles(id,prenom,nom,avatar_url)").in("user_id",myConnections).gt("expires_at",new Date().toISOString())
+        .then(({data})=>setNotes((data||[]).map(n=>({...n,author:normProfile(n.author||{})}))));
+    }else setNotes([]);
+  },[session?.user?.id,myConnections,sb]);
+  useEffect(()=>{load();},[load]);
+  useEffect(()=>{
+    let t=null;
+    const debouncedLoad=()=>{clearTimeout(t);t=setTimeout(load,400);};
+    const ch=sb.channel("notes_bar_"+(session?.user?.id||"anon")).on("postgres_changes",{event:"*",schema:"public",table:"notes"},debouncedLoad).subscribe();
+    return()=>{clearTimeout(t);try{sb.removeChannel(ch);}catch(_){}};
+  },[load,sb,session?.user?.id]);
+
+  const bubbleStyle={position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)"};
+
+  return(
+    <>
+    <div style={{display:"flex",gap:16,overflowX:"auto",padding:"38px 16px 14px",scrollbarWidth:"none"}}>
+      <div onClick={()=>setShowComposer(true)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,flexShrink:0,cursor:"pointer"}}>
+        <div style={{position:"relative"}}>
+          {myNote&&<div style={bubbleStyle}>{renderTextWithMentions(myNote.text)}</div>}
+          <Av u={myProfile} size={52} noStatus/>
+          <div style={{position:"absolute",bottom:-2,right:-2,width:18,height:18,borderRadius:"50%",background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${T.bg}`}}>
+            {myNote?<Edit2 size={9} color="#000"/>:<Plus size={11} color="#000"/>}
+          </div>
+        </div>
+        <p style={{margin:0,fontSize:11,color:T.muted}}>Ta note</p>
+      </div>
+      {notes.map(n=>(
+        <div key={n.id} onClick={()=>setReplyNote(n)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,flexShrink:0,cursor:"pointer"}}>
+          <div style={{position:"relative"}}>
+            <div style={bubbleStyle}>{renderTextWithMentions(n.text)}</div>
+            <Av u={n.author} size={52} noStatus/>
+          </div>
+          <p style={{margin:0,fontSize:11,color:T.muted,maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.author?.name||"?"}</p>
+        </div>
+      ))}
+    </div>
+    {showComposer&&<NoteComposerModal sb={sb} userId={session.user.id} existingText={myNote?.text} notify={notify}
+      onClose={()=>setShowComposer(false)}
+      onSaved={t=>{
+        const isNewNote=!myNote;
+        setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}));
+        if(isNewNote){
+          (myConnections||[]).forEach(async connectionId=>{
+            await sb.from("notifications").insert({user_id:connectionId,from_id:session.user.id,type:"new_note",text:t,read:false});
+            sb.functions.invoke('send-push',{body:{targetUserId:connectionId,title:"✦ Nouvelle note",body:`${myProfile?.prenom||"Quelqu'un"} a partagé une nouvelle note`}});
+          });
+        }
+      }}
+      onDeleted={()=>setMyNote(null)}/>}
+    {replyNote&&<NoteReplyModal sb={sb} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
+    </>
+  );
+}
+
 const NAV_PARTICLE_CFG={
   pluie:{bg:"linear-gradient(180deg,#0b1220 0%,#05070d 100%)",n:18,w:1,h:16,color:"linear-gradient(180deg,transparent,rgba(150,190,255,0.55))",anim:"navFall",durMin:0.6,durMax:1.2},
   braises:{bg:"linear-gradient(180deg,#1a0700 0%,#0a0300 100%)",n:14,size:3,color:"#ff8a3d",glow:"0 0 6px 2px rgba(255,120,40,0.7)",anim:"navRise",durMin:2,durMax:4},
@@ -1064,6 +1220,46 @@ const Btn = ({children,onClick,style={},disabled=false,type="button",...rest})=>
     {children}
   </button>
 );
+
+// ── CONFIRMATION GLOBALE (remplace window.confirm) ─────────
+// Usage: if(!(await confirmAction("Supprimer ce message ?")))return;
+// Avec sous-texte: confirmAction("Désactiver votre compte ?",{detail:"Cette action est irréversible.",confirmLabel:"Désactiver"})
+const _confirmResolvers=new Map();
+let _confirmIdSeq=0;
+function confirmAction(message,opts={}){
+  return new Promise(resolve=>{
+    const id=++_confirmIdSeq;
+    _confirmResolvers.set(id,resolve);
+    window.dispatchEvent(new CustomEvent("celeste_confirm_open",{detail:{id,message,...opts}}));
+  });
+}
+function GlobalConfirmModal(){
+  const [req,setReq]=useState(null);
+  useEffect(()=>{
+    const h=e=>setReq(e.detail);
+    window.addEventListener("celeste_confirm_open",h);
+    return()=>window.removeEventListener("celeste_confirm_open",h);
+  },[]);
+  const close=result=>{
+    const resolve=_confirmResolvers.get(req.id);
+    if(resolve){resolve(result);_confirmResolvers.delete(req.id);}
+    setReq(null);
+  };
+  if(!req)return null;
+  const danger=req.danger!==false;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>close(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
+        <div style={{padding:"20px 20px 14px",textAlign:"center"}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>{req.message}</p>
+          {req.detail&&<p style={{margin:"6px 0 0",fontSize:12,color:T.muted}}>{req.detail}</p>}
+        </div>
+        <Btn onClick={()=>close(true)} style={{width:"100%",padding:"15px 20px",fontSize:15,color:danger?T.err:T.goldL,textAlign:"center",fontWeight:600,borderTop:`1px solid ${T.border}`}}>{req.confirmLabel||"Confirmer"}</Btn>
+        <Btn onClick={()=>close(false)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
+      </div>
+    </div>
+  );
+}
 
 // Déclaré HORS de AuthScreen pour éviter la recréation à chaque frappe (fermeture clavier mobile)
 const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,setShowPw}){
@@ -1301,6 +1497,37 @@ const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideo
       style={{width:"100%",borderRadius:14,display:"block",objectFit:"cover",maxHeight:500,cursor:onImageClick?"pointer":"default",...style}}/>
   );
 });
+
+// Média vue-unique : jamais de lecteur natif (pas de <video controls>, pas de menu "Enregistrer l'image" au appui long, pas d'ouverture plein écran)
+function ProtectedImage({url,style={}}){
+  if(!url)return null;
+  return(
+    <img src={url} alt="" draggable={false} onContextMenu={e=>e.preventDefault()}
+      style={{width:"100%",borderRadius:10,display:"block",objectFit:"cover",maxHeight:200,WebkitTouchCallout:"none",WebkitUserSelect:"none",userSelect:"none",...style}}/>
+  );
+}
+function ProtectedVideo({url,style={}}){
+  const ref=useRef(null);
+  const [playing,setPlaying]=useState(false);
+  const toggle=e=>{
+    e.stopPropagation();
+    const v=ref.current;if(!v)return;
+    if(v.paused){v.play().catch(()=>{});setPlaying(true);}else{v.pause();setPlaying(false);}
+  };
+  return(
+    <div onClick={toggle} onContextMenu={e=>e.preventDefault()} style={{position:"relative",cursor:"pointer",borderRadius:10,overflow:"hidden",WebkitTouchCallout:"none",...style}}>
+      <video ref={ref} src={url} playsInline disablePictureInPicture controlsList="nodownload noremoteplayback noplaybackrate"
+        style={{width:"100%",display:"block",maxHeight:220,background:"#000",pointerEvents:"none"}}/>
+      {!playing&&
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+          <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><polygon points="5,3 19,12 5,21"/></svg>
+          </div>
+        </div>
+      }
+    </div>
+  );
+}
 
 
 
@@ -1713,6 +1940,7 @@ function NotifsScreen({myProfile,session,members}){
     follow:"a commencé à te suivre",
     mention:"t'a mentionné",
     new_post_favorite:"a publié du nouveau contenu",
+    new_note:"a partagé une nouvelle note",
     status_like:"a aimé ton statut",
     status_view:"a vu ton statut",
     group_invite:`t'a invité${n.text?` dans "${n.text}"`:" dans un groupe"}`,
@@ -1739,6 +1967,7 @@ function NotifsScreen({myProfile,session,members}){
     earning:"💰",
     poll_ended:"📊",
     new_post_favorite:"✦",
+    new_note:"📝",
     friend_online:"🟢",
     group_invite:"👥",
     group_invite_declined:"🚫",
@@ -1846,6 +2075,11 @@ function NotifsScreen({myProfile,session,members}){
                     if(n.type==="group_invite"){
                       window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
                       window.__celesteSetTab?.("messages",()=>window.dispatchEvent(new CustomEvent("celeste_open_groups_tab",{})));
+                      return;
+                    }
+                    if(n.type==="new_note"){
+                      window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+                      window.__celesteSetTab?.("messages");
                       return;
                     }
                     if(n.type==="status_like"||n.type==="status_view"){
@@ -2492,7 +2726,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
   const [showCmtMenu,setShowCmtMenu]=useState(false);
   const del=async()=>{
     setShowCmtMenu(false);
-    if(!window.confirm("Supprimer ?"))return;
+    if(!(await confirmAction("Supprimer ce commentaire ?",{confirmLabel:"Supprimer"})))return;
     await sb.from("comment_likes").delete().eq("comment_id",comment.id);
     await sb.from("comment_replies").delete().eq("parent_comment_id",comment.id);
     await sb.from("comments").delete().eq("id",comment.id);
@@ -2660,7 +2894,7 @@ function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,r
 
   const del=async()=>{
     setShowMenu(false);
-    if(!window.confirm("Supprimer ?"))return;
+    if(!(await confirmAction("Supprimer cette réponse ?",{confirmLabel:"Supprimer"})))return;
     const{error}=await sb.from("comment_replies").delete().eq("id",reply.id);
     if(error){notify?.("Erreur, réessaie");return;}
     onDeleted?.();
@@ -3812,7 +4046,7 @@ if(isMe){
             <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ago(current.ts)}{paused&&" · ⏸ Pause"}</p>
           </div>
         </div>
-        {isMe&&<Btn onClick={()=>{if(window.confirm("Voulez-vous vraiment supprimer ce statut ?")){onDelete(current.id);idx>0?setIdx(idx-1):onClose();}}} style={{background:"rgba(200,64,64,0.2)",border:`1px solid rgba(200,64,64,0.3)`,borderRadius:8,padding:"5px 10px",color:"#ff6060",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Trash2 size={12}/>Suppr.</Btn>}
+        {isMe&&<Btn onClick={async()=>{if(await confirmAction("Voulez-vous vraiment supprimer ce statut ?",{confirmLabel:"Supprimer"})){onDelete(current.id);idx>0?setIdx(idx-1):onClose();}}} style={{background:"rgba(200,64,64,0.2)",border:`1px solid rgba(200,64,64,0.3)`,borderRadius:8,padding:"5px 10px",color:"#ff6060",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Trash2 size={12}/>Suppr.</Btn>}
         <Btn onClick={onClose} style={{color:"rgba(255,255,255,0.6)",display:"flex",alignItems:"center"}}><X size={22}/></Btn>
       </div>
 
@@ -5499,7 +5733,7 @@ const [saved,setSaved]=useState(false);
 const handleDelete=async()=>{
   const byAdmin=myProfile?.is_admin&&post.by!==session?.user?.id;
   if(byAdmin){setShowDeleteReasons(true);return;}
-  if(!window.confirm("Supprimer ce post ?"))return;
+  if(!(await confirmAction("Supprimer ce post ?",{confirmLabel:"Supprimer"})))return;
   setPosts?.(prev=>(prev||[]).filter(p=>p.id!==post.id));
   notify("Supprimé");
   if(myProfile?.is_admin){
@@ -6085,7 +6319,7 @@ return(
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup,notify}){
+function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup,notify,myProfile,myConnections,myFollowers}){
   const [q,setQ]=useState("");
   const [queueStatuses,setQueueStatuses]=useState(()=>getConvStatuses());
   useEffect(()=>subscribeQueue(()=>setQueueStatuses(getConvStatuses())),[]);
@@ -6159,7 +6393,7 @@ const openMenu=id=>{setMenuConvId(id);};
     const unreads=(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length;
     const locked=isConvLocked(c.id);
     const previewIcon=locked?null:!last?null:last.type==="photo"?<Image size={13}/>:last.type==="file"?<Paperclip size={13}/>:last.type==="voice"?<Mic size={13}/>:last.type==="sticker"?<span style={{fontSize:13}}>🙂</span>:last.type==="post_share"?<Share2 size={13}/>:null;
-    const prev=locked?"Conversation verrouillée":!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.type==="sticker"?"Autocollant":last.type==="post_share"?"Publication partagée":last.type==="status_reply"?"A répondu à votre statut":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
+    const prev=locked?"Conversation verrouillée":!last?"":last.type==="photo"?"Photo":last.type==="file"?(last.fileName||"Fichier"):last.type==="voice"?"Message vocal":last.type==="sticker"?"Autocollant":last.type==="post_share"?"Publication partagée":last.type==="status_reply"?"A répondu à votre statut":last.type==="note_reply"?"A répondu à votre note":last.f==="me"?`Toi : ${last.text||""}`:last.text||"";
     const isFav=favorites.includes(c.id);
     const peerStatus=typingMap[c.id]||null;
     const isTyping=peerStatus==="typing";
@@ -6219,6 +6453,8 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher une conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
+        {/* Notes */}
+        <NotesBar sb={sb} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify}/>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto",alignItems:"center"}}>
           {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"}].map(f=>(
@@ -6328,7 +6564,16 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
 }
 
 // ── CHAT SCREEN ───────────────────────────────────────────
-const DEEPSEEK_KEY=import.meta.env.VITE_DEEPSEEK_KEY;
+const askDeepseek=async(messages)=>{
+  const{data,error}=await sb.functions.invoke("deepseek-chat",{body:{messages}});
+  if(error){
+    const status=error?.context?.status;
+    const e=new Error(error.message||"deepseek_error");
+    e.status=status;
+    throw e;
+  }
+  return data;
+};
 const CELESTE_SYSTEM=`Tu t'appelles Céleste. Tu es une IA avec un caractère bien trempé — 
 pas un robot gentil, pas une assistante parfaite. Tu es VRAIE.
 
@@ -6534,15 +6779,7 @@ const askGemini=async(text)=>{
         content:m.text
       }))
     ];
-    const res=await fetch("https://api.deepseek.com/chat/completions",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":`Bearer ${DEEPSEEK_KEY}`},
-      body:JSON.stringify({
-        model:"deepseek-chat",
-        messages:formattedMessages
-      })
-    });
-    const data=await res.json();
+    const data=await askDeepseek(formattedMessages);
     const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
     const updated=[...updatedMsgs,{role:"model",text:reply}];
     setGeminiMsgs(updated);
@@ -6589,6 +6826,7 @@ const doubleTap=useDoubleTap(m=>{
   setBurstMsgId(m.id); setTimeout(()=>setBurstMsgId(null),600);
 });
   const mediaRecRef=useRef(); const timerRef=useRef(); const isFirstLoad=useRef(true);
+const wipeQueueRef=useRef(new Set());
 
   useEffect(()=>{
     try{const s=localStorage.getItem(`chat_bg_${conv.id}`);if(s)setBgPhoto(s);}catch(_){}
@@ -6641,6 +6879,17 @@ const doubleTap=useDoubleTap(m=>{
   },[conv.id,conv.msgs?.length]);
 
   const [revealedOnce,setRevealedOnce]=useState(()=>new Set());
+  const [viewOnceUrls,setViewOnceUrls]=useState({});
+  const [revealingOnce,setRevealingOnce]=useState(()=>new Set());
+  const viewOnceUrlsRef=useRef({});
+  useEffect(()=>()=>{Object.values(viewOnceUrlsRef.current).forEach(u=>{try{URL.revokeObjectURL(u);}catch{}});},[]);
+  useEffect(()=>{
+    return()=>{
+      const ids=[...wipeQueueRef.current];
+      wipeQueueRef.current=new Set();
+      if(ids.length)sb.from("messages").update({file_url:null,text:""}).in("id",ids).catch(()=>{});
+    };
+  },[conv.id,sb]);
   const [peerScreenshotProtection,setPeerScreenshotProtection]=useState(false);
   useEffect(()=>{
     sb.from("profiles").select("screenshot_protection").eq("id",conv.uid).single()
@@ -6657,6 +6906,25 @@ const doubleTap=useDoubleTap(m=>{
     if(peerScreenshotProtection||conv.secure_mode||revealedOnce.size>0)enableScreenProtection();else disableScreenProtection();
     return()=>{disableScreenProtection();};
   },[peerScreenshotProtection,conv.secure_mode,revealedOnce]);
+
+  useEffect(()=>{
+    if(!isNative)return;
+    let startedHandle,stoppedHandle,screenshotHandle;
+    PrivacyScreen.addListener("screenRecordingStarted",()=>{
+      if(revealedOnce.size>0){
+        setRevealedOnce(new Set());
+        sb.from("messages").insert({conv_id:conv.id,sender_id:session?.user?.id,type:"text",text:"⚠️ Enregistrement d'écran détecté pendant l'affichage d'un message à vue unique"});
+      }
+    }).then(h=>{startedHandle=h;});
+    PrivacyScreen.addListener("screenRecordingStopped",()=>{}).then(h=>{stoppedHandle=h;});
+    PrivacyScreen.addListener("screenshotTaken",()=>{
+      if(revealedOnce.size>0){
+        setRevealedOnce(new Set());
+        sb.from("messages").insert({conv_id:conv.id,sender_id:session?.user?.id,type:"text",text:"⚠️ Capture d'écran détectée pendant l'affichage d'un message à vue unique"});
+      }
+    }).then(h=>{screenshotHandle=h;});
+    return()=>{startedHandle?.remove();stoppedHandle?.remove();screenshotHandle?.remove();};
+  },[conv.id,revealedOnce,sb,session]);
 
   const [isBlocked,setIsBlocked]=useState(false);
   useEffect(()=>{
@@ -6712,8 +6980,24 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   },[conv.id]);
   const FONT_SIZES={small:13,normal:14,large:17};
   const revealOnce=async(m)=>{
-    setRevealedOnce(p=>new Set([...p,m.id]));
-    try{await sb.from("messages").update({viewed_at:new Date().toISOString()}).eq("id",m.id);}catch{}
+    if(!isNative){notify("Vue unique disponible uniquement depuis l'app iOS ou Android");return;}
+    if(revealedOnce.has(m.id)||revealingOnce.has(m.id))return;
+    setRevealingOnce(p=>new Set([...p,m.id]));
+    try{
+      const{data,error}=await sb.functions.invoke("view-once-media",{body:{message_id:m.id},headers:{"X-Celeste-Platform":Capacitor.getPlatform()}});
+      if(error||!data?.data)throw error||new Error("Contenu indisponible");
+      const bytes=Uint8Array.from(atob(data.data),c=>c.charCodeAt(0));
+      const blob=new Blob([bytes],{type:data.mime||"application/octet-stream"});
+      const objUrl=URL.createObjectURL(blob);
+      viewOnceUrlsRef.current={...viewOnceUrlsRef.current,[m.id]:objUrl};
+      setViewOnceUrls(p=>({...p,[m.id]:objUrl}));
+      setRevealedOnce(p=>new Set([...p,m.id]));
+      wipeQueueRef.current.add(m.id);
+    }catch(err){
+      notify("Impossible d'ouvrir ce contenu · "+(err?.message||"réessaie"));
+    }finally{
+      setRevealingOnce(p=>{const n=new Set(p);n.delete(m.id);return n;});
+    }
   };
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
@@ -6724,11 +7008,13 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
       return;
     }
     const txt=inp.trim();
+    const wantViewOnce=viewOnceNext;
+    setViewOnceNext(false);
     setInp("");
     setChatDrafts(d=>({...d,[conv.id]:""}));
     setSending(true);
     const replyPayload=replyTo?{reply_to_id:replyTo.id,reply_to_text:replyTo.text||"",reply_to_author:replyTo.authorName||""}:{};
-    try{await sendMsg({type:"text",text:txt,...replyPayload});}finally{setSending(false);setReplyTo(null);}
+    try{await sendMsg({type:"text",text:txt,view_once:wantViewOnce,...replyPayload});}finally{setSending(false);setReplyTo(null);}
   };
   const sendSticker=async(sticker)=>{
     setShowStickerPicker(false);
@@ -6803,6 +7089,8 @@ const handleFile=async(e,isImg)=>{
 
   const startRecording=async()=>{
     cancelledInitRef.current=false;
+    const wantViewOnce=viewOnceNext;
+    setViewOnceNext(false);
     setRecording(true);setRecordSecs(0);setRecInitializing(true);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});
@@ -6830,7 +7118,7 @@ const handleFile=async(e,isImg)=>{
             setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
             return;
           }
-          const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:""});
+          const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce});
           setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
           if(error){notify("Erreur d'envoi, réessayez");return;}
           playChatSound("send");
@@ -6869,7 +7157,9 @@ const handleFile=async(e,isImg)=>{
     setRecPaused(false);
     notifyRecording(true);
   };
-  const deleteMsg=async msgId=>{if(!window.confirm("Supprimer ?"))return;await sb.from("messages").delete().eq("id",msgId);reload();};
+  const [confirmDeleteId,setConfirmDeleteId]=useState(null);
+  const requestDeleteMsg=msgId=>setConfirmDeleteId(msgId);
+  const deleteMsg=async msgId=>{await sb.from("messages").delete().eq("id",msgId);reload();};
 
   if(conv.secure_mode&&!isNative&&conv.secure_mode_by!==session?.user?.id){
     return(
@@ -7006,6 +7296,16 @@ const handleFile=async(e,isImg)=>{
     </div>
   </div>
 )}
+                  {m.type==="note_reply"&&(
+  <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"6px 8px",borderLeft:`3px solid ${mine?"rgba(0,0,0,0.3)":T.goldL}`,marginBottom:4}}>
+    <div style={{flex:1,minWidth:0}}>
+      <p style={{margin:0,fontSize:10,fontWeight:600,color:mine?"rgba(0,0,0,0.5)":T.goldL}}>A répondu à ta note</p>
+      <p style={{margin:0,fontSize:11,color:mine?"rgba(0,0,0,0.6)":T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:"italic"}}>
+        {m.reply_metadata?.noteText||""}
+      </p>
+    </div>
+  </div>
+)}
                   {m.type==="post_share"&&(
                     <div onClick={e=>{e.stopPropagation();m.shared_post_id&&window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:m.shared_post_id}}));}}
                       style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"8px 10px",cursor:m.shared_post_id?"pointer":"default",maxWidth:240,width:"100%",boxSizing:"border-box"}}>
@@ -7024,35 +7324,67 @@ const handleFile=async(e,isImg)=>{
                       </div>
                     </div>
                   )}
-                  {(m.type==="photo"||m.type==="image")&&(m.img||m.file_url)&&(
+                  {(m.type==="photo"||m.type==="image")&&(
                     m.view_once
                       ? (mine
                           ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Photo vue unique envoyée</span></div>
                           : (revealedOnce.has(m.id)
-                              ? <MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>
-                              : <Btn onClick={()=>revealOnce(m)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>Appuyer pour voir · vue unique</span></Btn>
+                              ? <ProtectedImage url={viewOnceUrls[m.id]}/>
+                              : (m.viewed_at
+                                  ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Photo vue unique consultée</span></div>
+                                  : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour voir · vue unique"}</span></Btn>
+                                )
                             )
                         )
-                      : <MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>
+                      : ((m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>)
                   )}
                   {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" onClick={e=>{e.stopPropagation();m.sticker_id&&setOpenStickerDetail(m.sticker_id);}} style={{width:100,height:100,objectFit:"contain",display:"block",cursor:m.sticker_id?"pointer":"default"}}/>}
                   {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
-                  {m.type==="voice"&&(m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T}/>}
-{m.type==="video"&&(m.img||m.file_url)&&(
+                  {m.type==="voice"&&(
+                    m.view_once
+                      ? (mine
+                          ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vocal vue unique envoyé</span></div>
+                          : (revealedOnce.has(m.id)
+                              ? <VoicePlayer src={viewOnceUrls[m.id]} mine={mine} T={T}/>
+                              : (m.viewed_at
+                                  ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vocal vue unique consulté</span></div>
+                                  : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour écouter · vue unique"}</span></Btn>
+                                )
+                            )
+                        )
+                      : ((m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T}/>)
+                  )}
+{m.type==="video"&&(
                     m.view_once
                       ? (mine
                           ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vidéo vue unique envoyée</span></div>
                           : (revealedOnce.has(m.id)
-                              ? <video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>
-                              : <Btn onClick={()=>revealOnce(m)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>Appuyer pour voir · vue unique</span></Btn>
+                              ? <ProtectedVideo url={viewOnceUrls[m.id]}/>
+                              : (m.viewed_at
+                                  ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vidéo vue unique consultée</span></div>
+                                  : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour voir · vue unique"}</span></Btn>
+                                )
                             )
                         )
-                      : <video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>
+                      : ((m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>)
                   )}
-                  {m.text&&<><p style={{margin:0,fontSize:FONT_SIZES[fontSizeKey],fontWeight:600,color:mine?(bubbleColor?"#fff":"#000"):T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine&&!bubbleColor}/></>}
+                  {(m.text||(m.type==="text"&&m.view_once))&&(
+                    m.type==="text"&&m.view_once
+                      ? (mine
+                          ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Message vue unique envoyé</span></div>
+                          : (revealedOnce.has(m.id)
+                              ? <><p style={{margin:0,fontSize:FONT_SIZES[fontSizeKey],fontWeight:600,color:mine?(bubbleColor?"#fff":"#000"):T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine&&!bubbleColor}/></>
+                              : (m.viewed_at
+                                  ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Message vue unique consulté</span></div>
+                                  : <Btn onClick={()=>revealOnce(m)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>Appuyer pour lire · vue unique</span></Btn>
+                                )
+                            )
+                        )
+                      : (m.text&&<><p style={{margin:0,fontSize:FONT_SIZES[fontSizeKey],fontWeight:600,color:mine?(bubbleColor?"#fff":"#000"):T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine&&!bubbleColor}/></>)
+                  )}
                 </div>
                 <ReactionBar reactions={m.reactions} T={T} myId={session?.user?.id}/>
                 {inlinePickerMsgId===m.id&&(
@@ -7082,7 +7414,7 @@ const handleFile=async(e,isImg)=>{
 {mine&&isSending&&!m.error&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
 {mine&&m.error&&<span style={{fontSize:10,color:"#e05252",fontWeight:600}}>⚠️ Réessayer</span>}
 {mine&&!isSending&&!m.error&&<CheckCheck size={13} color={isRead?T.gold:T.muted} style={{transition:"color .3s"}}/>}
-                  {mine&&!isSending&&<Btn onClick={()=>deleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
+                  {mine&&!isSending&&<Btn onClick={()=>requestDeleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
               </div>
             </div>
@@ -7247,11 +7579,23 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
               <Copy size={18}/><span>Copier</span>
             </Btn>
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&(
-              <Btn onClick={()=>{deleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <Btn onClick={()=>{requestDeleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                 <Trash2 size={18}/><span>Supprimer</span>
               </Btn>
             )}
             <Btn onClick={()=>setSelectedMsg(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
+          </div>
+        </div>
+      )}
+      {confirmDeleteId&&(
+        <div style={{position:"fixed",inset:0,zIndex:520,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>setConfirmDeleteId(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
+            <div style={{padding:"20px 20px 14px",textAlign:"center"}}>
+              <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Supprimer ce message ?</p>
+              <p style={{margin:"6px 0 0",fontSize:12,color:T.muted}}>Cette action est irréversible.</p>
+            </div>
+            <Btn onClick={()=>{deleteMsg(confirmDeleteId);setConfirmDeleteId(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"center",fontWeight:600,borderTop:"1px solid rgba(255,255,255,0.07)"}}>Supprimer</Btn>
+            <Btn onClick={()=>setConfirmDeleteId(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
           </div>
         </div>
       )}
@@ -7266,7 +7610,72 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
     </div>
   );
 }
+const SocialIconWrap=({size=13,children})=>(
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+);
+const IgIcon=({size})=><SocialIconWrap size={size}><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor"/></SocialIconWrap>;
+const TtIcon=({size})=><SocialIconWrap size={size}><path d="M14 4v10.8a3.3 3.3 0 1 1-3.3-3.3"/><path d="M14 4c0 2.6 2.1 4.7 4.7 4.7v2.6c-1.8 0-3.4-.6-4.7-1.7"/></SocialIconWrap>;
+const WaIcon=({size})=><SocialIconWrap size={size}><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 10.5c.3 2.5 2.5 4.5 5 4.7"/></SocialIconWrap>;
+const FbIcon=({size})=><SocialIconWrap size={size}><circle cx="12" cy="12" r="9"/><path d="M14 8.5h-1.5A2 2 0 0 0 10.5 10.5V21M9 13.5h4"/></SocialIconWrap>;
+const XIcon=({size})=><SocialIconWrap size={size}><path d="M5 5l14 14M19 5L5 19"/></SocialIconWrap>;
+const YtIcon=({size})=><SocialIconWrap size={size}><rect x="2.5" y="6" width="19" height="12" rx="4"/><path d="M10.5 9.5l5 2.5-5 2.5z" fill="currentColor" stroke="none"/></SocialIconWrap>;
+const LiIcon=({size})=><SocialIconWrap size={size}><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="7.5" y1="10.5" x2="7.5" y2="17"/><circle cx="7.5" cy="7" r="0.6" fill="currentColor"/><path d="M11.5 17v-4.5a2 2 0 0 1 4 0V17"/><line x1="11.5" y1="10.5" x2="11.5" y2="17"/></SocialIconWrap>;
+const TgIcon=({size})=><SocialIconWrap size={size}><path d="M21 3L2 10.5l6 2 2 6.5 3-4 5 3z"/></SocialIconWrap>;
+const LINK_ICON_MAP=[
+  {re:/instagram\.com/i,Icon:IgIcon},
+  {re:/tiktok\.com/i,Icon:TtIcon},
+  {re:/(wa\.me|whatsapp\.com)/i,Icon:WaIcon},
+  {re:/(facebook\.com|fb\.com)/i,Icon:FbIcon},
+  {re:/(twitter\.com|x\.com)/i,Icon:XIcon},
+  {re:/(youtube\.com|youtu\.be)/i,Icon:YtIcon},
+  {re:/linkedin\.com/i,Icon:LiIcon},
+  {re:/(t\.me|telegram\.me)/i,Icon:TgIcon},
+];
+const getLinkIcon=url=>(LINK_ICON_MAP.find(({re})=>re.test(url||""))||{}).Icon||Globe;
+function LinksRow({links}){
+  const items=(links||[]).filter(l=>l?.url).slice(0,5);
+  if(!items.length)return null;
+  return(
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+      {items.map((l,i)=>{
+        const Icon=getLinkIcon(l.url);
+        return(
+          <a key={i} href={l.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+            style={{display:"inline-flex",alignItems:"center",gap:4,padding:"4px 9px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:10,fontWeight:600,textDecoration:"none",maxWidth:110,overflow:"hidden"}}>
+            <Icon size={10}/>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label||l.url.replace(/^https?:\/\//,"").replace(/\/$/,"")}</span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
 
+function LinksEditor({links,onChange}){
+  const rows=links&&links.length?links:[{label:"",url:""}];
+  const update=(i,field,val)=>onChange(rows.map((r,j)=>j===i?{...r,[field]:val}:r));
+  const addRow=()=>{if(rows.length<5)onChange([...rows,{label:"",url:""}]);};
+  const removeRow=i=>onChange(rows.filter((_,j)=>j!==i));
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+      <p style={{margin:"4px 0 0",fontSize:11,color:T.muted,letterSpacing:.5,textTransform:"uppercase"}}>Liens (5 max)</p>
+      {rows.map((r,i)=>(
+        <div key={i} style={{display:"flex",gap:6}}>
+          <input value={r.label} onChange={e=>update(i,"label",e.target.value)} placeholder="Nom" maxLength={20}
+            style={{width:90,flexShrink:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 10px",color:T.text,fontSize:12,outline:"none"}}/>
+          <input value={r.url} onChange={e=>update(i,"url",e.target.value)} placeholder="https://…"
+            style={{flex:1,minWidth:0,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 10px",color:T.text,fontSize:12,outline:"none"}}/>
+          <Btn onClick={()=>removeRow(i)} style={{width:32,height:32,flexShrink:0,borderRadius:8,background:"rgba(255,80,80,0.1)",color:"#ff6b6b",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14}/></Btn>
+        </div>
+      ))}
+      {rows.length<5&&(
+        <Btn onClick={addRow} style={{alignSelf:"flex-start",padding:"6px 12px",borderRadius:10,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,color:T.goldL,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Plus size={12}/> Ajouter un lien</Btn>
+      )}
+    </div>
+  );
+}
+
+// ── USER VIEW ─────────────────────────────────────────────
 // ── USER VIEW ─────────────────────────────────────────────
 function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0,toggleLike,toggleSave,popNav}){
   const conn=(myConnections||[]).includes(user.id);
@@ -7278,6 +7687,12 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   const [detailPost,setDetailPost]=useState(null);
   const [coverUrl,setCoverUrl]=useState(user.cover_url||null);
   const [avatarUrl,setAvatarUrl]=useState(user.avatar_url||null);
+  const [userNote,setUserNote]=useState(null);
+  const [replyNote,setReplyNote]=useState(null);
+  useEffect(()=>{
+    sb.from("notes").select("*").eq("user_id",user.id).gt("expires_at",new Date().toISOString()).maybeSingle()
+      .then(({data})=>setUserNote(data||null));
+  },[user.id]);
 
   useEffect(()=>{
     sb.from("profiles").select("cover_url,avatar_url,screenshot_protection").eq("id",user.id).single()
@@ -7316,7 +7731,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const handleBlock=async()=>{
-    if(!window.confirm(blocked?"Débloquer ?":"Bloquer ?"))return;
+    if(!(await confirmAction(blocked?"Débloquer cette personne ?":"Bloquer cette personne ?",{confirmLabel:blocked?"Débloquer":"Bloquer"})))return;
     if(blocked){await sb.from("blocks").delete().eq("blocker_id",session?.user?.id).eq("blocked_id",user.id);setBlocked(false);notify("Débloqué");onConnectionChange?.();}
     else{await sb.from("blocks").insert({blocker_id:session?.user?.id,blocked_id:user.id});setBlocked(true);notify("Bloqué");onConnectionChange?.();}
   };
@@ -7461,14 +7876,18 @@ if(user?.status==="suspended") return(
         T={T} Av={Av} Badge={Badge} fmtCount={fmtCount}
         coverUrl={coverUrl} color={user.color} avatarShape="circle"
         avatarUrl={avatarUrl} user={user}
+        note={userNote?.text} onNoteClick={()=>userNote&&setReplyNote({...userNote,author:user})}
         onAvatarClick={()=>{if(avatarUrl)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:avatarUrl}}));}}
         title={user.fullName||user.name}
         subtitle={<><MapPin size={11}/> {user.paroisse}</>}
-        extraLines={user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
-          /^https?:\/\//.test(part)
-            ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
-            :part
-        )}</p>}
+        extraLines={<>
+          {user.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{user.bio.split(/(https?:\/\/[^\s]+)/g).map((part,i)=>
+            /^https?:\/\//.test(part)
+              ?<a key={i} href={part} target="_blank" rel="noreferrer" style={{color:T.goldL,textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>
+              :part
+          )}</p>}
+          <LinksRow links={user.links}/>
+        </>}
         stats={[
           {l:"POSTS",v:uPosts.length,icon:<Grid size={14}/>},
           {l:"ABONNÉS",v:followersCount,icon:<Users size={14}/>},
@@ -7542,6 +7961,7 @@ if(user?.status==="suspended") return(
         }
         <div style={{height:80}}/>
       </div>
+      {replyNote&&<NoteReplyModal sb={sb} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
     </div>
   );
 }
@@ -7580,7 +8000,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const handleBlock=async()=>{
-    if(!window.confirm(blocked?"Débloquer ?":"Bloquer ?"))return;
+    if(!(await confirmAction(blocked?"Débloquer cette personne ?":"Bloquer cette personne ?",{confirmLabel:blocked?"Débloquer":"Bloquer"})))return;
     if(blocked){await sb.from("blocks").delete().eq("blocker_id",session?.user?.id).eq("blocked_id",user.id);setBlocked(false);notify("Débloqué");onConnectionChange?.();}
     else{await sb.from("blocks").insert({blocker_id:session?.user?.id,blocked_id:user.id});setBlocked(true);notify("Bloqué");onConnectionChange?.();}
   };
@@ -7722,6 +8142,7 @@ if(blocked||blockedByOther) return(
         extraLines={<>
           {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio)}</p>}
           {user.org_desc&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.6,fontStyle:"italic"}}>{user.org_desc}</p>}
+          <LinksRow links={user.links}/>
         </>}
         stats={[
           {l:"PUBLICATIONS",v:uPosts.length,icon:<Grid size={14}/>},
@@ -8072,7 +8493,7 @@ const NAV_THEMES=[
             <Btn onClick={()=>setShowBugReport(true)} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
               <span>🐛</span>Signaler un bug
             </Btn>
-            <Btn onClick={()=>{setOpen(false);setTimeout(()=>{if(window.confirm("Se déconnecter ?"))onLogout();},200);}}
+            <Btn onClick={()=>{setOpen(false);setTimeout(async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))onLogout();},200);}}
               style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               <LogOut size={18}/>Se déconnecter
             </Btn>
@@ -8318,7 +8739,7 @@ if(checkoutUrl){
     </div>
 
     <div style={{height:1,background:T.border,margin:"4px 0"}}/>
-    <Btn onClick={async()=>{if(!window.confirm("Désactiver votre compte ? Cette action est irréversible."))return;await sb.from("profiles").update({status:"suspended"}).eq("id",session?.user?.id);onLogout();}}
+    <Btn onClick={async()=>{if(!(await confirmAction("Désactiver votre compte ?",{detail:"Cette action est irréversible.",confirmLabel:"Désactiver"})))return;await sb.from("profiles").update({status:"suspended"}).eq("id",session?.user?.id);onLogout();}}
       style={{width:"100%",padding:"14px",background:"rgba(200,64,64,0.06)",border:`1px solid ${T.err}33`,borderRadius:14,color:T.err,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
       🗑 Désactiver mon compte
     </Btn>
@@ -8951,7 +9372,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave,onConnect}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
- const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||""});
+ const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||"",links:myProfile?.links?.length?myProfile.links:[{label:"",url:""}]});
   const [saving,setSaving]=useState(false);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [showFollowers,setShowFollowers]=useState(false);
@@ -8960,6 +9381,13 @@ const [showWallet,setShowWallet]=useState(false);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
   const avRef=useRef(); const cvRef=useRef();
+  const [myNote,setMyNote]=useState(null);
+  const [showNoteComposer,setShowNoteComposer]=useState(false);
+  useEffect(()=>{
+    if(!session?.user?.id)return;
+    sb.from("notes").select("*").eq("user_id",session.user.id).gt("expires_at",new Date().toISOString()).maybeSingle()
+      .then(({data})=>setMyNote(data||null));
+  },[session?.user?.id]);
 
   useEffect(()=>{
     sb.from("notifications").select("*",{count:"exact",head:true}).eq("user_id",session?.user?.id).eq("read",false).then(({count})=>setUnreadNotifs(count||0));
@@ -8982,7 +9410,8 @@ const [showWallet,setShowWallet]=useState(false);
 
   const saveProfile=async()=>{
     setSaving(true);
-   await sb.from("profiles").update({prenom:form.prenom,nom:form.nom,bio:form.bio,paroisse:form.paroisse,shop_link:form.shop_link||null,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
+   const cleanLinks=(form.links||[]).filter(l=>l.url?.trim()).slice(0,5).map(l=>({label:(l.label||"").trim().slice(0,20),url:l.url.trim()}));
+   await sb.from("profiles").update({prenom:form.prenom,nom:form.nom,bio:form.bio,paroisse:form.paroisse,shop_link:form.shop_link||null,links:cleanLinks,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
     setSaving(false);setEditing(false);reload();notify("Profil mis à jour ✦");
   };
 
@@ -9139,7 +9568,13 @@ const openPostFromSound=(post,soundPosts)=>{
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-44,marginBottom:16}}>
           <div style={{position:"relative",cursor:"pointer"}}>
   <div style={{position:"absolute",inset:-5,borderRadius:"50%",background:`conic-gradient(from 120deg, ${myProfile?.color||T.gold}, transparent 60%, ${myProfile?.color||T.gold})`,filter:"blur(7px)",opacity:.55}}/>
+  {myNote&&(
+    <div onClick={e=>{e.stopPropagation();setShowNoteComposer(true);}} style={{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)",zIndex:2}}>{renderTextWithMentions(myNote.text)}</div>
+  )}
   <Av u={myProfile} size={92} ring onClick={e=>{e.stopPropagation();avRef.current.click();}}/>
+  <div onClick={e=>{e.stopPropagation();setShowNoteComposer(true);}} style={{position:"absolute",top:-2,left:-2,width:26,height:26,borderRadius:8,background:T.glass,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.goldL,cursor:"pointer"}}>
+    {myNote?<Edit2 size={12}/>:<Plus size={12}/>}
+  </div>
   <div onClick={e=>{e.stopPropagation();avRef.current.click();}} style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:8,background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",boxShadow:"0 2px 8px rgba(201,149,42,0.4)",cursor:"pointer"}}>
   <Camera size={12}/>
   </div>
@@ -9171,6 +9606,7 @@ const openPostFromSound=(post,soundPosts)=>{
             {(myProfile?.country==="CG")&&(
               <input value={form.shop_link||""} onChange={e=>setForm(f=>({...f,shop_link:e.target.value}))} placeholder="🛍️ Lien boutique (optionnel)" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 12px",color:T.text,fontSize:13,outline:"none"}}/>
             )}
+            <LinksEditor links={form.links} onChange={l=>setForm(f=>({...f,links:l}))}/>
             <Btn onClick={saveProfile} disabled={saving} style={{padding:"12px",background:saving?T.goldBg:T.gradGold,color:"#000",borderRadius:12,fontSize:13,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
               {saving?"Sauvegarde…":"Enregistrer ✦"}
             </Btn>
@@ -9188,6 +9624,7 @@ const openPostFromSound=(post,soundPosts)=>{
                 🛍️ Ma boutique
               </a>
             )}
+            <LinksRow links={myProfile?.links}/>
           </div>
         )}
 
@@ -9384,6 +9821,8 @@ const openPostFromSound=(post,soundPosts)=>{
         )}
         <div style={{height:80}}/>
       </div>
+      {showNoteComposer&&<NoteComposerModal sb={sb} userId={session.user.id} existingText={myNote?.text} notify={notify}
+        onClose={()=>setShowNoteComposer(false)} onSaved={t=>setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}))} onDeleted={()=>setMyNote(null)}/>}
     </div>
   );
 }
@@ -9589,7 +10028,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile}){
 };
 
   const reject=async id=>{
-    if(!window.confirm("Rejeter et supprimer ?"))return;
+    if(!(await confirmAction("Rejeter et supprimer ce membre ?",{confirmLabel:"Rejeter"})))return;
     await sb.auth.admin?.deleteUser(id);
     await sb.from("profiles").delete().eq("id",id);
     setList(p=>p.filter(m=>m.id!==id));notify("Rejeté");
@@ -9689,7 +10128,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
                         <p style={{margin:0,fontSize:10,color:T.muted}}>{r.sticker.added_by_admin?"Sticker officiel":"Ajouté par un membre"}</p>
                       </div>
                       <Btn onClick={async()=>{
-                        if(!window.confirm(`Supprimer le sticker "${r.sticker.name}" de toute l'application ?`))return;
+                        if(!(await confirmAction(`Supprimer le sticker "${r.sticker.name}" ?`,{detail:"Il sera retiré de toute l'application.",confirmLabel:"Supprimer"})))return;
                         await sb.from("stickers").delete().eq("id",r.sticker.id);
                         setAllReports(p=>p.filter(x=>x.id!==r.id||x.sticker_id!==r.sticker_id));
                         notify("Sticker supprimé");
@@ -9830,7 +10269,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
             </div>
           )}
          <Btn onClick={async()=>{
-            if(!window.confirm("Distribuer le pool de ce mois à tous les membres ?"))return;
+            if(!(await confirmAction("Distribuer le pool de ce mois ?",{detail:"À tous les membres badgés.",confirmLabel:"Distribuer"})))return;
             const month=new Date().toISOString().slice(0,7);
             // Récupérer tous les likes valides du mois
             const{data:likes}=await sb.from("valid_likes").select("author_id").eq("month",month);
@@ -9954,16 +10393,14 @@ const send=async()=>{
             content:h.parts[0].text
           }))
         ];
-        const res=await fetch("https://api.deepseek.com/chat/completions",{
-          method:"POST",
-          headers:{"Content-Type":"application/json","Authorization":`Bearer ${DEEPSEEK_KEY}`},
-          body:JSON.stringify({
-            model:"deepseek-chat",
-            messages:formattedMessages
-          })
-        });
-        if(!res.ok){if(res.status===429){setMsgs(p=>[...p,{role:"model",text:"Je reçois trop de messages en ce moment 😅 Attends 1 minute et réessaie !"}]);return;}if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}throw new Error("503");}
-        const data=await res.json();
+        let data;
+        try{
+          data=await askDeepseek(formattedMessages);
+        }catch(e){
+          if(e.status===429){setMsgs(p=>[...p,{role:"model",text:"Je reçois trop de messages en ce moment 😅 Attends 1 minute et réessaie !"}]);return;}
+          if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}
+          throw new Error("503");
+        }
         const reply=data.choices?.[0]?.message?.content||"Je n'ai pas pu répondre.";
         setMsgs(p=>[...p,{role:"model",text:reply}]);
         if(session?.user?.id)await sb.from("celeste_messages").insert({user_id:session.user.id,role:"model",text:reply});
@@ -9987,7 +10424,7 @@ const send=async()=>{
           <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Céleste IA</p>
           <p style={{margin:0,fontSize:11,color:"#9B6FDE"}}>● En ligne</p>
         </div>
-        <Btn onClick={()=>{if(window.confirm("Effacer la conversation ?"))setMsgs([]);}} style={{color:T.muted,fontSize:12,padding:"6px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10}}>Effacer</Btn>
+        <Btn onClick={async()=>{if(await confirmAction("Effacer la conversation ?",{confirmLabel:"Effacer"}))setMsgs([]);}} style={{color:T.muted,fontSize:12,padding:"6px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:10}}>Effacer</Btn>
       </div>
 
       {/* Messages */}
@@ -10065,8 +10502,10 @@ function SplashScreen(){
       <style>{getGS()}</style>
       <div style={{position:"absolute",top:"20%",left:"50%",transform:"translateX(-50%)",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,149,42,0.08),transparent 70%)",pointerEvents:"none",animation:"glowPulse 2s ease infinite"}}/>
       <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:90,color:T.gold,animation:"starPulse 2s ease infinite",lineHeight:1,filter:"drop-shadow(0 0 40px rgba(201,149,42,0.6))"}}>✦</div>
-      <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.text,letterSpacing:7,margin:"20px 0 8px",animation:"titleReveal .8s ease .3s both"}}>Céleste</h1>
-      <p style={{color:T.muted,fontSize:11,letterSpacing:3,textTransform:"uppercase",animation:"titleReveal .8s ease .6s both"}}>Exprime ta vraie personnalitée</p>
+
+      {phase==="loading"&&(
+        <p style={{position:"absolute",bottom:28,left:0,right:0,textAlign:"center",color:T.muted,fontSize:11,letterSpacing:2,opacity:0.45,animation:"titleReveal .8s ease .6s both"}}>DES-ETOILES</p>
+      )}
 
       {phase==="warning"&&(
         <div style={{position:"absolute",bottom:60,left:20,right:20,background:"rgba(201,149,42,0.08)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"16px 20px",textAlign:"center",animation:"fadeUp .5s ease"}}>
@@ -10362,9 +10801,17 @@ useEffect(() => {
 },[myId]);
   const dismissNotif=useCallback(id=>setInAppNotifs(p=>p.filter(n=>n.id!==id)),[]);
 
-  const loadMyProfile=useCallback(async uid=>{const{data}=await sb.from("profiles").select("*").eq("id",uid).single();if(data){
-  setMyProfile(normProfile(data));setIsPending(data.status==="pending");}},[]);
-  const loadConnections=useCallback(async uid=>{if(!uid)return;const[{data:following},{data:followers}]=await Promise.all([sb.from("connections").select("to_id").eq("from_id",uid),sb.from("connections").select("from_id").eq("to_id",uid)]);if(following)setMyConnections(following.map(d=>d.to_id));if(followers)setMyFollowers(followers.map(d=>d.from_id));},[]);
+  const loadMyProfile=useCallback(async uid=>{
+  try{
+    const{data,error}=await sb.from("profiles").select("*").eq("id",uid).single();
+    if(error)throw error;
+    if(data){setMyProfile(normProfile(data));setIsPending(data.status==="pending");}
+  }catch(e){
+    console.warn("⚠️ loadMyProfile a échoué:",e);
+    setFeedPreloaded(true); // évite que le splash reste bloqué indéfiniment
+  }
+},[]);
+  const loadConnections=useCallback(async uid=>{if(!uid)return;const[{data:following},{data:followers}]=await Promise.all([sb.from("connections").select("to_id").eq("from_id",uid),sb.from("connections").select("from_id").eq("to_id",uid)]);if(following)setMyConnections(following.map(d=>d.to_id).filter(id=>id!==uid));if(followers)setMyFollowers(followers.map(d=>d.from_id).filter(id=>id!==uid));},[]);
 
   // Load unread notifs count
   const loadUnreadNotifs=useCallback(async uid=>{if(!uid)return;const{count}=await sb.from("notifications").select("*",{count:"exact",head:true}).eq("user_id",uid).eq("read",false);setUnreadNotifs(count||0);},[]);
@@ -10395,14 +10842,18 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
       }
       try{if(newUid)localStorage.setItem("celeste_active_uid",newUid);else localStorage.removeItem("celeste_active_uid");}catch(e){}
       setSession(s||null);if(s){loadMyProfile(s.user.id);subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id);}else{setMyProfile(null);setIsPending(false);}});
-    const lsInterval=setInterval(()=>{sb.auth.getUser().then(({data})=>{if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);});},60000);
-    // Force la mise à jour de last_seen dès que l'app/onglet revient au premier plan
-    // (le setInterval peut être throttled/suspendu par le mobile en arrière-plan)
+    const lsInterval=setInterval(()=>{sb.auth.getSession().then(({data})=>{const uid=data?.session?.user?.id;if(uid)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",uid);});},60000);
+    // Force la mise à jour de last_seen ET le rafraîchissement du token dès que l'app/onglet revient au premier plan
+    // (le timer interne de refresh de Supabase peut être throttled/suspendu en arrière-plan, laissant le token expirer silencieusement)
     const onVisible=()=>{
       if(document.visibilityState==="visible"){
-        sb.auth.getUser().then(({data})=>{
-          if(data?.user?.id)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",data.user.id);
+        sb.auth.startAutoRefresh();
+        sb.auth.getSession().then(({data})=>{
+          const uid=data?.session?.user?.id;
+          if(uid)sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",uid);
         });
+      }else{
+        sb.auth.stopAutoRefresh();
       }
     };
     document.addEventListener("visibilitychange",onVisible);
@@ -10430,7 +10881,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   },[onlinePresenceIds]);
 
   const loadMembers=useCallback(async()=>{
-  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,hide_online,joined_at").neq("status","pending").neq("status","suspended");
+  const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,status,last_seen,country,account_type,latitude,longitude,no_messages,screenshot_protection,hide_online,joined_at,links").neq("status","pending").neq("status","suspended");
   if(data){
     const{data:conns}=await sb.from("connections").select("to_id");
     const counts={};
@@ -10763,7 +11214,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           🚫</div>
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.err,marginBottom:12}}>Compte suspendu</h2>
         <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Votre compte a été suspendu par un administrateur.<br/>Pour toute question, contactez le support de la communauté.</p>
-        <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
+        <Btn onClick={async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
       </div>
     </div>
   );
@@ -10775,7 +11226,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         <div style={{fontSize:60,marginBottom:20,animation:"float 3s ease infinite"}}>⏳</div>
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.text,marginBottom:12}}>Compte en attente</h2>
         <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Bonjour <strong style={{color:T.goldL}}>{myProfile?.name}</strong> !<br/>Un administrateur vérifiera votre profil sous 24–48h.</p>
-        <Btn onClick={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
+        <Btn onClick={async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
 
 <VerificationInfoModal/>
       </div>
@@ -10920,7 +11371,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} members={members} notify={notify} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme}/>
             </div>
@@ -10992,6 +11443,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           <p style={{fontSize:12,color:T.muted,margin:0}}>Céleste est masqué par mesure de sécurité</p>
         </div>
       )}
+      <GlobalConfirmModal/>
     </AppContext.Provider>
   );
 }

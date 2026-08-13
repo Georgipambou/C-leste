@@ -22,7 +22,9 @@ export async function subscribePush(supabaseClient, userId) {
         window.dispatchEvent(new CustomEvent('celeste_open_post', { detail: { postId: data.postId } }));
       } else if (data.type === 'status' && data.statusId) {
         window.dispatchEvent(new CustomEvent('celeste_open_status', { detail: { statusId: data.statusId } }));
-      } else if (data.type === 'user' && data.userId) {
+      } else if ((data.type === 'group_message' || data.type === 'group_invite') && data.groupId) {
+  window.dispatchEvent(new CustomEvent('celeste_open_group', { detail: { groupId: data.groupId } }));
+} else if (data.type === 'user' && data.userId) {
         window.dispatchEvent(new CustomEvent('celeste_open_user', { detail: { uid: data.userId } }));
       }
     });

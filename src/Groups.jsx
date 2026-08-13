@@ -23,6 +23,35 @@ import {
 } from "./ChatExtras";
 
 // Dupliqué depuis App.jsx (pas de dépendance inverse possible, voir en-tête du fichier)
+function ProtectedImage({ url, style = {} }) {
+  if (!url) return null;
+  return (
+    <img src={url} alt="" draggable={false} onContextMenu={e => e.preventDefault()}
+      style={{ maxWidth: 220, borderRadius: 14, display: "block", WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none", ...style }} />
+  );
+}
+function ProtectedVideo({ url, style = {} }) {
+  const ref = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const toggle = e => {
+    e.stopPropagation();
+    const v = ref.current; if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); setPlaying(true); } else { v.pause(); setPlaying(false); }
+  };
+  return (
+    <div onClick={toggle} onContextMenu={e => e.preventDefault()} style={{ position: "relative", cursor: "pointer", borderRadius: 14, overflow: "hidden", WebkitTouchCallout: "none", ...style }}>
+      <video ref={ref} src={url} playsInline disablePictureInPicture controlsList="nodownload noremoteplayback noplaybackrate"
+        style={{ maxWidth: 220, maxHeight: 260, display: "block", background: "#000", pointerEvents: "none" }} />
+      {!playing &&
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.15)" }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><polygon points="5,3 19,12 5,21" /></svg>
+          </div>
+        </div>
+      }
+    </div>
+  );
+}
 function isLightBg(hex) {
   if (!hex || hex[0] !== "#") return false;
   const h = hex.length === 4 ? hex.replace(/#(.)(.)(.)/, "#$1$1$2$2$3$3") : hex;
@@ -907,7 +936,7 @@ function GroupVoicePlayer({ src, mine, T }) {
   );
 }
 
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, onRevealOnce, bubbleColor, fontSizeKey }) {
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, revealingOnce }) {
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
@@ -948,24 +977,29 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                 ? (mine
                     ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Photo vue unique envoyée</span></div>
                     : (revealedOnce?.has(m.id)
-                        ? <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
-                            onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />
-                        : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>Appuyer pour voir · vue unique</span></Btn>
+                        ? <ProtectedImage url={viewOnceUrls?.[m.id]} />
+                        : (viewedByMeIds?.has(m.id)
+                            ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Photo vue unique consultée</span></div>
+                            : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} disabled={revealingOnce?.has(m.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text, opacity: revealingOnce?.has(m.id) ? 0.6 : 1 }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>{revealingOnce?.has(m.id) ? "Ouverture…" : "Appuyer pour voir · vue unique"}</span></Btn>
+                          )
                       )
                   )
-                : <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
-                    onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />
+                : (m.file_url && <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
+                    onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />)
             )}
-            {m.type === "video" && m.file_url && (
+            {m.type === "video" && (
               m.view_once
                 ? (mine
                     ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vidéo vue unique envoyée</span></div>
                     : (revealedOnce?.has(m.id)
-                        ? <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />
-                        : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>Appuyer pour voir · vue unique</span></Btn>
+                        ? <ProtectedVideo url={viewOnceUrls?.[m.id]} />
+                        : (viewedByMeIds?.has(m.id)
+                            ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vidéo vue unique consultée</span></div>
+                            : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} disabled={revealingOnce?.has(m.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text, opacity: revealingOnce?.has(m.id) ? 0.6 : 1 }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>{revealingOnce?.has(m.id) ? "Ouverture…" : "Appuyer pour voir · vue unique"}</span></Btn>
+                          )
                       )
                   )
-                : <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />
+                : (m.file_url && <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />)
             )}
             {m.type === "file" && m.file_url && (
               <Btn onClick={() => window.open(m.file_url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
@@ -975,10 +1009,34 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                 <span style={{ fontSize: 12, fontWeight: 600, color: mine ? "#000" : T.text, wordBreak: "break-all" }}>{m.file_name || "Fichier"}</span>
               </Btn>
             )}
-            {m.type === "voice" && m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} />}
+            {m.type === "voice" && (
+              m.view_once
+                ? (mine
+                    ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vocal vue unique envoyé</span></div>
+                    : (revealedOnce?.has(m.id)
+                        ? <GroupVoicePlayer src={viewOnceUrls?.[m.id]} mine={mine} T={T} />
+                        : (viewedByMeIds?.has(m.id)
+                            ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vocal vue unique consulté</span></div>
+                            : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} disabled={revealingOnce?.has(m.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text, opacity: revealingOnce?.has(m.id) ? 0.6 : 1 }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>{revealingOnce?.has(m.id) ? "Ouverture…" : "Appuyer pour écouter · vue unique"}</span></Btn>
+                          )
+                      )
+                  )
+                : (m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} />)
+            )}
             {m.type === "sticker" && <img src={m.file_url} style={{ width: 100, height: 100, objectFit: "contain", display: "block" }} />}
-            {m.type === "text" && m.text}
-            {m.type === "text" && <EditedBadge message={m} T={T} />}
+            {m.type === "text" && m.view_once
+              ? (mine
+                  ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Message vue unique envoyé</span></div>
+                  : (revealedOnce?.has(m.id)
+                      ? <>{m.text}<EditedBadge message={m} T={T} /></>
+                      : (viewedByMeIds?.has(m.id)
+                          ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Message vue unique consulté</span></div>
+                          : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>Appuyer pour lire · vue unique</span></Btn>
+                        )
+                    )
+                )
+              : <>{m.type === "text" && m.text}{m.type === "text" && <EditedBadge message={m} T={T} />}</>
+            }
             {m.sending && (m.type === "photo" || m.type === "video" || m.type === "file" || m.type === "voice") && (
               <div style={{ marginTop: 6 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -1021,6 +1079,19 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [blockedIds, setBlockedIds] = useState(() => new Set());
   const [revealedOnce, setRevealedOnce] = useState(() => new Set());
+  const [viewedByMeIds, setViewedByMeIds] = useState(() => new Set());
+  const [viewOnceUrls, setViewOnceUrls] = useState({});
+  const [revealingOnce, setRevealingOnce] = useState(() => new Set());
+  const viewOnceUrlsRef = useRef({});
+  useEffect(() => () => { Object.values(viewOnceUrlsRef.current).forEach(u => { try { URL.revokeObjectURL(u); } catch {} }); }, []);
+  const wipeQueueRef = useRef(new Set());
+  useEffect(() => {
+    return () => {
+      const ids = [...wipeQueueRef.current];
+      wipeQueueRef.current = new Set();
+      if (ids.length) sb.from("group_messages").update({ file_url: null, text: "" }).in("id", ids).catch(() => {});
+    };
+  }, [group.id, sb]);
   const [bubbleColor, setBubbleColor] = useState(() => { try { return localStorage.getItem(`chat_color_${group.id}`) || null; } catch { return null; } });
   const [fontSizeKey, setFontSizeKey] = useState(() => { try { return localStorage.getItem(`chat_fontsize_${group.id}`) || "normal"; } catch { return "normal"; } });
   useEffect(() => {
@@ -1079,7 +1150,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   
 
   useEffect(() => {
-    // FLAG_SECURE côté Android : écran noir sur capture/enregistrement tant que
+    // FLAG_SECURE côté Android / preventScreenshots côté iOS : écran noir sur capture/enregistrement tant que
     // secure_mode est actif sur ce groupe, OU qu'un média vue-unique est
     // actuellement révélé à l'écran (sinon la vue unique ne protège de rien).
     // Se désactive aussi si l'admin repasse secure_mode à false pendant que le chat est ouvert.
@@ -1087,6 +1158,27 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     else { PrivacyScreen.disable().catch(() => {}); }
     return () => { PrivacyScreen.disable().catch(() => {}); };
   }, [displayGroup.secure_mode, revealedOnce]);
+
+  useEffect(() => {
+    // Alerte enregistrement d'écran / capture d'écran (iOS, "screenRecordingStarted"/"screenRecordingStopped"/"screenshotTaken").
+    // Si un média vue-unique est révélé au moment où ça se produit, on le masque
+    // immédiatement à l'écran et on prévient tout le groupe via un message système.
+    let startedHandle, stoppedHandle, screenshotHandle;
+    PrivacyScreen.addListener("screenRecordingStarted", () => {
+      if (revealedOnce.size > 0) {
+        setRevealedOnce(new Set());
+        postSystemMessage(sb, group.id, myId, `${session?.user?.user_metadata?.prenom || "Un membre"} a peut-être enregistré du contenu à vue unique`);
+      }
+    }).then(h => { startedHandle = h; });
+    PrivacyScreen.addListener("screenRecordingStopped", () => {}).then(h => { stoppedHandle = h; });
+    PrivacyScreen.addListener("screenshotTaken", () => {
+      if (revealedOnce.size > 0) {
+        setRevealedOnce(new Set());
+        postSystemMessage(sb, group.id, myId, `${session?.user?.user_metadata?.prenom || "Un membre"} a peut-être capturé du contenu à vue unique`);
+      }
+    }).then(h => { screenshotHandle = h; });
+    return () => { startedHandle?.remove(); stoppedHandle?.remove(); screenshotHandle?.remove(); };
+  }, [group.id, myId, revealedOnce, sb, session]);
 
 
   const load = useCallback(async () => {
@@ -1096,17 +1188,49 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       .eq("group_id", group.id)
       .order("created_at", { ascending: true })
       .limit(300);
-    setMsgs((data || []).map(m => ({ ...m, ts: m.created_at, authorName: m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.trim() : "" })));
-  }, [sb, group.id]);
+    const mapped = (data || []).map(m => ({ ...m, ts: m.created_at, authorName: m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.trim() : "" }));
+    setMsgs(mapped);
+    const voIds = mapped.filter(m => m.view_once && m.sender_id !== myId).map(m => m.id);
+    if (voIds.length) {
+      const { data: views } = await sb.from("group_message_views").select("message_id").eq("viewer_id", myId).in("message_id", voIds);
+      if (views?.length) setViewedByMeIds(prev => new Set([...prev, ...views.map(v => v.message_id)]));
+    }
+  }, [sb, group.id, myId]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Récupère UN message avec son auteur joint (même select que load(), mais pour un seul id) —
+  // évite de recharger les 300 derniers messages à chaque réaction/édition/nouveau message.
+  const fetchMessageById = useCallback(async id => {
+    const { data } = await sb
+      .from("group_messages")
+      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .eq("id", id)
+      .single();
+    return data;
+  }, [sb]);
+
   useEffect(() => {
+    const mapOne = full => ({ ...full, ts: full.created_at, authorName: full.sender ? `${full.sender.prenom || ""} ${full.sender.nom || ""}`.trim() : "" });
     const ch = sb.channel(`group_messages:${group.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, async payload => {
+        const full = await fetchMessageById(payload.new.id);
+        if (!full) return;
+        const mapped = mapOne(full);
+        setMsgs(prev => prev.some(m => m.id === mapped.id) ? prev : [...prev, mapped]);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, async payload => {
+        const full = await fetchMessageById(payload.new.id);
+        if (!full) return;
+        const mapped = mapOne(full);
+        setMsgs(prev => prev.map(m => m.id === mapped.id ? mapped : m));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, payload => {
+        setMsgs(prev => prev.filter(m => m.id !== payload.old.id));
+      })
       .subscribe();
     return () => { sb.removeChannel(ch); };
-  }, [sb, group.id, load]);
+  }, [sb, group.id, fetchMessageById]);
 
   const [lastReadAt, setLastReadAt] = useState(undefined); // undefined = pas encore chargé, null = jamais lu
   const initialScrollRef = useRef(false);
@@ -1160,12 +1284,30 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   const [viewOnceNext, setViewOnceNext] = useState(false);
   const revealOnce = async (msgId) => {
-    setRevealedOnce(p => new Set([...p, msgId]));
-    try { await sb.from("group_message_views").insert({ message_id: msgId, viewer_id: myId }); } catch {}
+    if (!isNative) { notify("Vue unique disponible uniquement depuis l'app iOS ou Android"); return; }
+    if (revealedOnce.has(msgId) || revealingOnce.has(msgId)) return;
+    setRevealingOnce(p => new Set([...p, msgId]));
+    try {
+      const { data, error } = await sb.functions.invoke("view-once-group-media", { body: { message_id: msgId }, headers: { "X-Celeste-Platform": Capacitor.getPlatform() } });
+      if (error || !data?.data) throw error || new Error("Contenu indisponible");
+      const bytes = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: data.mime || "application/octet-stream" });
+      const objUrl = URL.createObjectURL(blob);
+      viewOnceUrlsRef.current = { ...viewOnceUrlsRef.current, [msgId]: objUrl };
+      setViewOnceUrls(p => ({ ...p, [msgId]: objUrl }));
+      setRevealedOnce(p => new Set([...p, msgId]));
+      wipeQueueRef.current.add(msgId);
+    } catch (err) {
+      notify("Impossible d'ouvrir ce contenu · " + (err?.message || "réessaie"));
+    } finally {
+      setRevealingOnce(p => { const n = new Set(p); n.delete(msgId); return n; });
+    }
   };
   const send = async () => {
     const t = text.trim();
     if (!t || sending) return;
+    const wantViewOnce = viewOnceNext;
+    setViewOnceNext(false);
     setText("");
     if (editingMsg) {
       setSending(true);
@@ -1173,7 +1315,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       setEditingMsg(null); setSending(false); return;
     }
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
-    enqueueGroupMessage(group.id, myId, { type: "text", text: t, ...replyPayload });
+    enqueueGroupMessage(group.id, myId, { type: "text", text: t, view_once: wantViewOnce, ...replyPayload });
     setReplyTo(null);
     processGroupQueue(sb, notify).then(load);
   };
@@ -1239,6 +1381,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   const startRecording = async () => {
     cancelledInitRef.current = false;
+    const wantViewOnce = viewOnceNext;
+    setViewOnceNext(false);
     setRecording(true); setRecordSecs(0); setRecInitializing(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1259,7 +1403,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
             const url = await uploadToR2(audioFile, "group_messages", pct => {
               setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
             });
-            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "" });
+            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce });
             if (error) throw error;
             setSendingFiles(p => p.filter(x => x.id !== tempId));
             load();
@@ -1392,9 +1536,12 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 registerRef={el => { if (el) msgRefs.current[item.id] = el; }}
                 highlighted={highlightMsgId === item.id}
                 revealedOnce={revealedOnce}
+                viewedByMeIds={viewedByMeIds}
                 onRevealOnce={revealOnce}
                 bubbleColor={bubbleColor}
                 fontSizeKey={fontSizeKey}
+                viewOnceUrls={viewOnceUrls}
+                revealingOnce={revealingOnce}
               />
             )
         )}

@@ -240,7 +240,7 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
   );
 }
 
-export function ProfileHeader({T, Av, Badge, fmtCount, coverUrl, color, avatarShape="circle", avatarUrl, user, onAvatarClick, title, subtitle, extraLines, stats, actions}) {
+export function ProfileHeader({T, Av, Badge, fmtCount, coverUrl, color, avatarShape="circle", avatarUrl, user, onAvatarClick, title, subtitle, extraLines, stats, actions, note, onNoteClick}) {
   return (
     <>
       <div style={{height:210,position:"relative",overflow:"hidden",background:coverUrl?undefined:`linear-gradient(150deg,${color}3a,${color}10,transparent)`}}>
@@ -258,6 +258,9 @@ export function ProfileHeader({T, Av, Badge, fmtCount, coverUrl, color, avatarSh
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:-54,marginBottom:16}}>
           <div style={{position:"relative",flexShrink:0}}>
             <div style={{position:"absolute",inset:-5,borderRadius:avatarShape==="circle"?"50%":24,background:`conic-gradient(from 120deg, ${color}, transparent 60%, ${color})`,filter:"blur(7px)",opacity:.55}}/>
+            {note&&(
+              <div onClick={onNoteClick} style={{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)",cursor:onNoteClick?"pointer":"default",zIndex:2}}>{note}</div>
+            )}
             {avatarShape==="circle"
               ? <div style={{position:"relative"}}><Av u={{...user,avatar_url:avatarUrl}} size={92} ring onClick={onAvatarClick}/></div>
               : <div onClick={onAvatarClick} style={{position:"relative",width:92,height:92,borderRadius:22,border:`3px solid ${color}`,overflow:"hidden",background:T.card,cursor:onAvatarClick?"pointer":"default"}}>
