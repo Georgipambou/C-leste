@@ -72,6 +72,7 @@ import { Share } from "@capacitor/share";
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import EasyCrop from "react-easy-crop";
 import ReelsViewer from "./ReelsViewer";
@@ -944,6 +945,10 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick,noStatus=
     e.stopPropagation();
     const originTab=window.__celesteGetTab?.();
     if(originTab&&originTab!=="statuses")window.__celesteStatusReturnTab=originTab;
+    // Referme toute conversation (privée ou groupe) encore montée avant de
+    // basculer sur l'onglet Statuts, sinon le chat continue de tourner
+    // (et sa vidéo/audio en cours) derrière le lecteur de statut.
+    window.dispatchEvent(new CustomEvent("celeste_close_conv"));
     window.__celesteSetTab?.("statuses",()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:_statusId}})));
   };
   return(
@@ -3954,6 +3959,36 @@ function StatusViewer({statuses,author,isMe,onDelete,onClose,onNextGroup,onPrevG
     return()=>{sb.removeChannel(ch);disableScreenProtection();};
   },[author?.id]);
 
+  // Temps réel : likes/vues du statut affiché mis à jour en direct (sans ça
+  // il fallait fermer/rouvrir le statut pour voir un nouveau like ou une
+  // nouvelle vue apparaître).
+  useEffect(()=>{
+    if(!current?.id)return;
+    const sid=current.id;
+    const ch=sb.channel(`status_likes_views_${sid}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"status_likes",filter:`status_id=eq.${sid}`},payload=>{
+        setLikes(l=>{
+          const cur=l[sid]||[];
+          if(payload.eventType==="INSERT"&&payload.new?.user_id&&!cur.includes(payload.new.user_id))
+            return{...l,[sid]:[...cur,payload.new.user_id]};
+          if(payload.eventType==="DELETE"&&payload.old?.user_id)
+            return{...l,[sid]:cur.filter(u=>u!==payload.old.user_id)};
+          return l;
+        });
+      })
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"status_views",filter:`status_id=eq.${sid}`},async payload=>{
+        if(!isMe||!payload.new?.viewer_id)return;
+        const{data:profile}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge").eq("id",payload.new.viewer_id).maybeSingle();
+        setViews(v=>{
+          const cur=v[sid]||[];
+          if(cur.some(x=>x.viewer_id===payload.new.viewer_id))return v;
+          return{...v,[sid]:[...cur,{viewer_id:payload.new.viewer_id,profiles:profile||null}]};
+        });
+      })
+      .subscribe();
+    return()=>{sb.removeChannel(ch);};
+  },[current?.id,isMe]);
+
   useEffect(()=>{
     if(!current)return;
     sb.from("status_likes").select("user_id").eq("status_id",current.id).then(({data})=>setLikes(l=>({...l,[current.id]:(data||[]).map(d=>d.user_id)})));
@@ -4304,8 +4339,25 @@ useEffect(()=>{
   },[viewingIdx,groups,popNav,load]);
 
   useEffect(()=>{load();},[load]);
+  // Filet de sécurité en cas de coupure/désynchro du canal realtime — le
+  // canal ci-dessous couvre le cas normal, ce polling reste en secours.
   useEffect(()=>{const iv=setInterval(()=>{load();},60000);return()=>clearInterval(iv);},[load]);
   useEffect(()=>{if(!viewing&&!creating)setHideNav(false);},[viewing,creating]);
+
+  // Temps réel : nouveau statut publié / supprimé par moi ou un contact que
+  // je suis → rafraîchit la liste immédiatement au lieu d'attendre le
+  // polling 60s.
+  useEffect(()=>{
+    const relevantIds=new Set([session?.user?.id,...(myConnections||[])].filter(Boolean));
+    if(!relevantIds.size)return;
+    const ch=sb.channel(`statuses_rt_${session?.user?.id}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"statuses"},payload=>{
+        const uid=payload.new?.user_id||payload.old?.user_id;
+        if(uid&&relevantIds.has(uid))load();
+      })
+      .subscribe();
+    return()=>{sb.removeChannel(ch);};
+  },[session?.user?.id,myConnections,load]);
 
 useEffect(()=>{
   const handler=async e=>{
@@ -5207,23 +5259,11 @@ const handleRangeChanged=useCallback(({startIndex,endIndex})=>{
     try{
       if(liked){
         await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);
-        await sb.from("valid_likes").delete().eq("post_id",pid).eq("liker_id",uid);
       }else{
         await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
         await sb.rpc("increment_phase_interactions",{post_id:pid});
-        // Vérifier si le post a moins de 24h
-        const postAge=Date.now()-post.ts;
-        const isValid=postAge<86400000; // 24h en ms
-        const authorHasBadge=post.author?.badge==="confirmed"||post.author?.badge==="friend";
-        if(isValid&&authorHasBadge&&post.by!==uid){
-          const month=new Date().toISOString().slice(0,7);
-          await sb.from("valid_likes").upsert({
-            post_id:pid,
-            liker_id:uid,
-            author_id:post.by,
-            month
-          },{onConflict:"post_id,liker_id",ignoreDuplicates:true});
-        }
+        // La récompense (1 like = 1 FCFA, plafonnée par post) est calculée
+        // et créditée côté serveur par un trigger — plus rien à faire ici.
       }
       // Push notif au propriétaire du post
       if(!liked&&post.by!==uid){
@@ -8725,7 +8765,12 @@ const NAV_THEMES=[
             }});
 const checkoutUrl=data?.checkout_url;
 if(checkoutUrl){
-              win.location.href=checkoutUrl;
+              if(Capacitor.isNativePlatform()){
+                win.close();
+                await Browser.open({url:checkoutUrl});
+              }else{
+                win.location.href=checkoutUrl;
+              }
               notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
             }else{
               win.close();
@@ -9039,9 +9084,8 @@ useEffect(()=>{
     if(!withdrawName.trim())return notify("Entre le nom exact du bénéficiaire (celui du compte Mobile Money)");
     setLoading(true);
     const net=Math.floor(amount*0.95);
-    await sb.from("wallets").update({balance:wallet.balance-amount,updated_at:new Date().toISOString()}).eq("user_id",session.user.id);
-    const{data:txRow}=await sb.from("wallet_transactions").insert({user_id:session.user.id,type:"withdrawal",amount:-amount,description:`Retrait ${withdrawOp.toUpperCase()} — ${withdrawPhone} (${withdrawName.trim()})`,status:"pending"}).select("id").single();
-    await sb.from("withdrawal_requests").insert({user_id:session.user.id,amount,phone:withdrawPhone.trim(),beneficiary_name:withdrawName.trim(),operator:withdrawOp,net_amount:net,status:"pending",transaction_id:txRow?.id});
+    const{error:wErr}=await sb.rpc("request_withdrawal",{p_amount:amount,p_phone:withdrawPhone.trim(),p_beneficiary_name:withdrawName.trim(),p_operator:withdrawOp});
+if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Solde insuffisant":"Erreur, réessaie");}
     setLoading(false);setShowWithdraw(false);setWithdrawAmount("");setWithdrawPhone("");setWithdrawName("");
     notify("Demande envoyée ✦");load();
   };
@@ -10269,55 +10313,11 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
             </div>
           )}
          <Btn onClick={async()=>{
-            if(!(await confirmAction("Distribuer le pool de ce mois ?",{detail:"À tous les membres badgés.",confirmLabel:"Distribuer"})))return;
-            const month=new Date().toISOString().slice(0,7);
-            // Récupérer tous les likes valides du mois
-            const{data:likes}=await sb.from("valid_likes").select("author_id").eq("month",month);
-            if(!likes||likes.length===0){notify("Aucun like valide ce mois");return;}
-            // Récupérer le pool
-            const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
-            
-            if(!pool||pool.distributed){notify("Pool inexistant ou déjà distribué");return;}
-           // Compter les likes par auteur
-            const likeCounts={};
-            likes.forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
-
-            // Compter les posts actifs du mois (publiés dans le mois)
-            const{data:monthPosts}=await sb.from("posts").select("author_id,created_at").gte("created_at",`${month}-01`);
-            const postCounts={};
-            (monthPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
-
-            // Calculer le score = likes × posts
-            const scores={};
-            const allUserIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
-            allUserIds.forEach(uid=>{
-              const l=likeCounts[uid]||0;
-              const p=postCounts[uid]||0;
-              if(l>0&&p>0)scores[uid]=l*p;
-            });
-
-            const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
-            // Distribuer
-            for(const[userId,score] of Object.entries(scores)){
-              const share=Math.floor((score/totalScore)*pool.pool_amount);
-              if(share<=0)continue;
-              // Créer ou mettre à jour le wallet
-              const{data:w}=await sb.from("wallets").select("*").eq("user_id",userId).maybeSingle();
-              if(w){
-                await sb.from("wallets").update({balance:w.balance+share,total_earned:w.total_earned+share,updated_at:new Date().toISOString()}).eq("user_id",userId);
-              }else{
-                await sb.from("wallets").insert({user_id:userId,balance:share,total_earned:share});
-              }
-              // Transaction
-              await sb.from("wallet_transactions").insert({user_id:userId,type:"earning",amount:share,description:`Gains likes — ${month}`,month,status:"completed"});
-              // Notification
-              await sb.from("notifications").insert({user_id:userId,from_id:userId,type:"earning",text:`✦ Tu as reçu ${share.toLocaleString("fr-FR")} F CFA pour tes likes du mois de ${month}`,read:false});
-            }
-            // Marquer comme distribué
-            await sb.from("badge_pool").update({distributed:true}).eq("month",month);
-            notify(`✦ Distribution effectuée — ${Object.keys(scores).length} membres récompensés`);
+            const{data,error}=await sb.functions.invoke("distribute-daily-pool");
+            if(error){notify("Erreur");return;}
+            notify(data?.message||"Stats indisponibles");
           }} style={{width:"100%",padding:"11px",background:"rgba(61,184,116,0.08)",border:"1px solid rgba(61,184,116,0.3)",borderRadius:12,color:"#4ade80",fontSize:13,fontWeight:600}}>
-            💰 Distribuer le pool du mois
+            📊 Stats des likes du jour
           </Btn>
 
           {/* Retraits en attente */}
@@ -10629,7 +10629,10 @@ useEffect(()=>{
   if(window.__celesteTabChangeCb){const cb=window.__celesteTabChangeCb;window.__celesteTabChangeCb=null;cb();}
 },[tab]);
   useEffect(()=>{
-    const h=()=>{setOpenConvId(null);setOpenUserId(null);};
+    // Ferme tout ce qui peut garder une messagerie active en arrière-plan
+    // (conversation privée, chat de groupe, panneau d'infos de conv) —
+    // notamment utilisé avant d'ouvrir un statut depuis la messagerie.
+    const h=()=>{setOpenConvId(null);setOpenUserId(null);setOpenGroup(null);setOpenConvInfoUid(null);};
     window.addEventListener("celeste_close_conv",h);
     return()=>window.removeEventListener("celeste_close_conv",h);
   },[]);
