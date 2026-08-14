@@ -7795,6 +7795,10 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
     setUPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]}));
     await toggleLike(pid);
   };
+  const isUVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
+  const uPhotoPosts=uPosts.filter(p=>!isUVid(p));
+  const uVideoPosts=uPosts.filter(p=>isUVid(p));
+  const [uTab,setUTab]=useState("posts");
  const [userReelsIndex,setUserReelsIndex]=useState(null);
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
   const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
@@ -7947,27 +7951,26 @@ if(user?.status==="suspended") return(
 
       <div style={{padding:"0 18px 80px",maxWidth:640,margin:"0 auto"}}>
 
-        <p style={{fontSize:10,color:T.muted,letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>Publications ({uPosts.length})</p>
-        {uPosts.length===0
+        <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
+          {[{k:"posts",l:"Publications"},{k:"reels",l:"Reels"}].map(t=>(
+            <Btn key={t.k} onClick={()=>setUTab(t.k)} style={{flex:1,padding:"11px 6px",background:"none",color:uTab===t.k?T.goldL:T.muted,fontSize:12,fontWeight:uTab===t.k?700:400,borderRadius:0,transition:"all .2s",borderBottom:uTab===t.k?`2px solid ${T.gold}`:"2px solid transparent"}}>
+              {t.l}
+            </Btn>
+          ))}
+        </div>
+        {uTab==="posts"&&(
+          uPhotoPosts.length===0
           ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune publication encore</p></div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
-            {uPosts.map(p=>(
+            {uPhotoPosts.map(p=>(
               <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}} onClick={()=>{
                 if(p.is_private&&!isNative)return;
-                const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
-                if(isVid&&toggleLike&&toggleSave){
-                  const vidPosts=uPosts.filter(q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")));
-                  const idx=vidPosts.findIndex(q=>q.id===p.id);
-                  setUserReelsIndex(idx>=0?idx:0);
+                const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+                if(hasPhoto){
+                  const idx=uPhotoPosts.findIndex(q=>q.id===p.id);
+                  setPhotoViewerIndex(idx>=0?idx:0);
                 }else{
-                  const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
-                  if(hasPhoto){
-                    const photoPosts=uPosts.filter(q=>!(q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")))&&(q.img||(q.media_urls&&q.media_urls.length>0)));
-                    const idx=photoPosts.findIndex(q=>q.id===p.id);
-                    setPhotoViewerIndex(idx>=0?idx:0);
-                  }else{
-                    setDetailPost(p);
-                  }
+                  setDetailPost(p);
                 }
               }}>
                 {p.is_private&&!isNative?(
@@ -7976,7 +7979,7 @@ if(user?.status==="suspended") return(
                     <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
                   </div>
                 ):p.img
-                  ?(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"))?<VideoThumb src={p.img}/>:<SmartImage src={p.img} alt=""/>)
+                  ?<SmartImage src={p.img} alt=""/>
                   :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8,gap:4}}>
                     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>✦</span>
                     <p style={{margin:0,fontSize:10,color:T.sub,textAlign:"center",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{p.text||p.title}</p>
@@ -7998,7 +8001,29 @@ if(user?.status==="suspended") return(
               </div>
             ))}
           </div>
-        }
+        )}
+        {uTab==="reels"&&(
+          uVideoPosts.length===0
+          ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun reel encore</p></div>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
+            {uVideoPosts.map(p=>(
+              <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}}
+                onClick={()=>{
+                  if(p.is_private&&!isNative)return;
+                  const idx=uVideoPosts.findIndex(q=>q.id===p.id);
+                  setUserReelsIndex(idx>=0?idx:0);
+                }}>
+                {p.is_private&&!isNative?(
+                  <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(255,255,255,0.03)"}}>
+                    <Lock size={20} color={T.goldL}/>
+                    <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
+                  </div>
+                ):<VideoThumb src={p.img}/>}
+                <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{height:80}}/>
       </div>
       {replyNote&&<NoteReplyModal sb={sb} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
@@ -8059,6 +8084,10 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
  const isMe=session?.user?.id===user.id;
   const uPosts=(posts||[]).filter(p=>p.by===user.id);
   const orgTypeLabel={restaurant:"🍽️ Restaurant",hotel:"🏨 Hôtel",musique:"🎵 Musique / Artiste",entreprise:"💼 Entreprise",association:"🤝 Association",ecole:"🎓 École / Université",autre:"📌 Organisation"}[user.org_type]||"📌 Organisation";
+  const oIsVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
+  const oPhotoPosts=uPosts.filter(p=>!oIsVid(p));
+  const oVideoPosts=uPosts.filter(p=>oIsVid(p));
+  const [oTab,setOTab]=useState("posts");
   const [openSoundId,setOpenSoundId]=useState(null);
 
   const uploadAvatar=async e=>{
@@ -8204,26 +8233,25 @@ if(blocked||blockedByOther) return(
       />
 
       <div style={{padding:"0 18px",maxWidth:640,margin:"0 auto",position:"relative",zIndex:1}}>
-        {uPosts.map(p=>{
+        <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:16}}>
+          {[{k:"posts",l:"Publications"},{k:"reels",l:"Reels"}].map(t=>(
+            <Btn key={t.k} onClick={()=>setOTab(t.k)} style={{flex:1,padding:"11px 6px",background:"none",color:oTab===t.k?T.goldL:T.muted,fontSize:12,fontWeight:oTab===t.k?700:400,borderRadius:0,transition:"all .2s",borderBottom:oTab===t.k?`2px solid ${T.gold}`:"2px solid transparent"}}>
+              {t.l}
+            </Btn>
+          ))}
+        </div>
+        {oTab==="posts"&&oPhotoPosts.map(p=>{
           const locked=p.is_private&&!isNative&&!isMe;
           return(
           <div key={p.id} style={{background:T.card,borderRadius:18,overflow:"hidden",marginBottom:10,border:`1px solid ${T.border}`,cursor:locked?"default":"pointer"}}
             onClick={()=>{
   if(locked)return;
-  const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
-  if(isVid&&toggleLike&&toggleSave){
-    const vidPosts=posts.filter(q=>q.by===user.id&&q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")));
-    const idx=vidPosts.findIndex(q=>q.id===p.id);
-    setUserReelsIndex(idx>=0?idx:0);
+  const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+  if(hasPhoto){
+    const idx=oPhotoPosts.findIndex(q=>q.id===p.id);
+    setPhotoViewerIndex(idx>=0?idx:0);
   }else{
-    const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
-    if(hasPhoto){
-      const photoPosts=uPosts.filter(q=>!(q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")))&&(q.img||(q.media_urls&&q.media_urls.length>0)));
-      const idx=photoPosts.findIndex(q=>q.id===p.id);
-      setPhotoViewerIndex(idx>=0?idx:0);
-    }else{
-      setDetailPost(p);
-    }
+    setDetailPost(p);
   }
 }}>
             {locked
@@ -8243,6 +8271,31 @@ if(blocked||blockedByOther) return(
           </div>
           );
         })}
+        {oTab==="reels"&&(
+          oVideoPosts.length===0
+          ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun reel encore</p></div>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
+            {oVideoPosts.map(p=>{
+              const locked=p.is_private&&!isNative&&!isMe;
+              return(
+              <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:locked?"default":"pointer"}}
+                onClick={()=>{
+                  if(locked)return;
+                  const idx=oVideoPosts.findIndex(q=>q.id===p.id);
+                  setUserReelsIndex(idx>=0?idx:0);
+                }}>
+                {locked?(
+                  <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(255,255,255,0.03)"}}>
+                    <Lock size={20} color={T.goldL}/>
+                    <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
+                  </div>
+                ):<VideoThumb src={p.img}/>}
+                <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
+              </div>
+              );
+            })}
+          </div>
+        )}
         <div style={{height:80}}/>
       </div>
     </div>
@@ -9030,6 +9083,15 @@ useEffect(()=>{
   const [withdrawPhone,setWithdrawPhone]=useState("");
   const [withdrawName,setWithdrawName]=useState("");
   const [withdrawOp,setWithdrawOp]=useState("mtn");
+  const [availableOperators,setAvailableOperators]=useState([]);
+  useEffect(()=>{
+    if(!myProfile?.country)return;
+    sb.from("withdrawal_operators").select("operator_key,operator_label").eq("country",myProfile.country).eq("active",true).order("sort_order")
+      .then(({data})=>{
+        setAvailableOperators(data||[]);
+        if(data?.[0])setWithdrawOp(data[0].operator_key);
+      });
+  },[myProfile?.country]);
   const [loading,setLoading]=useState(false);
   const month=new Date().toISOString().slice(0,7);
 
@@ -9250,13 +9312,19 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
               <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text}}>Retirer mon argent</h3>
               <button onClick={()=>setShowWithdraw(false)} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{display:"flex",gap:8,marginBottom:14}}>
-              {["mtn","airtel"].map(op=>(
-                <button key={op} onClick={()=>setWithdrawOp(op)} style={{flex:1,height:44,borderRadius:12,border:`1px solid ${withdrawOp===op?T.gold:T.border}`,background:withdrawOp===op?"linear-gradient(135deg,#1a237e,#283593)":"transparent",color:withdrawOp===op?"#fff":T.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                  {op==="mtn"?"📱 MTN MoMo":"📱 Airtel Money"}
-                </button>
-              ))}
-            </div>
+            {availableOperators.length===0?(
+              <div style={{padding:"20px 16px",background:T.bg3,borderRadius:14,textAlign:"center",color:T.muted,fontSize:13,marginBottom:14}}>
+                Le retrait n'est pas encore disponible dans ton pays. On y travaille ✦
+              </div>
+            ):(
+              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                {availableOperators.map(op=>(
+                  <button key={op.operator_key} onClick={()=>setWithdrawOp(op.operator_key)} style={{flex:1,minWidth:120,height:44,borderRadius:12,border:`1px solid ${withdrawOp===op.operator_key?T.gold:T.border}`,background:withdrawOp===op.operator_key?"linear-gradient(135deg,#1a237e,#283593)":"transparent",color:withdrawOp===op.operator_key?"#fff":T.sub,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                    {op.operator_label}
+                  </button>
+                ))}
+              </div>
+            )}
             <input placeholder="Nom complet du titulaire du compte Mobile Money" value={withdrawName} onChange={e=>setWithdrawName(e.target.value)}
               style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.text,fontSize:14,outline:"none",marginBottom:10}}/>
             <input placeholder="Numéro de téléphone" value={withdrawPhone} onChange={e=>setWithdrawPhone(e.target.value)}
