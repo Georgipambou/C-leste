@@ -131,18 +131,22 @@ export async function saveDuoCollaborators(sb, postId, addedBy, collaborators) {
 }
 
 // ---------- Badge "Duo · N" affiché sur PostCard / Reels ----------
-export function DuoBadge({ sb, T, Av, postId }) {
-  const [collaborators, setCollaborators] = useState(null);
+export function DuoBadge({ sb, T, Av, postId, collaborators: collaboratorsProp }) {
+  const [collaborators, setCollaborators] = useState(collaboratorsProp || null);
   const [open, setOpen] = useState(false);
 
+  // Filet de sécurité : si jamais un appelant ne passe pas encore la prop
+  // (ex. ancien écran pas encore migré), on retombe sur le fetch individuel —
+  // mais plus jamais pour le feed principal, qui fournit déjà la donnée.
   useEffect(() => {
+    if (collaboratorsProp !== undefined) { setCollaborators(collaboratorsProp || []); return; }
     let active = true;
     sb.from("post_collaborators")
       .select("collaborator_id, profiles:collaborator_id(id,prenom,nom,avatar_url,badge)")
       .eq("post_id", postId)
       .then(({ data }) => { if (active) setCollaborators((data || []).map(r => r.profiles).filter(Boolean)); });
     return () => { active = false; };
-  }, [sb, postId]);
+  }, [sb, postId, collaboratorsProp]);
 
   if (!collaborators || collaborators.length === 0) return null;
 

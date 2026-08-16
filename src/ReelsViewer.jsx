@@ -472,11 +472,20 @@ export default function ReelsViewer({
   // posts sans catégorie — jamais 100% une seule catégorie en boucle ──
   useEffect(() => {
     setOrderedPosts(prev => {
+      const byId = new Map((posts || []).map(p => [p.id, p]));
+      // Rafraîchit les champs mutables des posts déjà présents SANS changer
+      // leur position ni leurs catégories — sinon un like posé ici ne se
+      // reflète jamais (le cœur ne se remplit pas côté UI).
+      const refreshed = prev.map(p => {
+        const latest = byId.get(p.id);
+        return latest ? { ...p, likes: latest.likes, comments: latest.comments, saved: latest.saved, savesCount: latest.savesCount } : p;
+      });
+
       const existingIds = new Set(prev.map(p => p.id));
       const fresh = (posts || []).filter(p => !existingIds.has(p.id));
-      if (!fresh.length) return prev;
+      if (!fresh.length) return refreshed;
 
-      const refCats = interestBoost.length ? interestBoost : (prev[0]?.categories || []);
+      const refCats = interestBoost.length ? interestBoost : (refreshed[0]?.categories || []);
       const relatedness = (p) => {
         const postCats = p.categories || [];
         if (!postCats.length || !refCats.length) return 0;
@@ -499,7 +508,7 @@ export default function ReelsViewer({
         if (ri < related.length) merged.push(related[ri++]);
         if (oi < other.length) merged.push(other[oi++]);
       }
-      return [...prev, ...merged];
+      return [...refreshed, ...merged];
     });
   }, [posts]);
 

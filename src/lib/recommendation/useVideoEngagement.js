@@ -18,8 +18,9 @@
 import { useRef, useEffect, useCallback } from "react";
 import { createEngagementTracker } from "./engagementTracker";
 
-const COMPLETION_THRESHOLD = 0.9;   // regardé à 90%+ = "complété"
-const SKIP_FAST_MS = 2000;          // vu moins de 2s = skip rapide (signal négatif)
+const COMPLETION_THRESHOLD = 0.9;    // regardé à 90%+ = "complété"
+const SKIP_FAST_MS = 2000;           // plafond absolu pour les vidéos longues
+const SKIP_FAST_RATIO = 0.3;         // sinon : moins de 30% de la durée = skip rapide
 
 export function useVideoEngagement(sb, uid) {
   const trackerRef = useRef(null);
@@ -40,6 +41,7 @@ export function useVideoEngagement(sb, uid) {
     const durationMs = a.mediaDurationMs || 0;
     const watchedMs = a.watchedMs || 0;
     const ratio = durationMs > 0 ? watchedMs / durationMs : 0;
+    const skipThreshold = durationMs > 0 ? Math.min(SKIP_FAST_MS, durationMs * SKIP_FAST_RATIO) : SKIP_FAST_MS;
 
     trackerRef.current.record({
       post_id: a.postId,
@@ -51,7 +53,7 @@ export function useVideoEngagement(sb, uid) {
       shared: !!a.shared,
       commented: !!a.commented,
       reported: !!a.reported,
-      skipped_fast: watchedMs < SKIP_FAST_MS && !a.liked && !a.commented,
+      skipped_fast: watchedMs < skipThreshold && !a.liked && !a.commented,
     });
   }, [uid]);
 

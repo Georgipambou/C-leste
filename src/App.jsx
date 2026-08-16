@@ -3367,6 +3367,7 @@ if(!error){
       if(optsToInsert.length>=2)await sb.from("poll_options").insert(optsToInsert);
     }
     if(selectedCategories.length>0){
+      await sb.from("post_categories").delete().eq("post_id",postId).eq("source","inferred");
       await sb.from("post_categories").insert(selectedCategories.map(category=>({post_id:postId,category,source:"manual"})));
     }
     if(duoCollaborators.length>0){
@@ -5168,9 +5169,15 @@ const videoPosts=useMemo(()=>posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)
 // ReelsViewer qui décide de l'ordre (il connaît les intérêts récents).
 useEffect(()=>{
   if(!reelsViewerPosts)return;
+  const byId=new Map(videoPosts.map(p=>[p.id,p]));
   const existingIds=new Set(reelsViewerPosts.map(p=>p.id));
   const fresh=videoPosts.filter(p=>!existingIds.has(p.id));
-  if(fresh.length)setReelsViewerPosts(prev=>[...(prev||[]),...fresh]);
+  setReelsViewerPosts(prev=>{
+    // Rafraîchit likes/commentaires/sauvegardes des posts déjà présents SANS
+    // changer leur position — sinon un like posé dans le Reel n'est jamais vu.
+    const refreshed=prev.map(p=>{const latest=byId.get(p.id);return latest?{...p,likes:latest.likes,comments:latest.comments,saved:latest.saved,savesCount:latest.savesCount}:p;});
+    return fresh.length?[...refreshed,...fresh]:refreshed;
+  });
 },[videoPosts]);
 const [photoIndex,setPhotoIndex]=useState(null);
 const [photoStartMedia,setPhotoStartMedia]=useState(0);
@@ -5479,7 +5486,7 @@ const virtuosoComponents=useMemo(()=>({
   style={{flex:1}}
   data={posts||[]}
   computeItemKey={(index,p)=>p.id}
-  endReached={()=>{if(!loadingMore&&hasMore)loadMore();}}
+  endReached={()=>{if(hasMore)loadMore();}}
   rangeChanged={handleRangeChanged}
   overscan={200}
   scrollerRef={ref=>{
@@ -5820,23 +5827,22 @@ const [saved,setSaved]=useState(false);
 
   useEffect(()=>{
     if(!isVisible||hasFetchedStatsRef.current)return;
+    const myId=session?.user?.id;
+    if(!myId)return;
     hasFetchedStatsRef.current=true;
-    sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle()
+    sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",myId).maybeSingle()
       .then(({data})=>setSaved(!!data));
     // Enregistrer la vue + charger le compteur (une seule requête de comptage, plus de doublon)
-    sb.auth.getUser().then(({data})=>{
-      if(!data?.user?.id)return;
-      sb.from("post_views").upsert({post_id:post.id,viewer_id:data.user.id},{onConflict:"post_id,viewer_id",ignoreDuplicates:true})
-        .then(()=>sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
-          .then(({count})=>setViews(count||0)));
-    });
+    sb.from("post_views").upsert({post_id:post.id,viewer_id:myId},{onConflict:"post_id,viewer_id",ignoreDuplicates:true})
+      .then(()=>sb.from("post_views").select("*",{count:"exact",head:true}).eq("post_id",post.id)
+        .then(({count})=>setViews(count||0)));
   },[isVisible,post.id,session?.user?.id]);
 
   useEffect(()=>{
-  if(!post?.id)return;
+  if(!isVisible||!post?.id)return;
   sb.from("post_shares").select("*",{count:"exact",head:true}).eq("post_id",post.id)
     .then(({count})=>setShareCount(count||0));
-},[post.id]);
+},[isVisible,post.id]);
 
   const handleSave=async()=>{
     const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",post.id).eq("user_id",session?.user?.id).maybeSingle();
@@ -5976,7 +5982,7 @@ onMuteAuthor?.(post.by);
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
               <Btn onClick={e=>{e.stopPropagation();onUser?.(post.by);}} style={{fontSize:14,fontWeight:700,color:T.text,padding:0,textShadow:post.author?.color?`0 0 10px ${post.author.color}66`:"none"}}>{post.author?.name}</Btn>
               <Badge type={post.author?.badge}/>
-              <DuoBadge sb={sb} T={T} Av={Av} postId={post.id}/>
+              <DuoBadge sb={sb} T={T} Av={Av} postId={post.id} collaborators={post.collaboratorProfiles}/>
               {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
               {post.is_ai_generated&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,color:"#a78bfa",background:"rgba(139,92,246,0.14)",border:"1px solid rgba(139,92,246,0.35)",padding:"1px 7px",borderRadius:20}}><Sparkles size={10}/> IA</span>}
               {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={1} color={T.goldL}/></span>}
@@ -10913,6 +10919,7 @@ const [pendingSound,setPendingSound]=useState(null);
   const [postPage,setPostPage]=useState(1);
   const [hasMorePosts,setHasMorePosts]=useState(true);
   const [loadingMore,setLoadingMore]=useState(false);
+  const loadingMoreRef=useRef(false); // verrou synchrone — setLoadingMore(state) est trop lent contre les endReached rapprochés de Virtuoso
   const [inAppNotifs,setInAppNotifs]=useState([]);
  const [viewImg,setViewImg]=useState(null);
 const [globalReelsPost,setGlobalReelsPost]=useState(null);
@@ -11119,12 +11126,16 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
   const seenPostIdsRef = useRef(new Set());
   const postOrderRef=useRef([]);
+  const lastPostCursorRef=useRef(null); // curseur created_at du dernier post chargé — pagination stable même si de nouveaux posts arrivent pendant le scroll (remplace l'ancien .range() par offset, fragile sous écriture concurrente)
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
-  const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  if(page===1)lastPostCursorRef.current=null;
+  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
-.not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
+.not("visibility","eq","hidden").order("created_at",{ascending:false});
+  if(lastPostCursorRef.current)postsQuery=postsQuery.lt("created_at",lastPostCursorRef.current);
+  const{data,error}=await postsQuery.limit(PAGE_SIZE);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
+  if(data&&data.length>0)lastPostCursorRef.current=data[data.length-1].created_at;
   if(data){
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
@@ -11138,13 +11149,16 @@ const myId=session?.user?.id;
 const myCountry=myProfile?.country||"CG";
 const{data:completedRows}=myId?await sb.from("video_engagement_events").select("post_id").eq("viewer_id",myId).eq("completed",true).in("post_id",mapped.map(p=>p.id)):{data:[]};
 const completedIds=new Set((completedRows||[]).map(r=>r.post_id));
-const{data:collabRows}=await sb.from("post_collaborators").select("post_id,collaborator_id").in("post_id",mapped.map(p=>p.id));
+const{data:collabRows}=await sb.from("post_collaborators").select("post_id,collaborator_id,profiles:collaborator_id(id,prenom,nom,avatar_url,badge)").in("post_id",mapped.map(p=>p.id));
 const collaboratorsByPost=new Map();
+const collabProfilesByPost=new Map();
 (collabRows||[]).forEach(r=>{
   if(!collaboratorsByPost.has(r.post_id))collaboratorsByPost.set(r.post_id,[]);
   collaboratorsByPost.get(r.post_id).push(r.collaborator_id);
+  if(!collabProfilesByPost.has(r.post_id))collabProfilesByPost.set(r.post_id,[]);
+  if(r.profiles)collabProfilesByPost.get(r.post_id).push(r.profiles);
 });
-mapped.forEach(p=>{p.collaboratorIds=collaboratorsByPost.get(p.id)||[];});
+mapped.forEach(p=>{p.collaboratorIds=collaboratorsByPost.get(p.id)||[];p.collaboratorProfiles=collabProfilesByPost.get(p.id)||[];});
 
 const visible=mapped.filter(p=>{
   if(blockedSet.has(p.by))return false;
@@ -11223,7 +11237,17 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   }
 },[session?.user?.id,blockedUserIds,mutedAuthorIds,myConnections]);
 
-  const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
+  const loadMorePosts=useCallback(async()=>{
+    if(loadingMoreRef.current||!hasMorePosts)return;
+    loadingMoreRef.current=true;
+    setLoadingMore(true);
+    try{
+      await loadPosts(postPage+1);
+    }finally{
+      loadingMoreRef.current=false;
+      setLoadingMore(false);
+    }
+  },[hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
     const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
