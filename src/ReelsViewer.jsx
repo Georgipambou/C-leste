@@ -7,12 +7,13 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye, Check, Share2 } from "lucide-react";
+import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye, Check, Share2, Sparkles } from "lucide-react";
 import SharePostModal from "./SharePostModal";
 import { pauseOtherVideos, releaseActiveVideo } from "./videoRegistry";
 import { useVideoEngagement } from "./lib/recommendation/useVideoEngagement";
 import SoundBadge from "./components/SoundBadge";
 import SoundDiscBadge from "./components/SoundDiscBadge";
+import { DuoBadge } from "./Duo";
 // ── Utilitaires écran ─────────────────────────────────────────────
 import { Capacitor } from "@capacitor/core";
 import { PrivacyScreen } from "@capacitor-community/privacy-screen";
@@ -69,23 +70,23 @@ function ReelVideoSrc({ rawSrc, nearActive, onSrc }) {
 }
 
 // ── Badge (copié depuis App.jsx pour autonomie) ───────────────────
-const BADGE_CLIP="path('M 14.93 10.87 C 13.57 10.73, 10.73 13.57, 10.87 14.93 C 10.01 13.87, 5.99 13.87, 5.13 14.93 C 5.27 13.57, 2.43 10.73, 1.07 10.87 C 2.13 10.01, 2.13 5.99, 1.07 5.13 C 2.43 5.27, 5.27 2.43, 5.13 1.07 C 5.99 2.13, 10.01 2.13, 10.87 1.07 C 10.73 2.43, 13.57 5.27, 14.93 5.13 C 13.87 5.99, 13.87 10.01, 14.93 10.87 Z')";
+const BADGE_CLIP="path('M 18.66 13.59 C 16.96 13.41, 13.41 16.96, 13.59 18.66 C 12.51 17.34, 7.49 17.34, 6.41 18.66 C 6.59 16.96, 3.04 13.41, 1.34 13.59 C 2.66 12.51, 2.66 7.49, 1.34 6.41 C 3.04 6.59, 6.59 3.04, 6.41 1.34 C 7.49 2.66, 12.51 2.66, 13.59 1.34 C 13.41 3.04, 16.96 6.59, 18.66 6.41 C 17.34 7.49, 17.34 12.51, 18.66 13.59 Z')";
 function Badge({ type }) {
   if (!type) return null;
   const isConfirmed = type === "confirmed";
   return isConfirmed ? (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
       background:"linear-gradient(135deg,#1DA1F2,#0a85d9)",
-      flexShrink:0,position:"relative"}}>
-      <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+      flexShrink:0,position:"relative",filter:"drop-shadow(0 1px 3px rgba(0,0,0,0.9))"}}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </span>
   ) : (
-    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,clipPath:BADGE_CLIP,WebkitClipPath:BADGE_CLIP,
       background:"linear-gradient(135deg,#FFD700,#FF8C00)",
-      flexShrink:0}}>
-      <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+      flexShrink:0,filter:"drop-shadow(0 1px 3px rgba(0,0,0,0.9))"}}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
         <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </span>
@@ -212,6 +213,11 @@ export default function ReelsViewer({
   myConnections,
   onConnect,
   onOpenSound,
+  onNeedMore,
+  hasMore,
+  loadingMore,
+  T,
+  Av,
 }) {
   const [activeIdx,       setActiveIdx]       = useState(startIndex);
   const [pausedMap,       setPausedMap]       = useState({});
@@ -238,21 +244,55 @@ export default function ReelsViewer({
   const [hearts, setHearts] = useState([]); // [{id, x, y}]
   const [connectAnimId, setConnectAnimId] = useState(null); // id de l'auteur en cours d'animation "connecté"
 
+  const [likeFillMap, setLikeFillMap] = useState({});
+  const [likeBurstMap, setLikeBurstMap] = useState({});
+  const [reactOpenIdx, setReactOpenIdx] = useState(null);
+  const [reactDir, setReactDir] = useState(null);
+  const [commentBumpMap, setCommentBumpMap] = useState({});
+  const [commentCountOverrideMap, setCommentCountOverrideMap] = useState({});
+  const likeHoldStartRef = useRef(null);
+  const likeHoldFrameRef = useRef(null);
+  const likeBurstFiredRef = useRef(false);
+  const likeHalfFiredRef = useRef(false);
+  const reactStartRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  const lastReactDirRef = useRef(null);
+  const LIKE_HOLD_MS = 900;
+  const quickReactions = [
+    { key: "up",    dx: 0,  dy: -1, emoji: "👏", text: "👏 Bravo, superbe !" },
+    { key: "down",  dx: 0,  dy: 1,  emoji: "🙏", text: "🙏 Merci pour ce partage" },
+    { key: "left",  dx: -1, dy: 0,  emoji: "✨", text: "✨ J'ai adoré !" },
+    { key: "right", dx: 1,  dy: 0,  emoji: "😲", text: "😲 Waouh, incroyable !" },
+  ];
+  const haptic = pattern => { try { navigator.vibrate && navigator.vibrate(pattern); } catch (_) {} };
+  const [speedMap, setSpeedMap] = useState({});
+  const speedHoldTimerRef = useRef(null);
+  const speedActiveRef = useRef(false);
+
+  // ── Mode session : jongle entre les 3 derniers centres d'intérêt likés ──
+  const [orderedPosts, setOrderedPosts] = useState(() => posts || []);
+  const [interestBoost, setInterestBoost] = useState([]); // [{category,weight}] — plus récent en premier, fenêtre de 3
+  const activeIdxRef = useRef(startIndex);
+
   const containerRef = useRef(null);
   const videoRefs    = useRef({});
   const itemRefs     = useRef({});
   const lastTapRef   = useRef({});   // {idx: timestamp}
   const heartIdRef   = useRef(0);
   const wakeLockRef  = useRef(null);
+  const tapTimersRef = useRef({});
+  const controlsTimerRef = useRef(null);
 
   const uid = session?.user?.id;
   const engagement = useVideoEngagement(sb, uid);
 
   // Liste réellement affichée : on retire ce qui vient d'être supprimé/masqué
   const displayPosts = useMemo(
-    () => (posts || []).filter(p => !hiddenPostIds.has(p.id)),
-    [posts, hiddenPostIds]
+    () => (orderedPosts || []).filter(p => !hiddenPostIds.has(p.id)),
+    [orderedPosts, hiddenPostIds]
   );
+
+  useEffect(() => { activeIdxRef.current = activeIdx; }, [activeIdx]);
 
   // Si la liste affichée se vide ou rétrécit sous l'index courant, on s'ajuste
   useEffect(() => {
@@ -289,8 +329,14 @@ export default function ReelsViewer({
   // nouveau point de départ (ex: navigation depuis la modale d'un son) ──
   useEffect(() => {
     setActiveIdx(startIndex);
+    setOrderedPosts(posts || []);
+    // Seed le mode session avec les catégories de la vidéo tappée elle-même :
+    // ouvrir un Reel depuis un post de cuisine doit tout de suite faire
+    // remonter les autres vidéos de cuisine dans la suite, sans attendre un like.
+    setInterestBoost((posts && posts[startIndex]?.categories) || []);
     const el = containerRef.current;
     if (el) el.scrollTo({ top: startIndex * window.innerHeight, behavior: "auto" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startIndex]);
 
   // ── IntersectionObserver scroll snap ─────────────────────────
@@ -375,8 +421,101 @@ export default function ReelsViewer({
   // ── Nettoyage à la fermeture ──────────────────────────────────
   useEffect(() => () => {
     Object.values(videoRefs.current).forEach(v => { if (v) { v.pause(); releaseActiveVideo(v); v.src = ""; } });
+    Object.values(tapTimersRef.current).forEach(t => clearTimeout(t));
+    clearTimeout(controlsTimerRef.current);
     releaseWakeLock();
   }, []);
+  // ── Enregistre l'intérêt suite à un like, et fait "jongler" la suite
+  // de la file en conséquence — seule la partie PAS ENCORE VUE bouge ──
+  const registerLikeInterest = useCallback((post) => {
+    const cats = post.categories || [];
+    if (!cats.length) return;
+    setInterestBoost(prev => {
+      const withoutDup = prev.filter(c => !cats.some(nc => nc.category === c.category));
+      return [...cats, ...withoutDup].slice(0, 3);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!interestBoost.length) return;
+    setOrderedPosts(prev => {
+      const cut = activeIdxRef.current + 1;
+      const frozen = prev.slice(0, cut); // déjà scrollé → on n'y touche jamais
+      const future = prev.slice(cut);
+      if (future.length < 2) return prev;
+
+      const relatedness = (p) => {
+        const postCats = p.categories || [];
+        if (!postCats.length) return 0;
+        let score = 0;
+        interestBoost.forEach((ic, i) => {
+          const match = postCats.find(pc => pc.category === ic.category);
+          if (match) score += (ic.weight || 1) * (match.weight || 1) * (interestBoost.length - i);
+        });
+        return score;
+      };
+
+      const related = future.filter(p => relatedness(p) > 0).sort((a, b) => relatedness(b) - relatedness(a));
+      const other = future.filter(p => relatedness(p) === 0);
+      const rebuilt = [];
+      let ri = 0, oi = 0;
+      while (ri < related.length || oi < other.length) {
+        if (ri < related.length) rebuilt.push(related[ri++]);
+        if (ri < related.length) rebuilt.push(related[ri++]);
+        if (oi < other.length) rebuilt.push(other[oi++]);
+      }
+      return [...frozen, ...rebuilt];
+    });
+  }, [interestBoost]);
+  // ── Fusionne les nouvelles vidéos ramenées par onNeedMore() dans la file,
+  // en les répartissant : liées aux intérêts récents / autres catégories /
+  // posts sans catégorie — jamais 100% une seule catégorie en boucle ──
+  useEffect(() => {
+    setOrderedPosts(prev => {
+      const existingIds = new Set(prev.map(p => p.id));
+      const fresh = (posts || []).filter(p => !existingIds.has(p.id));
+      if (!fresh.length) return prev;
+
+      const refCats = interestBoost.length ? interestBoost : (prev[0]?.categories || []);
+      const relatedness = (p) => {
+        const postCats = p.categories || [];
+        if (!postCats.length || !refCats.length) return 0;
+        let score = 0;
+        refCats.forEach((rc, i) => {
+          const match = postCats.find(pc => pc.category === rc.category);
+          if (match) score += (rc.weight || 1) * (match.weight || 1) * (refCats.length - i);
+        });
+        return score;
+      };
+
+      // "other" regroupe volontairement deux cas : catégorie différente ET
+      // post sans catégorie du tout — c'est ce qui garde de la diversité.
+      const related = fresh.filter(p => relatedness(p) > 0).sort((a, b) => relatedness(b) - relatedness(a));
+      const other = fresh.filter(p => relatedness(p) === 0);
+      const merged = [];
+      let ri = 0, oi = 0;
+      while (ri < related.length || oi < other.length) {
+        if (ri < related.length) merged.push(related[ri++]);
+        if (ri < related.length) merged.push(related[ri++]);
+        if (oi < other.length) merged.push(other[oi++]);
+      }
+      return [...prev, ...merged];
+    });
+  }, [posts]);
+
+  // ── Déclenche onNeedMore() quand il ne reste plus que ~4 vidéos devant ──
+  const fetchingMoreRef = useRef(false);
+  useEffect(() => {
+    if (!loadingMore) fetchingMoreRef.current = false;
+  }, [loadingMore]);
+
+  useEffect(() => {
+    const remaining = displayPosts.length - 1 - activeIdx;
+    if (remaining <= 4 && hasMore && !loadingMore && !fetchingMoreRef.current) {
+      fetchingMoreRef.current = true;
+      onNeedMore?.();
+    }
+  }, [activeIdx, displayPosts.length, hasMore, loadingMore]);
 
   // ── Toggle pause ─────────────────────────────────────────────
   const togglePause = useCallback((idx) => {
@@ -387,18 +526,17 @@ export default function ReelsViewer({
   }, [requestWakeLock, releaseWakeLock]);
 
   // ── Seek via progress bar ─────────────────────────────────────
-  const seekVideo = useCallback((idx, e) => {
+  const seekVideo = useCallback((idx, clientX, rect) => {
     const v = videoRefs.current[idx];
     if (!v || !v.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration;
+    v.currentTime = Math.max(0, Math.min(v.duration, ((clientX - rect.left) / rect.width) * v.duration));
   }, []);
 
   // ── Double tap → like + cœur flottant ────────────────────────
   const handleTap = useCallback((idx, post, e) => {
     const now  = Date.now();
     const last = lastTapRef.current[idx] || 0;
-    clearTimeout(window[`_tap_${idx}`]);
+    clearTimeout(tapTimersRef.current[idx]);
     if (now - last < 320) {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -406,9 +544,9 @@ export default function ReelsViewer({
       const id = ++heartIdRef.current;
       setHearts(h => [...h, { id, x, y }]);
       const liked = (post.likes || []).some(l => (l.user_id || l) === uid);
-      if (!liked) { toggleLike(post.id); engagement.markLiked(myProfile?.is_admin); }
+      if (!liked) { toggleLike(post.id); engagement.markLiked(myProfile?.is_admin); registerLikeInterest(post); }
     } else {
-      window[`_tap_${idx}`] = setTimeout(() => togglePause(idx), 320);
+      tapTimersRef.current[idx] = setTimeout(() => togglePause(idx), 320);
     }
     lastTapRef.current[idx] = now;
   }, [toggleLike, togglePause, uid]);
@@ -416,6 +554,120 @@ export default function ReelsViewer({
   const removeHeart = useCallback((id) => {
     setHearts(h => h.filter(hh => hh.id !== id));
   }, []);
+
+  const startLikeHold = useCallback((idx, post) => {
+    const liked = (post.likes || []).some(l => (l.user_id || l) === uid);
+    if (liked) return;
+    likeBurstFiredRef.current = false;
+    likeHalfFiredRef.current = false;
+    haptic("light");
+    likeHoldStartRef.current = performance.now();
+    const tick = () => {
+      if (!likeHoldStartRef.current) return;
+      const elapsed = performance.now() - likeHoldStartRef.current;
+      const pct = Math.min(100, (elapsed / LIKE_HOLD_MS) * 100);
+      setLikeFillMap(p => ({ ...p, [idx]: pct }));
+      if (pct >= 50 && !likeHalfFiredRef.current) { likeHalfFiredRef.current = true; haptic("medium"); }
+      if (pct >= 100) {
+        likeBurstFiredRef.current = true;
+        setLikeBurstMap(p => ({ ...p, [idx]: true }));
+        haptic("heavy");
+        toggleLike(post.id); engagement.markLiked(); registerLikeInterest(post);
+        likeHoldStartRef.current = null;
+        setTimeout(() => { setLikeBurstMap(p => ({ ...p, [idx]: false })); setLikeFillMap(p => ({ ...p, [idx]: 0 })); }, 650);
+        return;
+      }
+      likeHoldFrameRef.current = requestAnimationFrame(tick);
+    };
+    likeHoldFrameRef.current = requestAnimationFrame(tick);
+  }, [uid, toggleLike, registerLikeInterest]);
+
+  const endLikeHold = useCallback((idx, post) => {
+    cancelAnimationFrame(likeHoldFrameRef.current);
+    if (likeBurstFiredRef.current) { likeBurstFiredRef.current = false; return; }
+    const held = likeHoldStartRef.current ? performance.now() - likeHoldStartRef.current : 0;
+    setLikeFillMap(p => ({ ...p, [idx]: 0 }));
+    likeHoldStartRef.current = null;
+    const liked = (post.likes || []).some(l => (l.user_id || l) === uid);
+    haptic("light");
+    toggleLike(post.id);
+    if (!liked) { engagement.markLiked(); registerLikeInterest(post); }
+  }, [uid, toggleLike, registerLikeInterest]);
+
+  const cancelLikeHold = useCallback((idx) => {
+    cancelAnimationFrame(likeHoldFrameRef.current);
+    likeBurstFiredRef.current = false;
+    setLikeFillMap(p => ({ ...p, [idx]: 0 }));
+    likeHoldStartRef.current = null;
+  }, []);
+
+  const sendQuickComment = useCallback(async (post, text) => {
+    if (!uid) return;
+    const { error } = await sb.from("comments").insert({ post_id: post.id, author_id: uid, text });
+    if (!error) setCommentBumpMap(p => ({ ...p, [post.id]: (p[post.id] || 0) + 1 }));
+  }, [uid]);
+
+  const startLongPress = useCallback((idx, e) => {
+    reactStartRef.current = { x: e.clientX, y: e.clientY };
+    lastReactDirRef.current = null;
+    longPressTimerRef.current = setTimeout(() => { setReactOpenIdx(idx); setReactDir(null); haptic("light"); }, 380);
+  }, []);
+
+  const moveLongPress = useCallback((idx, e) => {
+    if (reactOpenIdx !== idx || !reactStartRef.current) return;
+    const dx = e.clientX - reactStartRef.current.x;
+    const dy = e.clientY - reactStartRef.current.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 24) {
+      if (lastReactDirRef.current) { lastReactDirRef.current = null; setReactDir(null); }
+      return;
+    }
+    const angle = Math.atan2(dy, dx);
+    let dir;
+    if (angle > -Math.PI / 4 && angle <= Math.PI / 4) dir = "right";
+    else if (angle > Math.PI / 4 && angle <= 3 * Math.PI / 4) dir = "down";
+    else if (angle > -3 * Math.PI / 4 && angle <= -Math.PI / 4) dir = "up";
+    else dir = "left";
+    if (dir !== reactDir) haptic("light");
+    lastReactDirRef.current = dir;
+    setReactDir(dir);
+  }, [reactOpenIdx, reactDir]);
+
+  const endLongPress = useCallback((idx, post) => {
+    clearTimeout(longPressTimerRef.current);
+    if (reactOpenIdx === idx && reactDir) {
+      const choice = quickReactions.find(q => q.key === reactDir);
+      if (choice) { sendQuickComment(post, choice.text); haptic("medium"); }
+    }
+    setReactOpenIdx(null); setReactDir(null); reactStartRef.current = null; lastReactDirRef.current = null;
+  }, [reactOpenIdx, reactDir, sendQuickComment]);
+
+  const cancelLongPress = useCallback(() => {
+    clearTimeout(longPressTimerRef.current);
+  }, []);
+
+  // ── Maintien sur le coin droit de la vidéo = lecture x2 ─────────
+  const startSpeedHold = useCallback((idx) => {
+    speedHoldTimerRef.current = setTimeout(() => {
+      speedActiveRef.current = true;
+      const v = videoRefs.current[idx];
+      if (v) v.playbackRate = 2;
+      setSpeedMap(p => ({ ...p, [idx]: true }));
+      haptic("light");
+    }, 150);
+  }, []);
+
+  const endSpeedHold = useCallback((idx, post, e) => {
+    clearTimeout(speedHoldTimerRef.current);
+    if (speedActiveRef.current) {
+      speedActiveRef.current = false;
+      const v = videoRefs.current[idx];
+      if (v) v.playbackRate = 1;
+      setSpeedMap(p => ({ ...p, [idx]: false }));
+    } else if (e) {
+      handleTap(idx, post, e);
+    }
+  }, [handleTap]);
 
   const handleConnectClick = useCallback((userId) => {
     onConnect?.(userId);
@@ -426,8 +678,8 @@ export default function ReelsViewer({
   // ── Affiche les contrôles 2,5s au touch ──────────────────────
   const showCtrl = useCallback(() => {
     setShowControls(true);
-    clearTimeout(window._rctimer);
-    window._rctimer = setTimeout(() => setShowControls(false), 2500);
+    clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = setTimeout(() => setShowControls(false), 2500);
   }, []);
 
   // ── Supprimer / signaler / masquer ────────────────────────────
@@ -435,7 +687,7 @@ export default function ReelsViewer({
     setMenuPostId(null);
     const byAdmin = myProfile?.is_admin && post.by !== uid;
     if (byAdmin) { setDeleteReasonPost(post); return; }
-    if (!window.confirm("Supprimer cette publication ?")) return;
+    if (!(await confirmAction("Supprimer cette publication ?", { confirmLabel: "Supprimer" }))) return;
     setHiddenPostIds(p => new Set([...p, post.id]));
     notify?.("Publication supprimée");
     await sb.from("posts").delete().eq("id", post.id).eq("author_id", uid);
@@ -529,6 +781,7 @@ export default function ReelsViewer({
           const isConnected = myConnections?.includes(post.by);
           const isMe        = post.by === uid;
           const isLocked    = post.is_private && !isNative && !isMe;
+          const hasMarketplace = post.is_for_sale && (post.whatsapp_contact || post.contact_link);
 
           return (
             <div
@@ -544,6 +797,7 @@ export default function ReelsViewer({
                 background: "#000", flexShrink: 0, overflow: "hidden",
               }}
               onTouchStart={showCtrl}
+              onMouseMove={showCtrl}
             >
               {/* Preload src */}
               <ReelVideoSrc
@@ -590,6 +844,21 @@ export default function ReelsViewer({
                 />
               )}
 
+              {/* Zone maintien coin droit = vitesse x2 */}
+              {nearActive && rawVideoSrc && (
+                <div
+                  onPointerDown={e => { e.stopPropagation(); startSpeedHold(idx); }}
+                  onPointerUp={e => { e.stopPropagation(); endSpeedHold(idx, post, e); }}
+                  onPointerLeave={() => endSpeedHold(idx, post, null)}
+                  style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 70, zIndex: 1, touchAction: "none" }}
+                />
+              )}
+              {speedMap[idx] && (
+                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 6, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "8px 16px", color: "#fff", fontWeight: 700, fontSize: 14, pointerEvents: "none" }}>
+                  ⏩ Vitesse x2
+                </div>
+              )}
+
               {/* Spinner chargement */}
               {isActive && isLoading && (
                 <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3, pointerEvents: "none" }}>
@@ -616,39 +885,44 @@ export default function ReelsViewer({
 
               {/* Barre de progression */}
               <div
-                onTouchStart={e => {
-                  const v = videoRefs.current[idx];
-                  if (v) v._seekStart = { x: e.touches[0].clientX, t: v.currentTime };
-                }}
-                onTouchMove={e => {
-                  const v = videoRefs.current[idx];
-                  if (!v || !v._seekStart || !v.duration) return;
-                  const dx = e.touches[0].clientX - v._seekStart.x;
-                  const dt = (dx / window.innerWidth) * v.duration;
-                  v.currentTime = Math.max(0, Math.min(v.duration, v._seekStart.t + dt));
-                }}
-                onClick={e => seekVideo(idx, e)}
+                onTouchStart={e => { showCtrl(); seekVideo(idx, e.touches[0].clientX, e.currentTarget.getBoundingClientRect()); }}
+                onTouchMove={e => seekVideo(idx, e.touches[0].clientX, e.currentTarget.getBoundingClientRect())}
+                onClick={e => seekVideo(idx, e.clientX, e.currentTarget.getBoundingClientRect())}
                 style={{
                   position: "absolute",
-                  bottom: "calc(env(safe-area-inset-bottom,0px) + 56px)",
-                  left: 0, right: 0, height: 5,
-                  background: "rgba(255,255,255,0.25)",
+                  bottom: "calc(env(safe-area-inset-bottom,0px) + 46px)",
+                  left: 0, right: 0, height: 28,
+                  display: "flex", alignItems: "center",
                   zIndex: 5, cursor: "pointer",
                   opacity: showControls ? 1 : 0,
                   transition: "opacity 0.3s ease",
                 }}
               >
-                <div style={{ height: "100%", width: `${progress}%`, background: "rgba(255,255,255,0.75)", borderRadius: 3, transition: "width 0.05s linear" }} />
+                <div style={{ height: 3, width: "100%", background: "rgba(255,255,255,0.25)", borderRadius: 3 }}>
+                  <div style={{ height: "100%", width: `${progress}%`, background: "rgba(255,255,255,0.85)", borderRadius: 3, transition: "width 0.05s linear" }} />
+                </div>
               </div>
 
               {/* Infos auteur + caption */}
-              <div style={{ position: "absolute", left: 14, right: 80, bottom: "calc(160px + env(safe-area-inset-bottom,0px))", color: "#fff", zIndex: 2 }}>
+              <div style={{ position: "absolute", left: 14, right: 80, bottom: hasMarketplace ? "calc(178px + env(safe-area-inset-bottom,0px))" : "calc(112px + env(safe-area-inset-bottom,0px))", color: "#fff", zIndex: 2 }}>
                 <div onClick={() => onUser?.(post.by)} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }}>
                   <span style={{ fontWeight: 700, fontSize: 15 }}>{post.author?.fullName || post.author?.prenom || post.author?.name || ""}</span>
                   <Badge type={post.author?.badge} />
+                  {T && Av && <DuoBadge sb={sb} T={T} Av={Av} postId={post.id} />}
+                  {post.pinned && T && <span style={{ fontSize: 10, color: T.goldL, fontWeight: 700, background: T.goldBg, border: `1px solid ${T.gold}55`, padding: "2px 8px", borderRadius: 20, backdropFilter: "blur(4px)" }}>✦ Sponsorisé</span>}
+                  {post.is_ai_generated && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "#c4b5fd", background: "rgba(139,92,246,0.25)", border: "1px solid rgba(139,92,246,0.5)", padding: "2px 8px", borderRadius: 20, backdropFilter: "blur(4px)" }}><Sparkles size={10} /> IA</span>}
                 </div>
+                {(post.categories || []).length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                    {(post.categories || []).slice(0, 3).map((c, i) => (
+                      <span key={i} style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 20, padding: "3px 10px", backdropFilter: "blur(4px)" }}>
+                        #{c.category}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {caption.length > 0 && (
-                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "rgba(255,255,255,0.92)", textAlign: "left" }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500, lineHeight: 1.5, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.85)", textAlign: "left" }}>
                     {isActive && expandedCaption ? caption : captionShort}
                     {caption.length > 120 && isActive && (
                       <span
@@ -660,11 +934,9 @@ export default function ReelsViewer({
                     )}
                   </p>
                 )}
-                {(myProfile?.badge === "confirmed" || myProfile?.badge === "friend") && (
-                  <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.55)", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Eye size={12} />{viewCounts[post.id] ?? 0}
-                  </p>
-                )}
+                <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.55)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <Eye size={12} />{viewCounts[post.id] ?? 0}
+                </p>
                 {post.sound?.title && (
                   <div style={{ marginTop: 8 }} onClick={() => onOpenSound?.(post.sound.id)}>
                     <SoundBadge title={post.sound.title} playing={isActive && !pausedMap[idx]} />
@@ -673,17 +945,17 @@ export default function ReelsViewer({
               </div>
 
               {/* Boutons marketplace */}
-              {post.is_for_sale && (post.whatsapp_contact || post.contact_link) && (
-                <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100px + env(safe-area-inset-bottom,0px))", zIndex: 4, display: "flex", flexDirection: "column", gap: 6, padding: "0 0 6px" }}>
+              {hasMarketplace && (
+                <div style={{ position: "absolute", left: 14, right: 80, bottom: "calc(112px + env(safe-area-inset-bottom,0px))", zIndex: 2, display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {post.whatsapp_contact && (
-                    <a href={"https://wa.me/" + post.whatsapp_contact.replace(/\D/g, "")} target="_blank" rel="noreferrer"
-                      style={{ margin: "0 12px", background: "linear-gradient(135deg,#25D366,#128C7E)", padding: "10px 20px", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "#fff", fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
-                      <MessageCircle size={16} /> Contacter sur WhatsApp
+                    <a href={"https://wa.me/" + post.whatsapp_contact.replace(/\D/g, "")} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                      style={{ background: "linear-gradient(135deg,#25D366,#128C7E)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
+                      <MessageCircle size={14} /> WhatsApp
                     </a>
                   )}
                   {post.contact_link && (
-                    <a href={post.contact_link} target="_blank" rel="noreferrer"
-                      style={{ margin: "0 12px", background: "rgba(74,144,217,0.85)", padding: "10px 20px", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "#fff", fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
+                    <a href={post.contact_link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                      style={{ background: "rgba(74,144,217,0.9)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
                       🔗 Voir le lien
                     </a>
                   )}
@@ -717,23 +989,62 @@ export default function ReelsViewer({
                   )}
                 </div>
 
-                {/* Like */}
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                  <button onClick={() => { toggleLike(post.id); if (!liked) engagement.markLiked(); }} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}>
-                    <Heart size={32} fill={liked ? "#ff2d55" : "none"} color={liked ? "#ff2d55" : "#fff"} />
-                  </button>
+                {/* Like : tap = like, maintien = remplissage + burst */}
+                <div
+                  onPointerDown={e => { e.stopPropagation(); startLikeHold(idx, post); }}
+                  onPointerUp={e => { e.stopPropagation(); endLikeHold(idx, post); }}
+                  onPointerLeave={() => cancelLikeHold(idx)}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, touchAction: "none" }}
+                >
+                  <div style={{ position: "relative", width: 32, height: 32 }}>
+                    <Heart size={32} fill={liked ? "#ff2d55" : "none"} color={liked ? "#ff2d55" : "#fff"} style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))", animation: liked ? "pulse .3s ease" : "none" }} />
+                    {!liked && (likeFillMap[idx] || 0) > 0 && (
+                      <div style={{ position: "absolute", inset: 0, overflow: "hidden", clipPath: `inset(${100 - likeFillMap[idx]}% 0 0 0)` }}>
+                        <Heart size={32} fill="#ff2d55" color="#ff2d55" />
+                      </div>
+                    )}
+                    {likeBurstMap[idx] && (
+                      <Heart size={64} fill="#fff" color="#fff" style={{ position: "absolute", top: -16, left: -16, filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.4))", animation: "heartBurst .6s ease", pointerEvents: "none" }} />
+                    )}
+                  </div>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{(post.likes || []).length}</span>
                 </div>
 
-                {/* Commentaires */}
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                {/* Commentaires : tap = ouvrir, maintien = menu réactions rapides */}
+                <div
+                  onPointerDown={e => { e.stopPropagation(); startLongPress(idx, e); }}
+                  onPointerMove={e => { e.stopPropagation(); moveLongPress(idx, e); }}
+                  onPointerUp={e => { e.stopPropagation(); endLongPress(idx, post); }}
+                  onPointerLeave={() => { if (reactOpenIdx === idx) endLongPress(idx, post); else cancelLongPress(); }}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative", touchAction: reactOpenIdx === idx ? "none" : "auto" }}
+                >
                   <button
-                    onClick={() => { setReelsModalOpen(true); onOpenComments(post, () => setReelsModalOpen(false)); }}
+                    onClick={() => { if (reactOpenIdx !== idx) { setReelsModalOpen(true); onOpenComments(post, (newCount) => { setReelsModalOpen(false); if (typeof newCount === "number") setCommentCountOverrideMap(p => ({ ...p, [post.id]: newCount })); }); } }}
                     style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }}
                   >
                     <MessageCircle size={30} color="#fff" />
                   </button>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{(post.comments || []).length}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>{commentCountOverrideMap[post.id] ?? ((post.commentsCount ?? (post.comments || []).length) + (commentBumpMap[post.id] || 0))}</span>
+                  {reactOpenIdx === idx && (
+                    <div style={{ position: "absolute", right: 44, top: "50%", width: 0, height: 0, zIndex: 50, pointerEvents: "none" }}>
+                      {quickReactions.map(q => {
+                        const active = reactDir === q.key;
+                        const pos = { up: { x: -20, y: -58 }, down: { x: -20, y: 18 }, left: { x: -64, y: -20 }, right: { x: 4, y: -20 } }[q.key];
+                        return (
+                          <div key={q.key} style={{
+                            position: "absolute", right: -pos.x, top: pos.y,
+                            transform: `scale(${active ? 1.3 : 1})`,
+                            width: 40, height: 40, borderRadius: "50%",
+                            background: active ? "#C9952A" : "rgba(20,20,20,0.92)",
+                            border: "1px solid rgba(201,149,42,0.55)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 18, transition: "transform .15s ease, background .15s ease",
+                            boxShadow: active ? "0 0 16px rgba(201,149,42,0.55)" : "0 4px 12px rgba(0,0,0,0.4)",
+                          }}>{q.emoji}</div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Sauvegarder */}
@@ -822,6 +1133,12 @@ export default function ReelsViewer({
           0%   { transform: scale(0.5); opacity: 1; }
           50%  { transform: scale(1.3); opacity: 1; }
           100% { transform: scale(1) translateY(-40px); opacity: 0; }
+        }
+        @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+        @keyframes heartBurst {
+          0%   { transform: scale(0.3); opacity: 1; }
+          50%  { transform: scale(1.4); opacity: 0.9; }
+          100% { transform: scale(1.8); opacity: 0; }
         }
         div::-webkit-scrollbar { display: none; }
       `}</style>

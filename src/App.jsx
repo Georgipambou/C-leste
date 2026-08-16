@@ -82,7 +82,7 @@ import CameraStudioModal from "./CameraStudioModal";
 import SharePostModal from "./SharePostModal";
 import ContentQuizModal from "./components/ContentQuizModal";
 import { pauseOtherVideos as __pauseOtherPostVideos, releaseActiveVideo as __releaseActivePostVideo } from "./videoRegistry";
-import { fetchRankingData, rankPosts, fetchCommunityIds, fetchFrequentlyVisitedIds } from "./lib/recommendation/useFeedRanking";
+import { fetchRankingData, rankPosts, fetchCommunityIds, fetchFrequentlyVisitedIds, buildReelSessionQueue, buildPhotoSessionQueue } from "./lib/recommendation/useFeedRanking";
 import { Virtuoso } from "react-virtuoso";
 import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
@@ -622,10 +622,11 @@ longitude:p.longitude||null,
   org_name:p.org_name||null, org_type:p.org_type||null,
   org_country:p.org_country||null, org_desc:p.org_desc||null,
   links:Array.isArray(p.links)?p.links.slice(0,5):[],
+  celeste_id:p.celeste_id||null,
 });
 
 function mapDbPost(p, followedIds) {
-  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
 }
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
@@ -1781,7 +1782,13 @@ function AuthScreen({mode,setMode,onSuccess}){
     setBusy(true);
     try{
       if(mode==="login"){
-        const{error}=await sb.auth.signInWithPassword({email,password:pw});
+        let loginEmail=email;
+        if(/^\d{8}$/.test(email.trim())){
+          const{data,error:resolveErr}=await sb.functions.invoke("resolve-celeste-login",{body:{celeste_id:email.trim()}});
+          if(resolveErr||!data?.email)throw new Error("Identifiant ou mot de passe incorrect");
+          loginEmail=data.email;
+        }
+        const{error}=await sb.auth.signInWithPassword({email:loginEmail,password:pw});
         if(error)throw error;
       }else{
         const metadata=accountType==="membre"
@@ -1889,7 +1896,7 @@ if(data.user){onSuccess?.("pending");}
                 )}
               </>
             )}
-            <AuthField val={email} set={setEmail} placeholder="Email *" type="email"/>
+            <AuthField val={email} set={setEmail} placeholder={mode==="login"?"Email ou identifiant Céleste *":"Email *"} type={mode==="login"?"text":"email"}/>
             <AuthField val={pw} set={setPw} placeholder="Mot de passe *" type="password" showPw={showPw} setShowPw={setShowPw}/>
             {err&&<div style={{background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:12,padding:"10px 14px",color:T.err,fontSize:12,display:"flex",alignItems:"center",gap:6}}><AlertTriangle size={14}/> {err}</div>}
             <Btn onClick={submit} disabled={busy} style={{padding:"16px",background:busy?T.goldBg:T.gradGold,color:"#000",borderRadius:14,fontSize:14,fontWeight:700,boxShadow:busy?"none":"0 8px 32px rgba(201,149,42,0.3), 0 0 0 1px rgba(201,149,42,0.1)",opacity:busy?.6:1,transition:"all .25s",marginTop:4,letterSpacing:.3}}>
@@ -3172,7 +3179,7 @@ useEffect(()=>{
     </>
   );
 }
-function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify}){
+function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify,onCountChange}){
   const [cmtCount,setCmtCount]=useState(0);
   return(
     <div style={{position:"fixed",inset:0,zIndex,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
@@ -3184,7 +3191,7 @@ function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify}){
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{flex:1,minHeight:0,overflow:"visible",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
-          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={setCmtCount} targetCommentId={null} standalone notify={notify} commentsDisabled={!!post.comments_disabled}/>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={c=>{setCmtCount(c);onCountChange?.(c);}} targetCommentId={null} standalone notify={notify} commentsDisabled={!!post.comments_disabled}/>
         </div>
       </div>
     </div>
@@ -3240,6 +3247,7 @@ const [duoCollaborators,setDuoCollaborators]=useState([]);
 const [showDrafts, setShowDrafts] = useState(false);
 const [resumeDraft, setResumeDraft] = useState(null);
 const [isForSale,setIsForSale]=useState(false);
+const [isAiGenerated,setIsAiGenerated]=useState(false);
 const [isPrivate,setIsPrivate]=useState(false);
 const [commentsDisabled,setCommentsDisabled]=useState(false);
 const [contactType,setContactType]=useState("whatsapp");
@@ -3339,6 +3347,7 @@ try {
       event_loc:type==="event"?evLoc:null,
       text_background:textBg||null,
       is_for_sale:isForSale||false,
+      is_ai_generated:type==="photo"?(isAiGenerated||false):false,
       is_private:isPrivate||false,
       comments_disabled:commentsDisabled||false,
 whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
@@ -3508,6 +3517,16 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
                 <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article à vendre</span>
                 <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
                   <div style={{position:"absolute",top:2,left:isForSale?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}/>
+                </div>
+              </div>
+            )}
+            {/* Option contenu généré par IA (photo/vidéo uniquement) */}
+            {type==="photo"&&(
+              <div onClick={()=>setIsAiGenerated(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
+                <Sparkles size={14} color={isAiGenerated?T.goldL:T.muted}/>
+                <span style={{fontSize:12,color:isAiGenerated?T.goldL:T.muted,flex:1}}>Contenu généré par IA</span>
+                <div style={{width:28,height:16,borderRadius:8,background:isAiGenerated?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:2,left:isAiGenerated?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}/>
                 </div>
               </div>
             )}
@@ -4427,8 +4446,8 @@ useEffect(()=>{
         <StatusCreatorModal myProfile={myProfile} session={session} myStatuses={myStatuses}
           onClose={()=>{popNav();setCreating(false);setHideNav(false);}} onDone={()=>{popNav();setCreating(false);load();notify("Statut publié ✦");setHideNav(false);}}/>
       )}
-      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
-        <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>Statuts</h2>
+      <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px"}}>
+        <h2 style={{margin:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",fontSize:34,fontWeight:800,letterSpacing:-0.5,color:T.text}}>Statuts</h2>
       </div>
       <div style={{maxWidth:640,margin:"0 auto",padding:"16px"}}>
         {/* Mon statut */}
@@ -4705,6 +4724,15 @@ function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
   const [open,setOpen]=useState(false);
   const [msg,setMsg]=useState(`Salut ${u.name?.split(" ")[0]} ✦ Céleste nous affiche à ${score}% de compatibilité — j'aimerais qu'on discute, si tu es partant·e !`);
   const [sending,setSending]=useState(false);
+
+  // Filet de sécurité : si cette carte disparaît (suggestions mises à jour en
+  // temps réel) pendant que le formulaire est ouvert, on prévient quand même
+  // le parent pour ne pas bloquer DiscoverTab en display:none indéfiniment
+  useEffect(()=>{
+    if(!open)return;
+    return()=>{onWriteOpen?.(false);};
+  },[open]);
+
   if(!open) return(
     <button onClick={()=>{setOpen(true);onWriteOpen?.(true);}} style={{flexShrink:0,padding:"8px 14px",background:T.gradGold,border:"none",borderRadius:12,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 3px 12px rgba(201,149,42,0.3)"}}>
       Écrire ✦
@@ -4744,7 +4772,7 @@ function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
   );
 }
 
-function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWriteOpen}){
+function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWriteOpen,blockedUserIds=[]}){
   const [matchProfile,setMatchProfile]=useState(null);
   const [suggestions,setSuggestions]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -4763,8 +4791,9 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
         if(!shown&&!data){localStorage.setItem("celeste_match_popup_shown","1");setAutoPopup(true);}
       }
       if(data?.is_active&&members?.length>0){
-        // Charger les profils des autres membres
-        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        // Charger les profils des autres membres (hors utilisateurs bloqués)
+        const blockedSet=new Set(blockedUserIds||[]);
+        const otherIds=members.filter(m=>m.id!==session.user.id&&!blockedSet.has(m.id)).map(m=>m.id);
         const{data:otherProfiles}=await sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true);
         if(otherProfiles){
           const scored=(otherProfiles||[]).map(op=>{
@@ -4777,7 +4806,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
       }
       setLoading(false);
     })();
-  },[session?.user?.id,members?.length]);
+  },[session?.user?.id,members?.length,blockedUserIds]);
 
   useEffect(()=>{
     // Anti-capture : activer si au moins une suggestion visible a screenshot_protection
@@ -4791,7 +4820,8 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
     const sub=sb.channel("match_realtime").on("postgres_changes",{event:"*",schema:"public",table:"match_profiles"},()=>{
       sb.from("match_profiles").select("*").eq("user_id",session.user.id).maybeSingle().then(({data:myData})=>{
         if(!myData?.is_active||!members?.length)return;
-        const otherIds=members.filter(m=>m.id!==session.user.id).map(m=>m.id);
+        const blockedSet=new Set(blockedUserIds||[]);
+        const otherIds=members.filter(m=>m.id!==session.user.id&&!blockedSet.has(m.id)).map(m=>m.id);
         sb.from("match_profiles").select("*").in("user_id",otherIds).eq("is_active",true).then(({data:others})=>{
           if(!others)return;
           const scored=others.map(op=>{const score=computeMatchScore(myData,op);const member=members.find(m=>m.id===op.user_id);return{...op,score,member};}).filter(s=>s.score>=50&&s.member).sort((a,b)=>b.score-a.score).slice(0,20);
@@ -4800,7 +4830,7 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
       });
     }).subscribe();
     return()=>sb.removeChannel(sub);
-  },[session?.user?.id,members?.length]);
+  },[session?.user?.id,members?.length,blockedUserIds]);
 
   const scoreColor=s=>s>=80?T.ok:s>=65?T.goldL:T.gold;
   const scoreLabel=s=>s>=90?"Connexion rare ✦":s>=80?"Très compatible":s>=65?"Bonne affinité":s>=50?"Affinité modérée":"";
@@ -4932,18 +4962,28 @@ function MatchSuggestions({myProfile,session,members,onUser,onChat,notify,onWrit
   );
 }
 
-function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange,openChat}){
+function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFollowers,onConnectionChange,openChat,blockedUserIds=[]}){
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("tous");
   const [matchWriting,setMatchWriting]=useState(false);
 
   const toggle=async id=>{
-    if((myConnections||[]).includes(id)){await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",id);notify("Connexion retirée");}
-    else{await sb.from("connections").insert({from_id:session?.user?.id,to_id:id});notify("Connecté ✦");}
+    if((myConnections||[]).includes(id)){
+      const{error}=await sb.from("connections").delete().eq("from_id",session?.user?.id).eq("to_id",id);
+      if(error){notify("Erreur — réessaie");return;}
+      notify("Connexion retirée");
+    } else {
+      const{error}=await sb.from("connections").insert({from_id:session?.user?.id,to_id:id});
+      if(error){notify("Erreur — réessaie");return;}
+      notify("Connecté ✦");
+    }
     onConnectionChange();
   };
 
-  const active=(members||[]).filter(m=>m.id!==session?.user?.id&&m.is_discoverable!==false&&(matchQuery(m.fullName,q)||matchQuery(m.paroisse,q)));
+  const blockedSet=new Set(blockedUserIds||[]);
+  const base=(members||[]).filter(m=>m.id!==session?.user?.id&&!blockedSet.has(m.id));
+  const searchMatch=m=>matchQuery(m.fullName,q)||matchQuery(m.paroisse,q);
+  const active=base.filter(m=>m.is_discoverable!==false&&searchMatch(m));
 
   let filtered;
 if(filter==="populaires") filtered=[...active].sort((a,b)=>(b.followersCount||0)-(a.followersCount||0));
@@ -4952,14 +4992,14 @@ else if(filter==="proximite"){
   if(!myProfile?.latitude) filtered=[];
   else filtered=[...active].filter(m=>m.latitude&&m.longitude&&distKm(myProfile.latitude,myProfile.longitude,m.latitude,m.longitude)<50).sort((a,b)=>distKm(myProfile.latitude,myProfile.longitude,a.latitude,a.longitude)-distKm(myProfile.latitude,myProfile.longitude,b.latitude,b.longitude));
 }
-else if(filter==="abonnes") filtered=(myFollowers||[]).length===0?[]:[...active].filter(m=>(myFollowers||[]).includes(m.id));
-else if(filter==="abonnements") filtered=(myConnections||[]).length===0?[]:[...active].filter(m=>(myConnections||[]).includes(m.id));
+else if(filter==="abonnes") filtered=(myFollowers||[]).length===0?[]:base.filter(m=>(myFollowers||[]).includes(m.id)&&searchMatch(m));
+else if(filter==="abonnements") filtered=(myConnections||[]).length===0?[]:base.filter(m=>(myConnections||[]).includes(m.id)&&searchMatch(m));
 else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {myProfile?.account_type!=="organisation"&&(
-        <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting}
+        <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting} blockedUserIds={blockedUserIds}
           onChat={async(uid,msg)=>{
             const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
             let convId=existing?.id;
@@ -5121,7 +5161,17 @@ const [detailPost,setDetailPost]=useState(null);
 const [reelsIndex,setReelsIndex]=useState(null);
 const [reelsCommentPost,setReelsCommentPost]=useState(null);
 const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
 const videoPosts=useMemo(()=>posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i))),[posts]);
+// Tant qu'une session Reel est ouverte, on garde son pool de vidéos à jour
+// quand loadMore() ramène de nouvelles vidéos — sans ré-ordonner ici, c'est
+// ReelsViewer qui décide de l'ordre (il connaît les intérêts récents).
+useEffect(()=>{
+  if(!reelsViewerPosts)return;
+  const existingIds=new Set(reelsViewerPosts.map(p=>p.id));
+  const fresh=videoPosts.filter(p=>!existingIds.has(p.id));
+  if(fresh.length)setReelsViewerPosts(prev=>[...(prev||[]),...fresh]);
+},[videoPosts]);
 const [photoIndex,setPhotoIndex]=useState(null);
 const [photoStartMedia,setPhotoStartMedia]=useState(0);
 const [photoViewerPosts,setPhotoViewerPosts]=useState(null);
@@ -5136,6 +5186,12 @@ const photoPosts=useMemo(()=>posts.filter(p=>{
   const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
   return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
 }),[posts]);
+useEffect(()=>{
+  if(!photoViewerPosts)return;
+  const existingIds=new Set(photoViewerPosts.map(p=>p.id));
+  const fresh=photoPosts.filter(p=>!existingIds.has(p.id));
+  if(fresh.length)setPhotoViewerPosts(prev=>[...(prev||[]),...fresh]);
+},[photoPosts]);
 const openPhotoViewer=(post,url)=>{
   let idx=photoPosts.findIndex(p=>p.id===post.id);
   if(idx<0){
@@ -5144,25 +5200,38 @@ const openPhotoViewer=(post,url)=>{
     setPhotoViewerPosts([post]);
     idx=0;
   }else{
-    setPhotoViewerPosts(null);
+    // Mode session : la file se réordonne autour de la photo tapée
+    // (catégories + son partagé, voir useFeedRanking.js)
+    setPhotoViewerPosts(buildPhotoSessionQueue(post,photoPosts));
+    idx=0;
   }
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   const photosOnly=allMedia.filter(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
   const mIdx=Math.max(0,photosOnly.indexOf(url));
   setPhotoStartMedia(mIdx);
   if(detailPost){popNav();setDetailPost(null);} // ferme le post modal sous-jacent ET nettoie sa trace dans la pile de nav
-  pushNav(()=>setPhotoIndex(null));
+  pushNav(()=>{setPhotoIndex(null);setPhotoViewerPosts(null);});
   setPhotoIndex(idx);
 };
 
 const openPost=useCallback(p=>{
   const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));
   if(isVid&&!p._forceComments){
-    const idx=videoPosts.findIndex(v=>v.id===p.id);
-    pushNav(()=>setReelsIndex(null));
-    setReelsIndex(idx>=0?idx:0);
+    // Mode session : la file du Reel se réordonne autour de la vidéo tapée
+    // plutôt que de reprendre l'ordre brut du feed (voir useFeedRanking.js)
+    const sessionQueue=buildReelSessionQueue(p,videoPosts);
+    setReelsViewerPosts(sessionQueue);
+    pushNav(()=>{setReelsIndex(null);setReelsViewerPosts(null);});
+    setReelsIndex(0);
   }else if(p._forceComments){
     setDetailPost(p);
+  }else if(p.type==="poll"||p.type==="event"){
+    const idx=photoPosts.findIndex(q=>q.id===p.id);
+    if(idx<0)setPhotoViewerPosts([p]);else setPhotoViewerPosts(null);
+    setPhotoStartMedia(0);
+    if(detailPost){popNav();setDetailPost(null);}
+    pushNav(()=>setPhotoIndex(null));
+    setPhotoIndex(idx>=0?idx:0);
   }else{
     const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
     const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));
@@ -5325,7 +5394,7 @@ const virtuosoComponents=useMemo(()=>({
     <>
 {reelsIndex!==null&&<ReelsViewer
   posts={reelsViewerPosts||videoPosts}
-  sb={sb}
+  sb={sb} T={T} Av={Av}
   startIndex={reelsIndex}
   onClose={()=>{popNav();setReelsIndex(null);}}
   toggleLike={toggleLike}
@@ -5338,11 +5407,14 @@ const virtuosoComponents=useMemo(()=>({
   myConnections={myConnections}
   onConnect={onConnect}
   onOpenSound={setOpenSoundId}
+  onNeedMore={loadMore}
+  hasMore={hasMore}
+  loadingMore={loadingMore}
 />}
 {photoIndex!==null&&<PhotoViewer
  onOpenSound={setOpenSoundId}
   posts={photoViewerPosts||photoPosts}
-  sb={sb}
+  sb={sb} T={T} Av={Av}
   startIndex={photoIndex}
   startMediaIndex={photoStartMedia}
   onClose={()=>{popNav();setPhotoIndex(null);}}
@@ -5355,8 +5427,12 @@ const virtuosoComponents=useMemo(()=>({
   onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
   myConnections={myConnections}
   onConnect={onConnect}
+  onParticipate={toggleParticipate}
+  onNeedMore={loadMore}
+  hasMore={hasMore}
+  loadingMore={loadingMore}
 />}
-{openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)}
+{openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)}
   onUseSound={(sound)=>{setOpenSoundId(null); onUseSoundForPost?.(sound);}}
   onOpenPost={openPostFromSound}
 />}
@@ -5365,10 +5441,11 @@ const virtuosoComponents=useMemo(()=>({
     post={reelsCommentPost||photoCommentPost}
     session={session}
     getM={getM}
+    onCountChange={setReelsLiveCmtCount}
     onClose={()=>{
       setReelsCommentPost(null);
       setPhotoCommentPost(null);
-      if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+      if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
       if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
     }}
   />
@@ -5386,7 +5463,7 @@ const virtuosoComponents=useMemo(()=>({
     <Plus size={16}/>Publier
   </Btn>
 </div>
-{searchOpen&&<SearchExplorer sb={sb} T={T} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
+{searchOpen&&<SearchExplorer sb={sb} T={T} Av={Av} T={T} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
   onClose={()=>{popNav();setSearchOpen(false);}}
   onOpenPost={openPostFromSound}
   onUseSound={onUseSoundForPost}
@@ -5569,7 +5646,7 @@ const PollCard=React.memo(function PollCard({post,session}){
   if(loading)return<div style={{padding:"20px 0",textAlign:"center"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",margin:"0 auto",animation:"spin .7s linear infinite"}}/></div>;
 
   return(
-    <div style={{marginBottom:10}} onClick={e=>e.stopPropagation()}>
+    <div style={{marginBottom:10}}>
       {post.text&&<p style={{margin:"0 0 4px",fontSize:15,fontWeight:700,color:T.text,lineHeight:1.4}}>{post.text}</p>}
       <p style={{margin:"0 0 12px",fontSize:12,color:T.muted}}>{expired?"Sondage terminé":(post.poll_multiple?"Vous pouvez choisir plusieurs options":"Vous pouvez choisir une option")}</p>
       {options.map((opt,i)=>{
@@ -5578,7 +5655,7 @@ const PollCard=React.memo(function PollCard({post,session}){
         const mine=myOptionIds.has(opt.id);
         const color=POLL_COLORS[i%POLL_COLORS.length];
         return(
-          <button key={opt.id} disabled={expired||pending} onClick={()=>handleVote(opt.id)}
+          <button key={opt.id} disabled={expired||pending} onClick={e=>{e.stopPropagation();handleVote(opt.id);}}
             style={{display:"block",width:"100%",position:"relative",overflow:"hidden",border:`1px solid ${mine?color+"77":T.border}`,borderRadius:14,padding:"12px 14px",marginBottom:8,background:"rgba(255,255,255,0.03)",cursor:expired?"default":"pointer",textAlign:"left",transition:"transform .18s cubic-bezier(0.34,1.56,0.64,1), border-color .3s ease",transform:justVoted===opt.id?"scale(0.96)":"scale(1)",animation:"popIn .35s cubic-bezier(0.34,1.56,0.64,1) both",animationDelay:`${i*55}ms`}}>
             <div style={{position:"absolute",inset:0,width:`${pct}%`,background:`linear-gradient(90deg,${color}35,${color}15)`,transition:"width .7s cubic-bezier(0.22,1,0.36,1)"}}/>
             <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
@@ -5712,7 +5789,6 @@ const [saved,setSaved]=useState(false);
     const held=likeHoldStartRef.current?performance.now()-likeHoldStartRef.current:0;
     setLikeFill(0);
     likeHoldStartRef.current=null;
-    if(!liked&&held>=180)return;
     haptic("light");
     onLike(post.id);
   };
@@ -5902,6 +5978,7 @@ onMuteAuthor?.(post.by);
               <Badge type={post.author?.badge}/>
               <DuoBadge sb={sb} T={T} Av={Av} postId={post.id}/>
               {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
+              {post.is_ai_generated&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,color:"#a78bfa",background:"rgba(139,92,246,0.14)",border:"1px solid rgba(139,92,246,0.35)",padding:"1px 7px",borderRadius:20}}><Sparkles size={10}/> IA</span>}
               {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={1} color={T.goldL}/></span>}
               <span style={{fontSize:11,color:T.muted}}>{ago(post.ts)}</span>
               {post.type==="poll"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:"#a78bfa",background:"rgba(139,92,246,0.14)",border:"1px solid rgba(139,92,246,0.35)",padding:"3px 9px",borderRadius:20}}><BarChart3 size={11}/> Sondage</span>}
@@ -6173,7 +6250,7 @@ onMuteAuthor?.(post.by);
     {showShareModal&&(
       <SharePostModal
         post={post}
-        sb={sb}
+        sb={sb} T={T} Av={Av}
         session={session}
         T={T}
         Av={Av}
@@ -6197,6 +6274,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   const [openSoundId,setOpenSoundId]=useState(null);
   const [reelsCommentPost,setReelsCommentPost]=useState(null);
   const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
@@ -6237,7 +6315,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -6253,6 +6331,17 @@ const [detailPost, setDetailPost] = useState(null);
   const localToggleSave=async pid=>{
     await toggleSave(pid);
     setPosts(prev=>prev.filter(p=>p.id!==pid));
+  };
+  const localToggleParticipate=async pid=>{
+    const uid=session?.user?.id;
+    const post=posts.find(p=>p.id===pid);
+    if(!post)return;
+    const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+    setPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,participants:participating?(p.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(p.participants||[]),uid]}));
+    try{
+      if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+      else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+    }catch(e){console.warn("toggleParticipate error:",e);}
   };
   if(loading) return(
     <div style={{display:"flex",justifyContent:"center",padding:40}}>
@@ -6289,13 +6378,13 @@ return(
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
         {reelsIndex!==null&&toggleLike&&toggleSave&&(
-          <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
+          <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} T={T} Av={Av} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
             onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
         {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-          <PhotoViewer posts={photoViewerFallback||posts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
-            toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
+          <PhotoViewer posts={photoViewerFallback||posts.filter(p=>!isVid(p)&&(p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} T={T} Av={Av} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+            toggleLike={localToggleLike} toggleSave={localToggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
             onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
         {(reelsCommentPost||photoCommentPost)&&(
@@ -6303,15 +6392,16 @@ return(
             post={reelsCommentPost||photoCommentPost}
             session={session}
             getM={getM}
+            onCountChange={setReelsLiveCmtCount}
             onClose={()=>{
               setReelsCommentPost(null);
               setPhotoCommentPost(null);
-              if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+              if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
               if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
             }}
           />
         )}
-        {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
+        {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
         {!navigator.onLine&&posts.length===0&&[1,2,3].map(i=><SkeletonPost key={i}/>)}
         {posts.map((p,i)=>(
           <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}}
@@ -6319,9 +6409,9 @@ return(
               if(p.is_private&&!isNative)return;
               if(isVid(p)){const idx=videoPosts.findIndex(q=>q.id===p.id);setReelsIndex(idx>=0?idx:0);}
               else{
-                const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+                const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
                 if(hasPhoto){
-                  const photoPosts=posts.filter(q=>!isVid(q)&&(q.img||(q.media_urls&&q.media_urls.length>0)));
+                  const photoPosts=posts.filter(q=>!isVid(q)&&(q.type==="poll"||q.type==="event"||q.img||(q.media_urls&&q.media_urls.length>0)));
                   const idx=photoPosts.findIndex(q=>q.id===p.id);
                   setPhotoViewerIndex(idx>=0?idx:0);
                 }else{
@@ -6494,7 +6584,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
         {/* Notes */}
-        <NotesBar sb={sb} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify}/>
+        <NotesBar sb={sb} T={T} Av={Av} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify}/>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto",alignItems:"center"}}>
           {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"}].map(f=>(
@@ -6514,7 +6604,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
       {invites&&invites.length>0&&(
         <div style={{maxWidth:640,margin:"0 auto",padding:"4px 0"}}>
           {invites.map(inv=>(
-            <PendingGroupInviteCard key={inv.group_id} sb={sb} T={T} Av={Av} Btn={Btn}
+            <PendingGroupInviteCard key={inv.group_id} sb={sb} T={T} Av={Av} T={T} Av={Av} Btn={Btn}
               invite={inv} userId={session?.user?.id}
               notify={notify}
             />
@@ -6686,8 +6776,8 @@ L'APP EN BREF :
 
 
 LES THÈMES :
-- Gratuits : Noir Doré, Blanc Doré
-- Premium : WhatsApp, Facebook, TikTok, Snapchat, YouTube, Google, Bleu Nuit, Vert Foncé
+-Il sont tous gratuit 
+
 
 COMPTE EN ATTENTE :
 - Après inscription, un admin vérifie le profil sous 24–48h
@@ -7235,7 +7325,7 @@ const handleFile=async(e,isImg)=>{
       )}
       {openStickerDetail&&(
   <StickerDetailModal
-    sb={sb}
+    sb={sb} T={T} Av={Av}
     stickerId={openStickerDetail}
     userId={session?.user?.id}
     notify={notify}
@@ -7502,7 +7592,7 @@ const handleFile=async(e,isImg)=>{
   <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
   {showStickerPicker&&(
     <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
-      <StickerPicker sb={sb} userId={session?.user?.id} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={sendSticker}/>
+      <StickerPicker sb={sb} T={T} Av={Av} userId={session?.user?.id} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={sendSticker}/>
     </div>
   )}
   <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
@@ -7615,7 +7705,10 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
                 <Edit2 size={18}/><span>Modifier</span>
               </Btn>
             )}
-            <Btn onClick={()=>{navigator.clipboard.writeText(selectedMsg.text||"");setSelectedMsg(null);notify("Copié !");}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+            <Btn onClick={()=>{
+              navigator.clipboard?.writeText(selectedMsg.text||"").then(()=>notify("Copié !")).catch(()=>notify("Impossible de copier"));
+              setSelectedMsg(null);
+            }} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <Copy size={18}/><span>Copier</span>
             </Btn>
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&(
@@ -7782,7 +7875,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -7795,6 +7888,17 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
     setUPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,likes:liked?(p.likes||[]).filter(l=>(l.user_id||l)!==uid):[...(p.likes||[]),uid]}));
     await toggleLike(pid);
   };
+  const localToggleParticipate=async pid=>{
+    const uid=session?.user?.id;
+    const post=uPosts.find(p=>p.id===pid);
+    if(!post)return;
+    const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+    setUPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,participants:participating?(p.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(p.participants||[]),uid]}));
+    try{
+      if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+      else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+    }catch(e){console.warn("toggleParticipate error:",e);}
+  };
   const isUVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
   const uPhotoPosts=uPosts.filter(p=>!isUVid(p));
   const uVideoPosts=uPosts.filter(p=>isUVid(p));
@@ -7803,6 +7907,7 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
   const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
   const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
+  const [userReelsLiveCmtCount,setUserReelsLiveCmtCount]=useState(0);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const [openSoundId,setOpenSoundId]=useState(null);
@@ -7868,7 +7973,7 @@ if(user?.status==="suspended") return(
       {userReelsIndex!==null&&toggleLike&&toggleSave&&(
         <ReelsViewer
           posts={reelsViewerFallback||uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
-          sb={sb}
+          sb={sb} T={T} Av={Av}
           startIndex={userReelsIndex}
           onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={localToggleLike}
@@ -7886,11 +7991,12 @@ if(user?.status==="suspended") return(
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
         <PhotoViewer
           posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"))))}
-          sb={sb}
+          sb={sb} T={T} Av={Av}
           startIndex={photoViewerIndex}
           onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
           toggleLike={localToggleLike}
           toggleSave={toggleSave}
+          onParticipate={localToggleParticipate}
           session={session}
           myProfile={myProfile}
           notify={notify}
@@ -7901,16 +8007,17 @@ if(user?.status==="suspended") return(
           onOpenSound={setOpenSoundId}
         />
       )}
-      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
+      {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
       {(userReelsCommentPost||photoCommentPost)&&(
         <CommentsOnlyModal
           post={userReelsCommentPost||photoCommentPost}
           session={session}
           getM={id=>id===user.id?user:myProfile}
+          onCountChange={setUserReelsLiveCmtCount}
           onClose={()=>{
             setUserReelsCommentPost(null);
             setPhotoCommentPost(null);
-            if(userReelsCloseCallback){userReelsCloseCallback();setUserReelsCloseCallback(null);}
+            if(userReelsCloseCallback){userReelsCloseCallback(userReelsLiveCmtCount);setUserReelsCloseCallback(null);}
             if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
           }}
         />
@@ -7965,7 +8072,7 @@ if(user?.status==="suspended") return(
             {uPhotoPosts.map(p=>(
               <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}} onClick={()=>{
                 if(p.is_private&&!isNative)return;
-                const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+                const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
                 if(hasPhoto){
                   const idx=uPhotoPosts.findIndex(q=>q.id===p.id);
                   setPhotoViewerIndex(idx>=0?idx:0);
@@ -8026,13 +8133,13 @@ if(user?.status==="suspended") return(
         )}
         <div style={{height:80}}/>
       </div>
-      {replyNote&&<NoteReplyModal sb={sb} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
+      {replyNote&&<NoteReplyModal sb={sb} T={T} Av={Av} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
     </div>
   );
 }
 
 // ── ORG VIEW ──────────────────────────────────────────────
-function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView,toggleLike,toggleSave}){
+function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView,toggleLike,toggleSave,userPostsVersion=0}){
   const conn=(myConnections||[]).includes(user.id);
   const [followersCount,setFollowersCount]=useState("…");
   const [coverPhoto,setCoverPhoto]=useState(user.cover_url||null);
@@ -8044,11 +8151,18 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
   const [reelsCommentPost,setReelsCommentPost]=useState(null);
   const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
   const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
   const fileRef=useRef(); const coverRef=useRef();
+ const [orgNote,setOrgNote]=useState(null);
+  useEffect(()=>{
+    sb.from("notes").select("*").eq("user_id",user.id).gt("expires_at",new Date().toISOString()).maybeSingle()
+      .then(({data})=>setOrgNote(data||null));
+  },[user.id]);
+  const [replyNote,setReplyNote]=useState(null);
 
   useEffect(()=>{
     sb.from("connections").select("id",{count:"exact",head:true}).eq("to_id",user.id).then(({count})=>setFollowersCount(count||0));
@@ -8076,13 +8190,33 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
 
  const isMe=session?.user?.id===user.id;
-  const uPosts=(posts||[]).filter(p=>p.by===user.id);
+  const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
+  const loadUPosts=useCallback(async()=>{
+    const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
+    if(data){
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
+      setUPosts(mapped);
+    }
+  },[user.id]);
+  useEffect(()=>{loadUPosts();},[user.id,userPostsVersion]);
+  const localToggleParticipate=async pid=>{
+    const uid=session?.user?.id;
+    const post=uPosts.find(p=>p.id===pid);
+    if(!post)return;
+    const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+    setUPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,participants:participating?(p.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(p.participants||[]),uid]}));
+    try{
+      if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+      else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+    }catch(e){console.warn("toggleParticipate error:",e);}
+  };
   const orgTypeLabel={restaurant:"🍽️ Restaurant",hotel:"🏨 Hôtel",musique:"🎵 Musique / Artiste",entreprise:"💼 Entreprise",association:"🤝 Association",ecole:"🎓 École / Université",autre:"📌 Organisation"}[user.org_type]||"📌 Organisation";
   const oIsVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
   const oPhotoPosts=uPosts.filter(p=>!oIsVid(p));
@@ -8152,7 +8286,7 @@ if(blocked||blockedByOther) return(
       {userReelsIndex!==null&&toggleLike&&toggleSave&&(
         <ReelsViewer
           posts={reelsViewerFallback||uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
-          sb={sb}
+          sb={sb} T={T} Av={Av}
           startIndex={userReelsIndex}
           onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={toggleLike}
@@ -8169,12 +8303,13 @@ if(blocked||blockedByOther) return(
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
         <PhotoViewer
-          posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))&&(p.img||(p.media_urls&&p.media_urls.length>0)))}
-          sb={sb}
+          posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))&&(p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0)))}
+          sb={sb} T={T} Av={Av}
           startIndex={photoViewerIndex}
           onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
           toggleLike={toggleLike}
           toggleSave={toggleSave}
+          onParticipate={localToggleParticipate}
           session={session}
           myProfile={myProfile}
           notify={notify}
@@ -8185,16 +8320,17 @@ if(blocked||blockedByOther) return(
           onOpenSound={setOpenSoundId}
         />
       )}
-      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
+      {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
       {(reelsCommentPost||photoCommentPost)&&(
         <CommentsOnlyModal
           post={reelsCommentPost||photoCommentPost}
           session={session}
           getM={id=>id===user.id?user:myProfile}
+          onCountChange={setReelsLiveCmtCount}
           onClose={()=>{
             setReelsCommentPost(null);
             setPhotoCommentPost(null);
-            if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+            if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
             if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
           }}
         />
@@ -8206,6 +8342,7 @@ if(blocked||blockedByOther) return(
         coverUrl={coverPhoto} color={T.gold} avatarShape="square"
         avatarUrl={user.avatar_url} user={user}
         onAvatarClick={()=>{if(isMe)fileRef.current.click();else if(user.avatar_url)onImageView(user.avatar_url);}}
+        note={orgNote?.text} onNoteClick={()=>orgNote&&setReplyNote({...orgNote,author:user})}
         title={user.org_name||user.fullName}
         subtitle={<>{orgTypeLabel} · 🌍 {user.org_country||user.paroisse}</>}
         extraLines={<>
@@ -8246,7 +8383,7 @@ if(blocked||blockedByOther) return(
           <div key={p.id} style={{background:T.card,borderRadius:18,overflow:"hidden",marginBottom:10,border:`1px solid ${T.border}`,cursor:locked?"default":"pointer"}}
             onClick={()=>{
   if(locked)return;
-  const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+  const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
   if(hasPhoto){
     const idx=oPhotoPosts.findIndex(q=>q.id===p.id);
     setPhotoViewerIndex(idx>=0?idx:0);
@@ -8298,6 +8435,7 @@ if(blocked||blockedByOther) return(
         )}
         <div style={{height:80}}/>
       </div>
+      {replyNote&&<NoteReplyModal sb={sb} T={T} Av={Av} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
     </div>
   );
 }
@@ -8671,8 +8809,8 @@ const NAV_THEMES=[
     <Toggle active={screenshotProtection}/>
   </Btn>
     {/* Céleste Match — activer/désactiver */}
-    <DuoPrivacySetting sb={sb} T={T} Btn={Btn} Av={Av} session={session} value={duoPermission} onChange={setDuoPermission} notify={notify}/>
-    <GroupPrivacySetting sb={sb} T={T} Btn={Btn} session={session} value={groupInvitePermission} onChange={setGroupInvitePermission} notify={notify}/>
+    <DuoPrivacySetting sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} session={session} value={duoPermission} onChange={setDuoPermission} notify={notify}/>
+    <GroupPrivacySetting sb={sb} T={T} Av={Av} T={T} Btn={Btn} session={session} value={groupInvitePermission} onChange={setGroupInvitePermission} notify={notify}/>
 
     <MatchPrivacyToggle session={session} notify={notify} myProfile={myProfile}/>
 
@@ -8697,15 +8835,12 @@ const NAV_THEMES=[
       <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px"}}>
   <p style={{margin:"0 0 6px",fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:1}}>Identifiant Céleste</p>
   {(()=>{
-    const prenom=(myProfile?.fullName?.split(" ")[0]||"").toLowerCase();
-    const nom=(myProfile?.fullName?.split(" ")[1]||"").toLowerCase();
-    const num=(session?.user?.id||"").replace(/\D/g,"").slice(0,4)||"0000";
-    const prefix=myProfile?.badge==="confirmed"?"CEL✅":myProfile?.badge==="friend"?"CEL🔵":"CEL#";
-    const celesteId=`${prefix}${prenom}.${nom}.${num}`;
+    const celesteId=myProfile?.celeste_id||"—";
     return(
       <>
         <p style={{margin:"0 0 8px",fontSize:15,fontWeight:700,color:T.goldL,letterSpacing:.5}}>{celesteId}</p>
-        <Btn onClick={()=>{navigator.clipboard.writeText(celesteId);notify("Identifiant copié ✦");}}
+        <p style={{margin:"0 0 8px",fontSize:11,color:T.muted}}>Sert à se connecter avec d'autre service DES-ETOILES</p>
+        <Btn onClick={()=>{navigator.clipboard?.writeText(celesteId).then(()=>notify("Identifiant copié ✦")).catch(()=>notify("Impossible de copier"));}}
           style={{padding:"7px 14px",background:T.goldBg,border:`1px solid ${T.gold}33`,borderRadius:10,color:T.goldL,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
           📋 Copier l'identifiant
         </Btn>
@@ -8737,10 +8872,7 @@ const NAV_THEMES=[
       <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
         {[
           {icon:"✦",text:"Badge visible sur ton profil et tes publications"},
-          {icon:"👁",text:"Vois combien de personnes ont vu tes posts"},
           {icon:"📈",text:"Tes publications sont prioritaires dans le feed"},
-          {icon:"🔕",text:"Active le mode Ne pas recevoir de messages"},
-          {icon:"📷",text:"Envoie des photos dans les commentaires"},
           {icon:"🔒",text:"Accès aux fonctionnalités exclusives à venir"},
           {icon:"💰",text:"Génère des gains quotidiens grâce à tes posts et likes reçus"},
         ].map((f,i)=>(
@@ -8971,32 +9103,6 @@ if(checkoutUrl){
       </div>
     </div>
   );
-  {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
-  <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500}} onClick={e=>e.stopPropagation()}>
-    <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
-    <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
-      style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#fff",fontSize:14,resize:"none",outline:"none",boxSizing:"border-box"}}/>
-    <Btn onClick={async()=>{
-      if(!bugText?.trim())return;
-      try{
-        await emailjs.send("service_wyyihkf","template_mo0y7od",{
-          from_name:myProfile?.prenom+" "+myProfile?.nom,
-          celeste_id:myProfile?.celeste_id||"inconnu",
-          from_email:myProfile?.email||"non renseigné",
-          device:navigator.userAgent,
-          message:bugText
-        },"ZGvH2EMAp3UlglKfe");
-        alert("Bug signalé ✦ Merci !");
-        setShowBugReport(false);
-        setBugText("");
-      }catch(e){
-        alert("Erreur envoi. Réessaie.");
-      }
-    }} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:12,background:"linear-gradient(135deg,#FF6432,#FF3B6B)",color:"#fff",fontWeight:700,fontSize:14,border:"none"}}>
-      Envoyer
-    </Btn>
-  </div>
-</div>}
 }
 
 function WalletScreen({session,myProfile,notify,onClose}){
@@ -9360,10 +9466,11 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [openSoundId,setOpenSoundId]=useState(null);
   const [reelsCommentPost,setReelsCommentPost]=useState(null);
   const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -9387,7 +9494,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   };
   useEffect(()=>{
     sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
-      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
       setLoading(false);
     });
   },[session?.user?.id]);
@@ -9402,6 +9509,17 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
       setLikedPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,likes:[...(p.likes||[]),uid]}));
     }
     await toggleLike(pid);
+  };
+  const localToggleParticipate=async pid=>{
+    const uid=session?.user?.id;
+    const post=likedPosts.find(p=>p.id===pid);
+    if(!post)return;
+    const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+    setLikedPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,participants:participating?(p.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(p.participants||[]),uid]}));
+    try{
+      if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+      else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+    }catch(e){console.warn("toggleParticipate error:",e);}
   };
   if(loading)return<div style={{textAlign:"center",padding:40,color:T.muted}}>Chargement…</div>;
   if(!likedPosts.length)return<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>♡</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun j'aime</p></div>;
@@ -9422,13 +9540,13 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
       {reelsIndex!==null&&toggleLike&&toggleSave&&(
-        <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
+        <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} T={T} Av={Av} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
           onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
       )}
       {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-        <PhotoViewer posts={photoViewerFallback||likedPosts.filter(p=>!isVid(p)&&(p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
-          toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
+        <PhotoViewer posts={photoViewerFallback||likedPosts.filter(p=>!isVid(p)&&(p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} T={T} Av={Av} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+          toggleLike={localToggleLike} toggleSave={toggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
           onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
       )}
       {(reelsCommentPost||photoCommentPost)&&(
@@ -9436,24 +9554,25 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
           post={reelsCommentPost||photoCommentPost}
           session={session}
           getM={getM}
+          onCountChange={setReelsLiveCmtCount}
           onClose={()=>{
             setReelsCommentPost(null);
             setPhotoCommentPost(null);
-            if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+            if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
             if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
           }}
         />
       )}
-      {openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
+      {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
       {likedPosts.map(p=>(
         <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:p.is_private&&!isNative?"default":"pointer",overflow:"hidden",borderRadius:4}}
           onClick={()=>{
             if(p.is_private&&!isNative)return;
             if(isVid(p)){const idx=videoPosts.findIndex(q=>q.id===p.id);setReelsIndex(idx>=0?idx:0);}
             else{
-              const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+              const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
               if(hasPhoto){
-                const photoPosts=likedPosts.filter(q=>!isVid(q)&&(q.img||(q.media_urls&&q.media_urls.length>0)));
+                const photoPosts=likedPosts.filter(q=>!isVid(q)&&(q.type==="poll"||q.type==="event"||q.img||(q.media_urls&&q.media_urls.length>0)));
                 const idx=photoPosts.findIndex(q=>q.id===p.id);
                 setPhotoViewerIndex(idx>=0?idx:0);
               }else{
@@ -9581,6 +9700,17 @@ const openPostFromSound=(post,soundPosts)=>{
     setPhotoViewerIndex(idx>=0?idx:0);
   }
 };
+const localToggleParticipate=async pid=>{
+  const uid=session?.user?.id;
+  const post=myPosts.find(p=>p.id===pid);
+  if(!post)return;
+  const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+  setMyPosts(prev=>prev.map(p=>p.id!==pid?p:{...p,participants:participating?(p.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(p.participants||[]),uid]}));
+  try{
+    if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+    else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+  }catch(e){console.warn("toggleParticipate error:",e);}
+};
 
   const followersCount=useMemo(()=>(myFollowers||[]).length,[myFollowers]);
   const followingCount=useMemo(()=>(myConnections||[]).length,[myConnections]);
@@ -9591,10 +9721,11 @@ const openPostFromSound=(post,soundPosts)=>{
   const [openSoundId,setOpenSoundId]=useState(null);
   const [reelsCommentPost,setReelsCommentPost]=useState(null);
   const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
+  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
   const [photoCommentPost,setPhotoCommentPost]=useState(null);
   const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   
@@ -9608,7 +9739,7 @@ const openPostFromSound=(post,soundPosts)=>{
       {userReelsIndex!==null&&toggleLike&&toggleSave&&(
   <ReelsViewer
     posts={reelsViewerFallback||myPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
-    sb={sb}
+    sb={sb} T={T} Av={Av}
     startIndex={userReelsIndex}
     onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
     toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
@@ -9626,11 +9757,12 @@ const openPostFromSound=(post,soundPosts)=>{
 {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
   <PhotoViewer
     posts={photoViewerFallback||myPhotoPosts}
-    sb={sb}
+    sb={sb} T={T} Av={Av}
     startIndex={photoViewerIndex}
     onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
     toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
     toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
+    onParticipate={localToggleParticipate}
     session={session}
     myProfile={myProfile}
     notify={notify}
@@ -9642,16 +9774,17 @@ const openPostFromSound=(post,soundPosts)=>{
   />
 )}
 
-{openSoundId&&<SoundDetailModal sb={sb} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
+{openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
   {(reelsCommentPost||photoCommentPost)&&(
   <CommentsOnlyModal
     post={reelsCommentPost||photoCommentPost}
     session={session}
     getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}}
+    onCountChange={setReelsLiveCmtCount}
     onClose={()=>{
       setReelsCommentPost(null);
       setPhotoCommentPost(null);
-      if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
+      if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
       if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
     }}
   />
@@ -9758,7 +9891,7 @@ const openPostFromSound=(post,soundPosts)=>{
           ))}
         </div>
 
-        <ProfileViewsCard sb={sb} T={T} Btn={Btn} Av={Av} Badge={Badge} fmtCount={fmtCount} session={session}/>
+        <ProfileViewsCard sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} Badge={Badge} fmtCount={fmtCount} session={session}/>
         <Btn onClick={()=>{
           const url="https://play.google.com/store/apps/details?id=social.celesteapp";
           if(navigator.share){navigator.share({title:"Céleste",text:"Rejoins-moi sur Céleste ✦",url}).catch(()=>{});}
@@ -9766,7 +9899,7 @@ const openPostFromSound=(post,soundPosts)=>{
         }} style={{width:"100%",padding:"12px",marginBottom:20,borderRadius:14,background:T.glass,border:`1px solid ${T.border}`,color:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <Users size={15}/> Inviter des amis
         </Btn>
-        <DiscoverPeopleSection sb={sb} T={T} Btn={Btn} Av={Av} Badge={Badge} session={session} notify={notify} computeMatchScore={computeMatchScore} onUser={id=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:id}}))} onConnectionChange={()=>{/* rafraîchi au prochain rendu */}}/>
+        <DiscoverPeopleSection sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} Badge={Badge} session={session} notify={notify} computeMatchScore={computeMatchScore} onUser={id=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:id}}))} onConnectionChange={()=>{/* rafraîchi au prochain rendu */}}/>
 
         {/* Modal Abonnés */}
         {showFollowers&&(
@@ -9852,7 +9985,7 @@ const openPostFromSound=(post,soundPosts)=>{
           const idx=vidPosts.findIndex(q=>q.id===p.id);
           setUserReelsIndex(idx>=0?idx:0);
         }else{
-          const hasPhoto=p.img||(p.media_urls&&p.media_urls.length>0);
+          const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
           if(hasPhoto){
             const idx=myPhotoPosts.findIndex(q=>q.id===p.id);
             setPhotoViewerIndex(idx>=0?idx:0);
@@ -9933,7 +10066,7 @@ const openPostFromSound=(post,soundPosts)=>{
         )}
         <div style={{height:80}}/>
       </div>
-      {showNoteComposer&&<NoteComposerModal sb={sb} userId={session.user.id} existingText={myNote?.text} notify={notify}
+      {showNoteComposer&&<NoteComposerModal sb={sb} T={T} Av={Av} userId={session.user.id} existingText={myNote?.text} notify={notify}
         onClose={()=>setShowNoteComposer(false)} onSaved={t=>setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}))} onDeleted={()=>setMyNote(null)}/>}
     </div>
   );
@@ -10214,9 +10347,9 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
         
         <div style={{flex:1,overflowY:"auto"}}>
           {filter==="sons"
-  ?<AdminSoundsPanel sb={sb} notify={notify} T={T} />
+  ?<AdminSoundsPanel sb={sb} T={T} Av={Av} notify={notify} T={T} />
   :filter==="stickers"
-  ?<AdminStickersPanel sb={sb} notify={notify} T={T} />
+  ?<AdminStickersPanel sb={sb} T={T} Av={Av} notify={notify} T={T} />
   :filter==="sticker_reports"
             ?<div>
               {(stickerReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun sticker signalé</p>}
@@ -10740,9 +10873,9 @@ useEffect(()=>{
       if(!postId)return;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){openResolved(post,commentId);return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
-        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
         openResolved(mapped,commentId);
       }else{
         notify("Cette publication n'est plus disponible");
@@ -10988,7 +11121,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   const postOrderRef=useRef([]);
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   const from=(page-1)*PAGE_SIZE,to=from+PAGE_SIZE-1;
-  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  const{data,error}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).range(from,to);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
@@ -10996,7 +11129,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
@@ -11011,12 +11144,13 @@ const collaboratorsByPost=new Map();
   if(!collaboratorsByPost.has(r.post_id))collaboratorsByPost.set(r.post_id,[]);
   collaboratorsByPost.get(r.post_id).push(r.collaborator_id);
 });
+mapped.forEach(p=>{p.collaboratorIds=collaboratorsByPost.get(p.id)||[];});
 
 const visible=mapped.filter(p=>{
   if(blockedSet.has(p.by))return false;
   if((collaboratorsByPost.get(p.id)||[]).some(id=>blockedSet.has(id)))return false;
   if(p.author?.status==="suspended")return false;
-  if(completedIds.has(p.id)&&!p.pinned)return false; // déjà vu en entier → exclu du feed
+  if(completedIds.has(p.id)&&!p.pinned&&p.type!=="event"&&p.type!=="poll")return false; // déjà vu en entier → exclu du feed (sondages/événements exemptés : à revoir jusqu'à expiration, pas "consommés" comme une vidéo)
   if(p.pinned)return true;
 if(p.visibility==="testing"&&p.by!==myId&&!followedIds.has(p.by)&&!(collaboratorsByPost.get(p.id)||[]).some(id=>followedIds.has(id)))return false;
   return true;
@@ -11040,9 +11174,14 @@ const[rankingData,communityIds,frequentIds]=await Promise.all([
   fetchCommunityIds(sb,session?.user?.id),
   fetchFrequentlyVisitedIds(sb,session?.user?.id)
 ]);
-const viralShuffled=rankPosts(viral,rankingData,viewerLocation,communityIds,frequentIds);
-const badgeShuffled=rankPosts(withBadge,rankingData,viewerLocation,communityIds,frequentIds);
-const noBadgeShuffled=rankPosts(noBadge,rankingData,viewerLocation,communityIds,frequentIds);
+// Attache les catégories à chaque post — nécessaire pour le futur mode
+// "session" du Reel (réordonner la file selon la vidéo tapée). visible/pinned/
+// viral/withBadge/noBadge pointent tous vers les mêmes objets, donc muter ici
+// suffit à propager la donnée partout où ces posts sont ensuite utilisés.
+visible.forEach(p=>{p.categories=rankingData.categories[p.id]||[];});
+const viralShuffled=rankPosts(viral,rankingData,viewerLocation,communityIds,frequentIds,followedIds);
+const badgeShuffled=rankPosts(withBadge,rankingData,viewerLocation,communityIds,frequentIds,followedIds);
+const noBadgeShuffled=rankPosts(noBadge,rankingData,viewerLocation,communityIds,frequentIds,followedIds);
 const feed=[];
 let vi=0,bi=0,ni=0;
 while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
@@ -11087,9 +11226,9 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const loadMorePosts=useCallback(async()=>{if(loadingMore||!hasMorePosts)return;setLoadingMore(true);await loadPosts(postPage+1);setLoadingMore(false);},[loadingMore,hasMorePosts,postPage,loadPosts]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));
 return updated;
   },[]);
@@ -11304,7 +11443,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     </div>
   );
   if(myProfile&&!myProfile.quiz_completed) return(
-    <ContentQuizModal sb={sb} userId={session.user.id} T={T} onDone={()=>setMyProfile(p=>({...p,quiz_completed:true}))}/>
+    <ContentQuizModal sb={sb} T={T} Av={Av} userId={session.user.id} T={T} onDone={()=>setMyProfile(p=>({...p,quiz_completed:true}))}/>
   );
   return(
     <AppContext.Provider value={appCtx}>
@@ -11333,13 +11472,13 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session} myProfile={myProfile}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>{popNav();setOpenCeleste(false);}} myProfile={myProfile} session={session}/>}
 {showCreateGroup&&(
-  <CreateGroupModal sb={sb} T={T} Av={Av} Btn={Btn} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers}
+  <CreateGroupModal sb={sb} T={T} Av={Av} T={T} Av={Av} Btn={Btn} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers}
     onClose={()=>{popNav();setShowCreateGroup(false);}}
     onCreated={()=>{}}
     notify={notify}/>
 )}
 {openGroup&&(
-  <GroupChatScreen sb={sb} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
+  <GroupChatScreen sb={sb} T={T} Av={Av} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
     members={members} myConnections={myConnections} myFollowers={myFollowers}
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
@@ -11389,7 +11528,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     const collabPostIds=new Set((data||[]).map(r=>r.post_id));
     if(collabPostIds.size)setPosts(prev=>(prev||[]).filter(p=>!collabPostIds.has(p.id)));
   }
-});}} onImageView={setViewImg}/>
+});}} onImageView={setViewImg} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
               :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
 });}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
@@ -11401,7 +11540,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               T={T} Av={Av} Btn={Btn}
               user={(members||[]).find(m=>m.id===openConvInfoUid)}
               conv={openConv}
-              sb={sb}
+              sb={sb} T={T} Av={Av}
               myId={session?.user?.id}
               onBack={()=>{popNav();setOpenConvInfoUid(null);}}
               onOpenProfile={uid=>{setOpenConvInfoUid(null);setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
@@ -11441,8 +11580,8 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
               </div>
-              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat}/>}
-              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
+              {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat} blockedUserIds={blockedUserIds}/>}
+              {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} T={T} Av={Av} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme}/>
             </div>
@@ -11450,7 +11589,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
 {globalReelsPost&&(
   <ReelsViewer
-    posts={[globalReelsPost]} sb={sb} startIndex={0}
+    posts={[globalReelsPost]} sb={sb} T={T} Av={Av} startIndex={0}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
     toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
@@ -11462,7 +11601,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 )}
 {globalPhotoPost&&(
   <PhotoViewer
-    posts={[globalPhotoPost]} sb={sb} startIndex={0}
+    posts={[globalPhotoPost]} sb={sb} T={T} Av={Av} startIndex={0}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
     toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}

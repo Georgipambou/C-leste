@@ -15,16 +15,27 @@ export default function ContentQuizModal({ sb, userId, T, onDone }) {
       : prev.length < MAX_CATS ? [...prev, id] : prev);
   };
 
+  const [err, setErr] = useState("");
+
   const finish = async () => {
     setSaving(true);
+    setErr("");
     try {
-      await sb.from("onboarding_quiz").upsert({ user_id: userId, gender, categories: cats }, { onConflict: "user_id" });
-      await sb.from("profiles").update({ quiz_completed: true }).eq("id", userId);
+      const { error: e1 } = await sb.from("onboarding_quiz").upsert({ user_id: userId, gender, categories: cats }, { onConflict: "user_id" });
+      if (e1) throw e1;
+      const { error: e2 } = await sb.from("profiles").update({ quiz_completed: true }).eq("id", userId);
+      if (e2) throw e2;
       const affinityRows = cats.map((category) => ({ user_id: userId, category, affinity: 0.65, updated_at: new Date().toISOString() }));
-      if (affinityRows.length) await sb.from("user_category_affinity").upsert(affinityRows, { onConflict: "user_id,category" });
+      if (affinityRows.length) {
+        const { error: e3 } = await sb.from("user_category_affinity").upsert(affinityRows, { onConflict: "user_id,category" });
+        if (e3) throw e3;
+      }
+      onDone();
+    } catch (e) {
+      console.error("ContentQuizModal:", e);
+      setErr("Une erreur est survenue, réessaie.");
     } finally {
       setSaving(false);
-      onDone();
     }
   };
 
@@ -52,6 +63,7 @@ export default function ContentQuizModal({ sb, userId, T, onDone }) {
               </button>
             ))}
           </div>
+          {err && <p style={{ color: T.err || "#c84040", fontSize: 13, marginTop: 10 }}>{err}</p>}
           <button disabled={cats.length < MIN_CATS || saving} onClick={finish}
             style={{ marginTop: 20, width: "100%", padding: 14, borderRadius: 12, border: "none", background: T.gradGold, color: "#000", fontWeight: 700, opacity: cats.length < MIN_CATS ? 0.5 : 1 }}>
             {saving ? "…" : "C'est parti"}

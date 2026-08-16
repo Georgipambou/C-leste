@@ -28,6 +28,17 @@ export const CONTENT_CATEGORIES = [
   { id: "lifestyle",   label: "✨ Lifestyle" },
   { id: "debat",       label: "💬 Débat" },
   { id: "amour",       label: "❤️ Amour & relations" },
+  { id: "enquete",      label: "🔍 Enquête" },
+  { id: "sciences",     label: "🔬 Sciences" },
+  { id: "storytime",    label: "🎙️ Storytime" },
+  { id: "litterature",  label: "📖 Littérature" },
+  { id: "lds",           label: "⛪ LDS" },
+  { id: "cinema",        label: "🎬 Cinéma & Séries" },
+  { id: "finance",       label: "💰 Argent & Finance perso" },
+  { id: "business",      label: "📈 Business & Entrepreneuriat" },
+  { id: "manga",         label: "🎌 Mangas & Animé" },
+  { id: "auto",          label: "🚗 Auto & Moto" },
+  { id: "vie_etudiante", label: "🎓 Vie étudiante" },
 ];
 
 export const MAX_CATEGORIES_PER_POST = 3;

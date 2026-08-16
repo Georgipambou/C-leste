@@ -40,10 +40,12 @@ export async function createSoundFromPost(sb, { postId, title, url }) {
  * si l'utilisateur a choisi un son déjà existant plutôt que d'en créer un.
  */
 export async function attachExistingSound(sb, { postId, soundId }) {
-  const [{ error: postErr }, { error: rpcErr }] = await Promise.all([
-    sb.from("posts").update({ sound_id: soundId }).eq("id", postId),
-    sb.rpc("increment_sound_usage", { target_sound_id: soundId }),
-  ]);
-  if (postErr) console.warn("attachExistingSound (post):", postErr.message);
+  const { error: postErr } = await sb.from("posts").update({ sound_id: soundId }).eq("id", postId);
+  if (postErr) {
+    console.warn("attachExistingSound (post):", postErr.message);
+    return false; // on n'incrémente pas usage_count si l'attachement au post a échoué
+  }
+  const { error: rpcErr } = await sb.rpc("increment_sound_usage", { target_sound_id: soundId });
   if (rpcErr) console.warn("attachExistingSound (usage):", rpcErr.message);
+  return true;
 }
