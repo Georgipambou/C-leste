@@ -36,18 +36,6 @@ function DuoPickerModal({ sb, T, Av, Btn, Badge, session, initialSelected, onClo
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(initialSelected || []);
   const [loading, setLoading] = useState(false);
-  const [following, setFollowing] = useState(new Set());
-
-  useEffect(() => {
-    sb.from("connections").select("to_id").eq("from_id", session.user.id).then(({ data }) => {
-      setFollowing(new Set((data || []).map(r => r.to_id)));
-    });
-  }, [sb, session.user.id]);
-
-  const follow = async (id) => {
-    setFollowing(prev => new Set(prev).add(id));
-    await sb.from("connections").insert({ from_id: session.user.id, to_id: id });
-  };
 
   useEffect(() => {
     let active = true;
@@ -64,7 +52,7 @@ function DuoPickerModal({ sb, T, Av, Btn, Badge, session, initialSelected, onClo
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxHeight: "75vh", background: T.card, borderRadius: "20px 20px 0 0", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxHeight: "75vh", background: T.bg, border: `1px solid ${T.border}`, borderBottom: "none", borderRadius: "20px 20px 0 0", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.text }}>Ajouter en duo</p>
           <Btn onClick={onClose}><X size={18} color={T.muted} /></Btn>
@@ -94,7 +82,6 @@ function DuoPickerModal({ sb, T, Av, Btn, Badge, session, initialSelected, onClo
             : results.length === 0 ? <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.6 }}>Aucun résultat — chacun choisit qui peut l'ajouter en duo dans ses réglages de confidentialité.</p>
             : results.map(p => {
               const isSel = selected.some(u => u.id === p.id);
-              const isFollowed = following.has(p.id);
               return (
                 <div key={p.id} onClick={() => toggle(p)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px", cursor: "pointer" }}>
                   <Av u={{ ...p, fullName: `${p.prenom || ""} ${p.nom || ""}`.trim() }} size={38} />
@@ -105,9 +92,6 @@ function DuoPickerModal({ sb, T, Av, Btn, Badge, session, initialSelected, onClo
                     </div>
                     {p.paroisse && <p style={{ margin: "1px 0 0", fontSize: 10, color: T.muted }}>{p.paroisse}</p>}
                   </div>
-                  {!isFollowed && (
-                    <Btn onClick={e => { e.stopPropagation(); follow(p.id); }} style={{ fontSize: 10, fontWeight: 700, color: T.goldL, padding: "4px 10px", border: `1px solid ${T.gold}55`, borderRadius: 10 }}>Suivre</Btn>
-                  )}
                   {isSel && <Check size={16} color={T.goldL} />}
                 </div>
               );
@@ -131,9 +115,10 @@ export async function saveDuoCollaborators(sb, postId, addedBy, collaborators) {
 }
 
 // ---------- Badge "Duo · N" affiché sur PostCard / Reels ----------
-export function DuoBadge({ sb, T, Av, postId, collaborators: collaboratorsProp }) {
+export function DuoBadge({ sb, T, Av, Btn, session, postId, collaborators: collaboratorsProp }) {
   const [collaborators, setCollaborators] = useState(collaboratorsProp || null);
   const [open, setOpen] = useState(false);
+  const [following, setFollowing] = useState(new Set());
 
   // Filet de sécurité : si jamais un appelant ne passe pas encore la prop
   // (ex. ancien écran pas encore migré), on retombe sur le fetch individuel —
@@ -147,6 +132,20 @@ export function DuoBadge({ sb, T, Av, postId, collaborators: collaboratorsProp }
       .then(({ data }) => { if (active) setCollaborators((data || []).map(r => r.profiles).filter(Boolean)); });
     return () => { active = false; };
   }, [sb, postId, collaboratorsProp]);
+
+  // Ne charge la liste des connexions que si la popup s'ouvre — pas besoin
+  // de ce fetch tant que personne n'a cliqué sur le badge.
+  useEffect(() => {
+    if (!open || !session?.user?.id) return;
+    sb.from("connections").select("to_id").eq("from_id", session.user.id).then(({ data }) => {
+      setFollowing(new Set((data || []).map(r => r.to_id)));
+    });
+  }, [sb, session?.user?.id, open]);
+
+  const connect = async (id) => {
+    setFollowing(prev => new Set(prev).add(id));
+    await sb.from("connections").insert({ from_id: session.user.id, to_id: id });
+  };
 
   if (!collaborators || collaborators.length === 0) return null;
 
@@ -162,12 +161,19 @@ export function DuoBadge({ sb, T, Av, postId, collaborators: collaboratorsProp }
           <div onClick={e => e.stopPropagation()} style={{ width: "85%", maxWidth: 320, background: T.card, borderRadius: 18, padding: 18 }}>
             <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: T.text }}>Collaboration</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {collaborators.map(u => (
-                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Av u={{ ...u, fullName: `${u.prenom || ""} ${u.nom || ""}`.trim() }} size={34} />
-                  <span style={{ fontSize: 13, color: T.text }}>{u.prenom} {u.nom}</span>
-                </div>
-              ))}
+              {collaborators.map(u => {
+                const isMe = u.id === session?.user?.id;
+                const isFollowed = following.has(u.id);
+                return (
+                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Av u={{ ...u, fullName: `${u.prenom || ""} ${u.nom || ""}`.trim() }} size={34} />
+                    <span style={{ flex: 1, fontSize: 13, color: T.text }}>{u.prenom} {u.nom}</span>
+                    {!isMe && !isFollowed && Btn && (
+                      <Btn onClick={e => { e.stopPropagation(); connect(u.id); }} style={{ fontSize: 10, fontWeight: 700, color: T.goldL, padding: "4px 10px", border: `1px solid ${T.gold}55`, borderRadius: 10 }}>Se connecter</Btn>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

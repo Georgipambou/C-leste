@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronLeft, Play, Grid3x3, Music2 } from "lucide-react";
 import SoundPreviewButton from "./components/SoundPreviewButton";
+import { CONTENT_CATEGORIES } from "./lib/recommendation/categories";
 
 
 // ── Utilitaires locaux (mêmes règles que dans App.jsx) ─────────────
@@ -137,49 +138,63 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
     const q = query.trim();
     if (!q) { setUsers([]); setPostResults([]); setSounds([]); return; }
     const nq = normalizeSearch(q);
+    const matchedCategoryIds = CONTENT_CATEGORIES
+      .filter(c => normalizeSearch(c.label).includes(nq) || normalizeSearch(c.id).includes(nq))
+      .map(c => c.id);
     let cancelled = false;
     setLoading(true);
     setSoundsLoading(true);
     const t = setTimeout(async () => {
-      const [{ data: uData }, { data: pData }, { data: sData }] = await Promise.all([
+      const [{ data: uData }, { data: pData }, { data: sData }, { data: cData }] = await Promise.all([
         sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse")
           .eq("is_discoverable", true)
-          .limit(300),
+          .ilike("search_text", `%${nq}%`)
+          .order("prenom", { ascending: true })
+          .limit(60),
         sb.from("posts").select(POSTS_SELECT)
           .not("visibility", "eq", "hidden")
+          .ilike("search_text", `%${nq}%`)
           .order("created_at", { ascending: false })
-          .limit(300),
+          .limit(60),
         sb.from("sounds").select("id,title,url,usage_count,author_name,tags")
           .eq("is_deleted", false)
+          .ilike("search_text", `%${nq}%`)
           .order("usage_count", { ascending: false })
-          .limit(200),
+          .limit(60),
+        matchedCategoryIds.length
+          ? sb.from("posts").select(`${POSTS_SELECT},post_categories!inner(category)`)
+              .not("visibility", "eq", "hidden")
+              .in("post_categories.category", matchedCategoryIds)
+              .order("created_at", { ascending: false })
+              .limit(60)
+          : Promise.resolve({ data: [] }),
       ]);
       if (cancelled) return;
 
-      const matchedUsers = (uData || [])
-        .map(normProfile)
-        .filter(u => normalizeSearch(u.fullName).includes(nq) || normalizeSearch(u.paroisse).includes(nq));
+      const matchedUsers = (uData || []).map(normProfile);
 
-      const matchedPosts = (pData || [])
-        .filter(p =>
-          normalizeSearch(p.text).includes(nq) ||
-          normalizeSearch(p.event_title).includes(nq) ||
-          normalizeSearch(p.author?.prenom).includes(nq) ||
-          normalizeSearch(p.author?.nom).includes(nq)
-        )
-        .map(p => mapDbPost(p, new Set()));
+      // posts.search_text ne couvre pas le nom de l'auteur (nécessite une
+      // jointure) ; on complète donc avec les publications des auteurs
+      // dont le nom matche, puis on fusionne en dédoublonnant par id.
+      const authorIds = matchedUsers.map(u => u.id);
+      let authorPosts = [];
+      if (authorIds.length) {
+        const { data: apData } = await sb.from("posts").select(POSTS_SELECT)
+          .not("visibility", "eq", "hidden")
+          .in("author_id", authorIds)
+          .order("created_at", { ascending: false })
+          .limit(60);
+        authorPosts = apData || [];
+      }
+      if (cancelled) return;
 
-      const matchedSounds = (sData || []).filter(s =>
-        !!(s.url || "").trim() && (
-          normalizeSearch(s.title).includes(nq) ||
-          normalizeSearch(s.author_name).includes(nq) ||
-          (s.tags || []).some(tg => normalizeSearch(tg).includes(nq))
-        )
-      );
+      const byId = new Map();
+      [...(pData || []), ...authorPosts, ...(cData || [])].forEach(p => byId.set(p.id, p));
+      const matchedPosts = Array.from(byId.values()).map(p => mapDbPost(p, new Set()));
 
       setUsers(matchedUsers);
       setPostResults(matchedPosts);
-      setSounds(matchedSounds);
+      setSounds(sData || []);
       setLoading(false);
       setSoundsLoading(false);
     }, 300);
@@ -200,17 +215,14 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
         .order("created_at", { ascending: false })
         .limit(60),
       sb.from("posts").select(POSTS_SELECT)
-        .not("mentions", "is", null)
+        .filter("mentions", "cs", JSON.stringify([{ id: user.id }]))
         .neq("author_id", user.id)
         .not("visibility", "eq", "hidden")
         .order("created_at", { ascending: false })
-        .limit(300),
+        .limit(60),
     ]);
     setPivotPosts((ownData || []).map(p => mapDbPost(p, new Set())));
-    const mentioned = (mentionData || [])
-      .filter(p => (p.mentions || []).some(m => m?.id === user.id))
-      .map(p => mapDbPost(p, new Set()));
-    setPivotMentions(mentioned);
+    setPivotMentions((mentionData || []).map(p => mapDbPost(p, new Set())));
     setPivotLoading(false);
   }, [sb, mapDbPost]);
 
@@ -229,7 +241,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: T.bg, display: "flex", flexDirection: "column" }}>
       {/* Barre du haut */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: `1px solid ${T.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", paddingTop: "calc(12px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
         <button onClick={handleBack} style={{ background: "none", border: "none", color: T.text, display: "flex", padding: 4, cursor: "pointer" }}>
           <ChevronLeft size={22} />
         </button>

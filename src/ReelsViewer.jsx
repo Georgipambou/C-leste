@@ -292,6 +292,19 @@ export default function ReelsViewer({
     [orderedPosts, hiddenPostIds]
   );
 
+  // ── Carrousel multi-vidéos par post ─────────────────────────────
+  const [mediaIdxMap, setMediaIdxMap] = useState({}); // {idx: sous-index vidéo actif}
+  const swipeStartRef = useRef({}); // {idx: {x,y}}
+  const videosByPost = useMemo(() => {
+    const m = {};
+    (displayPosts || []).forEach(p => {
+      const all = p.media_urls?.length > 0 ? p.media_urls : (p.img ? [p.img] : []);
+      const vids = all.filter(u => (u || "").match(/\.(mp4|mov|webm)/i));
+      m[p.id] = vids.length > 0 ? vids : (p.img ? [p.img] : []);
+    });
+    return m;
+  }, [displayPosts]);
+
   useEffect(() => { activeIdxRef.current = activeIdx; }, [activeIdx]);
 
   // Si la liste affichée se vide ou rétrécit sous l'index courant, on s'ajuste
@@ -409,6 +422,21 @@ export default function ReelsViewer({
   useEffect(() => {
     Object.values(videoRefs.current).forEach(v => { if (v) v.muted = muted; });
   }, [muted]);
+
+  // ── Préchargement en arrière-plan des autres vidéos du carrousel
+  // du post actif (pas de <video> montée, juste le cache réchauffé
+  // via getCachedVideoSrc — même mécanisme que le préload inter-post) ──
+  useEffect(() => {
+    const post = displayPosts[activeIdx];
+    if (!post) return;
+    const urls = videosByPost[post.id] || [];
+    if (urls.length <= 1) return;
+    const cur = mediaIdxMap[activeIdx] || 0;
+    [cur - 1, cur + 1].forEach(i => {
+      const u = urls[i];
+      if (u) getCachedVideoSrc(u);
+    });
+  }, [activeIdx, mediaIdxMap, videosByPost, displayPosts]);
 
   // ── Protection écran ─────────────────────────────────────────
   useEffect(() => {
@@ -540,6 +568,27 @@ export default function ReelsViewer({
     if (!v || !v.duration) return;
     v.currentTime = Math.max(0, Math.min(v.duration, ((clientX - rect.left) / rect.width) * v.duration));
   }, []);
+
+  // ── Swipe horizontal = changer de vidéo dans le carrousel du post ──
+  const startMediaSwipe = useCallback((idx, e) => {
+    const t = e.touches ? e.touches[0] : e;
+    swipeStartRef.current[idx] = { x: t.clientX, y: t.clientY };
+  }, []);
+
+  const endMediaSwipe = useCallback((idx, post, e) => {
+    const start = swipeStartRef.current[idx];
+    swipeStartRef.current[idx] = null;
+    if (!start) return;
+    const t = e.changedTouches ? e.changedTouches[0] : e;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return; // pas un swipe horizontal net
+    const urls = videosByPost[post.id] || [];
+    if (urls.length <= 1) return;
+    const cur = mediaIdxMap[idx] || 0;
+    const next = Math.max(0, Math.min(urls.length - 1, cur + (dx < 0 ? 1 : -1)));
+    if (next !== cur) { haptic("light"); setMediaIdxMap(p => ({ ...p, [idx]: next })); }
+  }, [videosByPost, mediaIdxMap]);
 
   // ── Double tap → like + cœur flottant ────────────────────────
   const handleTap = useCallback((idx, post, e) => {
@@ -780,7 +829,9 @@ export default function ReelsViewer({
         {displayPosts.map((post, idx) => {
           const liked       = (post.likes || []).some(l => (l.user_id || l) === uid);
           const nearActive  = Math.abs(idx - activeIdx) <= 1;
-          const rawVideoSrc = (post.media_urls || []).find(u => (u || "").match(/\.(mp4|mov|webm)/i)) || post.img;
+          const videoUrls   = videosByPost[post.id] || [];
+          const curMediaIdx = Math.min(mediaIdxMap[idx] || 0, Math.max(0, videoUrls.length - 1));
+          const rawVideoSrc = videoUrls[curMediaIdx] || post.img;
           const caption     = post.text || "";
           const captionShort = caption.length > 120 ? caption.slice(0, 120) + "..." : caption;
           const isActive    = idx === activeIdx;
@@ -805,7 +856,8 @@ export default function ReelsViewer({
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: "#000", flexShrink: 0, overflow: "hidden",
               }}
-              onTouchStart={showCtrl}
+              onTouchStart={e => { showCtrl(); startMediaSwipe(idx, e); }}
+              onTouchEnd={e => endMediaSwipe(idx, post, e)}
               onMouseMove={showCtrl}
             >
               {/* Preload src */}
@@ -851,6 +903,15 @@ export default function ReelsViewer({
                     if (idx === activeIdx) engagement.tick(v.currentTime * 1000);
                   }}
                 />
+              )}
+
+              {/* Points du carrousel (plusieurs vidéos dans ce post) */}
+              {videoUrls.length > 1 && (
+                <div style={{ position: "absolute", top: "calc(14px + env(safe-area-inset-top,0px) + 46px)", left: 0, right: 0, display: "flex", justifyContent: "center", gap: 4, zIndex: 4, pointerEvents: "none" }}>
+                  {videoUrls.map((_, vIdx) => (
+                    <div key={vIdx} style={{ width: vIdx === curMediaIdx ? 16 : 6, height: 6, borderRadius: 3, background: vIdx === curMediaIdx ? "#C9952A" : "rgba(255,255,255,0.4)", transition: "width .2s" }} />
+                  ))}
+                </div>
               )}
 
               {/* Zone maintien coin droit = vitesse x2 */}

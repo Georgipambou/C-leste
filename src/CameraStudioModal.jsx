@@ -20,7 +20,13 @@ function blobToBase64(blob) {
     reader.readAsDataURL(blob);
   });
 }
-
+// Libère un blob: URL généré par URL.createObjectURL — ignore silencieusement
+// les URLs distantes (sons de la bibliothèque, etc.) qui n'ont pas besoin d'être révoquées.
+function revokeUrl(u) {
+  if (u && typeof u === "string" && u.startsWith("blob:")) {
+    try { URL.revokeObjectURL(u); } catch (e) { /* déjà révoquée */ }
+  }
+}
 const FONTS  = ["Space Grotesk", "Cormorant Garamond", "Georgia", "Arial Black", "Courier New"];
 const COLORS = ["#FFFFFF", "#000000", "#C9952A", "#FF4B6E", "#00E5FF", "#A8FF3E", "#FF9500", "#FF69B4"];
 const SIZES  = [16, 22, 30, 40, 52];
@@ -80,12 +86,14 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, bgColor, anchorLeft) {
 // par-dessus, puis réenregistre le tout. Si l'API n'est pas dispo ou s'il n'y a aucun
 // overlay, on renvoie simplement la vidéo brute (aucune erreur ne remonte à l'appelant).
 async function bakeOverlaysOnVideo(sourceBlob, ovs, rect, onProgress, cancelToken, soundMix) {
+  let mainVideoUrl = null;
   try {
     if (!ovs.length && !soundMix) return sourceBlob;
 
     const mainVideo = document.createElement("video");
-    mainVideo.src = URL.createObjectURL(sourceBlob);
-    
+    mainVideoUrl = URL.createObjectURL(sourceBlob);
+    mainVideo.src = mainVideoUrl;
+
     mainVideo.playsInline = true;
     await new Promise((r) => { mainVideo.onloadedmetadata = r; });
 
@@ -233,19 +241,23 @@ if (actx.state === "suspended") await actx.resume();
 
     const result = await finished;
     clearTimeout(safetyTimeout);
+    URL.revokeObjectURL(mainVideoUrl);
     if (cancelToken?.cancelled) return null;
     return result;
   } catch (e) {
     console.error("bakeOverlaysOnVideo:", e);
+    if (mainVideoUrl) URL.revokeObjectURL(mainVideoUrl);
     return sourceBlob; // en cas de souci, on renvoie la vidéo brute plutôt que planter
   }
 }
 
 // ── Recadre une vidéo importée entre [start,end] (re-encodage réel, pas juste un marqueur) ──
 async function trimVideoBlob(sourceFile, start, end, onProgress, cancelToken) {
+  let internalUrl = null;
   try {
     const mainVideo = document.createElement("video");
-    mainVideo.src = URL.createObjectURL(sourceFile);
+    internalUrl = URL.createObjectURL(sourceFile);
+    mainVideo.src = internalUrl;
     mainVideo.muted = false;
     mainVideo.playsInline = true;
     await new Promise((r) => { mainVideo.onloadedmetadata = r; });
@@ -293,10 +305,12 @@ if (actx.state === "suspended") await actx.resume();
     const result = await finished;
     clearTimeout(safetyTimeout);
     mainVideo.pause();
-    if (cancelToken?.cancelled) return null;
+    URL.revokeObjectURL(internalUrl);
+    if (cancelToken.cancelled) return null;
     return result;
   } catch (e) {
     console.error("trimVideoBlob:", e);
+    if (internalUrl) URL.revokeObjectURL(internalUrl);
     return sourceFile; // en cas de souci, on renvoie le fichier brut plutôt que planter
   }
 }
@@ -449,13 +463,17 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const soundBlob = new Blob(soundChunksRef.current, { type: mime });
-        setSelectedSound({ title: "Mon son", blob: soundBlob, url: URL.createObjectURL(soundBlob), isNew: true });
+        setSelectedSound((prev) => {
+          if (prev?.isNew) revokeUrl(prev.url);
+          return { title: "Mon son", blob: soundBlob, url: URL.createObjectURL(soundBlob), isNew: true };
+        });
         if (!isVid) { setPanel(null); return; }
         setSelectedSoundDuration(soundSecs);
         setSoundOffset(0);
         setSoundEnd(soundSecs);
         setMainVolume(100); setSoundVolume(100);
-        setPanel("sound-mix");      };
+        setPanel("sound-mix");
+      };
       soundRecRef.current = rec;
       rec.start();
       setRecordingSound(true);
@@ -549,10 +567,21 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     if (previewSoundElRef.current) previewSoundElRef.current.volume = (soundVolume ?? 100) / 100;
   }, [soundVolume]);
 
+  const stateRef = useRef({});
+  useEffect(() => {
+    stateRef.current = { url, overlays, pendingCrop, pendingTrim, selectedSound };
+  });
+
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current);
       stopSoundMonitor();
+      const s = stateRef.current;
+      revokeUrl(s.url);
+      (s.overlays || []).forEach((o) => { if (o.type === "image" || o.type === "video") revokeUrl(o.value); });
+      revokeUrl(s.pendingCrop?.url);
+      revokeUrl(s.pendingTrim?.url);
+      if (s.selectedSound?.isNew) revokeUrl(s.selectedSound.url);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -583,6 +612,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   };
 
   const cancelTrim = () => {
+    if (pendingTrim?.url !== url) revokeUrl(pendingTrim?.url);
     if (blob) { setPhase("preview"); return; }
     setPendingTrim(null); setPhase("camera");
   };
@@ -646,6 +676,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     window.addEventListener("pointercancel", end);
   };
   const cancelCrop = () => {
+    revokeUrl(pendingCrop?.url);
     if (blob) { setPhase("preview"); return; }
     setPendingCrop(null); setPhase("camera");
   };
@@ -665,7 +696,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     const img = new Image();
     img.onload = () => {
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((b) => { if (b) finish(b, URL.createObjectURL(b), false); }, "image/jpeg", 0.92);
+      canvas.toBlob((b) => {
+        revokeUrl(pendingCrop.url);
+        if (b) finish(b, URL.createObjectURL(b), false);
+      }, "image/jpeg", 0.92);
     };
     img.src = pendingCrop.url;
   };
@@ -698,7 +732,8 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
   // ── Finish / Retake ─────────────────────────────────────────────
   const finish = (b, u, v) => {
-    setBlob(b); setUrl(u); setIsVid(v);
+    setUrl((prevUrl) => { revokeUrl(prevUrl); return u; });
+    setBlob(b); setIsVid(v);
     setPhase("preview"); setPanel(null);
   };
 
@@ -711,20 +746,29 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   }, []);
   const retake = () => {
     stopSoundMonitor();
+    revokeUrl(url);
+    overlays.forEach((o) => { if (o.type === "image" || o.type === "video") revokeUrl(o.value); });
     setBlob(null); setUrl(null); setOverlays([]); setActiveOv(null);
     setPhase("camera"); setPanel(null);
   };
 
   // ── Overlays (texte / image / vidéo) ────────────────────────────
   const addOverlay = (patch) => {
-    const ov = { id: Date.now(), type: "text", value: "", x: 60, y: 180, size: 24, color: "#FFFFFF", font: "Space Grotesk", ...patch };
+    const ov = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, type: "text", value: "", x: 60, y: 180, size: 24, color: "#FFFFFF", font: "Space Grotesk", ...patch };
     setOverlays((os) => [...os, ov]); setActiveOv(ov);
   };
   const updOv = (id, p) => {
     setOverlays((os) => os.map((o) => (o.id === id ? { ...o, ...p } : o)));
     setActiveOv((ao) => (ao?.id === id ? { ...ao, ...p } : ao));
   };
-  const delOv = (id) => { setOverlays((os) => os.filter((o) => o.id !== id)); setActiveOv(null); setPanel(null); };
+  const delOv = (id) => {
+    setOverlays((os) => {
+      const target = os.find((o) => o.id === id);
+      if (target && (target.type === "image" || target.type === "video")) revokeUrl(target.value);
+      return os.filter((o) => o.id !== id);
+    });
+    setActiveOv(null); setPanel(null);
+  };
 
  const pDown = (e, id) => {
   e.stopPropagation();
@@ -888,7 +932,8 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
     bakeOverlaysOnVideo(blobSnapshot, ovsSnapshot, rect, (pct) => progress.update(pct), cancelToken, soundMixSnapshot)
       .then((finalBlob) => {
         if (cancelToken.cancelled || !finalBlob) return; // déjà géré par le bouton Annuler
-        progress.done();
+        const bakeFailed = finalBlob === blobSnapshot && (ovsSnapshot.length > 0 || !!soundMixSnapshot);
+        progress.done(bakeFailed ? "Publié (incrustations non appliquées) ✓" : undefined);
         onDone({ file: new File([finalBlob], `celeste.${extFor(finalBlob)}`, { type: finalBlob.type || "video/webm" }), type: "video", sound: selectedSound });
       })
       .catch(() => { if (!cancelToken.cancelled) progress.fail(); });
@@ -1106,12 +1151,12 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
                 )}
                 {activeOv?.id === ov.id && (
                   <>
-                    <button onClick={(e) => { e.stopPropagation(); delOv(ov.id); }}
+                    <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); delOv(ov.id); }}
                       style={{ position: "absolute", top: -10, right: -10, width: 22, height: 22, borderRadius: "50%",
-                        background: "#dc2626", border: "none", color: "#fff", fontSize: 14, cursor: "pointer",
+                        background: "#be1d1d", border: "none", color: "#fff", fontSize: 14, cursor: "pointer",
                         display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, fontWeight: 700 }}>×</button>
                     {ov.type === "video" && (
-                      <button onClick={(e) => { e.stopPropagation(); setActiveOv(ov); setPanel("video-edit"); }}
+                      <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setActiveOv(ov); setPanel("video-edit"); }}
                         style={{ position: "absolute", top: -10, left: -10, width: 22, height: 22, borderRadius: "50%",
                           background: "#C9952A", border: "2px solid #fff", color: "#000", fontSize: 11, cursor: "pointer",
                           display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, fontWeight: 700 }}>⚙</button>
@@ -1201,7 +1246,10 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
                     const active = selectedSound?.id === s.id;
                     return (
                       <div key={s.id} onClick={() => {
-                        setSelectedSound({ id: s.id, title: s.title, url: s.url });
+                        setSelectedSound((prev) => {
+                          if (prev?.isNew) revokeUrl(prev.url);
+                          return { id: s.id, title: s.title, url: s.url };
+                        });
                         if (!isVid) { setPanel(null); return; }
                         const a = new Audio(s.url);
                         a.onloadedmetadata = () => {
@@ -1278,7 +1326,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
               </div>
             )}
             <div style={{ display: "flex", gap: 9, marginTop: 6 }}>
-              <button onClick={() => { setSelectedSound(null); setPanel(null); }}
+              <button onClick={() => { setSelectedSound((prev) => { if (prev?.isNew) revokeUrl(prev.url); return null; }); setPanel(null); }}
                 style={{ flex: 1, padding: "12px", borderRadius: 15, border: "1px solid rgba(255,255,255,0.08)",
                   background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)", cursor: "pointer", fontSize: 13 }}>Retirer le son</button>
               <button onClick={() => setPanel(null)}

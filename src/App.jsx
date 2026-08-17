@@ -692,6 +692,7 @@ const sendPushNotif=async(title,body)=>{
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const getGS = () => `
+  @import url('https://fonts.googleapis.com/css2?family=Sacramento&family=Pacifico&family=Grand+Hotel&family=Yellowtail&display=swap');
   @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
@@ -768,6 +769,8 @@ const getGS = () => `
   @keyframes shimmer{0%{background-position:-200% center;}100%{background-position:200% center;}}
   @keyframes starPulse{0%,100%{opacity:.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);filter:drop-shadow(0 0 30px #C9952A);}}
   @keyframes titleReveal{0%{opacity:0;transform:translateY(24px);}100%{opacity:1;transform:none;}}
+  @keyframes writeIn{0%{clip-path:inset(0 100% 0 0);}100%{clip-path:inset(0 -10% 0 0);}}
+  @keyframes penMove{0%{left:0%;opacity:1;}85%{opacity:1;}100%{left:100%;opacity:0;}}
   @keyframes notifIn{from{opacity:0;transform:translateY(-24px) scale(0.94);}to{opacity:1;transform:none;}}
   @keyframes ripple{0%{transform:scale(0);opacity:0.4;}100%{transform:scale(2.5);opacity:0;}}
   @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
@@ -1756,8 +1759,12 @@ function DialSelector({selected,onChange}){
   );
 }
 
+const LOGO_FONTS=["'Sacramento',cursive","'Pacifico',cursive","'Grand Hotel',cursive","'Yellowtail',cursive"];
+const pickLogoFont=()=>LOGO_FONTS[Math.floor(Math.random()*LOGO_FONTS.length)];
+
 // ── AUTH SCREEN ───────────────────────────────────────────
 function AuthScreen({mode,setMode,onSuccess}){
+  const [logoFont]=useState(pickLogoFont);
   const [accountType,setAccountType]=useState("membre");
   const [prenom,setPrenom]=useState(""); const [nom,setNom]=useState("");
   const [paroisse,setParoisse]=useState(""); const [phone,setPhone]=useState("");
@@ -1803,7 +1810,7 @@ if(data.user){onSuccess?.("pending");}
   };
 
   return(
-    <div style={{minHeight:"100svh",background:T.bg,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 20px env(safe-area-inset-bottom,20px)",position:"relative",overflow:"auto"}}>
+    <div style={{minHeight:"calc(var(--app-vh, 1vh) * 100)",background:T.bg,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 20px env(safe-area-inset-bottom,20px)",position:"relative",overflow:"auto"}}>
       <div style={{position:"absolute",top:"-30%",left:"-20%",width:600,height:600,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,149,42,0.07) 0%,transparent 70%)",pointerEvents:"none"}}/>
       <div style={{position:"absolute",bottom:"-30%",right:"-20%",width:500,height:500,borderRadius:"50%",background:"radial-gradient(circle,rgba(58,106,154,0.07) 0%,transparent 70%)",pointerEvents:"none"}}/>
       <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(${T.border} 1px,transparent 1px)`,backgroundSize:"40px 40px",opacity:.3,pointerEvents:"none"}}/>
@@ -1811,9 +1818,9 @@ if(data.user){onSuccess?.("pending");}
       <div style={{width:"100%",maxWidth:400,animation:"titleReveal .6s ease"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
           <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:76,height:76,borderRadius:"50%",background:"rgba(201,149,42,0.08)",border:`1px solid ${T.gold}33`,marginBottom:22,animation:"glow 3s ease infinite",boxShadow:`0 0 40px rgba(201,149,42,0.15)`}}>
-            <span style={{fontSize:34,fontFamily:"'Cormorant Garamond',serif",color:T.gold}}>✦</span>
+            <span style={{fontSize:34,fontFamily:logoFont,color:T.gold}}>✦</span>
           </div>
-          <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:48,fontWeight:300,color:T.text,letterSpacing:5,marginBottom:6}}>Céleste</h1>
+          <h1 style={{fontFamily:logoFont,fontSize:44,fontWeight:400,color:T.text,letterSpacing:0,marginBottom:6}}>Céleste</h1>
           <p style={{color:T.muted,fontSize:12,letterSpacing:2,textTransform:"uppercase"}}>Exprime ta vraie personnalitée</p>
         </div>
 
@@ -2297,10 +2304,49 @@ const filtered=(members||[]).filter(m=>matchQuery(m.fullName,query)).slice(0,8);
   );
 }
 // ── COMMENTS SECTION ─────────────────────────────────────
-function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false,notify,commentsDisabled=false}){
+// ── Hub temps réel partagé pour les commentaires ──
+// Évite qu'ouvrir le même post dans plusieurs endroits (feed + reels préchargés, etc.)
+// crée un canal Supabase distinct à chaque montage. Un seul canal par postId, compteur
+// de références, fermé automatiquement quand plus personne ne l'écoute.
+const MAX_MOUNTED_COMMENTS=150; // ~5 pages — borne la taille du DOM sur les posts très viraux
+const MAX_MOUNTED_REPLIES=100;  // ~10 pages de réponses par commentaire
+const _commentsRealtimeHub=new Map();
+function subscribeCommentsRealtime(postId,onInsert,onDelete,onUpdate){
+  let entry=_commentsRealtimeHub.get(postId);
+  if(!entry){
+    const listeners=new Set();
+    const channel=sb.channel(`comments-${postId}`)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+        listeners.forEach(l=>l.onInsert?.(payload));
+      })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+        listeners.forEach(l=>l.onDelete?.(payload));
+      })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+        listeners.forEach(l=>l.onUpdate?.(payload));
+      })
+      .subscribe();
+    entry={channel,listeners,refCount:0};
+    _commentsRealtimeHub.set(postId,entry);
+  }
+  const self={onInsert,onDelete,onUpdate};
+  entry.listeners.add(self);
+  entry.refCount++;
+  return()=>{
+    entry.listeners.delete(self);
+    entry.refCount--;
+    if(entry.refCount<=0){
+      sb.removeChannel(entry.channel);
+      _commentsRealtimeHub.delete(postId);
+    }
+  };
+}
+
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false,notify,commentsDisabled=false,postAuthorId=null}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
  const [likedCommentIds,setLikedCommentIds]=useState(new Set());
+ const [authorLikedCommentIds,setAuthorLikedCommentIds]=useState(new Set());
   const [loadingCmts,setLoadingCmts]=useState(true);
   const [hasMoreCmts,setHasMoreCmts]=useState(false);
   const [cmtPage,setCmtPage]=useState(1);
@@ -2333,19 +2379,32 @@ const mentionNameMapRef=useRef(new Map());
       .order("likes_count",{ascending:false})
       .order("created_at",{ascending:true})
       .range(from,to);
-    const rows=data||[];
+    let rows=data||[];
     const ids=rows.map(c=>c.id);
     let likedSet=new Set();
     if(ids.length&&sessionUserId){
       const{data:myLikes}=await sb.from("comment_likes").select("comment_id").eq("user_id",sessionUserId).in("comment_id",ids);
       likedSet=new Set((myLikes||[]).map(l=>l.comment_id));
     }
-    if(page===1){setComments(rows);setLikedCommentIds(likedSet);}
-    else{setComments(prev=>[...prev,...rows]);setLikedCommentIds(prev=>new Set([...prev,...likedSet]));}
+    let authorLikedSet=new Set();
+    if(ids.length&&postAuthorId){
+      const{data:authorLikes}=await sb.from("comment_likes").select("comment_id").eq("user_id",postAuthorId).in("comment_id",ids);
+      authorLikedSet=new Set((authorLikes||[]).map(l=>l.comment_id));
+    }
+    if(postAuthorId&&(authorLikedSet.size||rows.some(c=>c.author_id===postAuthorId))){
+      // Épingle en tête (dans la page chargée) les commentaires touchés par l'auteur du post
+      rows=[...rows].sort((a,b)=>{
+        const pa=(authorLikedSet.has(a.id)||a.author_id===postAuthorId)?1:0;
+        const pb=(authorLikedSet.has(b.id)||b.author_id===postAuthorId)?1:0;
+        return pb-pa;
+      });
+    }
+    if(page===1){setComments(rows);setLikedCommentIds(likedSet);setAuthorLikedCommentIds(authorLikedSet);}
+    else{setComments(prev=>{const seen=new Set(prev.map(c=>c.id));const merged=[...prev,...rows.filter(c=>!seen.has(c.id))];return merged.length>MAX_MOUNTED_COMMENTS?merged.slice(merged.length-MAX_MOUNTED_COMMENTS):merged;});setLikedCommentIds(prev=>new Set([...prev,...likedSet]));setAuthorLikedCommentIds(prev=>new Set([...prev,...authorLikedSet]));}
     onCountChange?.(page===1?rows.length:visibleCountRef.current+rows.length);
     setLoadingCmts(false);
     setHasMoreCmts(rows.length===(to-from+1));
-  },[postId,onCountChange,sessionUserId]);
+  },[postId,onCountChange,sessionUserId,postAuthorId]);
 
   useEffect(()=>{
     (async()=>{
@@ -2386,8 +2445,8 @@ useEffect(()=>{
 },[comments]);
 
   useEffect(()=>{
-    const ch=sb.channel(`comments-${postId}-${Math.random()}`)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+    const unsubscribe=subscribeCommentsRealtime(postId,
+      payload=>{
         const newId=payload.new.id;
         sb.from("comments").select("id,post_id,author_id,text,mentions,media_url,sticker_id,created_at,likes_count,replies_count,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
           .eq("id",newId).maybeSingle().then(({data})=>{
@@ -2395,18 +2454,18 @@ useEffect(()=>{
             setComments(prev=>prev.some(c=>c.id===data.id)?prev:[...prev,data]);
             onCountChange?.(c=>(c||0)+1);
           });
-      })
-      .on("postgres_changes",{event:"DELETE",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+      },
+      payload=>{
         const delId=payload.old.id;
         setComments(prev=>prev.some(c=>c.id===delId)?prev.filter(c=>c.id!==delId):prev);
         onCountChange?.(c=>Math.max((c||1)-1,0));
-      })
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"comments",filter:`post_id=eq.${postId}`},payload=>{
+      },
+      payload=>{
         const updated=payload.new;
         setComments(prev=>prev.map(c=>c.id===updated.id?{...c,likes_count:updated.likes_count,text:updated.text,media_url:updated.media_url}:c));
-      })
-      .subscribe();
-    return()=>sb.removeChannel(ch);
+      }
+    );
+    return unsubscribe;
   },[postId,onCountChange]);
 
   const submit=async()=>{
@@ -2488,7 +2547,7 @@ mentionNameMapRef.current=new Map();
   <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
     style={{borderRadius:12,transition:"background .5s",
       background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
-    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members} onOpenSticker={setOpenStickerDetail} notify={notify} initialLiked={likedCommentIds.has(c.id)}/>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members} onOpenSticker={setOpenStickerDetail} notify={notify} initialLiked={likedCommentIds.has(c.id)} postAuthorId={postAuthorId} authorLiked={authorLikedCommentIds.has(c.id)}/>
   </div>
 ))}
     
@@ -2572,7 +2631,7 @@ mentionNameMapRef.current=new Map();
 }
 
 // ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
-function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,notify,initialLiked=false}){
+function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,notify,initialLiked=false,postAuthorId=null,authorLiked=false}){
   const [likes,setLikes]=useState(comment.likes_count||0);
   const [liked,setLiked]=useState(initialLiked);
   const [repliesCount,setRepliesCount]=useState(comment.replies_count||0);
@@ -2582,6 +2641,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
   const [hasMoreReplies,setHasMoreReplies]=useState(false);
   const [loadingReplies,setLoadingReplies]=useState(false);
   const [likedReplyIds,setLikedReplyIds]=useState(new Set());
+  const [authorLikedReplyIds,setAuthorLikedReplyIds]=useState(new Set());
   const [showReplies,setShowReplies]=useState(false);
   const [replyText,setReplyText]=useState("");
   const [replying,setReplying]=useState(false);
@@ -2592,6 +2652,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
   const [showReplyStickerPicker,setShowReplyStickerPicker]=useState(false);
   const replyImgRef=useRef(null);
   const isMine=comment.author_id===sessionUserId;
+  const isAuthorComment=!!postAuthorId&&comment.author_id===postAuthorId;
   const author=comment.author?normProfile(comment.author):getM(comment.author_id);
 
   const REPLIES_PAGE_SIZE=10;
@@ -2616,12 +2677,23 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
       const{data:myLikes}=await sb.from("reply_likes").select("reply_id").eq("user_id",sessionUserId).in("reply_id",ids);
       likedSet=new Set((myLikes||[]).map(l=>l.reply_id));
     }
-    setReplies(prev=>page===1?rows:[...prev,...rows]);
+    let authorLikedSet=new Set();
+    if(ids.length&&postAuthorId){
+      const{data:authorLikes}=await sb.from("reply_likes").select("reply_id").eq("user_id",postAuthorId).in("reply_id",ids);
+      authorLikedSet=new Set((authorLikes||[]).map(l=>l.reply_id));
+    }
+    setReplies(prev=>{
+      if(page===1)return rows;
+      const seen=new Set(prev.map(r=>r.id));
+      const merged=[...prev,...rows.filter(r=>!seen.has(r.id))];
+      return merged.length>MAX_MOUNTED_REPLIES?merged.slice(merged.length-MAX_MOUNTED_REPLIES):merged;
+    });
     setLikedReplyIds(prev=>page===1?likedSet:new Set([...prev,...likedSet]));
+    setAuthorLikedReplyIds(prev=>page===1?authorLikedSet:new Set([...prev,...authorLikedSet]));
     setHasMoreReplies(rows.length===REPLIES_PAGE_SIZE);
     setRepliesLoaded(true);
     setLoadingReplies(false);
-  },[comment.id,sessionUserId]);
+  },[comment.id,sessionUserId,postAuthorId]);
 
   const toggleShowReplies=()=>{
     const next=!showReplies;
@@ -2765,7 +2837,12 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
 
       <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-          <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{author?.name||"?"}</span>
+          <span style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{author?.name||"?"}</span>
+            {isAuthorComment&&(
+              <span style={{fontSize:9,fontWeight:700,color:T.goldL,background:"transparent",border:`1px solid ${T.goldL}55`,padding:"1px 5px",borderRadius:6,letterSpacing:.2}}>Auteur</span>
+            )}
+          </span>
           {(isMine||comment.text)&&(
             <div style={{position:"relative"}}>
               <Btn onClick={()=>setShowCmtMenu(m=>!m)} style={{color:T.muted,padding:4,display:"flex",alignItems:"center"}}><MoreHorizontal size={16}/></Btn>
@@ -2800,6 +2877,12 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:8}}>
           <span style={{fontSize:11,color:T.muted}}>{ago(comment.created_at)}</span>
           <Btn onClick={()=>startReplyTo(null)} style={{color:T.muted,fontSize:12,fontWeight:700}}>Répondre</Btn>
+          {authorLiked&&(
+            <span style={{display:"flex",alignItems:"center",gap:3,fontSize:11,color:T.goldL,fontWeight:600}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              aimé par l'auteur
+            </span>
+          )}
           <Btn onClick={toggleLike} style={{display:"flex",alignItems:"center",gap:5,color:liked?T.err:T.muted,fontSize:12,marginLeft:"auto"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             {likes>0&&<span>{likes}</span>}
@@ -2884,6 +2967,8 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
                 replyToName={r.reply_to_id?replyAuthorName(r.reply_to_id):null}
                 onOpenSticker={onOpenSticker}
                 notify={notify}
+                postAuthorId={postAuthorId}
+                authorLiked={authorLikedReplyIds.has(r.id)}
               />
             ))}
             {hasMoreReplies&&(
@@ -2899,9 +2984,10 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
 }
 
 // ── REPLY ITEM (likes + vrai lien de threading) ─
-function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,replyToName,onOpenSticker,notify}){
+function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,replyToName,onOpenSticker,notify,postAuthorId=null,authorLiked=false}){
   const ra=reply.author?normProfile(reply.author):{initials:"?",color:"#888",name:"?"};
   const isMyReply=reply.author_id===sessionUserId;
+  const isAuthorReply=!!postAuthorId&&reply.author_id===postAuthorId;
   const [showMenu,setShowMenu]=useState(false);
 
   const del=async()=>{
@@ -2922,6 +3008,9 @@ function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,r
       <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
           <span style={{fontSize:12,fontWeight:600,color:T.muted}}>{ra.name}</span>
+          {isAuthorReply&&(
+            <span style={{fontSize:9,fontWeight:800,color:"#000",background:T.gradGold,padding:"2px 7px",borderRadius:8,letterSpacing:.3}}>Auteur</span>
+          )}
           {(isMyReply||reply.text)&&(
             <div style={{position:"relative",marginLeft:"auto"}}>
               <Btn onClick={()=>setShowMenu(m=>!m)} style={{color:T.muted,padding:2,display:"flex"}}><MoreHorizontal size={14}/></Btn>
@@ -2951,6 +3040,12 @@ function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,r
           <span style={{fontSize:11,color:T.muted}}>{ago(reply.created_at)}</span>
           <Btn onClick={onReplyTo} style={{color:T.muted,fontSize:11,fontWeight:700}}>Répondre</Btn>
           <TranslateBtn text={reply.text}/>
+          {authorLiked&&(
+            <span style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:T.goldL,fontWeight:600}}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              aimé par l'auteur
+            </span>
+          )}
           <Btn onClick={onToggleLike} style={{display:"flex",alignItems:"center",gap:4,color:liked?T.err:T.muted,fontSize:11,marginLeft:"auto"}}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill={liked?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             {(reply.likes_count||0)>0&&<span>{reply.likes_count}</span>}
@@ -3111,9 +3206,9 @@ useEffect(()=>{
         style={{display:"flex",gap:8,overflowX:"auto",scrollSnapType:"x mandatory",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}
       >
         {allMedia.map((url,i)=>(
-          <div key={i} onClick={e=>{e.stopPropagation();if(url.match(/\.(mp4|mov|webm)/i))onDetail?.(post);}}
+          <div key={i} onClick={e=>{e.stopPropagation();if(url.match(/\.(mp4|mov|webm)/i))window.dispatchEvent(new CustomEvent("celeste_open_reel",{detail:{post,url}}));}}
             style={{flex:allMedia.length>1?"0 0 88%":"0 0 100%",scrollSnapAlign:"center",aspectRatio:"4/5",borderRadius:16,overflow:"hidden",position:"relative",background:T.card}}>
-            <MediaPlayer url={url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onImageClick={()=>{if(onPhotoView){onPhotoView(post,url);}else{window.dispatchEvent(new CustomEvent("celeste_open_photo_viewer",{detail:{post,url}}));}}} onVideoClick={()=>onDetail?.(post)}/>
+            <MediaPlayer url={url} style={{width:"100%",height:"100%",maxHeight:"none",objectFit:"cover"}} onImageClick={()=>{if(onPhotoView){onPhotoView(post,url);}else{window.dispatchEvent(new CustomEvent("celeste_open_photo_viewer",{detail:{post,url}}));}}} onVideoClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_reel",{detail:{post,url}}))}/>
           </div>
         ))}
       </div>
@@ -3157,6 +3252,7 @@ useEffect(()=>{
   targetCommentId={post._targetCommentId||null}
   notify={notify}
   commentsDisabled={!!post.comments_disabled}
+  postAuthorId={post.by}
 />
             <div ref={bottomRef}/>
           </div>
@@ -3191,13 +3287,135 @@ function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify,onCount
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{flex:1,minHeight:0,overflow:"visible",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
-          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={c=>{setCmtCount(c);onCountChange?.(c);}} targetCommentId={null} standalone notify={notify} commentsDisabled={!!post.comments_disabled}/>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={c=>{setCmtCount(c);onCountChange?.(c);}} targetCommentId={null} standalone notify={notify} commentsDisabled={!!post.comments_disabled} postAuthorId={post.by}/>
         </div>
       </div>
     </div>
   );
 }
+// ── Pastille de publication en arrière-plan (même principe que dans CameraStudioModal) ──
+// Créée en DOM natif pour rester visible même après la fermeture du modal Nouveau Post.
+// Réutilise le keyframe "spin" déjà défini globalement plus haut dans App.jsx.
+function showPostProgress(label){
+  const pill=document.createElement("div");
+  pill.style.cssText=`
+    position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
+    z-index:99999;display:flex;align-items:center;gap:10px;
+    background:rgba(10,10,10,0.94);border:1px solid rgba(255,255,255,0.12);
+    border-radius:30px;padding:10px 18px;backdrop-filter:blur(20px);
+    box-shadow:0 8px 30px rgba(0,0,0,0.5);
+  `;
+  const spinner=document.createElement("div");
+  spinner.style.cssText=`
+    width:16px;height:16px;border-radius:50%;flex-shrink:0;
+    border:2px solid rgba(201,149,42,0.25);border-top-color:#C9952A;
+    animation:spin .8s linear infinite;
+  `;
+  const labelEl=document.createElement("span");
+  labelEl.style.cssText="color:#fff;font-size:13px;font-weight:600;white-space:nowrap;";
+  labelEl.textContent=label||"Publication en cours…";
+  pill.appendChild(spinner);
+  pill.appendChild(labelEl);
+  document.body.appendChild(pill);
+  return{
+    update:(msg)=>{labelEl.textContent=msg;},
+    done:(msg)=>{spinner.remove();labelEl.textContent=msg||"Publié ✦";setTimeout(()=>pill.remove(),1800);},
+    fail:(msg)=>{spinner.remove();labelEl.textContent=msg||"Échec de la publication";setTimeout(()=>pill.remove(),2500);},
+  };
+}
 
+// ── Publication réelle du post ────────────────────────────────────
+// Fonction volontairement en dehors du composant NewPostModal : elle ne lit
+// aucun state ni ref React, seulement les valeurs qu'on lui passe dans "payload".
+// Comme ça, même si le modal est démonté (fermé) juste après l'appel, cette
+// fonction continue de tourner jusqu'au bout — c'est ce qui permet une vraie
+// publication en arrière-plan, fiable, plutôt qu'un effet de bord accidentel.
+async function runPublish(payload,{onProgress}={}){
+  const{
+    uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,
+    isForSale,isAiGenerated,isPrivate,commentsDisabled,
+    contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
+    pollExpiresAt,pollMultiple,pollOptions,
+    selectedCategories,duoCollaborators,selectedSound,lastVideoFile,
+    mentions,mentionedIds,authorName,
+  }=payload;
+
+  const{data:insertedPost,error}=await sb.from("posts").insert({
+    author_id:uid,type,
+    visibility:"testing",
+    text:text.trim()||"",
+    img_url:type==="event"?(evImgUrl||null):(mediaUrls.length===1?(mediaUrls[0]||null):null),
+    media_urls:mediaUrls.length>1?mediaUrls:null,
+    event_title:type==="event"?evTitle.trim():null,
+    event_date:type==="event"?evDate:null,
+    event_time:type==="event"?(evTime||null):null,
+    event_loc:type==="event"?evLoc:null,
+    text_background:textBg||null,
+    is_for_sale:isForSale||false,
+    is_ai_generated:type==="photo"?(isAiGenerated||false):false,
+    is_private:isPrivate||false,
+    comments_disabled:commentsDisabled||false,
+    whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
+    contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
+    expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
+    poll_multiple:type==="poll"?pollMultiple:false,
+    mentions
+  }).select("id").single();
+
+  if(error) throw error;
+  const postId=insertedPost?.id;
+  if(!postId) return;
+
+  onProgress?.("Finalisation…");
+
+  if(type==="poll"){
+    const optsToInsert=pollOptions.map(o=>o.trim()).filter(Boolean).map((label,position)=>({post_id:postId,label,position}));
+    if(optsToInsert.length>=2)await sb.from("poll_options").insert(optsToInsert);
+  }
+  if(selectedCategories.length>0){
+    await sb.from("post_categories").delete().eq("post_id",postId).eq("source","inferred");
+    await sb.from("post_categories").insert(selectedCategories.map(category=>({post_id:postId,category,source:"manual"})));
+  }
+  if(duoCollaborators.length>0){
+    await saveDuoCollaborators(sb,postId,uid,duoCollaborators);
+  }
+  if(!selectedSound&&lastVideoFile){
+    autoExtractAndAttachSound({sb,uploadToR2,videoFile:lastVideoFile,postId,uid,authorName});
+  }
+  if(selectedSound){
+    if(selectedSound.isNew&&selectedSound.blob){
+      const soundMime=selectedSound.blob.type||"audio/webm";
+      const soundExt=soundMime.includes("mp4")?"m4a":soundMime.includes("mpeg")?"mp3":soundMime.includes("wav")?"wav":soundMime.includes("ogg")?"ogg":"webm";
+      const soundFile=new File([selectedSound.blob],`son-${postId}.${soundExt}`,{type:soundMime});
+      const soundUrl=await uploadToR2(soundFile,"sounds");
+      const{data:newSound}=await sb.from("sounds").insert({title:selectedSound.title,url:soundUrl,source_post_id:postId,usage_count:1,created_by:uid}).select("id").single();
+      if(newSound?.id) await sb.from("posts").update({sound_id:newSound.id}).eq("id",postId);
+    } else if(selectedSound.id){
+      await sb.from("posts").update({sound_id:selectedSound.id}).eq("id",postId);
+      await sb.rpc("increment_sound_usage",{target_sound_id:selectedSound.id});
+    }
+  }
+
+  // Notifications de mentions + viewers fréquents : volontairement non attendues,
+  // elles continuent en tâche de fond sans retarder la fin de la publication.
+  const uniqueIds=[...new Set(mentionedIds)].filter(id=>id!==uid);
+  if(uniqueIds.length){
+    Promise.all(uniqueIds.map(mentionedId=>
+      sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false})
+        .then(()=>sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${authorName||"Quelqu'un"} t'a mentionné dans un post`}}))
+    )).catch(e=>console.error("Erreur notifications mentions:",e));
+  }
+  sb.from("profile_views").select("viewer_id").eq("viewed_id",uid).gte("created_at",new Date(Date.now()-30*86400000).toISOString()).limit(500)
+    .then(({data:frequentViewers})=>{
+      const viewCounts=new Map();
+      (frequentViewers||[]).forEach(r=>viewCounts.set(r.viewer_id,(viewCounts.get(r.viewer_id)||0)+1));
+      const favIds=[...viewCounts.entries()].filter(([id,c])=>c>=3&&id!==uid).map(([id])=>id);
+      Promise.all(favIds.map(targetId=>
+        sb.from("notifications").insert({user_id:targetId,from_id:uid,type:"new_post_favorite",post_id:postId,read:false})
+          .then(()=>sb.functions.invoke('send-push',{body:{targetUserId:targetId,title:"✦ Nouvelle publication",body:`${authorName||"Quelqu'un"} vient de publier`}}))
+      )).catch(e=>console.error("Erreur notifications favoris:",e));
+    });
+}
 function NewPostModal({myProfile,session,onClose,onPost,notify,initialSound=null}){
 
 const [type,setType]=useState("text"); const [text,setText]=useState("");
@@ -3234,6 +3452,7 @@ const handleEventImagePick=async e=>{
   e.target.value="";
 };
 const [busy,setBusy]=useState(false);
+const [finalizing,setFinalizing]=useState(false);
 const [textBg,setTextBg]=useState(null);
 const [pollOptions,setPollOptions]=useState(["",""]);
 const [pollMultiple,setPollMultiple]=useState(false);
@@ -3277,13 +3496,14 @@ const handlePick=async e=>{
     if(!files.length)return;
     for(const f of files){
       let file=f;
+      if(f.type.startsWith("image/")&&f.size>20*1024*1024){notify?.("Image trop volumineuse (max 20MB)");continue;}
       if(f.type.startsWith("image/")){
         const reader=new FileReader();
         const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
         const croppedFile=await cropImage(src);
         file=croppedFile||await compressImage(f);
       }
-      if(f.type.startsWith("video/")&&f.size>50*1024*1024){alert("Vidéo trop volumineuse (max 50MB)");continue;}
+      if(f.type.startsWith("video/")&&f.size>50*1024*1024){notify?.("Vidéo trop volumineuse (max 50MB)");continue;}
       if(f.type.startsWith("video/")&&f._fromCamera){
         const src=URL.createObjectURL(f);
         setPreviews(p=>[...p,{url:src,type:"video"}]);
@@ -3332,81 +3552,30 @@ try {
 
   const submit=async()=>{
     if(busy)return;
-    const{count}=await sb.from("posts").select("id",{count:"exact",head:true}).eq("author_id",session?.user?.id);
     setBusy(true);
-   const pollExpiresAt=type==="poll"&&pollDuration!=="0"?new Date(Date.now()+parseFloat(pollDuration)*24*60*60*1000).toISOString():null;
-   const{error}=await sb.from("posts").insert({
-      author_id:session?.user?.id,type,
-      visibility:"testing",
-      text:text.trim()||"",
-      img_url:type==="event"?(evImgUrl||null):(mediaUrls.length===1?(mediaUrls[0]||null):null),
-      media_urls:mediaUrls.length>1?mediaUrls:null,
-      event_title:type==="event"?evTitle.trim():null,
-      event_date:type==="event"?evDate:null,
-      event_time:type==="event"?(evTime||null):null,
-      event_loc:type==="event"?evLoc:null,
-      text_background:textBg||null,
-      is_for_sale:isForSale||false,
-      is_ai_generated:type==="photo"?(isAiGenerated||false):false,
-      is_private:isPrivate||false,
-      comments_disabled:commentsDisabled||false,
-whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
-contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
-expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
-      poll_multiple:type==="poll"?pollMultiple:false,
-      mentions:extractMentions(text.trim(),mentionNameMapRef.current)
-    });
-    setBusy(false);
-if(!error){
-  const uid=session?.user?.id;
-  const{data:postData}=await sb.from("posts").select("id").eq("author_id",uid).order("created_at",{ascending:false}).limit(1).single();
-  const postId=postData?.id;
-  if(postId){
-    if(type==="poll"){
-      const optsToInsert=pollOptions.map(o=>o.trim()).filter(Boolean).map((label,position)=>({post_id:postId,label,position}));
-      if(optsToInsert.length>=2)await sb.from("poll_options").insert(optsToInsert);
-    }
-    if(selectedCategories.length>0){
-      await sb.from("post_categories").delete().eq("post_id",postId).eq("source","inferred");
-      await sb.from("post_categories").insert(selectedCategories.map(category=>({post_id:postId,category,source:"manual"})));
-    }
-    if(duoCollaborators.length>0){
-      await saveDuoCollaborators(sb,postId,uid,duoCollaborators);
-    }
-    if(!selectedSound&&lastVideoFileRef.current){
-      autoExtractAndAttachSound({sb,uploadToR2,videoFile:lastVideoFileRef.current,postId,uid,authorName:myProfile?.prenom||myProfile?.fullName});
-    }
-    if(selectedSound){
-      if(selectedSound.isNew&&selectedSound.blob){
-        const soundMime=selectedSound.blob.type||"audio/webm";
-        const soundExt=soundMime.includes("mp4")?"m4a":soundMime.includes("mpeg")?"mp3":soundMime.includes("wav")?"wav":soundMime.includes("ogg")?"ogg":"webm";
-        const soundFile=new File([selectedSound.blob],`son-${postId}.${soundExt}`,{type:soundMime});
-        const soundUrl=await uploadToR2(soundFile,"sounds");
-        const{data:newSound}=await sb.from("sounds").insert({title:selectedSound.title,url:soundUrl,source_post_id:postId,usage_count:1,created_by:uid}).select("id").single();
-        if(newSound?.id) await sb.from("posts").update({sound_id:newSound.id}).eq("id",postId);
-      } else if(selectedSound.id){
-        await sb.from("posts").update({sound_id:selectedSound.id}).eq("id",postId);
-        await sb.rpc("increment_sound_usage",{target_sound_id:selectedSound.id});
-      }
-    }
-    const uniqueIds=[...new Set(mentionedIdsRef.current)].filter(id=>id!==uid);
-    for(const mentionedId of uniqueIds){
-      await sb.from("notifications").insert({user_id:mentionedId,from_id:uid,type:"mention",post_id:postId,read:false});
-      sb.functions.invoke('send-push',{body:{targetUserId:mentionedId,title:"✦ Mention",body:`${myProfile?.prenom||"Quelqu'un"} t'a mentionné dans un post`}});
-    }
-    const{data:frequentViewers}=await sb.from("profile_views").select("viewer_id").eq("viewed_id",uid).gte("created_at",new Date(Date.now()-30*86400000).toISOString()).limit(500);
-    const viewCounts=new Map();
-    (frequentViewers||[]).forEach(r=>viewCounts.set(r.viewer_id,(viewCounts.get(r.viewer_id)||0)+1));
-    const favIds=[...viewCounts.entries()].filter(([id,c])=>c>=3&&id!==uid).map(([id])=>id);
-    for(const targetId of favIds){
-      await sb.from("notifications").insert({user_id:targetId,from_id:uid,type:"new_post_favorite",post_id:postId,read:false});
-      sb.functions.invoke('send-push',{body:{targetUserId:targetId,title:"✦ Nouvelle publication",body:`${myProfile?.prenom||"Quelqu'un"} vient de publier`}});
-    }
+    const uid=session?.user?.id;
+    const pollExpiresAt=type==="poll"&&pollDuration!=="0"?new Date(Date.now()+parseFloat(pollDuration)*24*60*60*1000).toISOString():null;
+    const payload={
+      uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,
+      isForSale,isAiGenerated,isPrivate,commentsDisabled,
+      contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
+      pollExpiresAt,pollMultiple,pollOptions,
+      selectedCategories,duoCollaborators,selectedSound,
+      lastVideoFile:lastVideoFileRef.current,
+      mentions:extractMentions(text.trim(),mentionNameMapRef.current),
+      mentionedIds:[...mentionedIdsRef.current],
+      authorName:myProfile?.prenom||myProfile?.fullName,
+    };
     mentionedIdsRef.current=[];
     mentionNameMapRef.current=new Map();
-  }
-  onPost();
-}
+    // On ferme le modal tout de suite et on publie réellement en arrière-plan :
+    // runPublish() ne dépend d'aucun state/ref de ce composant, elle continue
+    // de s'exécuter jusqu'au bout même après le démontage du modal.
+    const progress=showPostProgress("Publication…");
+    onClose();
+    runPublish(payload,{onProgress:msg=>progress.update(msg)})
+      .then(()=>{progress.done("Publié ✦");onPost();})
+      .catch(err=>{console.error("Erreur publication:",err);progress.fail("Échec de la publication");});
   };
 
   const canSell=true;
@@ -3462,8 +3631,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
 
       {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"52px 20px 16px",borderBottom:`1px solid ${T.border}`}}>
-        <button onClick={onClose} style={{background:"none",border:"none",color:T.text,fontSize:15,fontWeight:500,cursor:"pointer",padding:"8px 4px",letterSpacing:.2}}>
-          Annuler
+        <button onClick={onClose} disabled={uploading} style={{background:"none",border:"none",color:uploading?T.muted:T.text,fontSize:15,fontWeight:500,cursor:uploading?"default":"pointer",padding:"8px 4px",letterSpacing:.2,opacity:uploading?.5:1}}>
+          {uploading?"Envoi…":"Annuler"}
         </button>
         <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:T.text,letterSpacing:2,fontWeight:600}}>
           Nouveau post
@@ -3473,8 +3642,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
     Brouillons
   </button>
   <button onClick={submit} disabled={!ok||busy||uploading}
-    style={{background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,padding:"8px 18px",color:ok&&!busy&&!uploading?"#000":T.muted,fontSize:14,fontWeight:700,cursor:ok&&!busy&&!uploading?"pointer":"default",transition:"all .2s",boxShadow:ok&&!busy&&!uploading?"0 4px 16px rgba(201,149,42,0.3)":"none"}}>
-    {busy?"…":uploading?"↑":"Publier"}
+    style={{background:ok&&!busy&&!uploading?T.gradGold:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,padding:"8px 18px",color:ok&&!busy&&!uploading?"#000":T.muted,fontSize:13,fontWeight:700,cursor:ok&&!busy&&!uploading?"pointer":"default",transition:"all .2s",boxShadow:ok&&!busy&&!uploading?"0 4px 16px rgba(201,149,42,0.3)":"none",whiteSpace:"nowrap"}}>
+    {finalizing?"Finalisation…":busy?"Publication…":uploading?"↑ Envoi…":"Publier"}
   </button>
 </div>
       </div>
@@ -3646,8 +3815,8 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
               <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
                 <input value={evTitle} onChange={e=>setEvTitle(e.target.value)} placeholder="Titre de l'événement *" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
                 <div style={{display:"flex",gap:8}}>
-                  <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
-                  <input type="time" value={evTime} onChange={e=>setEvTime(e.target.value)} style={{width:110,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:"dark"}}/>
+                  <input type="date" value={evDate} onChange={e=>setEvDate(e.target.value)} style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:isLightBg(T.bg)?"light":"dark"}}/>
+                  <input type="time" value={evTime} onChange={e=>setEvTime(e.target.value)} style={{width:110,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none",colorScheme:isLightBg(T.bg)?"light":"dark"}}/>
                 </div>
                 <input value={evLoc} onChange={e=>setEvLoc(e.target.value)} placeholder="📍 Lieu" style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:12,padding:"11px 14px",color:T.text,fontSize:13,outline:"none"}}/>
                 {evImgPreview?(
@@ -5221,15 +5390,24 @@ const openPhotoViewer=(post,url)=>{
   setPhotoIndex(idx);
 };
 
-const openPost=useCallback(p=>{
-  const isVid=(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i));
-  if(isVid&&!p._forceComments){
+const isMediaVideo=u=>/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||"")||(u||"").includes("video");
+
+const openPost=useCallback((p,tappedUrl)=>{
+  const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
+  const tappedIsVideo=tappedUrl?isMediaVideo(tappedUrl):((p.img||"").match(/\.(mp4|mov|webm)/i)||allMedia.some(isMediaVideo));
+  if(tappedIsVideo&&!p._forceComments){
     // Mode session : la file du Reel se réordonne autour de la vidéo tapée
     // plutôt que de reprendre l'ordre brut du feed (voir useFeedRanking.js)
-    const sessionQueue=buildReelSessionQueue(p,videoPosts);
+    let postForReel=p;
+    if(tappedUrl&&allMedia.length>1){
+      // Fait passer la vidéo réellement tapée en tête du carrousel pour cette ouverture
+      postForReel={...p,media_urls:[tappedUrl,...allMedia.filter(u=>u!==tappedUrl)]};
+    }
+    const sessionQueue=buildReelSessionQueue(postForReel,videoPosts).map(v=>v.id===p.id?postForReel:v);
     setReelsViewerPosts(sessionQueue);
     pushNav(()=>{setReelsIndex(null);setReelsViewerPosts(null);});
-    setReelsIndex(0);
+    const realIdx=sessionQueue.findIndex(v=>v.id===p.id);
+    setReelsIndex(realIdx>=0?realIdx:0);
   }else if(p._forceComments){
     setDetailPost(p);
   }else if(p.type==="poll"||p.type==="event"){
@@ -5240,8 +5418,7 @@ const openPost=useCallback(p=>{
     pushNav(()=>setPhotoIndex(null));
     setPhotoIndex(idx>=0?idx:0);
   }else{
-    const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
-    const firstPhoto=allMedia.find(u=>!(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));
+    const firstPhoto=tappedUrl&&!isMediaVideo(tappedUrl)?tappedUrl:allMedia.find(u=>!isMediaVideo(u));
     if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);
   }
 },[videoPosts,photoPosts,detailPost]);
@@ -5274,6 +5451,14 @@ useEffect(()=>{
   window.addEventListener("celeste_open_photo_viewer",handler);
   return()=>window.removeEventListener("celeste_open_photo_viewer",handler);
 },[photoPosts,detailPost]);
+useEffect(()=>{
+  const handler=(e)=>{
+    const{post,url}=e.detail||{};
+    if(post)openPost(post,url);
+  };
+  window.addEventListener("celeste_open_reel",handler);
+  return()=>window.removeEventListener("celeste_open_reel",handler);
+},[videoPosts,photoPosts,detailPost]);
 const [searchOpen,setSearchOpen]=useState(false);
 const scrollerRef=useRef(null);
 const prefetchedUrlsRef=useRef(new Set());
@@ -5453,7 +5638,7 @@ const virtuosoComponents=useMemo(()=>({
       setReelsCommentPost(null);
       setPhotoCommentPost(null);
       if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-      if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+      if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
     }}
   />
 )}
@@ -5982,7 +6167,7 @@ onMuteAuthor?.(post.by);
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
               <Btn onClick={e=>{e.stopPropagation();onUser?.(post.by);}} style={{fontSize:14,fontWeight:700,color:T.text,padding:0,textShadow:post.author?.color?`0 0 10px ${post.author.color}66`:"none"}}>{post.author?.name}</Btn>
               <Badge type={post.author?.badge}/>
-              <DuoBadge sb={sb} T={T} Av={Av} postId={post.id} collaborators={post.collaboratorProfiles}/>
+              <DuoBadge sb={sb} T={T} Av={Av} Btn={Btn} session={session} postId={post.id} collaborators={post.collaboratorProfiles}/>
               {post.pinned&&<span style={{fontSize:10,color:T.gold,fontWeight:700,background:T.goldBg,padding:"1px 7px",borderRadius:20}}>✦ Sponsorisé</span>}
               {post.is_ai_generated&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,color:"#a78bfa",background:"rgba(139,92,246,0.14)",border:"1px solid rgba(139,92,246,0.35)",padding:"1px 7px",borderRadius:20}}><Sparkles size={10}/> IA</span>}
               {post.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.muted,fontWeight:600}}><Pin size={1} color={T.goldL}/></span>}
@@ -6132,7 +6317,7 @@ onMuteAuthor?.(post.by);
                 setBurstIdx(i);
                 setTimeout(()=>setBurstIdx(null),700);
               }else{
-                dtTimeoutRef.current=setTimeout(()=>onDetail?.(post),300);
+                dtTimeoutRef.current=setTimeout(()=>onDetail?.(post,url),300);
               }
             }} style={{flex:allMedia.length>1?"0 0 88%":"0 0 100%",scrollSnapAlign:"center",aspectRatio:"4/5",borderRadius:16,overflow:"hidden",position:"relative",background:T.card}}>
             {shouldMountVideo
@@ -6403,7 +6588,7 @@ return(
               setReelsCommentPost(null);
               setPhotoCommentPost(null);
               if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-              if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+              if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
             }}
           />
         )}
@@ -8024,7 +8209,7 @@ if(user?.status==="suspended") return(
             setUserReelsCommentPost(null);
             setPhotoCommentPost(null);
             if(userReelsCloseCallback){userReelsCloseCallback(userReelsLiveCmtCount);setUserReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+            if(photoCloseCallback){photoCloseCallback(userReelsLiveCmtCount);setPhotoCloseCallback(null);}
           }}
         />
       )}
@@ -8337,7 +8522,7 @@ if(blocked||blockedByOther) return(
             setReelsCommentPost(null);
             setPhotoCommentPost(null);
             if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+            if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
           }}
         />
       )}
@@ -8591,6 +8776,7 @@ function MutedBlockedManager({session,notify,onClose}){
   );
 }
 function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme}){
+  const [logoFont]=useState(pickLogoFont);
   const {session,setMyProfile}=useApp();
   const [open,setOpen]=useState(false);
   const [section,setSection]=useState(null);
@@ -9033,8 +9219,8 @@ if(checkoutUrl){
         {section==="about"&&(
   <div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{textAlign:"center",padding:"16px 0 8px"}}>
-      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,color:T.gold,lineHeight:1,marginBottom:10}}>✦</div>
-      <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:300,color:T.text,letterSpacing:4,margin:"0 0 4px"}}>Céleste</h2>
+      <div style={{fontFamily:logoFont,fontSize:52,color:T.gold,lineHeight:1,marginBottom:10}}>✦</div>
+      <h2 style={{fontFamily:logoFont,fontSize:30,fontWeight:400,color:T.text,letterSpacing:0,margin:"0 0 4px"}}>Céleste</h2>
       <p style={{color:T.gold,fontSize:11,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
     </div>
 
@@ -9118,79 +9304,6 @@ function WalletScreen({session,myProfile,notify,onClose}){
   const [showWithdraw,setShowWithdraw]=useState(false);
   const cemacCountries=["CG","CM","GA","TD","CF","GQ"];
   const isCemac=cemacCountries.includes(myProfile?.country||"CG");
-  const [liveStats,setLiveStats]=useState(null);
-
-useEffect(()=>{
-  const loadLive=async()=>{
-    const monthStart=new Date().toISOString().slice(0,7)+"-01T00:00:00.000Z";
-    const month=new Date().toISOString().slice(0,7);
-    
-    // Mes likes reçus ce mois
-    const{count:myLikesToday}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",monthStart);
-    
-    
-    // Mes posts du mois
-    const{count:myPostsToday}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",monthStart);
-    
-    // Total likes de tout le monde ce mois
-    const{data:allLikes}=await sb.from("valid_likes").select("author_id").gte("created_at",monthStart);
-    const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",monthStart);
-    
-    // Pool du mois
-    const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
-
-    
-    // Calculer les scores
-    const likeCounts={};
-    (allLikes||[]).forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
-    const postCounts={};
-    (allPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
-    
-    const scores={};
-    const allIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
-    allIds.forEach(uid=>{
-      const l=likeCounts[uid]||0;
-      const p=postCounts[uid]||0;
-      if(l>0&&p>0)scores[uid]=l*p;
-    });
-    
-    const totalScore=Object.values(scores).reduce((a,b)=>a+b,0);
-    const myScore=(myLikesToday||0)*(myPostsToday||0);
-    
-    // Pool journalier estimé
-    const now=new Date();
-    const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-    const daysLeft=daysInMonth-now.getDate()+1;
-    const dailyPool=Math.floor((pool?.pool_amount||0)/daysLeft);
-    
-    const myEstimate=totalScore>0?Math.floor((myScore/totalScore)*dailyPool):0;
-    
-    setLiveStats({
-      myLikesToday:myLikesToday||0,
-      myPostsToday:myPostsToday||0,
-      myScore,
-      totalScore,
-      dailyPool,
-      myEstimate,
-      poolMonth:pool?.pool_amount||0
-    });
-  };
-  
-  loadLive();
-  const interval=setInterval(loadLive,30000);
-  
-  // Realtime — se déclenche dès qu'un like est reçu
-  const ch=sb.channel("wallet_live")
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"valid_likes",filter:`author_id=eq.${session.user.id}`},()=>{
-      loadLive();
-    })
-    .on("postgres_changes",{event:"DELETE",schema:"public",table:"valid_likes",filter:`author_id=eq.${session.user.id}`},()=>{
-      loadLive();
-    })
-    .subscribe();
-  
-  return()=>{clearInterval(interval);sb.removeChannel(ch);};
-},[session.user.id]);
   const [withdrawAmount,setWithdrawAmount]=useState("");
   const [withdrawPhone,setWithdrawPhone]=useState("");
   const [withdrawName,setWithdrawName]=useState("");
@@ -9224,27 +9337,9 @@ useEffect(()=>{
     const{data:tx}=await sb.from("wallet_transactions").select("*").eq("user_id",session.user.id).order("created_at",{ascending:false}).limit(30);
     setTransactions(tx||[]);
     const{count:myLikes}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).eq("month",month);
-    const{data:pool}=await sb.from("badge_pool").select("*").eq("month",month).maybeSingle();
-    const{count:totalLikes}=await sb.from("valid_likes").select("*",{count:"exact",head:true}).eq("month",month);
     // Compter mes posts du mois
     const{count:myPosts}=await sb.from("posts").select("*",{count:"exact",head:true}).eq("author_id",session.user.id).gte("created_at",`${month}-01`);
-    // Score estimé
-    const myScore=(myLikes||0)*(myPosts||0);
-    const{data:allLikes}=await sb.from("valid_likes").select("author_id").eq("month",month);
-    const likeCounts={};
-    (allLikes||[]).forEach(l=>{likeCounts[l.author_id]=(likeCounts[l.author_id]||0)+1;});
-    const{data:allPosts}=await sb.from("posts").select("author_id").gte("created_at",`${month}-01`);
-    const postCounts={};
-    (allPosts||[]).forEach(p=>{postCounts[p.author_id]=(postCounts[p.author_id]||0)+1;});
-    let totalScore=0;
-    const allIds=new Set([...Object.keys(likeCounts),...Object.keys(postCounts)]);
-    allIds.forEach(uid=>{
-      const l=likeCounts[uid]||0;
-      const p=postCounts[uid]||0;
-      if(l>0&&p>0)totalScore+=l*p;
-    });
-    const myShare=totalScore>0?Math.floor((myScore/totalScore)*(pool?.pool_amount||0)):0;
-    setMonthStats({myLikes:myLikes||0,myPosts:myPosts||0,myShare,pool:pool?.pool_amount||0});
+    setMonthStats({myLikes:myLikes||0,myPosts:myPosts||0});
   };
 
   useEffect(()=>{load();},[]);
@@ -9318,45 +9413,7 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
             </button>
           </div>
         </div>
-{liveStats&&(
-  <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:20,padding:"20px",marginBottom:16}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <p style={{margin:0,fontSize:13,fontWeight:700,color:T.goldL,letterSpacing:1}}>📊 AUJOURD'HUI EN DIRECT</p>
-      <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 6px rgba(34,197,94,0.6)",animation:"pulse 2s infinite"}}/>
-    </div>
-    
-    {/* Stats du jour */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
-        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>❤ {liveStats.myLikesToday}</p>
-        <p style={{margin:0,fontSize:11,color:T.muted}}>Likes reçus ce mois</p>
-      </div>
-      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"14px",textAlign:"center"}}>
-        <p style={{margin:"0 0 4px",fontSize:24,fontWeight:800,color:T.goldL}}>✦ {liveStats.myPostsToday}</p>
-        <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs ce mois</p>
-      </div>
-    </div>
-
-    {/* Barre de progression */}
-    <div style={{marginBottom:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-        <span style={{fontSize:11,color:T.muted}}>Ta part du pool journalier</span>
-        <span style={{fontSize:11,color:T.goldL,fontWeight:700}}>{liveStats.totalScore>0?Math.round((liveStats.myScore/liveStats.totalScore)*100):0}%</span>
-      </div>
-      <div style={{height:6,background:"rgba(255,255,255,0.08)",borderRadius:3,overflow:"hidden"}}>
-        <div style={{height:"100%",borderRadius:3,background:T.gradGold,width:`${liveStats.totalScore>0?Math.min(100,Math.round((liveStats.myScore/liveStats.totalScore)*100)):0}%`,transition:"width 1s ease"}}/>
-      </div>
-    </div>
-
-    {/* Estimation */}
-    <div style={{background:`linear-gradient(135deg,${T.goldD}22,${T.navy}44)`,border:`1px solid ${T.gold}33`,borderRadius:14,padding:"14px",textAlign:"center"}}>
-      <p style={{margin:"0 0 4px",fontSize:11,color:T.muted}}>Estimation de tes gains ce soir</p>
-      <p style={{margin:"0 0 2px",fontSize:28,fontWeight:800,color:T.goldL,fontFamily:"'Cormorant Garamond',serif"}}>~{liveStats.myEstimate.toLocaleString("fr-FR")} F</p>
-      <p style={{margin:0,fontSize:10,color:T.muted}}> {liveStats.dailyPool.toLocaleString("fr-FR")} : {liveStats.poolMonth.toLocaleString("fr-FR")} F</p>
-    </div>
-  </div>
-)}
-        {/* Stats du mois — discret */}
+{/* Stats du mois — discret */}
         <div style={{display:"flex",gap:10,marginBottom:24}}>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myLikes||0}</p>
@@ -9365,10 +9422,6 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myPosts||0}</p>
             <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs</p>
-          </div>
-          <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
-            <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:"#4ade80"}}>~{(monthStats?.myShare||0).toLocaleString("fr-FR")}</p>
-            <p style={{margin:0,fontSize:11,color:T.muted}}>Gain estimé ce mois(F)</p>
           </div>
         </div>
 
@@ -9565,7 +9618,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
             setReelsCommentPost(null);
             setPhotoCommentPost(null);
             if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+            if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
           }}
         />
       )}
@@ -9791,7 +9844,7 @@ const localToggleParticipate=async pid=>{
       setReelsCommentPost(null);
       setPhotoCommentPost(null);
       if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-      if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+      if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
     }}
   />
 )}
@@ -9802,8 +9855,8 @@ const localToggleParticipate=async pid=>{
     setDetailPost(null);
     setReelsCommentPost(null);
     setPhotoCommentPost(null);
-    if(reelsCloseCallback){reelsCloseCallback();setReelsCloseCallback(null);}
-    if(photoCloseCallback){photoCloseCallback();setPhotoCloseCallback(null);}
+    if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
+    if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
   }}
 
   onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
@@ -10772,6 +10825,10 @@ function VerificationInfoModal(){
 }
 
 function CelesteApp(){
+  const [logoFont]=useState(()=>{
+    const fonts=["'Sacramento',cursive","'Pacifico',cursive","'Grand Hotel',cursive","'Yellowtail',cursive"];
+    return fonts[Math.floor(Math.random()*fonts.length)];
+  });
   const [userPostsVersion,setUserPostsVersion]=useState(0);
   const [authMode,setAuthMode]=useState("login");
   const [session,setSession]=useState(undefined);
@@ -10786,6 +10843,16 @@ function CelesteApp(){
   const [mutedAuthorIds,setMutedAuthorIds]=useState([]);
   const [feedPreloaded,setFeedPreloaded]=useState(false);
   const [onlinePresenceIds,setOnlinePresenceIds]=useState(()=>new Set());
+
+  useEffect(()=>{
+    const setAppVh=()=>{
+      document.documentElement.style.setProperty("--app-vh",`${window.innerHeight*0.01}px`);
+    };
+    setAppVh();
+    window.addEventListener("resize",setAppVh);
+    window.addEventListener("orientationchange",setAppVh);
+    return()=>{window.removeEventListener("resize",setAppVh);window.removeEventListener("orientationchange",setAppVh);};
+  },[]);
 
   const [chatDrafts,setChatDrafts]=useState({});
   const [tab,setTab]=useState("home");
@@ -11471,7 +11538,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   );
   return(
     <AppContext.Provider value={appCtx}>
-      <div style={{display:"flex",flexDirection:"column",height:"100svh",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
+      <div style={{display:"flex",flexDirection:"column",height:"calc(var(--app-vh, 1vh) * 100)",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
         <style>{getGS()}</style>
         {toast&&<Toast msg={toast}/>}
         {!isOnline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #FF6432",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
@@ -11515,8 +11582,11 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
             </>
             :<>
               <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-                <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:21,fontWeight:300,letterSpacing:4,color:T.text}}>Céleste</span>
+                <span style={{fontFamily:logoFont,fontSize:32,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))"}}>✦</span>
+                <span key={logoFont} style={{position:"relative",display:"inline-block"}}>
+                  <span style={{fontFamily:logoFont,fontSize:38,fontWeight:400,letterSpacing:0,color:T.text,display:"inline-block",animation:"writeIn 1.1s cubic-bezier(.65,0,.35,1) both"}}>Céleste</span>
+                  <span style={{position:"absolute",top:2,bottom:2,left:0,width:2,borderRadius:1,background:T.gold,boxShadow:`0 0 6px ${T.gold}`,animation:"penMove 1.1s cubic-bezier(.65,0,.35,1) both"}}/>
+                </span>
               </div>
     
              <Btn onClick={()=>{if(!showNotifs){pushNav(()=>setShowNotifs(false));}else{popNav();}setShowNotifs(s=>!s);}} style={{position:"relative",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:showNotifs?T.goldBg:"rgba(255,255,255,0.04)",border:`1px solid ${showNotifs?T.gold+"55":T.border}`,borderRadius:"50%",color:showNotifs?T.goldL:T.muted,transition:"all .2s"}}>
@@ -11628,14 +11698,28 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     posts={[globalPhotoPost]} sb={sb} T={T} Av={Av} startIndex={0}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
-    toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
+   toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
     onUser={id=>{setGlobalPhotoPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}}
     myConnections={myConnections}
     onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}
+    onParticipate={async pid=>{
+      const post=globalPhotoPost;
+      if(!post||post.id!==pid)return;
+      const uid=session?.user?.id;
+      const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
+      setGlobalPhotoPost(prev=>prev?{...prev,participants:participating?(prev.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(prev.participants||[]),uid]}:prev);
+      try{
+        if(participating){
+          await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
+        }else{
+          await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});
+        }
+      }catch(e){console.warn("toggleParticipate error:",e);}
+    }}
     onClose={()=>setGlobalPhotoPost(null)}
   />
 )}
-        {/* Bottom nav premium */}
+{/* Bottom nav premium */}
        {!openConvId&&!openUserId&&!hideNav&&(
           <div style={{height:66,position:"relative",overflow:"hidden",flexShrink:0,zIndex:30}}>
             <NavScenery theme={navTheme}/>

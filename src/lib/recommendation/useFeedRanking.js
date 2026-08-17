@@ -179,7 +179,12 @@ export function rankPosts(posts, { scores, categories, affinity }, viewerLocatio
  */
 export function buildReelSessionQueue(tappedPost, allVideoPosts) {
   const tappedCats = tappedPost.categories || [];
-  if (!tappedCats.length) return allVideoPosts; // pas de catégorie connue → comportement inchangé
+  if (!tappedCats.length) {
+    // Pas de catégorie connue → pas de réordonnancement thématique,
+    // mais le post tapé doit quand même s'ouvrir en premier.
+    const rest = allVideoPosts.filter((p) => p.id !== tappedPost.id);
+    return [tappedPost, ...rest];
+  }
 
   const relatedness = (p) => {
     const postCats = p.categories || [];
@@ -225,7 +230,10 @@ function categoryRelatedness(catsA, catsB) {
 export function buildPhotoSessionQueue(tappedPost, allPhotoPosts) {
   const tappedCats = tappedPost.categories || [];
   const tappedSoundId = tappedPost.sound?.id || null;
-  if (!tappedCats.length && !tappedSoundId) return allPhotoPosts;
+  if (!tappedCats.length && !tappedSoundId) {
+    const rest = allPhotoPosts.filter((p) => p.id !== tappedPost.id);
+    return [tappedPost, ...rest];
+  }
 
   const relatedness = (p) => {
     let score = categoryRelatedness(tappedCats, p.categories || []);

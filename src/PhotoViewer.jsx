@@ -174,8 +174,8 @@ function PhotoPollCard({ post, sb, session }) {
             const color = POLL_COLORS[i % POLL_COLORS.length];
             return (
               <button key={opt.id} disabled={expired || pending} onClick={() => handleVote(opt.id)}
-                style={{ display: "block", width: "100%", position: "relative", overflow: "hidden", border: `1px solid ${mine ? color + "aa" : "rgba(255,255,255,0.18)"}`, borderRadius: 14, padding: "13px 15px", marginBottom: 9, background: "rgba(255,255,255,0.06)", backdropFilter: "blur(6px)", cursor: expired ? "default" : "pointer", textAlign: "left", transition: "transform .18s cubic-bezier(0.34,1.56,0.64,1), border-color .3s ease", transform: justVoted === opt.id ? "scale(0.96)" : "scale(1)" }}>
-                <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg,${color}55,${color}22)`, transition: "width .7s cubic-bezier(0.22,1,0.36,1)" }} />
+                style={{ display: "block", width: "100%", position: "relative", overflow: "hidden", border: `1px solid ${mine ? color + "aa" : "rgba(255,255,255,0.18)"}`, borderRadius: 14, padding: "13px 15px", marginBottom: 9, background: "rgba(255,255,255,0.06)", backdropFilter: "blur(6px)", cursor: expired ? "default" : "pointer", textAlign: "left", transition: "transform .12s cubic-bezier(0.34,1.56,0.64,1), border-color .15s ease", transform: justVoted === opt.id ? "scale(0.96)" : "scale(1)" }}>
+                <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg,${color}55,${color}22)`, transition: justVoted === opt.id ? "none" : "width .35s cubic-bezier(0.22,1,0.36,1)" }} />
                 <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
                     {mine
@@ -391,6 +391,14 @@ export default function PhotoViewer({
   const [likeCountMap, setLikeCountMap] = useState(() => {
     const m = {};
     (posts || []).forEach(p => { m[p.id] = (p.likes || []).length; });
+    return m;
+  });
+  const [participatingIds, setParticipatingIds] = useState(
+    () => new Set((posts || []).filter(p => (p.participants || []).some(x => (x.user_id || x) === uid)).map(p => p.id))
+  );
+  const [participantCountMap, setParticipantCountMap] = useState(() => {
+    const m = {};
+    (posts || []).forEach(p => { m[p.id] = (p.participants || []).length; });
     return m;
   });
   const handleToggleLike = useCallback((post) => {
@@ -840,8 +848,8 @@ export default function PhotoViewer({
           const hasMarketplace = post.is_for_sale && (post.whatsapp_contact || post.contact_link);
           const isPoll        = post.type === "poll";
           const isEvent       = post.type === "event";
-          const participating = (post.participants || []).some(x => (x.user_id || x) === uid);
-          const participantsCount = (post.participants || []).length;
+          const participating = participatingIds.has(post.id);
+          const participantsCount = participantCountMap[post.id] ?? (post.participants || []).length;
           const evDateParts   = isEvent ? formatEventDate(post.eventDate) : null;
 
           return (
@@ -1016,7 +1024,13 @@ export default function PhotoViewer({
                       <Users size={12} /> {participantsCount} participant{participantsCount > 1 ? "s" : ""}
                     </div>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); onParticipate?.(post.id); }}
+                  <button onClick={e => {
+                      e.stopPropagation();
+                      const alreadyParticipating = participatingIds.has(post.id);
+                      setParticipatingIds(prev => { const n = new Set(prev); alreadyParticipating ? n.delete(post.id) : n.add(post.id); return n; });
+                      setParticipantCountMap(prev => ({ ...prev, [post.id]: Math.max(0, (prev[post.id] ?? (post.participants || []).length) + (alreadyParticipating ? -1 : 1)) }));
+                      onParticipate?.(post.id);
+                    }}
                     style={{ width: "fit-content", borderRadius: 20, padding: "9px 18px", fontSize: 13, fontWeight: 700, color: participating ? "#e0b84a" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 7, background: participating ? "rgba(255,255,255,0.14)" : "linear-gradient(90deg,#ff3d6e,#ff8a3d)", border: participating ? "1px solid rgba(224,184,74,0.5)" : "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
                     {participating ? <><Check size={15} /> Vous participez</> : <><UserPlus size={15} /> Participer</>}
                   </button>
