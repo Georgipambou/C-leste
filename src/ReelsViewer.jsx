@@ -975,7 +975,7 @@ export default function ReelsViewer({
 
               {/* Infos auteur + caption */}
               <div style={{ position: "absolute", left: 14, right: 80, bottom: hasMarketplace ? "calc(178px + env(safe-area-inset-bottom,0px))" : "calc(112px + env(safe-area-inset-bottom,0px))", color: "#fff", zIndex: 2 }}>
-                <div onClick={() => onUser?.(post.by)} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }}>
+                <div onClick={() => onUser?.(post.by)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }}>
                   <span style={{ fontWeight: 700, fontSize: 15 }}>{post.author?.fullName || post.author?.prenom || post.author?.name || ""}</span>
                   <Badge type={post.author?.badge} />
                   {T && Av && <DuoBadge sb={sb} T={T} Av={Av} postId={post.id} />}

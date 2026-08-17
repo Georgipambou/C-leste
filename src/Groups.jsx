@@ -912,7 +912,7 @@ function GroupVoicePlayer({ src, mine, T }) {
   const onPointerUp = () => { draggingRef.current = false; };
   const displayBars = bars || Array.from({ length: 32 }, () => 0.4);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 200, padding: "4px 0" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 220, padding: "4px 0" }}>
       <button onClick={toggle} style={{ width: 36, height: 36, borderRadius: "50%", background: mine ? "rgba(0,0,0,0.15)" : "rgba(201,149,42,0.15)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: mine ? "#000" : T.goldL }}>
         {playing
           ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
@@ -935,6 +935,15 @@ function GroupVoicePlayer({ src, mine, T }) {
     </div>
   );
 }
+
+const mediaReplyLabel = (type, fileName) => {
+  if (type === "photo" || type === "image") return "📷 Photo";
+  if (type === "video") return "🎥 Vidéo";
+  if (type === "voice") return "🎤 Message vocal";
+  if (type === "sticker") return "🎨 Autocollant";
+  if (type === "file") return "📎 " + (fileName || "Fichier");
+  return null;
+};
 
 function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, revealingOnce }) {
   if (m.type === "system") {
@@ -1527,7 +1536,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
               <GroupMessageBubble
                 key={item.id} m={item} mine={item.sender_id === myId} T={T} Av={Av} Btn={Btn} myId={myId}
                 showHeader={item.showHeader} onOpenProfile={onOpenProfile}
-                onReply={m => setReplyTo(m)}
+                onReply={m => setReplyTo({ ...m, text: m.text || mediaReplyLabel(m.type, m.file_name) || "" })}
                 onLongPress={m => setActionMsg(m)}
                 onDoubleTap={() => doubleTap(item)}
                 burstOn={burstMsgId === item.id}
@@ -1628,7 +1637,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 <span key={em} onClick={() => { toggleGroupReaction(sb, actionMsg.id, myId, em, actionMsg.reactions).then(load); setActionMsg(null); }} style={{ fontSize: 24, cursor: "pointer" }}>{em}</span>
               ))}
             </div>
-            <div onClick={() => { setReplyTo(actionMsg); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
+            <div onClick={() => { setReplyTo(actionMsg ? { ...actionMsg, text: actionMsg.text || mediaReplyLabel(actionMsg.type, actionMsg.file_name) || "" } : null); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
             {actionMsg.sender_id === myId && actionMsg.type === "text" && (
               <div onClick={() => { setEditingMsg(actionMsg); setText(actionMsg.text); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Modifier</div>
             )}

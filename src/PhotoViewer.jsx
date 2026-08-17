@@ -687,7 +687,6 @@ export default function PhotoViewer({
     const held = likeHoldStartRef.current ? performance.now() - likeHoldStartRef.current : 0;
     setLikeFillMap(p => ({ ...p, [idx]: 0 }));
     likeHoldStartRef.current = null;
-    if (likedIds.has(post.id) === false && held < 180) return;
     haptic("light");
     const wasLiked = likedIds.has(post.id);
     handleToggleLike(post);
@@ -940,7 +939,7 @@ export default function PhotoViewer({
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 50%)", pointerEvents: "none" }} />
 
               {/* Infos auteur + caption */}
-              <div style={{ position: "absolute", left: 14, right: 80, bottom: (hasMarketplace || isEvent) ? "calc(148px + env(safe-area-inset-bottom,0px))" : "calc(90px + env(safe-area-inset-bottom,0px))", color: "#fff", zIndex: 2, pointerEvents: "none", maxHeight: "38vh", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+              <div style={{ position: "absolute", left: 14, right: 80, bottom: "calc(90px + env(safe-area-inset-bottom,0px))", color: "#fff", zIndex: 2, pointerEvents: "none", maxHeight: "50vh", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                 <div onClick={() => onUser?.(post.by)} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer", pointerEvents: "auto", width: "fit-content", flexShrink: 0 }}>
                   <span style={{ fontWeight: 700, fontSize: 15 }}>{post.author?.fullName || post.author?.prenom || post.author?.name || ""}</span>
                   <Badge type={post.author?.badge} />
@@ -981,61 +980,57 @@ export default function PhotoViewer({
                     <SoundBadge title={post.sound.title} playing={isActive} />
                   </div>
                 )}
-              </div>
-
-              {/* Boutons marketplace */}
-              {hasMarketplace && (
-                <div style={{ position: "absolute", left: 14, right: 80, bottom: "calc(90px + env(safe-area-inset-bottom,0px))", zIndex: 2, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {post.whatsapp_contact && (
-                    <a href={"https://wa.me/" + post.whatsapp_contact.replace(/\D/g, "")} target="_blank" rel="noreferrer"
-                      style={{ background: "linear-gradient(135deg,#25D366,#128C7E)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
-                      <MessageCircle size={14} /> WhatsApp
-                    </a>
-                  )}
-                  {post.contact_link && (
-                    <a href={post.contact_link} target="_blank" rel="noreferrer"
-                      style={{ background: "rgba(74,144,217,0.9)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
-                      🔗 Voir le lien
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {/* Carte événement : infos + RSVP */}
-              {isEvent && (
-                <div style={{ position: "absolute", left: 14, right: 80, bottom: "calc(90px + env(safe-area-inset-bottom,0px))", zIndex: 2, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {evDateParts && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
-                        <Calendar size={12} /> {evDateParts.dayName} {evDateParts.dayNum} {evDateParts.month}
-                      </div>
+                {hasMarketplace && (
+                  <div style={{ marginTop: 8, pointerEvents: "auto", display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {post.whatsapp_contact && (
+                      <a href={"https://wa.me/" + post.whatsapp_contact.replace(/\D/g, "")} target="_blank" rel="noreferrer"
+                        style={{ background: "linear-gradient(135deg,#25D366,#128C7E)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
+                        <MessageCircle size={14} /> WhatsApp
+                      </a>
                     )}
-                    {post.eventTime && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
-                        <Clock size={12} /> {post.eventTime}
-                      </div>
+                    {post.contact_link && (
+                      <a href={post.contact_link} target="_blank" rel="noreferrer"
+                        style={{ background: "rgba(74,144,217,0.9)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
+                        🔗 Voir le lien
+                      </a>
                     )}
-                    {post.eventLoc && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
-                        <MapPin size={12} /> {post.eventLoc}
-                      </div>
-                    )}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
-                      <Users size={12} /> {participantsCount} participant{participantsCount > 1 ? "s" : ""}
-                    </div>
                   </div>
-                  <button onClick={e => {
-                      e.stopPropagation();
-                      const alreadyParticipating = participatingIds.has(post.id);
-                      setParticipatingIds(prev => { const n = new Set(prev); alreadyParticipating ? n.delete(post.id) : n.add(post.id); return n; });
-                      setParticipantCountMap(prev => ({ ...prev, [post.id]: Math.max(0, (prev[post.id] ?? (post.participants || []).length) + (alreadyParticipating ? -1 : 1)) }));
-                      onParticipate?.(post.id);
-                    }}
-                    style={{ width: "fit-content", borderRadius: 20, padding: "9px 18px", fontSize: 13, fontWeight: 700, color: participating ? "#e0b84a" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 7, background: participating ? "rgba(255,255,255,0.14)" : "linear-gradient(90deg,#ff3d6e,#ff8a3d)", border: participating ? "1px solid rgba(224,184,74,0.5)" : "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
-                    {participating ? <><Check size={15} /> Vous participez</> : <><UserPlus size={15} /> Participer</>}
-                  </button>
-                </div>
-              )}
+                )}
+                {isEvent && (
+                  <div style={{ marginTop: 8, pointerEvents: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {evDateParts && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
+                          <Calendar size={12} /> {evDateParts.dayName} {evDateParts.dayNum} {evDateParts.month}
+                        </div>
+                      )}
+                      {post.eventTime && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
+                          <Clock size={12} /> {post.eventTime}
+                        </div>
+                      )}
+                      {post.eventLoc && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
+                          <MapPin size={12} /> {post.eventLoc}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.14)", borderRadius: 20, padding: "6px 10px", fontSize: 11.5, color: "#fff", backdropFilter: "blur(4px)" }}>
+                        <Users size={12} /> {participantsCount} participant{participantsCount > 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <button onClick={e => {
+                        e.stopPropagation();
+                        const alreadyParticipating = participatingIds.has(post.id);
+                        setParticipatingIds(prev => { const n = new Set(prev); alreadyParticipating ? n.delete(post.id) : n.add(post.id); return n; });
+                        setParticipantCountMap(prev => ({ ...prev, [post.id]: Math.max(0, (prev[post.id] ?? (post.participants || []).length) + (alreadyParticipating ? -1 : 1)) }));
+                        onParticipate?.(post.id);
+                      }}
+                      style={{ width: "fit-content", borderRadius: 20, padding: "9px 18px", fontSize: 13, fontWeight: 700, color: participating ? "#e0b84a" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 7, background: participating ? "rgba(255,255,255,0.14)" : "linear-gradient(90deg,#ff3d6e,#ff8a3d)", border: participating ? "1px solid rgba(224,184,74,0.5)" : "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
+                      {participating ? <><Check size={15} /> Vous participez</> : <><UserPlus size={15} /> Participer</>}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Actions droite */}
               <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 22, zIndex: 2 }}>

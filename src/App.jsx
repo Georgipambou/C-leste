@@ -70,6 +70,7 @@ import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
@@ -527,6 +528,15 @@ const hm = ts => new Date(ts).toLocaleTimeString("fr",{hour:"2-digit",minute:"2-
 const initials = (p="",n="") => ((p[0]||"")+(n[0]||"")).toUpperCase()||"?";
 const PALETTE = ["#C9952A","#C47890","#4A8AC4","#40A870","#8060C4","#C46040","#50A0A0","#A06090"];
 const colorFor = id => PALETTE[(id?.charCodeAt(0)||0)%PALETTE.length];
+const mediaReplyLabel=(type,fileName)=>{
+  if(type==="photo"||type==="image")return"📷 Photo";
+  if(type==="video")return"🎥 Vidéo";
+  if(type==="voice")return"🎤 Message vocal";
+  if(type==="sticker")return"🎨 Autocollant";
+  if(type==="file")return"📎 "+(fileName||"Fichier");
+  if(type==="post_share")return"🔗 Publication partagée";
+  return null;
+};
 const renderTextWithMentions = (text, mentions=[]) => {
   if (!text) return "";
   // Les noms mentionnés peuvent contenir des espaces/points/tirets (ex: "M. D.", "Jean-Marc").
@@ -698,6 +708,16 @@ const getGS = () => `
 @font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'Sora';src:url('/fonts/sora.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @media(prefers-reduced-motion:reduce){*{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
+
+  :root{
+    --fs-xs: clamp(9px, 2.6vw, 10px);
+    --fs-sm: clamp(11px, 3vw, 12px);
+    --fs-base: clamp(13px, 3.6vw, 14px);
+    --fs-md: clamp(14px, 4vw, 16px);
+    --fs-lg: clamp(17px, 5vw, 20px);
+    --fs-xl: clamp(22px, 6.5vw, 28px);
+    --gutter: clamp(10px, 4vw, 16px);
+  }
   
   *, *::before, *::after {
     box-sizing: border-box;
@@ -711,6 +731,9 @@ const getGS = () => `
 
  html, body, #root {
     height: 100%;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
     background: ${T.bg};
     overscroll-behavior: contain;
   }
@@ -1095,28 +1118,28 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
     return()=>{clearTimeout(t);try{sb.removeChannel(ch);}catch(_){}};
   },[load,sb,session?.user?.id]);
 
-  const bubbleStyle={position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)"};
+  const bubbleStyle={position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)",zIndex:1,boxShadow:"0 2px 8px rgba(0,0,0,0.25)"};
 
   return(
     <>
-    <div style={{display:"flex",gap:16,overflowX:"auto",padding:"38px 16px 14px",scrollbarWidth:"none"}}>
-      <div onClick={()=>setShowComposer(true)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,flexShrink:0,cursor:"pointer"}}>
+    <div style={{display:"flex",gap:100,overflowX:"auto",padding:"48px 16px 6px",scrollbarWidth:"none"}}>
+      <div onClick={()=>setShowComposer(true)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
         <div style={{position:"relative"}}>
           {myNote&&<div style={bubbleStyle}>{renderTextWithMentions(myNote.text)}</div>}
-          <Av u={myProfile} size={52} noStatus/>
-          <div style={{position:"absolute",bottom:-2,right:-2,width:18,height:18,borderRadius:"50%",background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${T.bg}`}}>
-            {myNote?<Edit2 size={9} color="#000"/>:<Plus size={11} color="#000"/>}
+          <Av u={myProfile} size={40} noStatus/>
+          <div style={{position:"absolute",bottom:-2,right:-2,width:15,height:15,borderRadius:"50%",background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${T.bg}`}}>
+            {myNote?<Edit2 size={8} color="#000"/>:<Plus size={9} color="#000"/>}
           </div>
         </div>
-        <p style={{margin:0,fontSize:11,color:T.muted}}>Ta note</p>
+        <p style={{margin:0,fontSize:10,color:T.muted}}>Ta note</p>
       </div>
       {notes.map(n=>(
-        <div key={n.id} onClick={()=>setReplyNote(n)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,flexShrink:0,cursor:"pointer"}}>
+        <div key={n.id} onClick={()=>setReplyNote(n)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
           <div style={{position:"relative"}}>
             <div style={bubbleStyle}>{renderTextWithMentions(n.text)}</div>
-            <Av u={n.author} size={52} noStatus/>
+            <Av u={n.author} size={40} noStatus/>
           </div>
-          <p style={{margin:0,fontSize:11,color:T.muted,maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.author?.name||"?"}</p>
+          <p style={{margin:0,fontSize:10,color:T.muted,maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.author?.name||"?"}</p>
         </div>
       ))}
     </div>
@@ -1311,6 +1334,8 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
   const touchStartY = useRef(null);
   const touchStartX = useRef(null);
   const seekDuration = useRef(0);
+  const seekingRef = useRef(false);
+  const pendingSeekRef = useRef(null);
   const progressBarRef = useRef(null);
   const progressTimeRef = useRef(null);
   const pausedRef = useRef(false);
@@ -1450,8 +1475,11 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
       onTouchMove={e => {
         if (touchStartX.current === null || !ref.current) return;
         const diff = (e.touches[0].clientX - touchStartX.current) / window.innerWidth * (seekDuration.current * 0.5);
-        ref.current.currentTime = Math.max(0, Math.min(seekDuration.current, ref.current.currentTime + diff));
+        const target = Math.max(0, Math.min(seekDuration.current, ref.current.currentTime + diff));
         touchStartX.current = e.touches[0].clientX;
+        if (seekingRef.current) { pendingSeekRef.current = target; return; }
+        seekingRef.current = true;
+        ref.current.currentTime = target;
       }}
       onTouchEnd={() => { touchStartX.current = null; }}
     >
@@ -1459,6 +1487,15 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
         ref={ref} src={url} playsInline webkit-playsinline="true"
         muted={muted} loop preload="metadata"
         style={{ width: "100%", borderRadius: 14, display: "block", background: "#000", height: 360, objectFit: "cover", ...style }}
+        onSeeked={e => {
+          seekingRef.current = false;
+          if (pendingSeekRef.current !== null) {
+            const next = pendingSeekRef.current;
+            pendingSeekRef.current = null;
+            seekingRef.current = true;
+            e.target.currentTime = next;
+          }
+        }}
         onTimeUpdate={e => {
           const el = e.target; if (!el.duration) return;
           const pct = (el.currentTime / el.duration) * 100;
@@ -6760,6 +6797,8 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg,position:"relative"}}>
       <InstallBanner/>
+      {/* Notes — défile avec le contenu, ne reste pas collée */}
+      <NotesBar sb={sb} T={T} Av={Av} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify}/>
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
@@ -6774,8 +6813,6 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher une conversation…" style={{flex:1,background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
           {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex"}}><X size={14}/></Btn>}
         </div>
-        {/* Notes */}
-        <NotesBar sb={sb} T={T} Av={Av} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify}/>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto",alignItems:"center"}}>
           {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"}].map(f=>(
@@ -7073,7 +7110,7 @@ function VoicePlayer({src,mine,T}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack}){
+function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated}){
 const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
@@ -7265,9 +7302,13 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   }
 }
     const{data}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${conv.uid}),and(user1_id.eq.${conv.uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
-    if(data)return data.id;
-    const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:conv.uid}).select().single();
-    return created?.id;
+    let convId=data?.id;
+    if(!convId){
+      const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:conv.uid}).select().single();
+      convId=created?.id;
+    }
+    if(convId&&convId!==conv.id)onConvCreated?.(convId);
+    return convId;
   };
 
   const sendMsg=async payload=>{
@@ -7530,7 +7571,7 @@ const handleFile=async(e,isImg)=>{
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
       {/* Chat header — style Instagram */}
-<div style={{position:"relative",zIndex:1,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid rgba(255,255,255,0.08)`,padding:"3px 10px",paddingTop:"calc(3px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
+<div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"3px 10px",paddingTop:"calc(3px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
   <Btn onClick={()=>onBack&&onBack()} style={{color:T.gold,padding:"6px 2px 6px 0",display:"flex",alignItems:"center",flexShrink:0}}><ChevronLeft size={22}/></Btn>
   <div style={{position:"relative",flexShrink:0}}>
     <Av u={user} size={26} onClick={()=>onOpenConvInfo&&onOpenConvInfo(user.id)}/>
@@ -7569,7 +7610,7 @@ const handleFile=async(e,isImg)=>{
             <div key={m.id} ref={el=>{if(el)msgRefs.current[m.id]=el;}} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",alignItems:"flex-end",gap:8,animation:isSending?"none":"msgIn .25s ease",borderRadius:14,transition:"background .6s",background:highlightMsgId===m.id?"rgba(201,149,42,0.18)":"transparent"}}>
               {!mine&&<Av u={user} size={28} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>}
               <div style={{maxWidth:"72%",display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",opacity:isSending?0.65:1,transition:"opacity .3s",position:"relative"}}>
-<SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text,authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
+<SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text||mediaReplyLabel(msg.type,msg.fileName)||"",authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
 <div
   onClick={m.error?()=>retryMessage(sb,m.id,notify).then(reload):doubleTap}
   onMouseDown={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpm=t;}}
@@ -7887,7 +7928,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             {selectedMsg.text&&<div style={{padding:"14px 20px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
               <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
             </div>}
-            <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text,authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+            <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text||mediaReplyLabel(selectedMsg.type,selectedMsg.fileName)||"",authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <Reply size={18}/><span>Répondre</span>
             </Btn>
             
@@ -10377,7 +10418,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
   return(
     <>
     <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,maxHeight:"90vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:"min(1100px, 96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
           <div>
             <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.goldL}}>🛡 Administration</h2>
@@ -10484,8 +10525,9 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
             </div>
             :<>
               {(displayList||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun membre</p>}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:10,padding:"12px 16px"}}>
               {(displayList||[]).map(m=>(
-                <div key={m.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:m.status==="pending"?"rgba(201,149,42,0.03)":m.status==="suspended"?"rgba(200,64,64,0.03)":"none"}}>
+                <div key={m.id} style={{padding:14,borderRadius:14,border:`1px solid ${T.border}`,background:m.status==="pending"?"rgba(201,149,42,0.05)":m.status==="suspended"?"rgba(200,64,64,0.05)":"rgba(255,255,255,0.02)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:10}}>
                     <Av u={m} size={44}/>
                     <div style={{flex:1,minWidth:0}}>
@@ -10540,6 +10582,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
                   )}
                 </div>
               ))}
+              </div>
             </>
           }
         </div>
@@ -10852,6 +10895,17 @@ function CelesteApp(){
     window.addEventListener("resize",setAppVh);
     window.addEventListener("orientationchange",setAppVh);
     return()=>{window.removeEventListener("resize",setAppVh);window.removeEventListener("orientationchange",setAppVh);};
+  },[]);
+
+  useEffect(()=>{
+    if(!Capacitor.isNativePlatform())return;
+    (async()=>{
+      try{
+        await StatusBar.setOverlaysWebView({overlay:true});
+        await StatusBar.setStyle({style:Style.Dark});
+        await StatusBar.setBackgroundColor({color:"#00000000"});
+      }catch(_){}
+    })();
   },[]);
 
   const [chatDrafts,setChatDrafts]=useState({});
@@ -11574,7 +11628,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
 )}
-        <div style={{height:56,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId)?"none":"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0,zIndex:30}}>
+        <div style={{height:"calc(64px + env(safe-area-inset-top,0px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId)?"none":"flex",alignItems:"center",padding:"env(safe-area-inset-top,0px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -11584,7 +11638,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
                 <span style={{fontFamily:logoFont,fontSize:32,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))"}}>✦</span>
                 <span key={logoFont} style={{position:"relative",display:"inline-block"}}>
-                  <span style={{fontFamily:logoFont,fontSize:38,fontWeight:400,letterSpacing:0,color:T.text,display:"inline-block",animation:"writeIn 1.1s cubic-bezier(.65,0,.35,1) both"}}>Céleste</span>
+                  <span style={{fontFamily:logoFont,fontSize:38,lineHeight:1.5,fontWeight:400,letterSpacing:0,color:T.text,display:"inline-block",animation:"writeIn 1.1s cubic-bezier(.65,0,.35,1) both"}}>Céleste</span>
                   <span style={{position:"absolute",top:2,bottom:2,left:0,width:2,borderRadius:1,background:T.gold,boxShadow:`0 0 6px ${T.gold}`,animation:"penMove 1.1s cubic-bezier(.65,0,.35,1) both"}}/>
                 </span>
               </div>
@@ -11605,7 +11659,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {/* Notifications panel overlay */}
         {showNotifs&&!openConvId&&!openUserId&&(
           <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}} onClick={()=>{popNav();setShowNotifs(false);}}>
-            <div style={{position:"absolute",top:56,left:0,right:0,background:T.bg3,borderBottom:`1px solid ${T.border}`,maxHeight:"70vh",overflowY:"auto",animation:"slideDown .25s ease"}} onClick={e=>e.stopPropagation()}>
+            <div style={{position:"absolute",top:"calc(64px + env(safe-area-inset-top,0px))",left:0,right:0,background:T.bg3,borderBottom:`1px solid ${T.border}`,maxHeight:"70vh",overflowY:"auto",animation:"slideDown .25s ease"}} onClick={e=>e.stopPropagation()}>
               <NotifsScreen myProfile={myProfile} session={session} members={members}/>
             </div>
           </div>
@@ -11627,7 +11681,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 });}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&!openConvInfoUid&&(
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}}/>
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}}/>
           )}
           {openConvInfoUid&&(
             <ConversationInfoScreen
@@ -11721,7 +11775,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 )}
 {/* Bottom nav premium */}
        {!openConvId&&!openUserId&&!hideNav&&(
-          <div style={{height:66,position:"relative",overflow:"hidden",flexShrink:0,zIndex:30}}>
+          <div style={{height:"calc(66px + env(safe-area-inset-bottom,0px))",paddingBottom:"env(safe-area-inset-bottom,0px)",position:"relative",overflow:"hidden",flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
             <NavScenery theme={navTheme}/>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.78) 100%)",pointerEvents:"none"}}/>
             <div style={{position:"relative",zIndex:2,display:"flex",height:"100%"}}>
