@@ -1,5 +1,21 @@
 package social.celesteapp;
 
+import android.os.Bundle;
+import android.webkit.WebSettings;
+import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
 
-public class MainActivity extends BridgeActivity {}
+public class MainActivity extends BridgeActivity {
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    super.onCreate(savedInstanceState);
+  }
+
+  @Override
+  public void onStart() {
+    super.onStart();
+    WebSettings settings = this.bridge.getWebView().getSettings();
+    settings.setTextZoom(100);
+  }
+}
