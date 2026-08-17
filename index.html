@@ -39,6 +39,16 @@
         });
       });
     </script>
+  <script>
+      (function() {
+        var lightThemes = ["facebook", "google", "light"];
+        var theme = "dark";
+        try { theme = localStorage.getItem("celeste_theme") || "dark"; } catch (_) {}
+        var bg = lightThemes.indexOf(theme) !== -1 ? "#FFFFFF" : "#000000";
+        document.documentElement.style.backgroundColor = bg;
+        document.write('<style>html,body,#root{background-color:' + bg + ';margin:0;padding:0;min-height:100%;}</style>');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
