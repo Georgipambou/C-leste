@@ -1,0 +1,26 @@
+diff --git a/node_modules/send-intent/Package.swift b/node_modules/send-intent/Package.swift
+index 32e2667..9697ad0 100644
+--- a/node_modules/send-intent/Package.swift
++++ b/node_modules/send-intent/Package.swift
+@@ -10,7 +10,7 @@ let package = Package(
+             targets: ["SendIntentPlugin"])
+     ],
+     dependencies: [
+-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "7.0.0")
++        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", "7.0.0"..<"9.0.0")
+     ],
+     targets: [
+         .target(
+diff --git a/node_modules/send-intent/android/build.gradle b/node_modules/send-intent/android/build.gradle
+index 78bb52f..9eece60 100644
+--- a/node_modules/send-intent/android/build.gradle
++++ b/node_modules/send-intent/android/build.gradle
+@@ -21,7 +21,7 @@ apply plugin: 'com.android.library'
+ 
+ android {
+     namespace "de.mindlib.sendIntent.sendintent"
+-    compileSdkVersion 35
++    compileSdkVersion 36
+ 
+     defaultConfig {
+         minSdkVersion 23
