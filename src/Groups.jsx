@@ -9,7 +9,7 @@ import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send,
 import EasyCrop from "react-easy-crop";
 import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
-import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage } from "./lib/groupMessageQueue";
+import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage, trackGroupFileSend, updateGroupFileSend, removeGroupFileSend, getGroupFileSendsForConv, subscribeGroupFileSends } from "./lib/groupMessageQueue";
 import StickerPicker from "./components/StickerPicker";
 import { Capacitor } from "@capacitor/core";
 import { PrivacyScreen } from "@capacitor-community/privacy-screen";
@@ -1114,6 +1114,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const displayGroup = groupOverride ? { ...group, ...groupOverride } : group;
   const canWrite = !displayGroup.announce_only || isGroupAdmin;
   const bottomRef = useRef(null);
+  const msgsScrollRef = useRef(null);
   const iRef = useRef(null);
   const fRef = useRef(null);
   const msgRefs = useRef({});
@@ -1128,7 +1129,6 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [cropSrc, setCropSrc] = useState(null);
   const [cropResolve, setCropResolve] = useState(null);
   const [videoTrimSrc, setVideoTrimSrc] = useState(null);
-  const [sendingFiles, setSendingFiles] = useState([]);
   const [bgPhoto, setBgPhoto] = useState(null);
   const bgRef = useRef(null);
   const myId = session?.user?.id;
@@ -1144,6 +1144,11 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [sendingMsgs, setSendingMsgs] = useState(() => getQueueForGroup(group.id).map(mapQueue));
   useEffect(() => subscribeGroupQueue(() => {
     setSendingMsgs(getQueueForGroup(group.id).map(mapQueue));
+  }), [group.id]);
+  const mapFileQueue = f => ({ id: f.id, type: f.fileType, file_name: f.fileName, sender_id: myId, ts: f.ts, pct: f.pct, sending: f.status !== "error", error: f.status === "error" });
+  const [sendingFiles, setSendingFiles] = useState(() => getGroupFileSendsForConv(group.id).map(mapFileQueue));
+  useEffect(() => subscribeGroupFileSends(() => {
+    setSendingFiles(getGroupFileSendsForConv(group.id).map(mapFileQueue));
   }), [group.id]);
   const { peerTyping, notifyTyping } = useTypingIndicator(sb, `group_${group.id}`, session);
 
@@ -1276,7 +1281,11 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       }
       return;
     }
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const lastMsg = msgs[msgs.length - 1];
+    const isMine = lastMsg && lastMsg.sender_id === myId;
+    const el = msgsScrollRef.current;
+    const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight < 150);
+    if (isMine || nearBottom) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [msgs.length, lastReadAt, myId]);
 
   useEffect(() => {
@@ -1355,23 +1364,21 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     const tempId = "tmp_gfile_" + Date.now();
     const fileType = f.type.startsWith("video/") ? "video" : (isMedia ? "photo" : "file");
     const fileName = f.name;
-    setSendingFiles(p => [...p, { id: tempId, type: fileType, file_name: fileName, sender_id: myId, ts: Date.now(), sending: true, pct: 0 }]);
+    trackGroupFileSend(tempId, group.id, { fileType, fileName });
     input.value = "";
 
     const attempt = async (tries = 0) => {
       try {
-        const url = await uploadToR2(f, "group_messages", pct => {
-          setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
-        });
+        const url = await uploadToR2(f, "group_messages", pct => updateGroupFileSend(tempId, { pct }));
         const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: fileType, file_url: url, file_name: fileName, text: "", view_once: wantViewOnce && fileType !== "file" });
         if (error) throw error;
-        setSendingFiles(p => p.filter(x => x.id !== tempId));
+        removeGroupFileSend(tempId);
         load();
       } catch (err) {
         if (tries < 2) {
           setTimeout(() => attempt(tries + 1), 1500 * (tries + 1));
         } else {
-          setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, sending: false, error: true } : x));
+          updateGroupFileSend(tempId, { sending: false, status: "error" });
           notify?.("Échec de l'envoi — vérifie ta connexion");
         }
       }
@@ -1406,20 +1413,18 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
         const audioFile = new File([blob], `voice_group_${Date.now()}.${ext}`, { type: mimeType });
         const tempId = "tmp_gvoice_" + Date.now();
-        setSendingFiles(p => [...p, { id: tempId, type: "voice", sender_id: myId, ts: Date.now(), sending: true, pct: 0 }]);
+        trackGroupFileSend(tempId, group.id, { fileType: "voice", fileName: null });
         const attempt = async (tries = 0) => {
           try {
-            const url = await uploadToR2(audioFile, "group_messages", pct => {
-              setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, pct } : x));
-            });
+            const url = await uploadToR2(audioFile, "group_messages", pct => updateGroupFileSend(tempId, { pct }));
             const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce });
             if (error) throw error;
-            setSendingFiles(p => p.filter(x => x.id !== tempId));
+            removeGroupFileSend(tempId);
             load();
           } catch (err) {
             if (tries < 2) { setTimeout(() => attempt(tries + 1), 1500 * (tries + 1)); }
             else {
-              setSendingFiles(p => p.map(x => x.id === tempId ? { ...x, sending: false, error: true } : x));
+              updateGroupFileSend(tempId, { sending: false, status: "error" });
               notify?.("Échec de l'envoi du vocal");
             }
           }
@@ -1528,7 +1533,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <Btn onClick={() => bgRef.current?.click()} style={{ color: T.muted, padding: "6px", display: "flex", alignItems: "center" }}><ImageIcon size={18} /></Btn>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+      <div ref={msgsScrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
         {displayList.map(item =>
           item._divider
             ? <DayDivider key={item.key} label={item.label} T={T} />
@@ -1602,7 +1607,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
               onChange={e => { setText(e.target.value); notifyTyping(); }}
               onKeyDown={e => e.key === "Enter" && send()}
               placeholder={editingMsg ? "Modifier le message…" : "Message…"}
-              style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "10px 16px", color: T.text, fontSize: 14, outline: "none" }}
+              style={{ flex: 1, minWidth: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "10px 16px", color: T.text, fontSize: 14, outline: "none" }}
             />
             {text.trim()
               ? (

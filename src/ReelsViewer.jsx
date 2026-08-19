@@ -379,10 +379,15 @@ export default function ReelsViewer({
   // ── Gestion lecture / pause / preload ─────────────────────────
   useEffect(() => {
     const active = videoRefs.current[activeIdx];
+    const thisIdx = activeIdx;
     if (active) {
       active.muted = muted;
       pauseOtherVideos(active);
-      active.play().catch(() => {});
+      active.play().then(() => {
+        // Sécurité anti-son-fantôme : si l'utilisateur a déjà swipé vers un
+        // autre Reel au moment où play() se résout, on coupe immédiatement.
+        if (activeIdxRef.current !== thisIdx) active.pause();
+      }).catch(() => {});
       setPausedMap(p => ({ ...p, [activeIdx]: false }));
       requestWakeLock();
       const post = displayPosts[activeIdx];
@@ -894,7 +899,11 @@ export default function ReelsViewer({
                   onWaiting={() => setLoadingMap(p => ({ ...p, [idx]: true  }))}
                   onCanPlay={() => {
                     setLoadingMap(p => ({ ...p, [idx]: false }));
-                    if (idx === activeIdx && !pausedMap[idx]) videoRefs.current[idx]?.play().catch(() => {});
+                    const v = videoRefs.current[idx];
+                    if (idx === activeIdx && !pausedMap[idx] && v) {
+                      pauseOtherVideos(v);
+                      v.play().catch(() => {});
+                    }
                   }}
                   onPlaying={() => setLoadingMap(p => ({ ...p, [idx]: false }))}
                   onTimeUpdate={e => {

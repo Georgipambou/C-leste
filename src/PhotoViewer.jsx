@@ -95,7 +95,7 @@ function PhotoPollCard({ post, sb, session }) {
   const [options, setOptions] = useState([]);
   const [votes, setVotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState(false);
+ 
   const [justVoted, setJustVoted] = useState(null);
   const expired = post.expires_at ? new Date(post.expires_at).getTime() <= Date.now() : false;
 
@@ -134,22 +134,21 @@ function PhotoPollCard({ post, sb, session }) {
   const myOptionIds = useMemo(() => new Set(votes.filter(v => v.voter_id === uid).map(v => v.option_id)), [votes, uid]);
 
   const handleVote = async optId => {
-    if (!uid || pending || expired) return;
-    setPending(true); setJustVoted(optId);
+    if (!uid || expired) return;
+    setJustVoted(optId);
     setTimeout(() => setJustVoted(null), 450);
     const alreadyMine = myOptionIds.has(optId);
     if (alreadyMine) {
       setVotes(prev => prev.filter(v => !(v.option_id === optId && v.voter_id === uid)));
-      await sb.from("poll_votes").delete().eq("post_id", post.id).eq("option_id", optId).eq("voter_id", uid);
+      sb.from("poll_votes").delete().eq("post_id", post.id).eq("option_id", optId).eq("voter_id", uid);
     } else if (!post.poll_multiple && myOptionIds.size > 0) {
       setVotes(prev => [...prev.filter(v => v.voter_id !== uid), { option_id: optId, voter_id: uid }]);
-      await sb.from("poll_votes").delete().eq("post_id", post.id).eq("voter_id", uid);
-      await sb.from("poll_votes").insert({ post_id: post.id, option_id: optId, voter_id: uid });
+      sb.from("poll_votes").delete().eq("post_id", post.id).eq("voter_id", uid)
+        .then(() => sb.from("poll_votes").insert({ post_id: post.id, option_id: optId, voter_id: uid }));
     } else {
       setVotes(prev => [...prev, { option_id: optId, voter_id: uid }]);
-      await sb.from("poll_votes").insert({ post_id: post.id, option_id: optId, voter_id: uid });
+      sb.from("poll_votes").insert({ post_id: post.id, option_id: optId, voter_id: uid });
     }
-    setPending(false);
   };
 
   return (
@@ -173,7 +172,7 @@ function PhotoPollCard({ post, sb, session }) {
             const mine = myOptionIds.has(opt.id);
             const color = POLL_COLORS[i % POLL_COLORS.length];
             return (
-              <button key={opt.id} disabled={expired || pending} onClick={() => handleVote(opt.id)}
+              <button key={opt.id} disabled={expired} onClick={() => handleVote(opt.id)}
                 style={{ display: "block", width: "100%", position: "relative", overflow: "hidden", border: `1px solid ${mine ? color + "aa" : "rgba(255,255,255,0.18)"}`, borderRadius: 14, padding: "13px 15px", marginBottom: 9, background: "rgba(255,255,255,0.06)", backdropFilter: "blur(6px)", cursor: expired ? "default" : "pointer", textAlign: "left", transition: "transform .12s cubic-bezier(0.34,1.56,0.64,1), border-color .15s ease", transform: justVoted === opt.id ? "scale(0.96)" : "scale(1)" }}>
                 <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg,${color}55,${color}22)`, transition: justVoted === opt.id ? "none" : "width .35s cubic-bezier(0.22,1,0.36,1)" }} />
                 <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -857,7 +856,7 @@ export default function PhotoViewer({
               ref={el => itemRefs.current[idx] = el}
               data-idx={idx}
               style={{
-                height: "100vh", width: "100%",
+                height: "calc(var(--app-vh, 1vh) * 100)", width: "100%",
                 scrollSnapAlign: "start",
                 scrollSnapStop: "always",
                 position: "relative",
@@ -943,7 +942,7 @@ export default function PhotoViewer({
                 <div onClick={() => onUser?.(post.by)} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer", pointerEvents: "auto", width: "fit-content", flexShrink: 0 }}>
                   <span style={{ fontWeight: 700, fontSize: 15 }}>{post.author?.fullName || post.author?.prenom || post.author?.name || ""}</span>
                   <Badge type={post.author?.badge} />
-                  {T && Av && <DuoBadge sb={sb} T={T} Av={Av} postId={post.id} />}
+                  {T && Av && isActive && <DuoBadge sb={sb} T={T} Av={Av} postId={post.id} />}
                   {post.pinned && T && <span style={{ fontSize: 10, color: T.goldL, fontWeight: 700, background: T.goldBg, border: `1px solid ${T.gold}55`, padding: "2px 8px", borderRadius: 20, backdropFilter: "blur(4px)", pointerEvents: "auto" }}>✦ Sponsorisé</span>}
                   {post.is_ai_generated && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "#c4b5fd", background: "rgba(139,92,246,0.25)", border: "1px solid rgba(139,92,246,0.5)", padding: "2px 8px", borderRadius: 20, backdropFilter: "blur(4px)", pointerEvents: "auto" }}><Sparkles size={10} /> IA</span>}
                 </div>
@@ -1064,6 +1063,7 @@ export default function PhotoViewer({
                   onPointerDown={e => { e.stopPropagation(); startLikeHold(idx, post); }}
                   onPointerUp={e => { e.stopPropagation(); endLikeHold(idx, post); }}
                   onPointerLeave={() => cancelLikeHold(idx)}
+                  onPointerCancel={() => cancelLikeHold(idx)}
                   style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, touchAction: "none" }}
                 >
                   <div style={{ position: "relative", width: 32, height: 32 }}>
@@ -1086,7 +1086,8 @@ export default function PhotoViewer({
                   onPointerMove={e => { e.stopPropagation(); moveLongPress(idx, e); }}
                   onPointerUp={e => { e.stopPropagation(); endLongPress(idx, post); }}
                   onPointerLeave={() => { if (reactOpenIdx === idx) endLongPress(idx, post); else cancelLongPress(); }}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative", touchAction: reactOpenIdx === idx ? "none" : "auto" }}
+                  onPointerCancel={() => { if (reactOpenIdx === idx) { setReactOpenIdx(null); setReactDir(null); reactStartRef.current = null; lastReactDirRef.current = null; } cancelLongPress(); }}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative", touchAction: "none" }}
                 >
                   <button
                     onClick={() => { if (reactOpenIdx !== idx) { setPhotoModalOpen(true); onOpenComments(post, (newCount) => { setPhotoModalOpen(false); if (typeof newCount === "number") setCommentCountOverrideMap(p => ({ ...p, [post.id]: newCount })); }); } }}

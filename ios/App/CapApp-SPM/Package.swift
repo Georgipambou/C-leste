@@ -18,7 +18,9 @@ let package = Package(
         .package(name: "CapacitorFilesystem", path: "..\..\..\node_modules\@capacitor\filesystem"),
         .package(name: "CapacitorGeolocation", path: "..\..\..\node_modules\@capacitor\geolocation"),
         .package(name: "CapacitorHaptics", path: "..\..\..\node_modules\@capacitor\haptics"),
+        .package(name: "CapacitorKeyboard", path: "..\..\..\node_modules\@capacitor\keyboard"),
         .package(name: "CapacitorShare", path: "..\..\..\node_modules\@capacitor\share"),
+        .package(name: "CapacitorStatusBar", path: "..\..\..\node_modules\@capacitor\status-bar"),
         .package(name: "OnesignalCapacitorPlugin", path: "..\..\..\node_modules\@onesignal\capacitor-plugin"),
         .package(name: "SendIntent", path: "..\..\..\node_modules\send-intent")
     ],
@@ -34,7 +36,9 @@ let package = Package(
                 .product(name: "CapacitorFilesystem", package: "CapacitorFilesystem"),
                 .product(name: "CapacitorGeolocation", package: "CapacitorGeolocation"),
                 .product(name: "CapacitorHaptics", package: "CapacitorHaptics"),
+                .product(name: "CapacitorKeyboard", package: "CapacitorKeyboard"),
                 .product(name: "CapacitorShare", package: "CapacitorShare"),
+                .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar"),
                 .product(name: "OnesignalCapacitorPlugin", package: "OnesignalCapacitorPlugin"),
                 .product(name: "SendIntent", package: "SendIntent")
             ]

@@ -38,7 +38,7 @@ import {
   ConversationInfoScreen, ConvPinGateScreen, isConvLocked, removeConvLock,
   isConvMuted
 } from "./ChatExtras";
-import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage } from "./lib/messageQueue";
+import { enqueueMessage, getQueueForConv, getConvStatuses, subscribeQueue, processQueue, retryMessage, trackFileSend, updateFileSend, removeFileSend, getFileSendsForConv, subscribeFileSends } from "./lib/messageQueue";
 import { processGroupQueue } from "./lib/groupMessageQueue";
 import { CreateGroupModal, GroupPrivacySetting, useMyGroups, GroupRow, GroupChatScreen, usePendingGroupInvites, PendingGroupInviteCard, isGroupPinned, toggleGroupPin, isGroupFavorite, toggleGroupFavorite, isGroupHidden, hideGroupForMe } from "./Groups";
 
@@ -70,6 +70,7 @@ import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { Capacitor } from '@capacitor/core';
+import { Keyboard } from '@capacitor/keyboard';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
@@ -123,7 +124,13 @@ import previewLight from "./assets/preview-light.webp";
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON;
 if(!SUPABASE_URL||!SUPABASE_ANON)console.error("Variables Supabase manquantes !");
-const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"");
+const memoryAuthStore={};
+const safeAuthStorage={
+  getItem:(k)=>{try{return localStorage.getItem(k);}catch(e){return memoryAuthStore[k]||null;}},
+  setItem:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){memoryAuthStore[k]=v;}},
+  removeItem:(k)=>{try{localStorage.removeItem(k);}catch(e){delete memoryAuthStore[k];}}
+};
+const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"",{auth:{storage:safeAuthStorage}});
 const haptic=async(style="light")=>{
   try{
     if(Capacitor.isNativePlatform()){
@@ -727,19 +734,34 @@ const getGS = () => `
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     touch-action: manipulation; /* Protège le comportement tactile natif */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
   }
 
  html, body, #root {
     height: 100%;
     width: 100%;
     max-width: 100vw;
-    overflow-x: hidden;
+    overflow: hidden;
     background: ${T.bg};
     overscroll-behavior: contain;
   }
 
   input, textarea {
     font-size: 16px !important;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  .selectable-text, .selectable-text * {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
 
   .keyboard-open-hide {
@@ -1106,7 +1128,7 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
     if(!session?.user?.id)return;
     sb.from("notes").select("*").eq("user_id",session.user.id).gt("expires_at",new Date().toISOString()).maybeSingle().then(({data})=>setMyNote(data||null));
     if((myConnections||[]).length){
-      sb.from("notes").select("*,author:profiles(id,prenom,nom,avatar_url)").in("user_id",myConnections).gt("expires_at",new Date().toISOString())
+      sb.from("notes").select("*,author:profiles(id,prenom,nom,avatar_url)").in("user_id",myConnections).gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false})
         .then(({data})=>setNotes((data||[]).map(n=>({...n,author:normProfile(n.author||{})}))));
     }else setNotes([]);
   },[session?.user?.id,myConnections,sb]);
@@ -1122,7 +1144,7 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
 
   return(
     <>
-    <div style={{display:"flex",gap:100,overflowX:"auto",padding:"48px 16px 6px",scrollbarWidth:"none"}}>
+    <div style={{display:"flex",gap:10,overflowX:"auto",padding:"48px 16px 6px",scrollbarWidth:"none"}}>
       <div onClick={()=>setShowComposer(true)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
         <div style={{position:"relative"}}>
           {myNote&&<div style={bubbleStyle}>{renderTextWithMentions(myNote.text)}</div>}
@@ -1299,6 +1321,7 @@ const AuthField=memo(function AuthField({val,set,placeholder,type="text",showPw,
     <div style={{position:"relative"}}>
       <input type={type==="password"?(showPw?"text":"password"):type} value={val} onChange={e=>set(e.target.value)}
         placeholder={placeholder} autoComplete={type==="password"?"current-password":"on"}
+        autoCapitalize="none" autoCorrect="off" spellCheck="false"
         style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:T.text,fontSize:13,outline:"none",transition:"border .2s"}}/>
       {type==="password"&&<Btn onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11}}>{showPw?<EyeOff size={14}/>:<Eye size={14}/>}</Btn>}
     </div>
@@ -1328,6 +1351,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
   const [muted, setMuted] = useGlobalVideoMuted();
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [hasFrame, setHasFrame] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const controlsTimer = useRef(null);
@@ -1340,6 +1364,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
   const progressTimeRef = useRef(null);
   const pausedRef = useRef(false);
   const fullscreenRef = useRef(false);
+  const isIntersectingRef = useRef(false);
 
   const triggerControls = () => {
     setShowControls(true);
@@ -1358,10 +1383,19 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     const obs = new IntersectionObserver(([entry]) => {
       if (!isMounted || fullscreenRef.current) return;
       clearTimeout(playTimer);
-      if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+      isIntersectingRef.current = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+      if (isIntersectingRef.current) {
         playTimer = setTimeout(() => {
           if (!isMounted || fullscreenRef.current) return;
-          if (!pausedRef.current) { __pauseOtherPostVideos(el); el.play().catch(() => {}); setPlaying(true); }
+          if (!pausedRef.current) {
+            __pauseOtherPostVideos(el);
+            el.play().then(() => {
+              // Sécurité anti-son-fantôme : si la vidéo n'est plus visible
+              // au moment où le play() se résout (WebView lente), on coupe.
+              if (!isIntersectingRef.current) el.pause();
+            }).catch(() => {});
+            setPlaying(true);
+          }
         }, 180);
       } else {
         el.pause(); setPlaying(false); __releaseActivePostVideo(el);
@@ -1387,6 +1421,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
     // Pas de manipulation des styles React — on laisse React re-render proprement
     setTimeout(() => {
       if (ref.current && !pausedRef.current) {
+        __pauseOtherPostVideos(ref.current);
         ref.current.play().catch(() => {});
         setPlaying(true);
       }
@@ -1411,7 +1446,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
       setFullscreen(false);
       setPaused(false);
       setPlaying(true);
-      setTimeout(()=>{if(ref.current)ref.current.play().catch(()=>{});},300);
+      setTimeout(()=>{if(ref.current){__pauseOtherPostVideos(ref.current);ref.current.play().catch(()=>{});}},300);
     },{once:true});
     el.webkitEnterFullscreen();
     return;
@@ -1487,6 +1522,7 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
         ref={ref} src={url} playsInline webkit-playsinline="true"
         muted={muted} loop preload="metadata"
         style={{ width: "100%", borderRadius: 14, display: "block", background: "#000", height: 360, objectFit: "cover", ...style }}
+        onLoadedData={() => setHasFrame(true)}
         onSeeked={e => {
           seekingRef.current = false;
           if (pendingSeekRef.current !== null) {
@@ -1520,7 +1556,10 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
           </div>
         </div>
       </div>
-      {!playing && (
+      {!hasFrame && (
+        <div style={{ position: "absolute", inset: 0, borderRadius: 14, background: "linear-gradient(100deg, rgba(255,255,255,0.03) 30%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 70%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite", pointerEvents: "none" }} />
+      )}
+      {hasFrame && paused && (
         <div onClick={togglePlayPause} style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 1, borderRadius: 14 }}>
           <div style={{ background: "rgba(0,0,0,0.5)", borderRadius: "50%", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Play size={20} color="#fff" style={{ marginLeft: 3 }} />
@@ -1535,12 +1574,13 @@ const PostVideoPlayer = memo(function PostVideoPlayer({ url, style = {}, onVideo
 
 
 const MediaPlayer = memo(function MediaPlayer({url,style={},onImageClick,onVideoClick}){
+  const [loaded,setLoaded]=useState(false);
   if(!url) return null;
   const isVideo=/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(url)||url.includes("video");
   if(isVideo) return <PostVideoPlayer url={url} style={style} onVideoClick={onVideoClick}/>;
   return(
-    <img src={url} loading="lazy" alt="" onClick={()=>onImageClick?.(url)}
-      style={{width:"100%",borderRadius:14,display:"block",objectFit:"cover",maxHeight:500,cursor:onImageClick?"pointer":"default",...style}}/>
+    <img src={url} loading="lazy" alt="" onClick={()=>onImageClick?.(url)} onLoad={()=>setLoaded(true)}
+      style={{width:"100%",borderRadius:14,display:"block",objectFit:"cover",maxHeight:500,cursor:onImageClick?"pointer":"default",background:"rgba(255,255,255,0.06)",opacity:loaded?1:0,transition:"opacity .25s ease",...style}}/>
   );
 });
 
@@ -1826,11 +1866,13 @@ function AuthScreen({mode,setMode,onSuccess}){
     setBusy(true);
     try{
       if(mode==="login"){
-        let loginEmail=email;
-        if(/^\d{8}$/.test(email.trim())){
-          const{data,error:resolveErr}=await sb.functions.invoke("resolve-celeste-login",{body:{celeste_id:email.trim()}});
+        let loginEmail=email.trim();
+        if(/^\d{8}$/.test(loginEmail)){
+          const{data,error:resolveErr}=await sb.functions.invoke("resolve-celeste-login",{body:{celeste_id:loginEmail}});
           if(resolveErr||!data?.email)throw new Error("Identifiant ou mot de passe incorrect");
           loginEmail=data.email;
+        }else{
+          loginEmail=loginEmail.toLowerCase();
         }
         const{error}=await sb.auth.signInWithPassword({email:loginEmail,password:pw});
         if(error)throw error;
@@ -1896,7 +1938,7 @@ if(data.user){onSuccess?.("pending");}
   <select value={country} onChange={e=>setCountry(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,outline:"none",flexShrink:0}}>
     {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
   </select>
-  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
+  <input type="tel" inputMode="numeric" value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
 </div>
                   </>
                 ):(
@@ -1934,7 +1976,7 @@ if(data.user){onSuccess?.("pending");}
   <select value={country} onChange={e=>setCountry(e.target.value)} style={{background:"transparent",border:"none",color:T.goldL,fontSize:13,fontWeight:700,outline:"none",flexShrink:0}}>
     {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
   </select>
-  <input value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
+  <input type="tel" inputMode="numeric" value={whatsapp} onChange={e=>setWhatsapp(e.target.value.replace(/\D/g,""))} placeholder="WhatsApp (si différent)" style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:14,outline:"none",padding:"8px 4px"}}/>
 </div>
                   </>
                 )}
@@ -2151,7 +2193,7 @@ function NotifsScreen({myProfile,session,members}){
                       if(!data){alert("Cette publication n'existe plus.");return;}
                       setTab("home");
                       window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
-                      setTimeout(()=>{window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:n.post_id,commentId:n.comment_id||null}}));},600);
+                      setTimeout(()=>{window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:n.post_id,commentId:n.comment_id||null,replyId:n.reply_id||null}}));},600);
                       return;
                     }
                   }}>
@@ -2379,7 +2421,39 @@ function subscribeCommentsRealtime(postId,onInsert,onDelete,onUpdate){
   };
 }
 
-function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,standalone=false,notify,commentsDisabled=false,postAuthorId=null}){
+const _repliesRealtimeHub=new Map();
+function subscribeRepliesRealtime(commentId,onInsert,onDelete,onUpdate){
+  let entry=_repliesRealtimeHub.get(commentId);
+  if(!entry){
+    const listeners=new Set();
+    const channel=sb.channel(`replies-${commentId}`)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"comment_replies",filter:`parent_comment_id=eq.${commentId}`},payload=>{
+        listeners.forEach(l=>l.onInsert?.(payload));
+      })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"comment_replies",filter:`parent_comment_id=eq.${commentId}`},payload=>{
+        listeners.forEach(l=>l.onDelete?.(payload));
+      })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"comment_replies",filter:`parent_comment_id=eq.${commentId}`},payload=>{
+        listeners.forEach(l=>l.onUpdate?.(payload));
+      })
+      .subscribe();
+    entry={channel,listeners,refCount:0};
+    _repliesRealtimeHub.set(commentId,entry);
+  }
+  const self={onInsert,onDelete,onUpdate};
+  entry.listeners.add(self);
+  entry.refCount++;
+  return()=>{
+    entry.listeners.delete(self);
+    entry.refCount--;
+    if(entry.refCount<=0){
+      sb.removeChannel(entry.channel);
+      _repliesRealtimeHub.delete(commentId);
+    }
+  };
+}
+
+function CommentsSection({postId,sessionUserId,getM,onCountChange,targetCommentId,targetReplyId=null,standalone=false,notify,commentsDisabled=false,postAuthorId=null}){
  const {setHideNav,members}=useApp();
  const [comments,setComments]=useState([]);
  const [likedCommentIds,setLikedCommentIds]=useState(new Set());
@@ -2488,8 +2562,23 @@ useEffect(()=>{
         sb.from("comments").select("id,post_id,author_id,text,mentions,media_url,sticker_id,created_at,likes_count,replies_count,author:profiles!comments_author_id_fkey(id,prenom,nom,avatar_url,badge)")
           .eq("id",newId).maybeSingle().then(({data})=>{
             if(!data)return;
-            setComments(prev=>prev.some(c=>c.id===data.id)?prev:[...prev,data]);
+            setComments(prev=>{
+              if(prev.some(c=>c.id===data.id))return prev;
+              const merged=[...prev,data].sort((a,b)=>{
+                const pa=postAuthorId&&a.author_id===postAuthorId?1:0;
+                const pb=postAuthorId&&b.author_id===postAuthorId?1:0;
+                if(pa!==pb)return pb-pa;
+                if((b.likes_count||0)!==(a.likes_count||0))return (b.likes_count||0)-(a.likes_count||0);
+                return new Date(a.created_at)-new Date(b.created_at);
+              });
+              return merged;
+            });
             onCountChange?.(c=>(c||0)+1);
+            if(data.author_id===sessionUserId){
+              requestAnimationFrame(()=>{
+                document.getElementById("cmt-"+data.id)?.scrollIntoView({behavior:"smooth",block:"center"});
+              });
+            }
           });
       },
       payload=>{
@@ -2504,8 +2593,9 @@ useEffect(()=>{
     );
     return unsubscribe;
   },[postId,onCountChange]);
-
+const handleCommentChange=useCallback(()=>{load(1,visibleCountRef.current-1);},[load]);
   const submit=async()=>{
+
     if(commentsDisabled||(!text.trim()&&!mediaFile&&!pendingSticker)||posting)return;
     setPosting(true);
     const trimmed=text.trim();
@@ -2581,10 +2671,10 @@ mentionNameMapRef.current=new Map();
       {loadingCmts&&<div style={{display:"flex",justifyContent:"center",padding:"16px 0"}}><div style={{width:20,height:20,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>}
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {comments.map(c=>(
-  <div key={c.id} ref={targetCommentId===c.id?targetRef:null}
+  <div key={c.id} id={"cmt-"+c.id} ref={targetCommentId===c.id?targetRef:null}
     style={{borderRadius:12,transition:"background .5s",
       background:targetCommentId===c.id?"rgba(201,149,42,0.12)":"transparent"}}>
-    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members} onOpenSticker={setOpenStickerDetail} notify={notify} initialLiked={likedCommentIds.has(c.id)} postAuthorId={postAuthorId} authorLiked={authorLikedCommentIds.has(c.id)}/>
+    <CommentItem comment={c} sessionUserId={sessionUserId} getM={getM} onChange={()=>load(1,visibleCountRef.current-1)} members={members} onOpenSticker={setOpenStickerDetail} notify={notify} initialLiked={likedCommentIds.has(c.id)} postAuthorId={postAuthorId} authorLiked={authorLikedCommentIds.has(c.id)} targetReplyId={targetReplyId}/>
   </div>
 ))}
     
@@ -2610,7 +2700,7 @@ mentionNameMapRef.current=new Map();
         <MessageCircleOff size={14}/> Les commentaires sont désactivés pour cette publication
       </div>
     ):(
-      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:active==="sticky"?"0 4px 20px rgba(0,0,0,0.2)":"0 -4px 20px rgba(0,0,0,0.25)",position:active==="sticky"?"sticky":"relative",bottom:active==="sticky"?0:"auto",zIndex:active==="sticky"?10:"auto",flexShrink:0,marginTop:active==="sticky"?0:8}}>
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:24,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:active==="sticky"?"0 4px 20px rgba(0,0,0,0.2)":"0 -4px 20px rgba(0,0,0,0.25)",position:active==="sticky"?"sticky":"relative",bottom:active==="sticky"?"var(--kb-height,0px)":"auto",zIndex:active==="sticky"?10:"auto",flexShrink:0,marginTop:active==="sticky"?0:8}}>
         <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
           const f=e.target.files[0];if(!f)return;
           const compressed=await compressImage(f);
@@ -2668,7 +2758,7 @@ mentionNameMapRef.current=new Map();
 }
 
 // ── COMMENT ITEM (NOUVEAU - likes + réponses depuis App 9) ─
-function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,notify,initialLiked=false,postAuthorId=null,authorLiked=false}){
+const CommentItem=React.memo(function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,notify,initialLiked=false,postAuthorId=null,authorLiked=false,targetReplyId=null}){
   const [likes,setLikes]=useState(comment.likes_count||0);
   const [liked,setLiked]=useState(initialLiked);
   const [repliesCount,setRepliesCount]=useState(comment.replies_count||0);
@@ -2697,6 +2787,48 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
   useEffect(()=>{setLikes(comment.likes_count||0);},[comment.likes_count]);
   useEffect(()=>{setRepliesCount(comment.replies_count||0);},[comment.replies_count]);
   useEffect(()=>{setLiked(initialLiked);},[initialLiked]);
+
+  const targetReplyRef=useRef(null);
+  useEffect(()=>{
+    if(!targetReplyId)return;
+    if(!showReplies)setShowReplies(true);
+    if(!repliesLoaded&&!loadingReplies)loadReplies(1);
+  },[targetReplyId,repliesLoaded,loadingReplies]);
+  useEffect(()=>{
+    if(!targetReplyId||loadingReplies)return;
+    const found=replies.some(r=>r.id===targetReplyId);
+    if(!found&&hasMoreReplies)loadMoreReplies();
+  },[targetReplyId,replies,hasMoreReplies,loadingReplies]);
+  useEffect(()=>{
+    if(targetReplyId&&targetReplyRef.current){
+      setTimeout(()=>{targetReplyRef.current?.scrollIntoView({behavior:"smooth",block:"center"});},300);
+    }
+  },[targetReplyId,replies]);
+
+  useEffect(()=>{
+    if(!showReplies)return;
+    const unsubscribe=subscribeRepliesRealtime(comment.id,
+      payload=>{
+        const newId=payload.new.id;
+        sb.from("comment_replies").select("id,parent_comment_id,author_id,text,media_url,sticker_id,reply_to_id,likes_count,created_at,author:profiles(id,prenom,nom,avatar_url,badge)")
+          .eq("id",newId).maybeSingle().then(({data})=>{
+            if(!data)return;
+            setReplies(prev=>prev.some(r=>r.id===data.id)?prev:[...prev,data]);
+            setRepliesCount(c=>c+1);
+          });
+      },
+      payload=>{
+        const delId=payload.old.id;
+        setReplies(prev=>prev.some(r=>r.id===delId)?prev.filter(r=>r.id!==delId):prev);
+        setRepliesCount(c=>Math.max((c||1)-1,0));
+      },
+      payload=>{
+        const updated=payload.new;
+        setReplies(prev=>prev.map(r=>r.id===updated.id?{...r,likes_count:updated.likes_count,text:updated.text,media_url:updated.media_url}:r));
+      }
+    );
+    return unsubscribe;
+  },[showReplies,comment.id]);
 
   const loadReplies=useCallback(async(page=1)=>{
     setLoadingReplies(true);
@@ -2793,6 +2925,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
           type:"reply_like",
           post_id:comment.post_id||null,
           comment_id:comment.id,
+          reply_id:reply.id,
           read:false
         });
       }
@@ -2817,7 +2950,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
     }
     setReplyText("");setReplying(false);setReplyToTarget(null);
     setReplyMediaFile(null);setReplyMediaPreview(null);setReplyPendingSticker(null);
-    const{error}=await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text,media_url:mediaUrl,sticker_id:stickerId,reply_to_id:target?.id||null});
+    const{data:newReply,error}=await sb.from("comment_replies").insert({parent_comment_id:comment.id,author_id:sessionUserId,text,media_url:mediaUrl,sticker_id:stickerId,reply_to_id:target?.id||null}).select("id").single();
     if(error){notify?.("Erreur, réessaie");return;}
     if(stickerId)Promise.resolve(sb.rpc("increment_sticker_usage",{sticker_id:stickerId})).catch(()=>{});
     const notifyTargetId=target?
@@ -2830,6 +2963,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
         type:"reply",
         post_id:comment.post_id||null,
         comment_id:comment.id,
+        reply_id:newReply?.id||null,
         read:false
       });
     }
@@ -2848,9 +2982,13 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
   const del=async()=>{
     setShowCmtMenu(false);
     if(!(await confirmAction("Supprimer ce commentaire ?",{confirmLabel:"Supprimer"})))return;
+    const{data:replyRows}=await sb.from("comment_replies").select("id").eq("parent_comment_id",comment.id);
+    const replyIds=(replyRows||[]).map(r=>r.id);
+    if(replyIds.length)await sb.from("reply_likes").delete().in("reply_id",replyIds);
     await sb.from("comment_likes").delete().eq("comment_id",comment.id);
     await sb.from("comment_replies").delete().eq("parent_comment_id",comment.id);
-    await sb.from("comments").delete().eq("id",comment.id);
+    const{error}=await sb.from("comments").delete().eq("id",comment.id);
+    if(error){notify?.("Erreur, réessaie");return;}
     onChange?.("delete");
   };
   const copy=()=>{
@@ -2993,8 +3131,10 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
               <div style={{display:"flex",justifyContent:"center",padding:"8px 0"}}><div style={{width:16,height:16,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%",animation:"spin .7s linear infinite"}}/></div>
             )}
             {replies.map(r=>(
+              <div key={r.id} ref={targetReplyId===r.id?targetReplyRef:null}
+                style={{borderRadius:12,transition:"background .5s",
+                  background:targetReplyId===r.id?"rgba(201,149,42,0.12)":"transparent"}}>
               <ReplyItem
-                key={r.id}
                 reply={r}
                 sessionUserId={sessionUserId}
                 liked={likedReplyIds.has(r.id)}
@@ -3007,6 +3147,7 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
                 postAuthorId={postAuthorId}
                 authorLiked={authorLikedReplyIds.has(r.id)}
               />
+              </div>
             ))}
             {hasMoreReplies&&(
               <Btn onClick={loadMoreReplies} disabled={loadingReplies} style={{fontSize:12,color:T.goldL,fontWeight:700,alignSelf:"flex-start"}}>
@@ -3018,10 +3159,10 @@ function CommentItem({comment,sessionUserId,getM,onChange,members,onOpenSticker,
       </div>
     </div>
   );
-}
+});
 
 // ── REPLY ITEM (likes + vrai lien de threading) ─
-function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,replyToName,onOpenSticker,notify,postAuthorId=null,authorLiked=false}){
+const ReplyItem=React.memo(function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,replyToName,onOpenSticker,notify,postAuthorId=null,authorLiked=false}){
   const ra=reply.author?normProfile(reply.author):{initials:"?",color:"#888",name:"?"};
   const isMyReply=reply.author_id===sessionUserId;
   const isAuthorReply=!!postAuthorId&&reply.author_id===postAuthorId;
@@ -3091,7 +3232,7 @@ function ReplyItem({reply,sessionUserId,liked,onToggleLike,onReplyTo,onDeleted,r
       </div>
     </div>
   );
-}
+});
 
 // ── POST DETAIL MODAL (ENRICHI) ───────────────────────────
 function PostDetailModal({post,myProfile,session,getM,onClose,onLike,onParticipate,onComment,notify,zIndex=800,fromReel=false,onPhotoView,saved=false,onSave}){
@@ -3287,6 +3428,7 @@ useEffect(()=>{
   getM={getM}
   onCountChange={setCmtCount}
   targetCommentId={post._targetCommentId||null}
+  targetReplyId={post._targetReplyId||null}
   notify={notify}
   commentsDisabled={!!post.comments_disabled}
   postAuthorId={post.by}
@@ -3772,7 +3914,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
                       <option value="236">🇨🇫 +236</option>
                       <option value="240">🇬🇶 +240</option>
                     </select>
-                    <input value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="Numéro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
+                    <input type="tel" inputMode="numeric" value={whatsappNum} onChange={e=>setWhatsappNum(e.target.value.replace(/\D/g,""))} placeholder="Numéro WhatsApp" maxLength={9} style={{flex:1,background:"transparent",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
                   </div>
                 ):(
                   <input value={contactLink} onChange={e=>setContactLink(e.target.value)} placeholder="https://… (lien vers ta boutique)" style={{padding:"10px 12px",borderRadius:12,border:`1px solid ${T.border}`,background:"rgba(255,255,255,0.02)",color:T.text,fontSize:13,outline:"none",width:"100%"}}/>
@@ -5303,7 +5445,7 @@ function SkeletonPost(){
 }
 
 function StarFieldLoader({size=56}){
-  const stars=[{x:10,y:20,d:0},{x:45,y:5,d:.3},{x:80,y:25,d:.6},{x:20,y:55,d:.15},{x:55,y:45,d:.45},{x:88,y:60,d:.75},{x:35,y:80,d:.25},{x:70,y:85,d:.55}];
+  const stars=[{x:20,y:30,d:0},{x:50,y:15,d:.3},{x:80,y:40,d:.6}];
   return(
     <div style={{position:"relative",width:size,height:size*0.6}}>
       {stars.map((s,i)=>(
@@ -5927,6 +6069,7 @@ const [saved,setSaved]=useState(false);
   const [reactDir,setReactDir]=useState(null);
   const reactStartRef=useRef(null);
   const longPressTimerRef=useRef(null);
+  const suppressClickRef=useRef(false);
   const quickReactions=[
     {key:"up",dx:0,dy:-1,emoji:"👏",text:"👏 Bravo, superbe !"},
     {key:"down",dx:0,dy:1,emoji:"🙏",text:"🙏 Merci pour ce partage"},
@@ -5972,6 +6115,7 @@ const [saved,setSaved]=useState(false);
       const choice=quickReactions.find(q=>q.key===reactDir);
       if(choice){sendQuickComment(choice.text);haptic("medium");}
     }
+    if(reactOpen)suppressClickRef.current=true;
     setReactOpen(false);setReactDir(null);reactStartRef.current=null;lastReactDirRef.current=null;
   };
   const cancelLongPress=()=>{clearTimeout(longPressTimerRef.current);};
@@ -6430,7 +6574,7 @@ onMuteAuthor?.(post.by);
               onPointerUp={(e)=>{e.stopPropagation();endLongPress();}}
               onPointerLeave={()=>{if(reactOpen)endLongPress();else cancelLongPress();}}
               style={{position:"relative",touchAction:reactOpen?"none":"auto"}}>
-              <Btn className="action-icon-btn" onClick={()=>{if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.text,fontSize:13,fontWeight:700}}>
+              <Btn className="action-icon-btn" onClick={()=>{if(suppressClickRef.current){suppressClickRef.current=false;return;}if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.text,fontSize:13,fontWeight:700}}>
                 <MessageCircle size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
                 {(post.commentsCount??(post.comments||[]).length)>0&&<span>{post.commentsCount??(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
               </Btn>
@@ -7157,11 +7301,19 @@ const askGemini=async(text)=>{
   const [recInitializing,setRecInitializing]=useState(false);
   const cancelledInitRef=useRef(false);
   const [bgPhoto,setBgPhoto]=useState(null);
-  const [sendingMsgs,setSendingMsgs]=useState(()=>getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"})));
-useEffect(()=>subscribeQueue(()=>{
-  setSendingMsgs(getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"})));
-}),[conv.id]);
-  const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef();
+  const buildSendingMsgs=useCallback(()=>{
+    const fromQueue=getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"}));
+    const fromFiles=getFileSendsForConv(conv.id).map(f=>({id:f.id,type:f.fileType,fileName:f.fileName,f:"me",ts:f.ts,pct:f.pct,sending:f.status!=="error",error:f.status==="error"}));
+    return [...fromQueue,...fromFiles].sort((a,b)=>a.ts-b.ts);
+  },[conv.id]);
+  const [sendingMsgs,setSendingMsgs]=useState(buildSendingMsgs);
+  useEffect(()=>{
+    setSendingMsgs(buildSendingMsgs());
+    const unsubQ=subscribeQueue(()=>setSendingMsgs(buildSendingMsgs()));
+    const unsubF=subscribeFileSends(()=>setSendingMsgs(buildSendingMsgs()));
+    return()=>{unsubQ();unsubF();};
+  },[conv.id,buildSendingMsgs]);
+  const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef(); const msgsScrollRef=useRef();
 const [replyTo,setReplyTo]=useState(null);
 const msgRefs=useRef({});
 const [highlightMsgId,setHighlightMsgId]=useState(null);
@@ -7222,10 +7374,14 @@ const wipeQueueRef=useRef(new Set());
     };
   },[conv.id,reload]);
 
-  const lastMsgId=conv.msgs[conv.msgs.length-1]?.id;
+  const lastMsg=conv.msgs[conv.msgs.length-1];
+  const lastMsgId=lastMsg?.id;
   useEffect(()=>{
-    if(isFirstLoad.current){bottomRef.current?.scrollIntoView({behavior:"instant"});isFirstLoad.current=false;}
-    else bottomRef.current?.scrollIntoView({behavior:"smooth"});
+    if(isFirstLoad.current){bottomRef.current?.scrollIntoView({behavior:"instant"});isFirstLoad.current=false;return;}
+    const el=msgsScrollRef.current;
+    const isMine=lastMsg&&(lastMsg.f==="me"||lastMsg.f===session?.user?.id);
+    const nearBottom=!el||(el.scrollHeight-el.scrollTop-el.clientHeight<150);
+    if(isMine||nearBottom)bottomRef.current?.scrollIntoView({behavior:"smooth"});
   },[lastMsgId]);
   useEffect(()=>{isFirstLoad.current=true;},[conv.id]);
 
@@ -7397,14 +7553,12 @@ const handleFile=async(e,isImg)=>{
     const wantViewOnce=viewOnceNext;
     setViewOnceNext(false);
     if(f.size>50*1024*1024){notify("Fichier trop lourd (max 50MB)");return;}
-    // Recadrage image
     if(isImg&&f.type.startsWith("image/")){
       const reader=new FileReader();
       const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
       const croppedFile=await cropImage(src);
       if(croppedFile)f=croppedFile;
     }
-    // Trimmer vidéo
     if(f.type.startsWith("video/")){
       const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
       const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
@@ -7414,34 +7568,26 @@ const handleFile=async(e,isImg)=>{
     }
     const tempId="tmp_file_"+Date.now();
     const fileType=f.type.startsWith("video/")?"video":isImg?"photo":"file";
-    setSendingMsgs(p=>[...p,{id:tempId,type:fileType,fileName:f.name,f:"me",ts:Date.now(),sending:true,pct:0}]);
-    const convId=await ensureConv();
-    if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));input.value="";return;}
-    const senderUid=session?.user?.id;
     const fileName=f.name;
-    (async()=>{
-      let publicUrl;
-      try{
-        publicUrl=await uploadToR2(f,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
-      }catch(err){
-        notify("Erreur upload: "+err.message);
-        setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-        return;
-      }
-      let error,attempt=0;
-      while(attempt<3){
-        const res=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:"",view_once:wantViewOnce&&fileType!=="file"});
-        error=res.error;
-        if(!error)break;
-        attempt++;
-        await new Promise(r=>setTimeout(r,1500*attempt));
-      }
-      setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-      if(error){notify("❌ Message non envoyé — vérifie ta connexion");return;}
-      playChatSound("send");
-      reload();
-    })();
+    trackFileSend(tempId,conv.id,{fileType,fileName});
     input.value="";
+    const convId=await ensureConv();
+    if(!convId){removeFileSend(tempId);return;}
+    const senderUid=session?.user?.id;
+    const attempt=async(tries=0)=>{
+      try{
+        const publicUrl=await uploadToR2(f,"messages",pct=>updateFileSend(tempId,{pct}));
+        const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:fileType,file_url:publicUrl,file_name:fileName,text:"",view_once:wantViewOnce&&fileType!=="file"});
+        if(error)throw error;
+        removeFileSend(tempId);
+        playChatSound("send");
+        reload();
+      }catch(err){
+        if(tries<2){setTimeout(()=>attempt(tries+1),1500*(tries+1));}
+        else{updateFileSend(tempId,{sending:false,status:"error"});notify("❌ Message non envoyé — vérifie ta connexion");}
+      }
+    };
+    attempt();
   };
 
   const handleBgPhoto=e=>{
@@ -7461,31 +7607,30 @@ const handleFile=async(e,isImg)=>{
       const recOpts=mimeType?{mimeType}:{};
       const rec=new MediaRecorder(stream,recOpts); const chunks=[];
       rec.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
-      rec.onstop=async()=>{
+            rec.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
         const blob=new Blob(chunks,{type:mimeType||"audio/webm"});
         const tempId="tmp_voice_"+Date.now();
-        setSendingMsgs(p=>[...p,{id:tempId,type:"voice",f:"me",ts:Date.now(),sending:true,pct:0}]);
+        trackFileSend(tempId,conv.id,{fileType:"voice",fileName:null});
         const convId=await ensureConv();
-        if(!convId){setSendingMsgs(p=>p.filter(m=>m.id!==tempId));return;}
+        if(!convId){removeFileSend(tempId);return;}
         const senderUid=session?.user?.id;
-        (async()=>{
-          let publicUrl;
+        const attempt=async(tries=0)=>{
           try{
             const ext=mimeType.includes("mp4")?"m4a":mimeType.includes("ogg")?"ogg":"webm";
             const audioFile=new File([blob],`voice_${Date.now()}.${ext}`,{type:mimeType});
-            publicUrl=await uploadToR2(audioFile,"messages",pct=>{setSendingMsgs(p=>p.map(m=>m.id===tempId?{...m,pct}:m));});
-          }catch(e){
-            notify("Erreur upload vocal");
-            setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-            return;
+            const publicUrl=await uploadToR2(audioFile,"messages",pct=>updateFileSend(tempId,{pct}));
+            const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce});
+            if(error)throw error;
+            removeFileSend(tempId);
+            playChatSound("send");
+            reload();
+          }catch(err){
+            if(tries<2){setTimeout(()=>attempt(tries+1),1500*(tries+1));}
+            else{updateFileSend(tempId,{sending:false,status:"error"});notify("Erreur d'envoi vocal — vérifie ta connexion");}
           }
-          const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce});
-          setSendingMsgs(p=>p.filter(m=>m.id!==tempId));
-          if(error){notify("Erreur d'envoi, réessayez");return;}
-          playChatSound("send");
-          reload();
-        })();
+        };
+        attempt();
       };
       rec.start(250); mediaRecRef.current=rec;
       setRecInitializing(false);
@@ -7594,7 +7739,7 @@ const handleFile=async(e,isImg)=>{
 {searchOpen&&<ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={()=>{setSearchOpen(false);setSearchQuery("");}} resultCount={filterMessagesByQuery(conv.msgs,searchQuery).length}/>}
 
       {/* Messages */}
-      <div style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
+      <div ref={msgsScrollRef} style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
         {(conv.msgs||[]).length===0&&sendingMsgs.length===0&&(
           <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,color:T.muted}}>
             <Av u={user} size={60} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
@@ -8816,7 +8961,7 @@ function MutedBlockedManager({session,notify,onClose}){
     </div>
   );
 }
-function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme}){
+function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme,pushNav,popNav}){
   const [logoFont]=useState(pickLogoFont);
   const {session,setMyProfile}=useApp();
   const [open,setOpen]=useState(false);
@@ -8831,11 +8976,11 @@ const [groupInvitePermission,setGroupInvitePermission]=useState("everyone");
 const [showBugReport,setShowBugReport]=useState(false);
 const [showMutedBlocked,setShowMutedBlocked]=useState(false);
 const [bugText,setBugText]=useState("");
-  useEffect(()=>{
-    const handler=()=>{setOpen(true);setSection(null);};
+    useEffect(()=>{
+    const handler=()=>{pushNav(()=>{setOpen(false);setSection(null);});setOpen(true);setSection(null);};
     window.addEventListener("celeste_open_params",handler);
     return()=>window.removeEventListener("celeste_open_params",handler);
-  },[]);
+  },[pushNav]);
 
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
@@ -8912,18 +9057,16 @@ const NAV_THEMES=[
   return(
     <div
       style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
-      onClick={()=>{setOpen(false);setSection(null);}}>
+      onClick={()=>{popNav();setOpen(false);setSection(null);}}>
       <div
         style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",padding:"28px 20px 48px",animation:"slideUp .35s ease"}}
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
-          {section&&(
-            <Btn onClick={()=>setSection(null)} style={{color:T.gold,display:"flex"}}>
-              <ChevronLeft size={22}/>
-            </Btn>
-          )}
+          <Btn onClick={()=>{if(section){setSection(null);}else{popNav();setOpen(false);}}} style={{color:T.gold,display:"flex"}}>
+            <ChevronLeft size={22}/>
+          </Btn>
           <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:400,color:T.text,margin:0}}>
             {!section&&"Paramètres"}
             {section==="privacy"&&"🔒 Confidentialité"}
@@ -9145,8 +9288,8 @@ const NAV_THEMES=[
                     <option value="MA">🇲🇦 +212</option>
                     <option value="OTHER">🌍 Autre</option>
                   </select>
-                  <input id="cel-custom-dial" type="text" placeholder="+XXX" style="display:none;background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;width:80px;outline:none;" />
-                  <input id="cel-phone" type="tel" placeholder="06XXXXXXXX" style="background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:14px;flex:1;outline:none;" />
+                  <input id="cel-custom-dial" type="text" placeholder="+XXX" style="display:none;background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:16px;width:80px;outline:none;" />
+                  <input id="cel-phone" type="tel" placeholder="06XXXXXXXX" style="background:#2a2a3e;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;font-size:16px;flex:1;outline:none;" />
                 </div>
                 <div style="display:flex;gap:8px;">
                   <button id="cel-cancel" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">Annuler</button>
@@ -9173,7 +9316,8 @@ const NAV_THEMES=[
             };
           });
           if(!phoneInput)return;
-          const win=window.open("","_blank");
+          const isNative=Capacitor.isNativePlatform();
+          const win=isNative?null:window.open("","_blank");
           try{
             const{data}=await sb.functions.invoke("create-badge-checkout",{body:{
               first_name:myProfile?.fullName?.split(" ")[0]||"User",
@@ -9183,18 +9327,17 @@ const NAV_THEMES=[
             }});
 const checkoutUrl=data?.checkout_url;
 if(checkoutUrl){
-              if(Capacitor.isNativePlatform()){
-                win.close();
+              if(isNative){
                 await Browser.open({url:checkoutUrl});
               }else{
                 win.location.href=checkoutUrl;
               }
               notify("Paiement ouvert — ton badge sera activé automatiquement ✦");
             }else{
-              win.close();
+              win?.close();
               notify("Erreur de paiement — réessaie");
             }
-          }catch(e){win.close();notify("Erreur de paiement — réessaie");}
+          }catch(e){win?.close();notify("Erreur de paiement — réessaie");}
         }} style={{width:"100%",padding:"12px",background:T.gradGold,borderRadius:12,color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <span style={{fontSize:18}}>✦</span> Obtenir le badge — 2 000 FCFA
         </Btn>
@@ -9533,7 +9676,7 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
             )}
             <input placeholder="Nom complet du titulaire du compte Mobile Money" value={withdrawName} onChange={e=>setWithdrawName(e.target.value)}
               style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.text,fontSize:14,outline:"none",marginBottom:10}}/>
-            <input placeholder="Numéro de téléphone" value={withdrawPhone} onChange={e=>setWithdrawPhone(e.target.value)}
+            <input type="tel" inputMode="numeric" placeholder="Numéro de téléphone" value={withdrawPhone} onChange={e=>setWithdrawPhone(e.target.value)}
               style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.text,fontSize:14,outline:"none",marginBottom:10}}/>
             <input placeholder="Montant (min. 500 F CFA)" type="number" value={withdrawAmount} onChange={e=>setWithdrawAmount(e.target.value)}
               style={{width:"100%",background:T.bg3,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",color:T.goldL,fontSize:14,outline:"none",fontWeight:700,marginBottom:8}}/>
@@ -9832,7 +9975,7 @@ const localToggleParticipate=async pid=>{
 };
   return(
     
-    <div style={{flex:1,overflowY:"auto",background:T.bg}}>
+    <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
       {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>setShowWallet(false)}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
@@ -9992,10 +10135,21 @@ const localToggleParticipate=async pid=>{
         </div>
 
         <ProfileViewsCard sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} Badge={Badge} fmtCount={fmtCount} session={session}/>
-        <Btn onClick={()=>{
-          const url="https://play.google.com/store/apps/details?id=social.celesteapp";
-          if(navigator.share){navigator.share({title:"Céleste",text:"Rejoins-moi sur Céleste ✦",url}).catch(()=>{});}
-          else{navigator.clipboard?.writeText(url);notify("Lien copié ✦");}
+               <Btn onClick={async()=>{
+          const platform=Capacitor.getPlatform();
+          const url=platform==="ios"
+            ? "https://celesteapp.social"
+            : platform==="android"
+              ? "https://play.google.com/store/apps/details?id=social.celesteapp"
+              : "https://celesteapp.social";
+          if(Capacitor.isNativePlatform()){
+            try{await Share.share({title:"Céleste",text:"Rejoins-moi sur Céleste ✦",url});}
+            catch(e){}
+          }else if(navigator.share){
+            navigator.share({title:"Céleste",text:"Rejoins-moi sur Céleste ✦",url}).catch(()=>{});
+          }else{
+            navigator.clipboard?.writeText(url);notify("Lien copié ✦");
+          }
         }} style={{width:"100%",padding:"12px",marginBottom:20,borderRadius:14,background:T.glass,border:`1px solid ${T.border}`,color:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <Users size={15}/> Inviter des amis
         </Btn>
@@ -10076,7 +10230,7 @@ const localToggleParticipate=async pid=>{
             </div>
             :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
   {myPhotoPosts.map(p=>(
-    <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}>
+    <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}>
       <div onClick={()=>{
         const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
       
@@ -10150,7 +10304,7 @@ const localToggleParticipate=async pid=>{
             ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun reel encore</p></div>
             :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
               {myVideoPosts.map(p=>(
-                <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer"}}
+                <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}
                   onClick={()=>{const idx=myVideoPosts.findIndex(q=>q.id===p.id);setUserReelsIndex(idx>=0?idx:0);}}>
                  <VideoThumb src={p.img}/>
                   <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
@@ -10898,6 +11052,28 @@ function CelesteApp(){
   },[]);
 
   useEffect(()=>{
+    document.documentElement.style.setProperty("--kb-height","0px");
+    if(Capacitor.isNativePlatform()){
+      let showSub,hideSub;
+      Keyboard.addListener("keyboardWillShow",info=>{
+        document.documentElement.style.setProperty("--kb-height",`${info?.keyboardHeight||0}px`);
+      }).then(h=>{showSub=h;});
+      Keyboard.addListener("keyboardWillHide",()=>{
+        document.documentElement.style.setProperty("--kb-height","0px");
+      }).then(h=>{hideSub=h;});
+      return()=>{showSub?.remove();hideSub?.remove();};
+    }else if(window.visualViewport){
+      const vv=window.visualViewport;
+      const onVvResize=()=>{
+        const inset=Math.max(0,window.innerHeight-vv.height-vv.offsetTop);
+        document.documentElement.style.setProperty("--kb-height",`${inset}px`);
+      };
+      vv.addEventListener("resize",onVvResize);
+      return()=>vv.removeEventListener("resize",onVvResize);
+    }
+  },[]);
+
+  useEffect(()=>{
     if(!Capacitor.isNativePlatform())return;
     (async()=>{
       try{
@@ -10986,24 +11162,24 @@ useEffect(()=>{
       const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
       return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
     };
-    const openResolved=(finalPost,commentId)=>{
+    const openResolved=(finalPost,commentId,replyId)=>{
       if(finalPost.type==="text"||finalPost.type==="event"){
-        pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null});
+        pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
         return;
       }
       if(isVideoPost(finalPost)){setGlobalReelsPost(finalPost);return;}
       if(isPhotoPost(finalPost)){setGlobalPhotoPost(finalPost);return;}
-      pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null});
+      pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
     };
     const handler=async e=>{
-      const{postId,commentId}=e.detail||{};
+      const{postId,commentId,replyId}=e.detail||{};
       if(!postId)return;
       const post=(posts||[]).find(p=>p.id===postId);
-      if(post){openResolved(post,commentId);return;}
+      if(post){openResolved(post,commentId,replyId);return;}
       const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
         const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
-        openResolved(mapped,commentId);
+        openResolved(mapped,commentId,replyId);
       }else{
         notify("Cette publication n'est plus disponible");
       }
@@ -11731,7 +11907,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat} blockedUserIds={blockedUserIds}/>}
               {tab==="messages"&&<MsgsTab convs={convs} getM={getM} session={session} sb={sb} T={T} Av={Av} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>}
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
-<ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme}/>
+<ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme} pushNav={pushNav} popNav={popNav}/>
             </div>
         </div>
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}

@@ -40,10 +40,12 @@ function DuoPickerModal({ sb, T, Av, Btn, Badge, session, initialSelected, onClo
   useEffect(() => {
     let active = true;
     setLoading(true);
-    sb.rpc("search_duo_candidates", { p_search: search.trim() }).then(({ data }) => {
-      if (active) { setResults(data || []); setLoading(false); }
-    });
-    return () => { active = false; };
+    const t = setTimeout(() => {
+      sb.rpc("search_duo_candidates", { p_search: search.trim() }).then(({ data }) => {
+        if (active) { setResults(data || []); setLoading(false); }
+      });
+    }, 300);
+    return () => { active = false; clearTimeout(t); };
   }, [search, sb]);
 
   const toggle = (p) => {
@@ -234,10 +236,12 @@ function DuoAllowListModal({ sb, T, Av, Btn, session, onClose }) {
 
   useEffect(() => {
     let active = true;
-    sb.from("profiles").select("id,prenom,nom,avatar_url").neq("id", session.user.id).ilike("prenom", `%${search}%`).limit(15).then(({ data }) => {
-      if (active) setResults(data || []);
-    });
-    return () => { active = false; };
+    const t = setTimeout(() => {
+      sb.from("profiles").select("id,prenom,nom,avatar_url").neq("id", session.user.id).ilike("prenom", `%${search}%`).limit(15).then(({ data }) => {
+        if (active) setResults(data || []);
+      });
+    }, 300);
+    return () => { active = false; clearTimeout(t); };
   }, [search, sb, session.user.id]);
 
   const isAllowed = id => allowed.some(u => u.id === id);

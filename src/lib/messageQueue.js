@@ -121,3 +121,36 @@ export function getConvStatuses() {
   }
   return map;
 }
+
+// --- Suivi en mémoire des envois de fichiers/vocaux (photo/vidéo/vocal) ---
+// Le fichier lui-même ne survit pas à un redémarrage de l'app (pas de localStorage
+// ici), mais l'objectif est qu'il survive à un simple changement d'écran dans la
+// même session — ce qu'un useState local à ChatScreen ne permettait pas : en
+// revenant sur la conversation, l'envoi en cours semblait avoir disparu alors
+// qu'il continuait en fait de tourner en arrière-plan.
+const fileSends = new Map(); // tempId -> {convId,fileType,fileName,ts,pct,status}
+const FILE_EVENT = "celeste_file_send_update";
+
+export function trackFileSend(tempId, convId, data) {
+  fileSends.set(tempId, { convId, ts: Date.now(), pct: 0, status: "sending", ...data });
+  window.dispatchEvent(new CustomEvent(FILE_EVENT));
+}
+export function updateFileSend(tempId, patch) {
+  const it = fileSends.get(tempId);
+  if (!it) return;
+  fileSends.set(tempId, { ...it, ...patch });
+  window.dispatchEvent(new CustomEvent(FILE_EVENT));
+}
+export function removeFileSend(tempId) {
+  fileSends.delete(tempId);
+  window.dispatchEvent(new CustomEvent(FILE_EVENT));
+}
+export function getFileSendsForConv(convId) {
+  const out = [];
+  for (const [id, v] of fileSends) if (v.convId === convId) out.push({ id, ...v });
+  return out;
+}
+export function subscribeFileSends(cb) {
+  window.addEventListener(FILE_EVENT, cb);
+  return () => window.removeEventListener(FILE_EVENT, cb);
+}
