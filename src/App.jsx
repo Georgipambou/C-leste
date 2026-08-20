@@ -1615,7 +1615,26 @@ function ProtectedVideo({url,style={}}){
   );
 }
 
-
+function ViewOnceViewer({type,url,onClose}){
+  useEffect(()=>{
+    const onBack=()=>{onClose();return false;};
+    window.addEventListener("celeste_hw_back",onBack);
+    return()=>window.removeEventListener("celeste_hw_back",onBack);
+  },[onClose]);
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:3000,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      {type==="video"
+        ? <video src={url} autoPlay playsInline disablePictureInPicture controlsList="nodownload noremoteplayback noplaybackrate"
+            style={{width:"100%",height:"100%",objectFit:"contain",pointerEvents:"none"}}/>
+        : <img src={url} alt="" draggable={false} onContextMenu={e=>e.preventDefault()}
+            style={{width:"100%",height:"100%",objectFit:"contain",WebkitTouchCallout:"none",WebkitUserSelect:"none",userSelect:"none"}}/>
+      }
+      <Btn onClick={onClose} style={{position:"absolute",top:"calc(16px + env(safe-area-inset-top,0px))",right:16,color:"#fff",background:"rgba(255,255,255,0.15)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <X size={20}/>
+      </Btn>
+    </div>
+  );
+}
 
 // ── IMAGE CROP MODAL ──────────────────────────────────────
 function ImageCropModal({imageSrc,onClose,onDone}){
@@ -5834,7 +5853,7 @@ const virtuosoComponents=useMemo(()=>({
     <Plus size={16}/>Publier
   </Btn>
 </div>
-{searchOpen&&<SearchExplorer sb={sb} T={T} Av={Av} T={T} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
+{searchOpen&&<SearchExplorer sb={sb} T={T} Av={Av} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
   onClose={()=>{popNav();setSearchOpen(false);}}
   onOpenPost={openPostFromSound}
   onUseSound={onUseSoundForPost}
@@ -6624,8 +6643,6 @@ onMuteAuthor?.(post.by);
         post={post}
         sb={sb} T={T} Av={Av}
         session={session}
-        T={T}
-        Av={Av}
         members={members}
         convs={convs}
         notify={notify}
@@ -6976,7 +6993,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
       {invites&&invites.length>0&&(
         <div style={{maxWidth:640,margin:"0 auto",padding:"4px 0"}}>
           {invites.map(inv=>(
-            <PendingGroupInviteCard key={inv.group_id} sb={sb} T={T} Av={Av} T={T} Av={Av} Btn={Btn}
+            <PendingGroupInviteCard key={inv.group_id} sb={sb} T={T} Av={Av} Btn={Btn}
               invite={inv} userId={session?.user?.id}
               notify={notify}
             />
@@ -7394,6 +7411,7 @@ const wipeQueueRef=useRef(new Set());
 
   const [revealedOnce,setRevealedOnce]=useState(()=>new Set());
   const [viewOnceUrls,setViewOnceUrls]=useState({});
+  const [viewOnceTexts,setViewOnceTexts]=useState({});
   const [revealingOnce,setRevealingOnce]=useState(()=>new Set());
   const viewOnceUrlsRef=useRef({});
   useEffect(()=>()=>{Object.values(viewOnceUrlsRef.current).forEach(u=>{try{URL.revokeObjectURL(u);}catch{}});},[]);
@@ -7418,27 +7436,36 @@ const wipeQueueRef=useRef(new Set());
 
   useEffect(()=>{
     if(peerScreenshotProtection||conv.secure_mode||revealedOnce.size>0)enableScreenProtection();else disableScreenProtection();
-    return()=>{disableScreenProtection();};
+    return()=>{try{disableScreenProtection();}catch(_){}};
   },[peerScreenshotProtection,conv.secure_mode,revealedOnce]);
+  const [openViewOnce,setOpenViewOnce]=useState(null); // {id,type} | null
+  const revealedOnceRef=useRef(revealedOnce);
+  useEffect(()=>{revealedOnceRef.current=revealedOnce;},[revealedOnce]);
 
   useEffect(()=>{
     if(!isNative)return;
     let startedHandle,stoppedHandle,screenshotHandle;
+    let alive=true;
     PrivacyScreen.addListener("screenRecordingStarted",()=>{
-      if(revealedOnce.size>0){
+      if(revealedOnceRef.current.size>0){
         setRevealedOnce(new Set());
-        sb.from("messages").insert({conv_id:conv.id,sender_id:session?.user?.id,type:"text",text:"⚠️ Enregistrement d'écran détecté pendant l'affichage d'un message à vue unique"});
+        sb.from("messages").insert({conv_id:conv.id,sender_id:session?.user?.id,type:"text",text:"⚠️ Enregistrement d'écran détecté pendant l'affichage d'un message à vue unique"}).catch(()=>{});
       }
-    }).then(h=>{startedHandle=h;});
-    PrivacyScreen.addListener("screenRecordingStopped",()=>{}).then(h=>{stoppedHandle=h;});
+    }).then(h=>{if(alive)startedHandle=h;else h.remove();});
+    PrivacyScreen.addListener("screenRecordingStopped",()=>{}).then(h=>{if(alive)stoppedHandle=h;else h.remove();});
     PrivacyScreen.addListener("screenshotTaken",()=>{
-      if(revealedOnce.size>0){
+      if(revealedOnceRef.current.size>0){
         setRevealedOnce(new Set());
-        sb.from("messages").insert({conv_id:conv.id,sender_id:session?.user?.id,type:"text",text:"⚠️ Capture d'écran détectée pendant l'affichage d'un message à vue unique"});
+        sb.from("messages").insert({conv_id:conv.id,sender_id:session?.user?.id,type:"text",text:"⚠️ Capture d'écran détectée pendant l'affichage d'un message à vue unique"}).catch(()=>{});
       }
-    }).then(h=>{screenshotHandle=h;});
-    return()=>{startedHandle?.remove();stoppedHandle?.remove();screenshotHandle?.remove();};
-  },[conv.id,revealedOnce,sb,session]);
+    }).then(h=>{if(alive)screenshotHandle=h;else h.remove();});
+    return()=>{
+      alive=false;
+      try{startedHandle?.remove();}catch(_){}
+      try{stoppedHandle?.remove();}catch(_){}
+      try{screenshotHandle?.remove();}catch(_){}
+    };
+  },[conv.id,sb,session]);
 
   const [isBlocked,setIsBlocked]=useState(false);
   useEffect(()=>{
@@ -7503,12 +7530,18 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setRevealingOnce(p=>new Set([...p,m.id]));
     try{
       const{data,error}=await sb.functions.invoke("view-once-media",{body:{message_id:m.id},headers:{"X-Celeste-Platform":Capacitor.getPlatform()}});
-      if(error||!data?.data)throw error||new Error("Contenu indisponible");
-      const bytes=Uint8Array.from(atob(data.data),c=>c.charCodeAt(0));
-      const blob=new Blob([bytes],{type:data.mime||"application/octet-stream"});
-      const objUrl=URL.createObjectURL(blob);
-      viewOnceUrlsRef.current={...viewOnceUrlsRef.current,[m.id]:objUrl};
-      setViewOnceUrls(p=>({...p,[m.id]:objUrl}));
+      if(error||!data)throw error||new Error("Contenu indisponible");
+      if(m.type==="text"){
+        if(typeof data.text!=="string")throw new Error("Contenu indisponible");
+        setViewOnceTexts(p=>({...p,[m.id]:data.text}));
+      }else{
+        if(!data.data)throw new Error("Contenu indisponible");
+        const bytes=Uint8Array.from(atob(data.data),c=>c.charCodeAt(0));
+        const blob=new Blob([bytes],{type:data.mime||"application/octet-stream"});
+        const objUrl=URL.createObjectURL(blob);
+        viewOnceUrlsRef.current={...viewOnceUrlsRef.current,[m.id]:objUrl};
+        setViewOnceUrls(p=>({...p,[m.id]:objUrl}));
+      }
       setRevealedOnce(p=>new Set([...p,m.id]));
       wipeQueueRef.current.add(m.id);
     }catch(err){
@@ -7517,6 +7550,27 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
       setRevealingOnce(p=>{const n=new Set(p);n.delete(m.id);return n;});
     }
   };
+  const sendViewOnceText=async(txt,replyPayload)=>{
+    if(isBlocked){notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><Ban size={14}/>Impossible d'envoyer ce message</span>);return;}
+    const convId=await ensureConv();
+    if(!convId)return;
+    const senderUid=session?.user?.id;
+    const attempt=async(tries=0)=>{
+      try{
+        const{data:inserted,error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"text",text:"",view_once:true,...replyPayload}).select("id").single();
+        if(error)throw error;
+        const{error:secretErr}=await sb.from("message_texts").insert({message_id:inserted.id,content:txt});
+        if(secretErr)throw secretErr;
+        playChatSound("send");
+        reload();
+      }catch(err){
+        if(tries<2){setTimeout(()=>attempt(tries+1),1500*(tries+1));}
+        else{notify("❌ Message non envoyé — vérifie ta connexion");}
+      }
+    };
+    attempt();
+  };
+
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
     if(editingMsg){
@@ -7532,7 +7586,10 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setChatDrafts(d=>({...d,[conv.id]:""}));
     setSending(true);
     const replyPayload=replyTo?{reply_to_id:replyTo.id,reply_to_text:replyTo.text||"",reply_to_author:replyTo.authorName||""}:{};
-    try{await sendMsg({type:"text",text:txt,view_once:wantViewOnce,...replyPayload});}finally{setSending(false);setReplyTo(null);}
+    try{
+      if(wantViewOnce)await sendViewOnceText(txt,replyPayload);
+      else await sendMsg({type:"text",text:txt,view_once:false,...replyPayload});
+    }finally{setSending(false);setReplyTo(null);}
   };
   const sendSticker=async(sticker)=>{
     setShowStickerPicker(false);
@@ -7836,10 +7893,13 @@ const handleFile=async(e,isImg)=>{
                       ? (mine
                           ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Photo vue unique envoyée</span></div>
                           : (revealedOnce.has(m.id)
-                              ? <ProtectedImage url={viewOnceUrls[m.id]}/>
+                              ? <div onClick={()=>setOpenViewOnce({id:m.id,type:"image"})} style={{position:"relative",borderRadius:10,overflow:"hidden",cursor:"pointer",height:120,background:T.glassMid,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                  <div style={{position:"absolute",inset:0,filter:"blur(14px)",opacity:0.4,backgroundImage:`url(${viewOnceUrls[m.id]})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
+                                  <div style={{position:"relative",display:"flex",alignItems:"center",gap:6,color:"#fff",fontSize:12,fontWeight:600}}><Eye size={16}/>Revoir</div>
+                                </div>
                               : (m.viewed_at
                                   ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Photo vue unique consultée</span></div>
-                                  : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour voir · vue unique"}</span></Btn>
+                                  : <Btn onClick={async()=>{await revealOnce(m);setOpenViewOnce({id:m.id,type:m.type==="video"?"video":"image"});}} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour voir · vue unique"}</span></Btn>
                                 )
                             )
                         )
@@ -7869,10 +7929,13 @@ const handleFile=async(e,isImg)=>{
                       ? (mine
                           ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vidéo vue unique envoyée</span></div>
                           : (revealedOnce.has(m.id)
-                              ? <ProtectedVideo url={viewOnceUrls[m.id]}/>
+                              ? <div onClick={()=>setOpenViewOnce({id:m.id,type:"video"})} style={{position:"relative",borderRadius:10,overflow:"hidden",cursor:"pointer",height:120,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                  <video src={viewOnceUrls[m.id]} muted style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",filter:"blur(14px)",opacity:0.4}}/>
+                                  <div style={{position:"relative",display:"flex",alignItems:"center",gap:6,color:"#fff",fontSize:12,fontWeight:600}}><Eye size={16}/>Revoir</div>
+                                </div>
                               : (m.viewed_at
                                   ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vidéo vue unique consultée</span></div>
-                                  : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour voir · vue unique"}</span></Btn>
+                                  : <Btn onClick={async()=>{await revealOnce(m);setOpenViewOnce({id:m.id,type:"video"});}} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour voir · vue unique"}</span></Btn>
                                 )
                             )
                         )
@@ -7883,10 +7946,10 @@ const handleFile=async(e,isImg)=>{
                       ? (mine
                           ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Message vue unique envoyé</span></div>
                           : (revealedOnce.has(m.id)
-                              ? <><p style={{margin:0,fontSize:FONT_SIZES[fontSizeKey],fontWeight:600,color:mine?(bubbleColor?"#fff":"#000"):T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(m.text)}<EditedBadge message={m} T={T}/></p><TranslateBtn text={m.text} dark={mine&&!bubbleColor}/></>
+                              ? <><p style={{margin:0,fontSize:FONT_SIZES[fontSizeKey],fontWeight:600,color:mine?(bubbleColor?"#fff":"#000"):T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(viewOnceTexts[m.id]||"")}</p><TranslateBtn text={viewOnceTexts[m.id]||""} dark={mine&&!bubbleColor}/></>
                               : (m.viewed_at
                                   ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Message vue unique consulté</span></div>
-                                  : <Btn onClick={()=>revealOnce(m)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>Appuyer pour lire · vue unique</span></Btn>
+                                  : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour lire · vue unique"}</span></Btn>
                                 )
                             )
                         )
@@ -7969,7 +8032,7 @@ const handleFile=async(e,isImg)=>{
   <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
   {showStickerPicker&&(
     <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
-      <StickerPicker sb={sb} T={T} Av={Av} userId={session?.user?.id} T={T} onClose={()=>setShowStickerPicker(false)} onSelect={sendSticker}/>
+      <StickerPicker sb={sb} T={T} Av={Av} userId={session?.user?.id} onClose={()=>setShowStickerPicker(false)} onSelect={sendSticker}/>
     </div>
   )}
   <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
@@ -8116,6 +8179,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             toggleReaction(sb,showReactionPicker,session?.user?.id,emoji,target?.reactions).then(()=>reload());
           }}/>
       )}
+      {openViewOnce&&<ViewOnceViewer type={openViewOnce.type} url={viewOnceUrls[openViewOnce.id]} onClose={()=>setOpenViewOnce(null)}/>}
       </div>
     </div>
   );
@@ -9185,8 +9249,8 @@ const NAV_THEMES=[
     <Toggle active={screenshotProtection}/>
   </Btn>
     {/* Céleste Match — activer/désactiver */}
-    <DuoPrivacySetting sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} session={session} value={duoPermission} onChange={setDuoPermission} notify={notify}/>
-    <GroupPrivacySetting sb={sb} T={T} Av={Av} T={T} Btn={Btn} session={session} value={groupInvitePermission} onChange={setGroupInvitePermission} notify={notify}/>
+    <DuoPrivacySetting sb={sb} T={T} Av={Av} Btn={Btn} session={session} value={duoPermission} onChange={setDuoPermission} notify={notify}/>
+    <GroupPrivacySetting sb={sb} T={T} Av={Av} Btn={Btn} session={session} value={groupInvitePermission} onChange={setGroupInvitePermission} notify={notify}/>
 
     <MatchPrivacyToggle session={session} notify={notify} myProfile={myProfile}/>
 
@@ -10134,7 +10198,7 @@ const localToggleParticipate=async pid=>{
           ))}
         </div>
 
-        <ProfileViewsCard sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} Badge={Badge} fmtCount={fmtCount} session={session}/>
+        <ProfileViewsCard sb={sb} T={T} Av={Av} Btn={Btn} Badge={Badge} fmtCount={fmtCount} session={session}/>
                <Btn onClick={async()=>{
           const platform=Capacitor.getPlatform();
           const url=platform==="ios"
@@ -10153,7 +10217,7 @@ const localToggleParticipate=async pid=>{
         }} style={{width:"100%",padding:"12px",marginBottom:20,borderRadius:14,background:T.glass,border:`1px solid ${T.border}`,color:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <Users size={15}/> Inviter des amis
         </Btn>
-        <DiscoverPeopleSection sb={sb} T={T} Av={Av} T={T} Btn={Btn} Av={Av} Badge={Badge} session={session} notify={notify} computeMatchScore={computeMatchScore} onUser={id=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:id}}))} onConnectionChange={()=>{/* rafraîchi au prochain rendu */}}/>
+        <DiscoverPeopleSection sb={sb} T={T} Av={Av} Btn={Btn} Badge={Badge} session={session} notify={notify} computeMatchScore={computeMatchScore} onUser={id=>window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:id}}))} onConnectionChange={()=>{/* rafraîchi au prochain rendu */}}/>
 
         {/* Modal Abonnés */}
         {showFollowers&&(
@@ -10601,9 +10665,9 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
         
         <div style={{flex:1,overflowY:"auto"}}>
           {filter==="sons"
-  ?<AdminSoundsPanel sb={sb} T={T} Av={Av} notify={notify} T={T} />
+  ?<AdminSoundsPanel sb={sb} T={T} Av={Av} notify={notify} />
   :filter==="stickers"
-  ?<AdminStickersPanel sb={sb} T={T} Av={Av} notify={notify} T={T} />
+  ?<AdminStickersPanel sb={sb} T={T} Av={Av} notify={notify} />
   :filter==="sticker_reports"
             ?<div>
               {(stickerReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun sticker signalé</p>}
@@ -11764,7 +11828,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     </div>
   );
   if(myProfile&&!myProfile.quiz_completed) return(
-    <ContentQuizModal sb={sb} T={T} Av={Av} userId={session.user.id} T={T} onDone={()=>setMyProfile(p=>({...p,quiz_completed:true}))}/>
+    <ContentQuizModal sb={sb} T={T} Av={Av} userId={session.user.id} onDone={()=>setMyProfile(p=>({...p,quiz_completed:true}))}/>
   );
   return(
     <AppContext.Provider value={appCtx}>
@@ -11793,13 +11857,13 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session} myProfile={myProfile}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>{popNav();setOpenCeleste(false);}} myProfile={myProfile} session={session}/>}
 {showCreateGroup&&(
-  <CreateGroupModal sb={sb} T={T} Av={Av} T={T} Av={Av} Btn={Btn} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers}
+  <CreateGroupModal sb={sb} T={T} Av={Av} Btn={Btn} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers}
     onClose={()=>{popNav();setShowCreateGroup(false);}}
     onCreated={()=>{}}
     notify={notify}/>
 )}
 {openGroup&&(
-  <GroupChatScreen sb={sb} T={T} Av={Av} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
+  <GroupChatScreen sb={sb} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
     members={members} myConnections={myConnections} myFollowers={myFollowers}
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>

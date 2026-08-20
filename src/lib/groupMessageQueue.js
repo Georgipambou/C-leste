@@ -145,3 +145,34 @@ export function getGroupQueueStatuses() {
   }
   return map;
 }
+
+// ── Suivi des envois de fichiers en cours (groupes) ─────────
+// Miroir de trackFileSend/getFileSendsForConv dans messageQueue.js.
+// Volontairement en mémoire (pas dans localStorage) : une progression
+// d'upload ne peut de toute façon pas reprendre après un rechargement de page.
+const FILE_EVENT = "celeste_group_file_send_update";
+let fileSends = [];
+
+export function trackGroupFileSend(id, groupId, { fileType, fileName }) {
+  fileSends = [...fileSends, { id, groupId, fileType, fileName, ts: Date.now(), pct: 0, status: "pending" }];
+  window.dispatchEvent(new CustomEvent(FILE_EVENT));
+}
+
+export function updateGroupFileSend(id, patch) {
+  fileSends = fileSends.map(f => (f.id === id ? { ...f, ...patch } : f));
+  window.dispatchEvent(new CustomEvent(FILE_EVENT));
+}
+
+export function removeGroupFileSend(id) {
+  fileSends = fileSends.filter(f => f.id !== id);
+  window.dispatchEvent(new CustomEvent(FILE_EVENT));
+}
+
+export function getGroupFileSendsForConv(groupId) {
+  return fileSends.filter(f => f.groupId === groupId);
+}
+
+export function subscribeGroupFileSends(cb) {
+  window.addEventListener(FILE_EVENT, cb);
+  return () => window.removeEventListener(FILE_EVENT, cb);
+}
