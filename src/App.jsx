@@ -7321,17 +7321,39 @@ const askGemini=async(text)=>{
   const cancelledInitRef=useRef(false);
   const [bgPhoto,setBgPhoto]=useState(null);
   const buildSendingMsgs=useCallback(()=>{
-    const fromQueue=getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error"&&q.status!=="blocked",error:q.status==="error",blocked:q.status==="blocked"}));
-    const fromFiles=getFileSendsForConv(conv.id).map(f=>({id:f.id,type:f.fileType,fileName:f.fileName,f:"me",ts:f.ts,pct:f.pct,sending:f.status!=="error",error:f.status==="error"}));
+    const fromQueue=getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error"&&q.status!=="blocked",error:q.status==="error",blocked:q.status==="blocked",_kind:"q"}));
+    const fromFiles=getFileSendsForConv(conv.id).map(f=>({id:f.id,type:f.fileType,fileName:f.fileName,f:"me",ts:f.ts,pct:f.pct,sending:f.status!=="error",error:f.status==="error",_kind:"f"}));
     return [...fromQueue,...fromFiles].sort((a,b)=>a.ts-b.ts);
   },[conv.id]);
   const [sendingMsgs,setSendingMsgs]=useState(buildSendingMsgs);
+  const sendingMsgsRef=useRef(sendingMsgs);
+  useEffect(()=>{sendingMsgsRef.current=sendingMsgs;},[sendingMsgs]);
+  // Une bulle texte "en cours d'envoi" (_kind==="q") ne doit disparaître
+  // que lorsque le message confirmé équivalent est déjà visible dans
+  // conv.msgs — sinon on la garde affichée le temps que la confirmation
+  // (temps réel ou reload) arrive. Évite le clignotement "le message
+  // disparaît puis réapparaît". Les envois de fichiers (_kind==="f")
+  // gardent leur comportement d'origine, inchangé.
+  const isConfirmedInConv=useCallback(m=>(conv.msgs||[]).some(cm=>cm.f==="me"&&Math.abs((cm.ts||0)-(m.ts||0))<15000&&(cm.text||"")===(m.text||"")&&(cm.type||"text")===(m.type||"text")),[conv.msgs]);
   useEffect(()=>{
-    setSendingMsgs(buildSendingMsgs());
-    const unsubQ=subscribeQueue(()=>setSendingMsgs(buildSendingMsgs()));
-    const unsubF=subscribeFileSends(()=>setSendingMsgs(buildSendingMsgs()));
+    const applyQueue=()=>{
+      const fresh=buildSendingMsgs();
+      const freshIds=new Set(fresh.map(m=>m.id));
+      const stillPending=sendingMsgsRef.current.filter(m=>m._kind==="q"&&!freshIds.has(m.id)&&!isConfirmedInConv(m));
+      setSendingMsgs([...fresh,...stillPending].sort((a,b)=>a.ts-b.ts));
+    };
+    applyQueue();
+    const unsubQ=subscribeQueue(applyQueue);
+    const unsubF=subscribeFileSends(applyQueue);
     return()=>{unsubQ();unsubF();};
-  },[conv.id,buildSendingMsgs]);
+  },[conv.id,buildSendingMsgs,isConfirmedInConv]);
+  useEffect(()=>{
+    setSendingMsgs(p=>p.filter(m=>{
+      if(m._kind!=="q")return true;
+      const stillQueued=getQueueForConv(conv.id).some(q=>q.tempId===m.id);
+      return stillQueued||!isConfirmedInConv(m);
+    }));
+  },[conv.msgs,conv.id,isConfirmedInConv]);
   const bottomRef=useRef(); const fRef=useRef(); const iRef=useRef(); const bgRef=useRef(); const msgsScrollRef=useRef();
 const [replyTo,setReplyTo]=useState(null);
 const msgRefs=useRef({});
@@ -11541,16 +11563,19 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
   const seenPostIdsRef = useRef(new Set());
   const postOrderRef=useRef([]);
-  const lastPostCursorRef=useRef(null); // curseur created_at du dernier post chargé — pagination stable même si de nouveaux posts arrivent pendant le scroll (remplace l'ancien .range() par offset, fragile sous écriture concurrente)
+  const lastPostCursorRef=useRef(null); // curseur {createdAt,id} du dernier post chargé — created_at seul n'est pas fiable comme curseur car plusieurs posts peuvent partager exactement le même timestamp (import groupé, tests…) ; Postgres ne garantit alors pas un ordre stable entre deux requêtes, ce qui provoquait des posts sautés ou répétés en scroll infini. id (clé unique) sert de départage.
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   if(page===1)lastPostCursorRef.current=null;
   let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
-.not("visibility","eq","hidden").order("created_at",{ascending:false});
-  if(lastPostCursorRef.current)postsQuery=postsQuery.lt("created_at",lastPostCursorRef.current);
+.not("visibility","eq","hidden").order("created_at",{ascending:false}).order("id",{ascending:false});
+  if(lastPostCursorRef.current){
+    const{createdAt,id}=lastPostCursorRef.current;
+    postsQuery=postsQuery.or(`created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.lt.${id})`);
+  }
   const{data,error}=await postsQuery.limit(PAGE_SIZE);
   if(error){console.error("loadPosts ERROR:",error);notify("Erreur chargement fil: "+error.message);}
-  if(data&&data.length>0)lastPostCursorRef.current=data[data.length-1].created_at;
+  if(data&&data.length>0){const last=data[data.length-1];lastPostCursorRef.current={createdAt:last.created_at,id:last.id};}
   if(data){
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
