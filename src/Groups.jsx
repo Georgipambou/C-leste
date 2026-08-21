@@ -945,7 +945,7 @@ const mediaReplyLabel = (type, fileName) => {
   return null;
 };
 
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, revealingOnce }) {
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce }) {
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
@@ -1037,10 +1037,10 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
               ? (mine
                   ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Message vue unique envoyé</span></div>
                   : (revealedOnce?.has(m.id)
-                      ? <>{m.text}<EditedBadge message={m} T={T} /></>
+                      ? <>{viewOnceTexts?.[m.id] || ""}</>
                       : (viewedByMeIds?.has(m.id)
                           ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Message vue unique consulté</span></div>
-                          : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>Appuyer pour lire · vue unique</span></Btn>
+                          : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id, "text"); }} disabled={revealingOnce?.has(m.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text, opacity: revealingOnce?.has(m.id) ? 0.6 : 1 }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>{revealingOnce?.has(m.id) ? "Ouverture…" : "Appuyer pour lire · vue unique"}</span></Btn>
                         )
                     )
                 )
@@ -1090,6 +1090,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [revealedOnce, setRevealedOnce] = useState(() => new Set());
   const [viewedByMeIds, setViewedByMeIds] = useState(() => new Set());
   const [viewOnceUrls, setViewOnceUrls] = useState({});
+  const [viewOnceTexts, setViewOnceTexts] = useState({});
   const [revealingOnce, setRevealingOnce] = useState(() => new Set());
   const viewOnceUrlsRef = useRef({});
   useEffect(() => () => { Object.values(viewOnceUrlsRef.current).forEach(u => { try { URL.revokeObjectURL(u); } catch {} }); }, []);
@@ -1301,18 +1302,24 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const [viewOnceNext, setViewOnceNext] = useState(false);
-  const revealOnce = async (msgId) => {
+  const revealOnce = async (msgId, msgType) => {
     if (!isNative) { notify("Vue unique disponible uniquement depuis l'app iOS ou Android"); return; }
     if (revealedOnce.has(msgId) || revealingOnce.has(msgId)) return;
     setRevealingOnce(p => new Set([...p, msgId]));
     try {
       const { data, error } = await sb.functions.invoke("view-once-group-media", { body: { message_id: msgId }, headers: { "X-Celeste-Platform": Capacitor.getPlatform() } });
-      if (error || !data?.data) throw error || new Error("Contenu indisponible");
-      const bytes = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: data.mime || "application/octet-stream" });
-      const objUrl = URL.createObjectURL(blob);
-      viewOnceUrlsRef.current = { ...viewOnceUrlsRef.current, [msgId]: objUrl };
-      setViewOnceUrls(p => ({ ...p, [msgId]: objUrl }));
+      if (error || !data) throw error || new Error("Contenu indisponible");
+      if (msgType === "text") {
+        if (typeof data.text !== "string") throw new Error("Contenu indisponible");
+        setViewOnceTexts(p => ({ ...p, [msgId]: data.text }));
+      } else {
+        if (!data.data) throw new Error("Contenu indisponible");
+        const bytes = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: data.mime || "application/octet-stream" });
+        const objUrl = URL.createObjectURL(blob);
+        viewOnceUrlsRef.current = { ...viewOnceUrlsRef.current, [msgId]: objUrl };
+        setViewOnceUrls(p => ({ ...p, [msgId]: objUrl }));
+      }
       setRevealedOnce(p => new Set([...p, msgId]));
       wipeQueueRef.current.add(msgId);
     } catch (err) {
@@ -1320,6 +1327,21 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     } finally {
       setRevealingOnce(p => { const n = new Set(p); n.delete(msgId); return n; });
     }
+  };
+  const sendViewOnceGroupText = async (t, replyPayload) => {
+    const attempt = async (tries = 0) => {
+      try {
+        const { data: inserted, error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "text", text: "", view_once: true, ...replyPayload }).select("id").single();
+        if (error) throw error;
+        const { error: secretErr } = await sb.from("group_message_texts").insert({ message_id: inserted.id, content: t });
+        if (secretErr) throw secretErr;
+        load();
+      } catch (err) {
+        if (tries < 2) { setTimeout(() => attempt(tries + 1), 1500 * (tries + 1)); }
+        else { notify("❌ Message non envoyé — vérifie ta connexion"); }
+      }
+    };
+    attempt();
   };
   const send = async () => {
     const t = text.trim();
@@ -1333,8 +1355,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       setEditingMsg(null); setSending(false); return;
     }
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
-    enqueueGroupMessage(group.id, myId, { type: "text", text: t, view_once: wantViewOnce, ...replyPayload });
     setReplyTo(null);
+    if (wantViewOnce) { sendViewOnceGroupText(t, replyPayload); return; }
+    enqueueGroupMessage(group.id, myId, { type: "text", text: t, view_once: false, ...replyPayload });
     processGroupQueue(sb, notify).then(load);
   };
   const retryOwnMessage = tempId => { retryGroupMessage(sb, tempId, notify).then(load); };
@@ -1555,6 +1578,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 bubbleColor={bubbleColor}
                 fontSizeKey={fontSizeKey}
                 viewOnceUrls={viewOnceUrls}
+                viewOnceTexts={viewOnceTexts}
                 revealingOnce={revealingOnce}
               />
             )

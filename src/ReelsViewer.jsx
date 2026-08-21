@@ -37,11 +37,22 @@ const POST_REPORT_REASONS = [
 // ── Raisons de suppression admin (motif communiqué à l'auteur) ────
 const ADMIN_DELETE_REASONS = ["Contenu inapproprié ou choquant","Nudité ou contenu sexuel","Violence ou contenu dangereux","Discours haineux ou discrimination","Harcèlement ou intimidation","Fausses informations","Spam ou publicité non désirée","Contenu protégé (droits d'auteur)","Contenu réutilisé d'une autre plateforme (filigrane visible)","Signalement non fondé mais retiré pour une autre raison","Autre"];
 
-// ── Cache vidéo session ───────────────────────────────────────────
-const _vBlobMap = new Map();
+// ── Cache vidéo session (LRU borné pour éviter la fuite mémoire sur
+// les appareils avec peu de RAM — un blobUrl reste décodé en mémoire
+// tant qu'il n'est pas révoqué, donc on limite combien on en garde) ──
+const _vBlobMap = new Map(); // url -> blobUrl, ordre = ordre d'utilisation (plus récent en fin de Map)
+const V_BLOB_CACHE_MAX = 20; // largement au-dessus du nombre de vidéos réellement montées en même temps
 async function getCachedVideoSrc(url) {
   if (!url) return url;
-  if (_vBlobMap.has(url)) return _vBlobMap.get(url);
+  if (_vBlobMap.has(url)) {
+    // Déjà en cache : on la marque comme récemment utilisée pour la
+    // protéger de l'éviction tant qu'elle reste consultée (ex: vidéo
+    // encore proche de l'index actif pendant le scroll).
+    const existing = _vBlobMap.get(url);
+    _vBlobMap.delete(url);
+    _vBlobMap.set(url, existing);
+    return existing;
+  }
   try {
     const cache = await caches.open("celeste-videos");
     let resp = await cache.match(url);
@@ -53,6 +64,16 @@ async function getCachedVideoSrc(url) {
     const blob    = await resp.blob();
     const blobUrl = URL.createObjectURL(blob);
     _vBlobMap.set(url, blobUrl);
+    // Évince les entrées les plus anciennes au-delà de la limite et
+    // libère leur mémoire — sans danger pour les vidéos encore à
+    // l'écran, qui repassent par la branche "déjà en cache" ci-dessus
+    // à chaque fois qu'elles redeviennent proches de l'index actif.
+    while (_vBlobMap.size > V_BLOB_CACHE_MAX) {
+      const oldestUrl = _vBlobMap.keys().next().value;
+      const oldestBlobUrl = _vBlobMap.get(oldestUrl);
+      _vBlobMap.delete(oldestUrl);
+      try { URL.revokeObjectURL(oldestBlobUrl); } catch (_) {}
+    }
     return blobUrl;
   } catch (e) {
     console.warn("video cache:", e);

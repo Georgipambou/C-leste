@@ -78,6 +78,7 @@ import { Browser } from '@capacitor/browser';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import EasyCrop from "react-easy-crop";
 import ReelsViewer from "./ReelsViewer";
+import { setNativeBackground } from "./nativeBackground";
 import PhotoViewer from "./PhotoViewer";
 import SearchExplorer from "./SearchExplorer";
 import CameraStudioModal from "./CameraStudioModal";
@@ -507,6 +508,7 @@ const setAppTheme=(mode)=>{
   _themeMode=mode;
   T=getThemePalette(mode);
   localStorage.setItem("celeste_theme",mode);
+  setNativeBackground(T.bg);
   window.dispatchEvent(new CustomEvent("celeste_theme_changed"));
 };
 function isLightBg(hex) {
@@ -7271,7 +7273,7 @@ function VoicePlayer({src,mine,T}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated}){
+function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated}){
 const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
@@ -7319,7 +7321,7 @@ const askGemini=async(text)=>{
   const cancelledInitRef=useRef(false);
   const [bgPhoto,setBgPhoto]=useState(null);
   const buildSendingMsgs=useCallback(()=>{
-    const fromQueue=getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error",error:q.status==="error"}));
+    const fromQueue=getQueueForConv(conv.id).map(q=>({id:q.tempId,...q.payload,f:"me",ts:q.ts,sending:q.status!=="error"&&q.status!=="blocked",error:q.status==="error",blocked:q.status==="blocked"}));
     const fromFiles=getFileSendsForConv(conv.id).map(f=>({id:f.id,type:f.fileType,fileName:f.fileName,f:"me",ts:f.ts,pct:f.pct,sending:f.status!=="error",error:f.status==="error"}));
     return [...fromQueue,...fromFiles].sort((a,b)=>a.ts-b.ts);
   },[conv.id]);
@@ -7368,10 +7370,25 @@ const wipeQueueRef=useRef(new Set());
         .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
           const nm=payload.new;
           if(nm.sender_id!==session?.user?.id){playChatSound("receive");}
-          reload();
+          if(patchConv){
+            patchConv(conv.id,msgs=>{
+              if(msgs.some(m=>m.id===nm.id))return msgs;
+              const mapped={id:nm.id,f:nm.sender_id===session?.user?.id?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:typeof nm.reply_metadata==="string"?JSON.parse(nm.reply_metadata):nm.reply_metadata||null,reply_to_id:nm.reply_to_id||null,reply_to_text:nm.reply_to_text||null,reply_to_author:nm.reply_to_author||null,reactions:nm.reactions||null,edited_at:nm.edited_at||null,sticker_id:nm.sticker_id||null,shared_post_id:nm.shared_post_id||null,view_once:!!nm.view_once,viewed_at:nm.viewed_at||null};
+              return [...msgs,mapped].sort((a,b)=>a.ts-b.ts);
+            });
+          }else{reload();}
         })
-       .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
-.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},()=>reload())
+       .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
+          const oldId=payload.old?.id;
+          if(patchConv&&oldId)patchConv(conv.id,msgs=>msgs.filter(m=>m.id!==oldId));
+          else reload();
+        })
+.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages",filter:`conv_id=eq.${conv.id}`},payload=>{
+          const upd=payload.new;
+          if(patchConv&&upd){
+            patchConv(conv.id,msgs=>msgs.map(m=>m.id===upd.id?{...m,text:upd.text??m.text,img:upd.file_url,read:upd.is_read,reactions:upd.reactions||null,edited_at:upd.edited_at||null,view_once:!!upd.view_once,viewed_at:upd.viewed_at||null}:m));
+          }else{reload();}
+        })
 .subscribe((status)=>{
           if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
             clearTimeout(retryTimer);
@@ -7401,7 +7418,27 @@ const wipeQueueRef=useRef(new Set());
     if(isMine||nearBottom)bottomRef.current?.scrollIntoView({behavior:"smooth"});
   },[lastMsgId]);
   useEffect(()=>{isFirstLoad.current=true;},[conv.id]);
-
+  const loadingOlderRef=useRef(false);
+  const [loadingOlder,setLoadingOlder]=useState(false);
+  useEffect(()=>{
+    const el=msgsScrollRef.current;
+    if(!el||!onLoadOlder)return;
+    const onScroll=async()=>{
+      if(el.scrollTop>60||loadingOlderRef.current||!conv.hasMoreMsgs)return;
+      loadingOlderRef.current=true;
+      setLoadingOlder(true);
+      const prevHeight=el.scrollHeight;
+      const prevTop=el.scrollTop;
+      await onLoadOlder();
+      requestAnimationFrame(()=>{
+        el.scrollTop=el.scrollHeight-prevHeight+prevTop;
+        loadingOlderRef.current=false;
+        setLoadingOlder(false);
+      });
+    };
+    el.addEventListener("scroll",onScroll,{passive:true});
+    return()=>el.removeEventListener("scroll",onScroll);
+  },[conv.id,conv.hasMoreMsgs,onLoadOlder]);
   useEffect(()=>{
     const unread=(conv.msgs||[]).filter(m=>m.f!=="me"&&m.f!==session?.user?.id&&!m.read);
     if(unread.length===0)return;
@@ -7797,6 +7834,7 @@ const handleFile=async(e,isImg)=>{
 
       {/* Messages */}
       <div ref={msgsScrollRef} style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
+        {loadingOlder&&<div style={{textAlign:"center",padding:"8px 0",fontSize:11,color:T.muted}}>Chargement des messages précédents…</div>}
         {(conv.msgs||[]).length===0&&sendingMsgs.length===0&&(
           <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,color:T.muted}}>
             <Av u={user} size={60} onClick={()=>onOpenProfile&&onOpenProfile(user.id)}/>
@@ -7982,7 +8020,8 @@ const handleFile=async(e,isImg)=>{
 )}
                   {mine&&isSending&&!m.error&&<Check size={12} color={T.muted}/>}
 {mine&&isSending&&!m.error&&<span style={{fontSize:9,color:T.muted,opacity:.6,animation:"pulse 1s ease infinite"}}>⏳</span>}
-{mine&&m.error&&<span style={{fontSize:10,color:"#e05252",fontWeight:600}}>⚠️ Réessayer</span>}
+{mine&&m.blocked&&<span onClick={e=>{e.stopPropagation();retryMessage(sb,m.id,notify).then(reload);}} style={{fontSize:10,color:"#e0a852",fontWeight:600,cursor:"pointer"}}>🔒 Bloqué — appuie pour réessayer</span>}
+{mine&&m.error&&!m.blocked&&<span onClick={e=>{e.stopPropagation();retryMessage(sb,m.id,notify).then(reload);}} style={{fontSize:10,color:"#e05252",fontWeight:600,cursor:"pointer"}}>⚠️ Réessayer</span>}
 {mine&&!isSending&&!m.error&&<CheckCheck size={13} color={isRead?T.gold:T.muted} style={{transition:"color .3s"}}/>}
                   {mine&&!isSending&&<Btn onClick={()=>requestDeleteMsg(m.id)} style={{color:T.muted,opacity:.4,padding:0,display:"flex",alignItems:"center"}}><Trash2 size={10}/></Btn>}
                 </div>
@@ -11098,6 +11137,15 @@ function CelesteApp(){
   const [members,setMembers]=useState([]);
   const [posts,setPosts]=useState(()=>{try{const c=localStorage.getItem(celesteScopedKey("celeste_posts_cache"));return c?JSON.parse(c):[];}catch(e){return[];}});
   const [convs,setConvs]=useState(()=>{try{const c=localStorage.getItem(celesteScopedKey("celeste_convs_cache"));return c?JSON.parse(c):[];}catch(e){return[];}});
+  const convsRef=useRef([]);
+  useEffect(()=>{convsRef.current=convs;},[convs]);
+  const patchConvMessages=useCallback((convId,updater)=>{
+    setConvs(prev=>{
+      const next=prev.map(c=>c.id===convId?{...c,msgs:updater(c.msgs||[])}:c);
+      try{localStorage.setItem(celesteScopedKey("celeste_convs_cache"),JSON.stringify(next));}catch(e){}
+      return next;
+    });
+  },[]);
   const [myConnections,setMyConnections]=useState([]);
   const [myFollowers,setMyFollowers]=useState([]);
   const [blockedUserIds,setBlockedUserIds]=useState([]);
@@ -11139,6 +11187,7 @@ function CelesteApp(){
 
   useEffect(()=>{
     if(!Capacitor.isNativePlatform())return;
+    setNativeBackground(T.bg);
     (async()=>{
       try{
         await StatusBar.setOverlaysWebView({overlay:true});
@@ -11285,6 +11334,11 @@ const [pendingSound,setPendingSound]=useState(null);
  const [viewImg,setViewImg]=useState(null);
 const [globalReelsPost,setGlobalReelsPost]=useState(null);
 const [globalPhotoPost,setGlobalPhotoPost]=useState(null);
+const [globalReelsCommentPost,setGlobalReelsCommentPost]=useState(null);
+const [globalPhotoCommentPost,setGlobalPhotoCommentPost]=useState(null);
+const [globalReelsCloseCallback,setGlobalReelsCloseCallback]=useState(null);
+const [globalPhotoCloseCallback,setGlobalPhotoCloseCallback]=useState(null);
+const [globalCommentLiveCount,setGlobalCommentLiveCount]=useState(0);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
@@ -11618,21 +11672,33 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
 return updated;
   },[]);
 
- const loadConvs=useCallback(async myId=>{
+  const MSG_PAGE_SIZE=60;
+  const mapMsgRow=(m,myId)=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null,view_once:!!m.view_once,viewed_at:m.viewed_at||null});
+  const MSG_COLUMNS="id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id,view_once,viewed_at";
+  const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
-      sb.from("conversations").select(`*,messages(id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id,view_once,viewed_at)`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}),
+      sb.from("conversations").select(`*,messages(${MSG_COLUMNS})`).or(`user1_id.eq.${myId},user2_id.eq.${myId}`).order("created_at",{ascending:false}).order("created_at",{ascending:false,foreignTable:"messages"}).limit(MSG_PAGE_SIZE,{foreignTable:"messages"}),
       sb.from("blocks").select("blocked_id").eq("blocker_id",myId),
       sb.from("blocks").select("blocker_id").eq("blocked_id",myId)
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,ephemeral_ttl_seconds:c.ephemeral_ttl_seconds||null,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null,view_once:!!m.view_once,viewed_at:m.viewed_at||null}))}));
+      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,ephemeral_ttl_seconds:c.ephemeral_ttl_seconds||null,hasMoreMsgs:(c.messages||[]).length===MSG_PAGE_SIZE,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>mapMsgRow(m,myId))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem(celesteScopedKey("celeste_convs_cache"),JSON.stringify(filtered));}catch(e){}
       return filtered;
     }return null;
+  },[]);
+  const loadOlderMessages=useCallback(async(convId,myId)=>{
+    const conv=convsRef.current.find(c=>c.id===convId);
+    if(!conv||!conv.msgs?.length||!conv.hasMoreMsgs)return;
+    const oldest=conv.msgs[0];
+    const{data}=await sb.from("messages").select(MSG_COLUMNS).eq("conv_id",convId).lt("created_at",new Date(oldest.ts).toISOString()).order("created_at",{ascending:false}).limit(MSG_PAGE_SIZE);
+    if(!data)return;
+    const older=data.map(m=>mapMsgRow(m,myId)).sort((a,b)=>a.ts-b.ts);
+    setConvs(prev=>prev.map(c=>c.id===convId?{...c,msgs:[...older,...c.msgs],hasMoreMsgs:data.length===MSG_PAGE_SIZE}:c));
   },[]);
   useEffect(()=>{
   if(session===null||(session&&isPending))setFeedPreloaded(true);
@@ -11921,14 +11987,14 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 });}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&!openConvInfoUid&&(
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}}/>
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}}/>
           )}
           {openConvInfoUid&&(
             <ConversationInfoScreen
               T={T} Av={Av} Btn={Btn}
               user={(members||[]).find(m=>m.id===openConvInfoUid)}
               conv={openConv}
-              sb={sb} T={T} Av={Av}
+              sb={sb}
               myId={session?.user?.id}
               onBack={()=>{popNav();setOpenConvInfoUid(null);}}
               onOpenProfile={uid=>{setOpenConvInfoUid(null);setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
@@ -11977,6 +12043,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
 {globalReelsPost&&(
   <ReelsViewer
+  onOpenComments={(p,cb)=>{setGlobalReelsCommentPost(p);setGlobalReelsCloseCallback(()=>cb);}}
     posts={[globalReelsPost]} sb={sb} T={T} Av={Av} startIndex={0}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
@@ -11990,6 +12057,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 {globalPhotoPost&&(
   <PhotoViewer
     posts={[globalPhotoPost]} sb={sb} T={T} Av={Av} startIndex={0}
+    onOpenComments={(p,cb)=>{setGlobalPhotoCommentPost(p);setGlobalPhotoCloseCallback(()=>cb);}}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
    toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
@@ -12013,9 +12081,23 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     onClose={()=>setGlobalPhotoPost(null)}
   />
 )}
+{(globalReelsCommentPost||globalPhotoCommentPost)&&(
+  <CommentsOnlyModal
+    post={globalReelsCommentPost||globalPhotoCommentPost}
+    session={session}
+    getM={getM}
+    onCountChange={setGlobalCommentLiveCount}
+    onClose={()=>{
+      setGlobalReelsCommentPost(null);
+      setGlobalPhotoCommentPost(null);
+      if(globalReelsCloseCallback){globalReelsCloseCallback(globalCommentLiveCount);setGlobalReelsCloseCallback(null);}
+      if(globalPhotoCloseCallback){globalPhotoCloseCallback(globalCommentLiveCount);setGlobalPhotoCloseCallback(null);}
+    }}
+  />
+)}
 {/* Bottom nav premium */}
        {!openConvId&&!openUserId&&!hideNav&&(
-          <div style={{height:"calc(66px + env(safe-area-inset-bottom,0px))",paddingBottom:"env(safe-area-inset-bottom,0px)",position:"relative",overflow:"hidden",flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
+          <div style={{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 16px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 16px)",position:"relative",overflow:"hidden",flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
             <NavScenery theme={navTheme}/>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.78) 100%)",pointerEvents:"none"}}/>
             <div style={{position:"relative",zIndex:2,display:"flex",height:"100%"}}>

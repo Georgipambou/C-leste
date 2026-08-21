@@ -52,6 +52,19 @@ export function markError(tempId) {
   writeQueue(q);
 }
 
+export function markBlocked(tempId) {
+  const q = readQueue();
+  const it = q.find(m => m.tempId === tempId);
+  if (it) it.status = "blocked";
+  writeQueue(q);
+}
+
+// RLS bloque l'insertion (ex: utilisateurs bloqués mutuellement) — un
+// renvoi automatique ne changera rien tant que la condition ne change pas.
+function isPermissionError(error) {
+  return error?.code === "42501" || /row-level security/i.test(error?.message || "");
+}
+
 // S'abonner aux changements de la file (pour re-render quand un autre écran
 // ou le processeur global modifie la file en arrière-plan).
 export function subscribeQueue(cb) {
@@ -84,11 +97,17 @@ export async function processQueue(sb, notify) {
     const q = readQueue();
     for (const item of q) {
       if (!navigator.onLine) break;
+      if (item.status === "blocked") continue; // permanent tant que le renvoi manuel n'est pas déclenché
       if ((item.attempts || 0) >= MAX_AUTO_ATTEMPTS) continue; // attend un renvoi manuel
       try {
         await sendOne(sb, item);
       } catch (e) {
         item.attempts = (item.attempts || 0) + 1;
+        if (isPermissionError(e)) {
+          markBlocked(item.tempId);
+          if (notify) notify("Message bloqué : vous ne pouvez plus échanger de messages avec cette personne");
+          continue;
+        }
         markError(item.tempId);
         if (item.attempts >= MAX_AUTO_ATTEMPTS && notify) {
           notify("Un message n'a pas pu être envoyé — appuie dessus pour réessayer");
@@ -108,6 +127,11 @@ export async function retryMessage(sb, tempId, notify) {
     await sendOne(sb, item);
   } catch (e) {
     item.attempts = (item.attempts || 0) + 1;
+    if (isPermissionError(e)) {
+      markBlocked(item.tempId);
+      if (notify) notify("Toujours bloqué : vous ne pouvez plus échanger de messages avec cette personne");
+      return;
+    }
     markError(item.tempId);
     if (notify) notify("Toujours pas envoyé — vérifie ta connexion");
   }
@@ -117,7 +141,7 @@ export async function retryMessage(sb, tempId, notify) {
 export function getConvStatuses() {
   const map = {};
   for (const item of readQueue()) {
-    if (map[item.convId] !== "error") map[item.convId] = item.status;
+    if (map[item.convId] !== "error" && map[item.convId] !== "blocked") map[item.convId] = item.status;
   }
   return map;
 }

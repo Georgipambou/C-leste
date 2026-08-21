@@ -7,10 +7,11 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
   @Override
-  public void onCreate(Bundle savedInstanceState) {
-    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+public void onCreate(Bundle savedInstanceState) {
+    registerPlugin(NativeBackgroundPlugin.class);
     super.onCreate(savedInstanceState);
-  }
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+}
 
   @Override
   public void onStart() {
