@@ -11930,7 +11930,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   );
   return(
     <AppContext.Provider value={appCtx}>
-      <div style={{display:"flex",flexDirection:"column",height:"calc(var(--app-vh, 1vh) * 100)",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
+      <div style={{display:"flex",flexDirection:"column",width:"100%",height:"calc(var(--app-vh, 1vh) * 100)",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
         <style>{getGS()}</style>
         {toast&&<Toast msg={toast}/>}
         {!isOnline&&<div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#1a1a1a",borderTop:"2px solid #FF6432",padding:"8px 16px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
