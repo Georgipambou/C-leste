@@ -8,6 +8,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
   @Override
 public void onCreate(Bundle savedInstanceState) {
+    setTheme(R.style.AppTheme_NoActionBar);
     registerPlugin(NativeBackgroundPlugin.class);
     super.onCreate(savedInstanceState);
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
