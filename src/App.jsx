@@ -5844,7 +5844,7 @@ const virtuosoComponents=useMemo(()=>({
 )}
       
 
-    <div style={{position:"relative",flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{position:"relative",flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:T.bg}}>
 <div style={{background:T.bg,zIndex:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
   <div onClick={()=>{pushNav(()=>setSearchOpen(false));setSearchOpen(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
     <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
@@ -5868,7 +5868,7 @@ const virtuosoComponents=useMemo(()=>({
   </div>
 )}
 <Virtuoso
-  style={{flex:1}}
+  style={{flex:1,background:T.bg}}
   data={posts||[]}
   computeItemKey={(index,p)=>p.id}
   endReached={()=>{if(hasMore)loadMore();}}
