@@ -10262,11 +10262,9 @@ const localToggleParticipate=async pid=>{
         <ProfileViewsCard sb={sb} T={T} Av={Av} Btn={Btn} Badge={Badge} fmtCount={fmtCount} session={session}/>
                <Btn onClick={async()=>{
           const platform=Capacitor.getPlatform();
-          const url=platform==="ios"
-            ? "https://celesteapp.social"
-            : platform==="android"
-              ? "https://play.google.com/store/apps/details?id=social.celesteapp"
-              : "https://celesteapp.social";
+          const url=platform==="android"
+            ? "https://play.google.com/store/apps/details?id=social.celesteapp"
+            : "https://celesteapp.social";
           if(Capacitor.isNativePlatform()){
             try{await Share.share({title:"Céleste",text:"Rejoins-moi sur Céleste ✦",url});}
             catch(e){}
