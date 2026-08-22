@@ -16,6 +16,7 @@ public void onCreate(Bundle savedInstanceState) {
   @Override
   public void onStart() {
     super.onStart();
+    this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);
     WebSettings settings = this.bridge.getWebView().getSettings();
     settings.setTextZoom(100);
   }
