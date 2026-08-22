@@ -1590,7 +1590,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       <ReplyComposerBar replyTo={replyTo} T={T} onCancel={() => setReplyTo(null)} />
 
       {canWrite ? (
-      <div style={{ display: "flex", gap: 8, padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom,0px))", borderTop: `1px solid ${T.border}`, position: "relative" }}>
+      <div style={{ display: "flex", gap: 8, padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom,0px) + var(--kb-height,0px))", borderTop: `1px solid ${T.border}`, position: "relative" }}>
         <input type="file" accept="image/*,video/*" ref={iRef} style={{ display: "none" }} onChange={e => handleFile(e, true)} />
         <input type="file" accept="*/*" ref={fRef} style={{ display: "none" }} onChange={e => handleFile(e, false)} />
         <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>

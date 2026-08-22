@@ -246,7 +246,7 @@ export default function ReelsViewer({
   const [progressMap,     setProgressMap]     = useState({});
   const [expandedCaption, setExpandedCaption] = useState(false);
   const [showControls,    setShowControls]    = useState(false);
-  const [muted,           setMuted]           = useState(false);
+  const [muted,           setMuted]           = useState(true);
   const [reelsModalOpen,  setReelsModalOpen]  = useState(false);
   const [hiddenPostIds,   setHiddenPostIds]   = useState(() => new Set());
   const [menuPostId,      setMenuPostId]      = useState(null);
@@ -408,8 +408,12 @@ export default function ReelsViewer({
         // Sécurité anti-son-fantôme : si l'utilisateur a déjà swipé vers un
         // autre Reel au moment où play() se résout, on coupe immédiatement.
         if (activeIdxRef.current !== thisIdx) active.pause();
-      }).catch(() => {});
-      setPausedMap(p => ({ ...p, [activeIdx]: false }));
+        else setPausedMap(p => ({ ...p, [thisIdx]: false }));
+      }).catch(() => {
+        // Autoplay refusé par la plateforme (fréquent en natif hors geste
+        // utilisateur direct) : on reflète l'état réel au lieu de forcer "ça joue".
+        if (activeIdxRef.current === thisIdx) setPausedMap(p => ({ ...p, [thisIdx]: true }));
+      });
       requestWakeLock();
       const post = displayPosts[activeIdx];
       if (post) engagement.start(post.id, (active.duration || 0) * 1000);
@@ -439,7 +443,10 @@ export default function ReelsViewer({
     if (!active) return;
     if (!reelsModalOpen && !pausedMap[activeIdx]) {
       pauseOtherVideos(active);
-      active.play().catch(() => {});
+      const thisIdx = activeIdx;
+      active.play().catch(() => {
+        setPausedMap(p => ({ ...p, [thisIdx]: true }));
+      });
       requestWakeLock();
     }
   }, [reelsModalOpen]);
@@ -923,7 +930,9 @@ export default function ReelsViewer({
                     const v = videoRefs.current[idx];
                     if (idx === activeIdx && !pausedMap[idx] && v) {
                       pauseOtherVideos(v);
-                      v.play().catch(() => {});
+                      v.play().catch(() => {
+                        setPausedMap(p => ({ ...p, [idx]: true }));
+                      });
                     }
                   }}
                   onPlaying={() => setLoadingMap(p => ({ ...p, [idx]: false }))}

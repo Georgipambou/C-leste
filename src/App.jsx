@@ -1055,7 +1055,7 @@ function NoteComposerModal({sb,userId,existingText,onClose,onSaved,onDeleted,not
   };
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none",marginBottom:"var(--kb-height,0px)"}}>
        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
           <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Ta note</p>
           <Btn onClick={onClose} style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:T.muted}}><X size={14}/></Btn>
@@ -1105,7 +1105,7 @@ function NoteReplyModal({sb,session,note,onClose,notify}){
   };
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none",marginBottom:"var(--kb-height,0px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
           <Av u={note.author} size={36} noStatus/>
           <div style={{background:"rgba(255,255,255,0.06)",borderRadius:14,padding:"8px 12px",fontSize:13,color:T.text,flex:1}}>{renderTextWithMentions(note.text)}</div>
@@ -1795,7 +1795,7 @@ function ReportModal({onClose,onSubmit,reasons,title}){
   const [pendingReason,setPendingReason]=useState(null);
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:560,padding:"20px 18px calc(24px + env(safe-area-inset-bottom,0px))",animation:"slideUp .2s ease"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:560,padding:"20px 18px calc(24px + env(safe-area-inset-bottom,0px))",animation:"slideUp .2s ease",marginBottom:"var(--kb-height,0px)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.text}}>{title||"Signaler"}</h3>
           <Btn onClick={onClose} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:"50%",width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",color:T.muted}}><X size={16}/></Btn>
@@ -4200,7 +4200,7 @@ setUploading(false);setUploadPct(0);
 )}
     <div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,padding:"22px 20px 44px",maxHeight:"92vh",overflowY:"auto",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,padding:"22px 20px 44px",maxHeight:"92vh",overflowY:"auto",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",marginBottom:"var(--kb-height,0px)"}}>
         <input ref={fRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={handlePick}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
           <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:400,color:T.text}}>Nouveau statut</h3>
@@ -8072,7 +8072,7 @@ const handleFile=async(e,isImg)=>{
       {peerRecording?<TypingIndicator T={T} userName={user.name} mode="recording"/>:peerTyping?<TypingIndicator T={T} userName={user.name} mode="typing"/>:null}
       <ReplyComposerBar replyTo={replyTo} T={T} onCancel={()=>setReplyTo(null)}/>
       {/* Input */}
-      <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",flexShrink:0}}>
+      <div style={{position:"relative",zIndex:2,background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px) + var(--kb-height,0px))",flexShrink:0}}>
         {recording?(
           <div style={{display:"flex",alignItems:"center",gap:12,background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:20,padding:"10px 16px"}}>
             <div style={{display:"flex",gap:3,alignItems:"center"}}>
@@ -9233,7 +9233,7 @@ const NAV_THEMES=[
           </>
         )}
         {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
-  <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500}} onClick={e=>e.stopPropagation()}>
+  <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500,marginBottom:"var(--kb-height,0px)"}} onClick={e=>e.stopPropagation()}>
     <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
     <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
       style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#fff",fontSize:14,resize:"none",outline:"none",boxSizing:"border-box"}}/>
@@ -9782,7 +9782,7 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
       {/* Modal retrait */}
       {showWithdraw&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:10000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowWithdraw(false)}>
-          <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"28px 28px 0 0",padding:"28px 20px 48px"}} onClick={e=>e.stopPropagation()}>
+          <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"28px 28px 0 0",padding:"28px 20px 48px",marginBottom:"var(--kb-height,0px)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text}}>Retirer mon argent</h3>
               <button onClick={()=>setShowWithdraw(false)} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>✕</button>
@@ -10696,7 +10696,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
   return(
     <>
     <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:"min(1100px, 96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:"min(1100px, 96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)",marginBottom:"var(--kb-height,0px)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
           <div>
             <h2 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:400,color:T.goldL}}>🛡 Administration</h2>
