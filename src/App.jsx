@@ -6353,7 +6353,8 @@ onMuteAuthor?.(post.by);
   }
   return(
     <>
-    <div ref={cardRef} style={{borderBottom:`1px solid ${T.border}`,borderLeft:`2px solid ${post.author?.color||T.border}55`,padding:"16px 16px 16px 14px",cursor:"pointer"}} onClick={()=>onDetail?.(post)}>
+    <div ref={cardRef} style={{borderBottom:`1px solid ${T.border}`,position:"relative",padding:"16px 16px 16px 14px",cursor:"pointer"}} onClick={()=>onDetail?.(post)}>
+      <div style={{position:"absolute",left:0,top:8,bottom:8,width:2,borderRadius:2,background:`${post.author?.color||T.border}55`}}/>
       <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
         {/* Avatar */}
         <div style={{position:"relative",display:"inline-block"}}>
