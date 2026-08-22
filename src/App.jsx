@@ -12059,7 +12059,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               }}
             />
           )}
-          <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",flex:1,minHeight:0}}>
+          <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",width:"100%",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
   <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={handleFeedOpenUser} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={handleFeedConnect} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={handleFeedMuteAuthor} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing}/>
 </div>
