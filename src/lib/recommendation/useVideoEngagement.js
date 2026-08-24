@@ -6,9 +6,12 @@
  * et commit (= enregistre l'event) quand on passe au post suivant.
  *
  * Usage dans ReelsViewer/PhotoViewer :
- *   const engagement = useVideoEngagement(sb, uid);
+ *   const engagement = useVideoEngagement(sb, uid, sessionAffinity);
+ *   // sessionAffinity : instance de sessionAffinity.js, créée une fois
+ *   // par session de feed (voir App.jsx) — optionnel, passer undefined
+ *   // désactive simplement le signal de session sans rien casser.
  *   // quand activeIdx change vers un nouveau post :
- *   engagement.start(post.id, mediaDurationMs);
+ *   engagement.start(post.id, mediaDurationMs, post.categories);
  *   // sur onTimeUpdate (vidéo) ou un setInterval (photo) :
  *   engagement.tick(currentTimeMs);
  *   // sur like / commentaire / signalement :
@@ -22,7 +25,7 @@ const COMPLETION_THRESHOLD = 0.9;    // regardé à 90%+ = "complété"
 const SKIP_FAST_MS = 2000;           // plafond absolu pour les vidéos longues
 const SKIP_FAST_RATIO = 0.3;         // sinon : moins de 30% de la durée = skip rapide
 
-export function useVideoEngagement(sb, uid) {
+export function useVideoEngagement(sb, uid, sessionAffinity) {
   const trackerRef = useRef(null);
   if (!trackerRef.current) {
     trackerRef.current = createEngagementTracker(sb, {
@@ -31,7 +34,7 @@ export function useVideoEngagement(sb, uid) {
   }
 
   const activeRef = useRef(null);
-  // { postId, mediaDurationMs, watchedMs, liked, shared, commented, reported }
+  // { postId, mediaDurationMs, watchedMs, categories, liked, shared, commented, reported }
 
   const commit = useCallback(() => {
     const a = activeRef.current;
@@ -42,27 +45,40 @@ export function useVideoEngagement(sb, uid) {
     const watchedMs = a.watchedMs || 0;
     const ratio = durationMs > 0 ? watchedMs / durationMs : 0;
     const skipThreshold = durationMs > 0 ? Math.min(SKIP_FAST_MS, durationMs * SKIP_FAST_RATIO) : SKIP_FAST_MS;
+    const skippedFast = watchedMs < skipThreshold && !a.liked && !a.commented;
+    const completed = ratio >= COMPLETION_THRESHOLD;
+
+    // Signal "chaud" de session — voir sessionAffinity.js. N'a aucun effet
+    // sur ce qui est envoyé à Supabase ci-dessous, purement en mémoire côté client.
+    sessionAffinity?.record(a.categories, {
+      completed,
+      liked: !!a.liked,
+      shared: !!a.shared,
+      commented: !!a.commented,
+      skippedFast,
+    });
 
     trackerRef.current.record({
       post_id: a.postId,
       viewer_id: uid,
       watch_ms: Math.round(watchedMs),
       media_duration_ms: Math.round(durationMs),
-      completed: ratio >= COMPLETION_THRESHOLD,
+      completed,
       liked: !!a.liked,
       shared: !!a.shared,
       commented: !!a.commented,
       reported: !!a.reported,
-      skipped_fast: watchedMs < skipThreshold && !a.liked && !a.commented,
+      skipped_fast: skippedFast,
     });
-  }, [uid]);
+  }, [uid, sessionAffinity]);
 
-  const start = useCallback((postId, mediaDurationMs) => {
+  const start = useCallback((postId, mediaDurationMs, categories) => {
     if (activeRef.current?.postId === postId) return; // déjà en cours
     commit(); // ferme la session précédente avant d'en ouvrir une nouvelle
     activeRef.current = {
       postId,
       mediaDurationMs: mediaDurationMs || 0,
+      categories: categories || [],
       watchedMs: 0,
       liked: false,
       shared: false,

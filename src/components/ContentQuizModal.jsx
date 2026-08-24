@@ -40,7 +40,7 @@ export default function ContentQuizModal({ sb, userId, T, onDone }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: T.bg, display: "flex", flexDirection: "column", padding: 24 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: T.bg, display: "flex", flexDirection: "column", overflowY: "auto", padding: "calc(env(safe-area-inset-top,0px) + 24px) 24px calc(env(safe-area-inset-bottom,0px) + 24px)" }}>
       {step === 0 && (
         <div>
           <h2 style={{ color: T.text }}>Tu es…</h2>
@@ -64,9 +64,10 @@ export default function ContentQuizModal({ sb, userId, T, onDone }) {
             ))}
           </div>
           {err && <p style={{ color: T.err || "#c84040", fontSize: 13, marginTop: 10 }}>{err}</p>}
+          <p style={{ color: T.muted, fontSize: 12, marginTop: 12 }}>{cats.length}/{MAX_CATS} sélectionnés (min {MIN_CATS})</p>
           <button disabled={cats.length < MIN_CATS || saving} onClick={finish}
-            style={{ marginTop: 20, width: "100%", padding: 14, borderRadius: 12, border: "none", background: T.gradGold, color: "#000", fontWeight: 700, opacity: cats.length < MIN_CATS ? 0.5 : 1 }}>
-            {saving ? "…" : "C'est parti"}
+            style={{ marginTop: 20, marginBottom: 12, width: "100%", padding: 14, borderRadius: 12, border: "none", background: T.gradGold, color: "#000", fontWeight: 700, opacity: cats.length < MIN_CATS ? 0.5 : 1, cursor: cats.length < MIN_CATS ? "default" : "pointer" }}>
+            {saving ? "…" : `C'est parti${cats.length < MIN_CATS ? ` (encore ${MIN_CATS - cats.length})` : ""}`}
           </button>
         </div>
       )}

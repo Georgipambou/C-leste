@@ -77,16 +77,15 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import EasyCrop from "react-easy-crop";
-import ReelsViewer from "./ReelsViewer";
 import { setNativeBackground } from "./nativeBackground";
-import PhotoViewer from "./PhotoViewer";
+import FeedViewer from "./FeedViewer";
 import SearchExplorer from "./SearchExplorer";
 import CameraStudioModal from "./CameraStudioModal";
 import SharePostModal from "./SharePostModal";
 import ContentQuizModal from "./components/ContentQuizModal";
 import { pauseOtherVideos as __pauseOtherPostVideos, releaseActiveVideo as __releaseActivePostVideo } from "./videoRegistry";
 import { fetchRankingData, rankPosts, fetchCommunityIds, fetchFrequentlyVisitedIds, buildReelSessionQueue, buildPhotoSessionQueue } from "./lib/recommendation/useFeedRanking";
-import { Virtuoso } from "react-virtuoso";
+import { createSessionAffinity } from "./lib/recommendation/sessionAffinity";
 import CategoryPicker from "./components/CategoryPicker";
 import SoundPickerButton from "./components/SoundPickerButton";
 import SoundDetailModal from "./components/SoundDetailModal";
@@ -645,7 +644,7 @@ longitude:p.longitude||null,
 });
 
 function mapDbPost(p, followedIds) {
-  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,text_font:p.text_font||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
 }
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
@@ -711,7 +710,7 @@ const sendPushNotif=async(title,body)=>{
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const getGS = () => `
-  @import url('https://fonts.googleapis.com/css2?family=Sacramento&family=Pacifico&family=Grand+Hotel&family=Yellowtail&display=swap');
+ @import url('https://fonts.googleapis.com/css2?family=Sacramento&family=Pacifico&family=Grand+Hotel&family=Yellowtail&family=Permanent+Marker&family=Bangers&family=Creepster&family=Lobster&family=Caveat&family=Bebas+Neue&family=Fredoka&family=Rock+Salt&family=Special+Elite&family=Metal+Mania&family=Great+Vibes&family=Luckiest+Guy&display=swap');
   @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
@@ -1858,8 +1857,21 @@ function DialSelector({selected,onChange}){
 }
 
 const LOGO_FONTS=["'Sacramento',cursive","'Pacifico',cursive","'Grand Hotel',cursive","'Yellowtail',cursive"];
+const TEXT_FONTS=["Space Grotesk","Cormorant Garamond","Permanent Marker","Bangers","Creepster","Lobster","Caveat","Bebas Neue","Fredoka","Rock Salt","Special Elite","Metal Mania","Great Vibes","Luckiest Guy"];
 const pickLogoFont=()=>LOGO_FONTS[Math.floor(Math.random()*LOGO_FONTS.length)];
 
+const ORG_TYPES=[
+  {v:"restaurant",l:"🍽️ Restaurant / Bar"},{v:"hotel",l:"🏨 Hôtel / Hébergement"},
+  {v:"musique",l:"🎵 Musique / Artiste"},{v:"entreprise",l:"💼 Entreprise / Commerce"},
+  {v:"association",l:"🤝 Association / ONG"},{v:"ecole",l:"🎓 École / Université"},
+  {v:"sante",l:"🩺 Santé / Clinique"},{v:"beaute",l:"💇 Beauté / Coiffure"},
+  {v:"mode",l:"👗 Mode / Boutique"},{v:"tech",l:"💻 Tech / Services numériques"},
+  {v:"transport",l:"🚖 Transport / Livraison"},{v:"immobilier",l:"🏠 Immobilier"},
+  {v:"evenementiel",l:"🎉 Événementiel"},{v:"media",l:"🎬 Média / Production"},
+  {v:"ong",l:"⛪ Église / Communauté religieuse"},{v:"ong2",l:"🌱 ONG / Humanitaire"},
+  {v:"sport",l:"⚽ Sport / Fitness"},{v:"alimentation",l:"🥘 Alimentation / Traiteur"},
+  {v:"autre",l:"📌 Autre"},
+];
 // ── AUTH SCREEN ───────────────────────────────────────────
 function AuthScreen({mode,setMode,onSuccess}){
   const [logoFont]=useState(pickLogoFont);
@@ -1868,6 +1880,7 @@ function AuthScreen({mode,setMode,onSuccess}){
   const [paroisse,setParoisse]=useState(""); const [phone,setPhone]=useState("");
   const [whatsapp,setWhatsapp]=useState(""); const [country,setCountry]=useState("CG");
   const [orgName,setOrgName]=useState(""); const [orgType,setOrgType]=useState("");
+  const [showOrgTypePicker,setShowOrgTypePicker]=useState(false);
   const [orgCountry,setOrgCountry]=useState(""); const [orgDesc,setOrgDesc]=useState("");
   const [email,setEmail]=useState(""); const [pw,setPw]=useState("");
   const [showPw,setShowPw]=useState(false); const [busy,setBusy]=useState(false);
@@ -1965,28 +1978,9 @@ if(data.user){onSuccess?.("pending");}
                 ):(
                   <>
                     <AuthField val={orgName} set={setOrgName} placeholder="Nom de l'organisation *"/>
-                    <select value={orgType} onChange={e=>setOrgType(e.target.value)} style={{width:"100%",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:orgType?T.text:T.sub,fontSize:13,outline:"none",appearance:"none"}}>
-                      <option value="">Type *</option>
-<option value="restaurant">🍽️ Restaurant / Bar</option>
-<option value="hotel">🏨 Hôtel / Hébergement</option>
-<option value="musique">🎵 Musique / Artiste</option>
-<option value="entreprise">💼 Entreprise / Commerce</option>
-<option value="association">🤝 Association / ONG</option>
-<option value="ecole">🎓 École / Université</option>
-<option value="sante">🩺 Santé / Clinique</option>
-<option value="beaute">💇 Beauté / Coiffure</option>
-<option value="mode">👗 Mode / Boutique</option>
-<option value="tech">💻 Tech / Services numériques</option>
-<option value="transport">🚖 Transport / Livraison</option>
-<option value="immobilier">🏠 Immobilier</option>
-<option value="evenementiel">🎉 Événementiel</option>
-<option value="media">🎬 Média / Production</option>
-<option value="ong">⛪ Église / Communauté religieuse</option>
-<option value="ong2">🌱 ONG / Humanitaire</option>
-<option value="sport">⚽ Sport / Fitness</option>
-<option value="alimentation">🥘 Alimentation / Traiteur</option>
-<option value="autre">📌 Autre</option>
-                    </select>
+<Btn onClick={()=>setShowOrgTypePicker(true)} style={{width:"100%",textAlign:"left",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:orgType?T.text:T.sub,fontSize:13}}>
+  {ORG_TYPES.find(t=>t.v===orgType)?.l||"Type *"}
+</Btn>
                     <AuthField val={orgCountry} set={setOrgCountry} placeholder="Ville / Quartier *"/>
                     <AuthField val={orgDesc} set={setOrgDesc} placeholder="Description (optionnel)"/>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -2009,12 +2003,28 @@ if(data.user){onSuccess?.("pending");}
             <Btn onClick={submit} disabled={busy} style={{padding:"16px",background:busy?T.goldBg:T.gradGold,color:"#000",borderRadius:14,fontSize:14,fontWeight:700,boxShadow:busy?"none":"0 8px 32px rgba(201,149,42,0.3), 0 0 0 1px rgba(201,149,42,0.1)",opacity:busy?.6:1,transition:"all .25s",marginTop:4,letterSpacing:.3}}>
               {busy?"⏳ Chargement…":mode==="login"?"Se connecter ✦":"Créer mon compte ✦"}
             </Btn>
+            
           </div>
         </div>
       </div>
+      
+    {showOrgTypePicker&&(
+        <div style={{position:"fixed",inset:0,zIndex:1300,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end"}} onClick={()=>setShowOrgTypePicker(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxHeight:"70vh",overflowY:"auto",background:T.bg,borderTopLeftRadius:24,borderTopRightRadius:24,padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)"}}>
+            <p style={{textAlign:"center",color:T.text,fontWeight:700,margin:"4px 0 14px"}}>Type d'organisation</p>
+            {ORG_TYPES.map(t=>(
+              <Btn key={t.v} onClick={()=>{setOrgType(t.v);setShowOrgTypePicker(false);}}
+                style={{display:"block",width:"100%",textAlign:"left",padding:"14px 12px",borderRadius:12,color:orgType===t.v?T.goldL:T.text,background:orgType===t.v?T.goldBg2:"transparent",fontSize:14,marginBottom:4}}>
+                {t.l}
+              </Btn>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // ── NOTIFICATIONS SCREEN (NOUVEAU depuis App 9) ───────────
 function NotifsScreen({myProfile,session,members}){
@@ -3424,10 +3434,9 @@ useEffect(()=>{
             <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 0",borderTop:`1px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,margin:"10px 0"}}>
               <Btn onClick={()=>onLike(post.id)} style={{display:"flex",alignItems:"center",gap:6,color:liked?T.gold:T.sub,fontSize:13,fontWeight:600,transition:"all .2s"}}>
   <Heart size={18} fill={liked?"currentColor":"none"} style={{color:liked?T.gold:T.muted,animation:liked?"pulse .3s ease":"none"}}/>
-  {(post.likes||[]).length}
+  {fmtCount((post.likes||[]).length)}
 </Btn>
-<span style={{color:T.sub,fontSize:13}}>💬 {cmtCount}</span>
-{(
+<span style={{color:T.sub,fontSize:13}}>💬 {fmtCount(cmtCount)}</span>{(
   <span style={{color:T.sub,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
     <Eye size={14}/>{views}
   </span>
@@ -3481,13 +3490,12 @@ function CommentsOnlyModal({post,session,getM,onClose,zIndex=1300,notify,onCount
     <div style={{position:"fixed",inset:0,zIndex,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}
       onMouseDown={e=>{if(e.target===e.currentTarget)e.preventDefault();}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,height:"85vh",display:"flex",flexDirection:"column",animation:"slideUp .3s cubic-bezier(0.34,1.1,0.64,1)"}}>
+      <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:640,height:"85vh",display:"flex",flexDirection:"column",animation:"slideUp .3s cubic-bezier(0.34,1.1,0.64,1)",marginBottom:"var(--kb-height,0px)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-          <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>{cmtCount>0?`${cmtCount} commentaire${cmtCount>1?"s":""}`:"Commentaires"}</p>
-          <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
+         <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>{cmtCount>0?`${fmtCount(cmtCount)} commentaire${cmtCount>1?"s":""}`:"Commentaires"}</p>          <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{flex:1,minHeight:0,overflow:"visible",display:"flex",flexDirection:"column",padding:"0 16px 16px"}}>
-          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={c=>{setCmtCount(c);onCountChange?.(c);}} targetCommentId={null} standalone notify={notify} commentsDisabled={!!post.comments_disabled} postAuthorId={post.by}/>
+          <CommentsSection postId={post.id} sessionUserId={session?.user?.id} getM={getM} onCountChange={c=>{setCmtCount(c);onCountChange?.(c);}} targetCommentId={post._targetCommentId||null} targetReplyId={post._targetReplyId||null} standalone notify={notify} commentsDisabled={!!post.comments_disabled} postAuthorId={post.by}/>
         </div>
       </div>
     </div>
@@ -3532,7 +3540,7 @@ function showPostProgress(label){
 // publication en arrière-plan, fiable, plutôt qu'un effet de bord accidentel.
 async function runPublish(payload,{onProgress}={}){
   const{
-    uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,
+    uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,textFont,
     isForSale,isAiGenerated,isPrivate,commentsDisabled,
     contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
     pollExpiresAt,pollMultiple,pollOptions,
@@ -3550,7 +3558,8 @@ async function runPublish(payload,{onProgress}={}){
     event_date:type==="event"?evDate:null,
     event_time:type==="event"?(evTime||null):null,
     event_loc:type==="event"?evLoc:null,
-    text_background:textBg||null,
+     text_background:textBg||null,
+    text_font:textFont||null,
     is_for_sale:isForSale||false,
     is_ai_generated:type==="photo"?(isAiGenerated||false):false,
     is_private:isPrivate||false,
@@ -3654,6 +3663,7 @@ const handleEventImagePick=async e=>{
 const [busy,setBusy]=useState(false);
 const [finalizing,setFinalizing]=useState(false);
 const [textBg,setTextBg]=useState(null);
+const [textFont,setTextFont]=useState("Space Grotesk");
 const [pollOptions,setPollOptions]=useState(["",""]);
 const [pollMultiple,setPollMultiple]=useState(false);
 const [pollDuration,setPollDuration]=useState("2");
@@ -3755,8 +3765,8 @@ try {
     setBusy(true);
     const uid=session?.user?.id;
     const pollExpiresAt=type==="poll"&&pollDuration!=="0"?new Date(Date.now()+parseFloat(pollDuration)*24*60*60*1000).toISOString():null;
-    const payload={
-      uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,
+     const payload={
+      uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,textFont,
       isForSale,isAiGenerated,isPrivate,commentsDisabled,
       contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
       pollExpiresAt,pollMultiple,pollOptions,
@@ -3823,7 +3833,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
     const fakeEvent={target:{files:[file]}};
     handlePick(fakeEvent);
   }}
-/>}<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+/>}<div style={{position:"fixed",inset:0,zIndex:1400,background:T.bg,display:"flex",flexDirection:"column"}}>
 
       <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePick}/>
       <input ref={evImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleEventImagePick}/>
@@ -3869,7 +3879,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
   placeholder={type==="poll"?"Pose ta question…":"Quoi de neuf ?"}
   rows={4}
   members={members||[]}
-  style={{width:"100%",background:"transparent",border:"none",color:T.text,fontSize:16,outline:"none",resize:"none",lineHeight:1.7,fontFamily:"inherit",padding:0,
+  style={{width:"100%",background:"transparent",border:"none",color:T.text,fontSize:16,outline:"none",resize:"none",lineHeight:1.7,fontFamily:`'${textFont}',sans-serif`,padding:0,
     ...(textBg?{background:{bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg],borderRadius:14,padding:"12px",color:"#fff",fontSize:18,fontWeight:700,textAlign:"center"}:{})
   }}
 />
@@ -3964,6 +3974,21 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
                   <div key={c.id||"none"} onClick={()=>setTextBg(c.id)}
                     style={{width:24,height:24,borderRadius:"50%",background:c.bg||"transparent",border:`2px solid ${textBg===c.id?T.goldL:(c.border||"rgba(255,255,255,0.2)")}`,cursor:"pointer",transition:"border .2s"}}/>
                 ))}
+              </div>
+            )}
+            {type==="text"&&(
+              <div style={{display:"flex",gap:7,marginTop:8,overflowX:"auto",scrollbarWidth:"none"}}>
+                {TEXT_FONTS.map(f=>{
+                  const on=textFont===f;
+                  return(
+                    <div key={f} onClick={()=>setTextFont(f)}
+                      style={{flexShrink:0,padding:"6px 12px",borderRadius:20,cursor:"pointer",
+                        border:`1px solid ${on?T.gold:T.border}`,background:on?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.03)",
+                        color:on?T.goldL:T.muted,fontSize:12,fontFamily:`'${f}',sans-serif`,fontWeight:on?700:400}}>
+                      {f.split(" ")[0]}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -4109,8 +4134,8 @@ function StatusCreatorModal({myProfile,session,myStatuses,onClose,onDone}){
 const [uploadPct,setUploadPct]=useState(0);
 
 const [textBg,setTextBg]=useState(null);
-const [cropSrc,setCropSrc]=useState(null);
-const [cropResolve,setCropResolve]=useState(null);
+const [textFont,setTextFont]=useState("Space Grotesk");
+const [cropSrc,setCropSrc]=useState(null);const [cropResolve,setCropResolve]=useState(null);
 const [statusTrimSrc,setStatusTrimSrc]=useState(null);
 const [statusTrimFile,setStatusTrimFile]=useState(null);
 const fRef=useRef();
@@ -4174,7 +4199,7 @@ setUploading(false);setUploadPct(0);
     if(type==="text"&&!text.trim())return;
     if(type!=="text"&&!mediaUrl)return;
     setBusy(true);
-    const{error}=await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null,sound_id:selectedSound?.id||null});
+   const{error}=await sb.from("statuses").insert({user_id:session?.user?.id,type,text:text.trim()||null,media_url:mediaUrl||null,text_background:textBg||null,text_font:textFont||null,sound_id:selectedSound?.id||null});
     setBusy(false);
     if(error){console.error("Erreur publication statut:",error);return;}
     onDone();
@@ -4259,10 +4284,25 @@ setUploading(false);setUploadPct(0);
     ))}
   </div>
 )}
+{type==="text"&&(
+  <div style={{display:"flex",gap:7,marginBottom:10,overflowX:"auto",scrollbarWidth:"none"}}>
+    {TEXT_FONTS.map(f=>{
+      const on=textFont===f;
+      return(
+        <div key={f} onClick={()=>setTextFont(f)}
+          style={{flexShrink:0,padding:"6px 12px",borderRadius:20,cursor:"pointer",
+            border:`1px solid ${on?T.gold:T.border}`,background:on?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.03)",
+            color:on?T.goldL:T.muted,fontSize:12,fontFamily:`'${f}',sans-serif`,fontWeight:on?700:400}}>
+          {f.split(" ")[0]}
+        </div>
+      );
+    })}
+  </div>
+)}
 {type==="text"
   ?<>
     <textarea value={text} onChange={e=>{const v=e.target.value;const wc=v.trim()?v.trim().split(/\s+/).length:0;if(wc<=40||v.length<text.length)setText(v);}} placeholder="Partagez votre statut… (40 mots max)" maxLength={280} rows={4}
-      style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:2,transition:"all .3s"}}/>
+       style={{width:"100%",background:textBg?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[textBg]||"rgba(255,255,255,0.04)"):"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 14px",color:textBg?"#fff":T.text,fontSize:textBg?22:14,fontWeight:textBg?700:400,textAlign:textBg?"center":"left",outline:"none",resize:"none",lineHeight:1.7,marginBottom:2,transition:"all .3s",fontFamily:`'${textFont}',sans-serif`}}/>
     <p style={{margin:"0 0 8px",fontSize:11,color:T.muted,textAlign:"right"}}>{text.trim()?text.trim().split(/\s+/).length:0}/40 mots</p>
   </>
   :<>
@@ -4537,7 +4577,7 @@ if(isMe){
       background:current.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[current.text_background]||"transparent"):"transparent",
       display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 32px",overflow:"hidden"
     }}>
-      <p style={{margin:0,maxWidth:"100%",maxHeight:"100%",overflow:"hidden",fontSize:current.text?.length>140?20:(current.text?.length>70?24:28),fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif",textAlign:"center",whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"anywhere"}}>{current.text}</p>
+       <p style={{margin:0,maxWidth:"100%",maxHeight:"100%",overflow:"hidden",fontSize:current.text?.length>140?20:(current.text?.length>70?24:28),fontWeight:800,color:T.text,lineHeight:1.5,fontFamily:`'${current.text_font||"Space Grotesk"}',sans-serif`,textAlign:"center",whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"anywhere"}}>{current.text}</p>
     </div>
   ):(
     <div style={{position:"absolute",bottom:160,left:16,right:16,zIndex:1,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
@@ -4588,7 +4628,7 @@ if(isMe){
       {isMe&&showInfo&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(8,8,8,0.98)",borderRadius:"20px 20px 0 0",border:`1px solid ${T.border}`,padding:"20px 16px 40px",maxHeight:"50vh",overflowY:"auto",zIndex:3,animation:"slideUp .3s ease"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <p style={{color:T.goldL,fontWeight:700,fontSize:13,margin:0}}>👁 {currentViews.length} vue{currentViews.length!==1?"s":""} · ❤️ {currentLikes.length} like{currentLikes.length!==1?"s":""}</p>
+              <p style={{color:T.goldL,fontWeight:700,fontSize:13,margin:0}}>👁 {fmtCount(currentViews.length)} vue{currentViews.length!==1?"s":""} · ❤️ {fmtCount(currentLikes.length)} like{currentLikes.length!==1?"s":""}</p>
             <Btn onClick={e=>{e.stopPropagation();setShowInfo(false);}} style={{color:"rgba(255,255,255,0.4)",display:"flex",alignItems:"center",padding:4}}><X size={18}/></Btn>
           </div>
           {currentViews.map((v,i)=>{const prf=v.profiles;const name=prf?`${prf.prenom||""} ${(prf.nom||"")[0]||""}.`.trim():"?";return(
@@ -4687,7 +4727,7 @@ useEffect(()=>{
   const relevantIds=[session?.user?.id,...(myConnections||[])].filter(Boolean);
   if(!relevantIds.length)return;
   const{data}=await sb.from("statuses")
-    .select("id,user_id,type,text,media_url,text_background,expires_at,created_at,sound_id,sound:sounds!statuses_sound_id_fkey(id,title,url),author:profiles!statuses_user_id_fkey(id,prenom,nom,avatar_url,badge,paroisse)")
+    .select("id,user_id,type,text,media_url,text_background,text_font,expires_at,created_at,sound_id,sound:sounds!statuses_sound_id_fkey(id,title,url),author:profiles!statuses_user_id_fkey(id,prenom,nom,avatar_url,badge,paroisse)")
     .gt("expires_at",new Date().toISOString())
     .in("user_id",relevantIds)
     .order("created_at",{ascending:false});
@@ -4701,7 +4741,7 @@ useEffect(()=>{
     otherStatuses.forEach(s=>{
       const key=s.user_id;
       if(!map.has(key))map.set(key,{author:s.author?normProfile(s.author):null,statuses:[]});
-     const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,sound:s.sound||null};
+     const mapped={id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,text_font:s.text_font||null,sound:s.sound||null};
       map.get(key).statuses.push(mapped);
     });
     const freshGroups=Array.from(map.values());
@@ -4765,7 +4805,7 @@ useEffect(()=>{
     }
     const foundMine=me.find(s=>s.id===statusId);
     if(foundMine){
-      const myMappedNow=me.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,sound:s.sound||null}));
+      const myMappedNow=me.map(s=>({id:s.id,type:s.type,text:s.text||null,mediaUrl:s.media_url||null,ts:new Date(s.created_at).getTime(),text_background:s.text_background||null,text_font:s.text_font||null,sound:s.sound||null}));
       pushNav(()=>{setViewing(null);setHideNav(false);});
       setViewing({author:myProfile,statuses:myMappedNow});
       setHideNav(true);
@@ -5525,69 +5565,66 @@ function TypewriterText({text,style}){
   return <p style={style}>{text.slice(0,shown)}</p>;
 }
 
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef,refreshing}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef,refreshing,onFeedNavVisibility,sessionAffinity}){
 
 const [detailPost,setDetailPost]=useState(null);
-const [reelsIndex,setReelsIndex]=useState(null);
-const [reelsCommentPost,setReelsCommentPost]=useState(null);
-const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
-const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
+const [modalIndex,setModalIndex]=useState(null);
+const [modalIsReel,setModalIsReel]=useState(false);
+const [modalCommentPost,setModalCommentPost]=useState(null);
+const [modalCloseCallback,setModalCloseCallback]=useState(null);
+const [modalLiveCmtCount,setModalLiveCmtCount]=useState(0);
 const videoPosts=useMemo(()=>posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i))),[posts]);
 // Tant qu'une session Reel est ouverte, on garde son pool de vidéos à jour
 // quand loadMore() ramène de nouvelles vidéos — sans ré-ordonner ici, c'est
-// ReelsViewer qui décide de l'ordre (il connaît les intérêts récents).
+// FeedViewer qui décide de l'ordre (il connaît les intérêts récents).
 useEffect(()=>{
-  if(!reelsViewerPosts)return;
+  if(!modalPosts||!modalIsReel)return;
   const byId=new Map(videoPosts.map(p=>[p.id,p]));
-  const existingIds=new Set(reelsViewerPosts.map(p=>p.id));
+  const existingIds=new Set(modalPosts.map(p=>p.id));
   const fresh=videoPosts.filter(p=>!existingIds.has(p.id));
-  setReelsViewerPosts(prev=>{
+  setModalPosts(prev=>{
     // Rafraîchit likes/commentaires/sauvegardes des posts déjà présents SANS
     // changer leur position — sinon un like posé dans le Reel n'est jamais vu.
     const refreshed=prev.map(p=>{const latest=byId.get(p.id);return latest?{...p,likes:latest.likes,comments:latest.comments,saved:latest.saved,savesCount:latest.savesCount}:p;});
     return fresh.length?[...refreshed,...fresh]:refreshed;
   });
-},[videoPosts]);
-const [photoIndex,setPhotoIndex]=useState(null);
-const [photoStartMedia,setPhotoStartMedia]=useState(0);
-const [photoViewerPosts,setPhotoViewerPosts]=useState(null);
-const [reelsViewerPosts,setReelsViewerPosts]=useState(null);
+},[videoPosts,modalIsReel]);
+const [modalStartMedia,setModalStartMedia]=useState(0);
+const [modalPosts,setModalPosts]=useState(null);
 const [openSoundId,setOpenSoundId]=useState(null);
 
 
-
-const [photoCommentPost,setPhotoCommentPost]=useState(null);
-const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
 const photoPosts=useMemo(()=>posts.filter(p=>{
   const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
   return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
 }),[posts]);
 useEffect(()=>{
-  if(!photoViewerPosts)return;
-  const existingIds=new Set(photoViewerPosts.map(p=>p.id));
+  if(!modalPosts||modalIsReel)return;
+  const existingIds=new Set(modalPosts.map(p=>p.id));
   const fresh=photoPosts.filter(p=>!existingIds.has(p.id));
-  if(fresh.length)setPhotoViewerPosts(prev=>[...(prev||[]),...fresh]);
-},[photoPosts]);
+  if(fresh.length)setModalPosts(prev=>[...(prev||[]),...fresh]);
+},[photoPosts,modalIsReel]);
 const openPhotoViewer=(post,url)=>{
   let idx=photoPosts.findIndex(p=>p.id===post.id);
+  setModalIsReel(false);
   if(idx<0){
     // Post hors de la page Actuellement chargée (profil, recherche, admin, notification…)
     // → on ouvre quand même le viewer avec juste ce post
-    setPhotoViewerPosts([post]);
+    setModalPosts([post]);
     idx=0;
   }else{
     // Mode session : la file se réordonne autour de la photo tapée
     // (catégories + son partagé, voir useFeedRanking.js)
-    setPhotoViewerPosts(buildPhotoSessionQueue(post,photoPosts));
+    setModalPosts(buildPhotoSessionQueue(post,photoPosts));
     idx=0;
   }
   const allMedia=post.media_urls?.length>0?post.media_urls:(post.img?[post.img]:[]);
   const photosOnly=allMedia.filter(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
   const mIdx=Math.max(0,photosOnly.indexOf(url));
-  setPhotoStartMedia(mIdx);
+  setModalStartMedia(mIdx);
   if(detailPost){popNav();setDetailPost(null);} // ferme le post modal sous-jacent ET nettoie sa trace dans la pile de nav
-  pushNav(()=>{setPhotoIndex(null);setPhotoViewerPosts(null);});
-  setPhotoIndex(idx);
+  pushNav(()=>{setModalIndex(null);setModalPosts(null);});
+  setModalIndex(idx);
 };
 
 const isMediaVideo=u=>/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||"")||(u||"").includes("video");
@@ -5604,19 +5641,21 @@ const openPost=useCallback((p,tappedUrl)=>{
       postForReel={...p,media_urls:[tappedUrl,...allMedia.filter(u=>u!==tappedUrl)]};
     }
     const sessionQueue=buildReelSessionQueue(postForReel,videoPosts).map(v=>v.id===p.id?postForReel:v);
-    setReelsViewerPosts(sessionQueue);
-    pushNav(()=>{setReelsIndex(null);setReelsViewerPosts(null);});
+    setModalIsReel(true);
+    setModalPosts(sessionQueue);
+    pushNav(()=>{setModalIndex(null);setModalPosts(null);});
     const realIdx=sessionQueue.findIndex(v=>v.id===p.id);
-    setReelsIndex(realIdx>=0?realIdx:0);
+    setModalIndex(realIdx>=0?realIdx:0);
   }else if(p._forceComments){
     setDetailPost(p);
   }else if(p.type==="poll"||p.type==="event"){
     const idx=photoPosts.findIndex(q=>q.id===p.id);
-    if(idx<0)setPhotoViewerPosts([p]);else setPhotoViewerPosts(null);
-    setPhotoStartMedia(0);
+    setModalIsReel(false);
+    if(idx<0)setModalPosts([p]);else setModalPosts(null);
+    setModalStartMedia(0);
     if(detailPost){popNav();setDetailPost(null);}
-    pushNav(()=>setPhotoIndex(null));
-    setPhotoIndex(idx>=0?idx:0);
+    pushNav(()=>setModalIndex(null));
+    setModalIndex(idx>=0?idx:0);
   }else{
     const firstPhoto=tappedUrl&&!isMediaVideo(tappedUrl)?tappedUrl:allMedia.find(u=>!isMediaVideo(u));
     if(firstPhoto)openPhotoViewer(p,firstPhoto);else setDetailPost(p);
@@ -5624,23 +5663,16 @@ const openPost=useCallback((p,tappedUrl)=>{
 },[videoPosts,photoPosts,detailPost]);
 
 const openPostFromSound=(post,soundPosts)=>{
-  const list=soundPosts||[post];
   const isVideoFn=p=>(p.img||"").match(/\.(mp4|mov|webm|ogg|avi)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm|ogg|avi)/i));
-  if(isVideoFn(post)){
-    const vids=list.filter(isVideoFn);
-    const idx=vids.findIndex(v=>v.id===post.id);
-    setReelsViewerPosts(vids);
-    if(reelsIndex===null)pushNav(()=>setReelsIndex(null));
-    setReelsIndex(idx>=0?idx:0);
-  }else{
-    const photos=list.filter(p=>!isVideoFn(p));
-    const idx=photos.findIndex(p=>p.id===post.id);
-    setPhotoViewerPosts(photos);
-    setPhotoStartMedia(0);
-    if(detailPost){popNav();setDetailPost(null);}
-    if(photoIndex===null)pushNav(()=>setPhotoIndex(null));
-    setPhotoIndex(idx>=0?idx:0);
-  }
+  const hasVisual=p=>isVideoFn(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
+  const list=(soundPosts||[post]).filter(hasVisual);
+  const idx=list.findIndex(v=>v.id===post.id);
+  setModalIsReel(isVideoFn(post));
+  setModalPosts(list);
+  setModalStartMedia(0);
+  if(detailPost){popNav();setDetailPost(null);}
+  if(modalIndex===null)pushNav(()=>{setModalIndex(null);setModalPosts(null);});
+  setModalIndex(idx>=0?idx:0);
 };
 
 useEffect(()=>{
@@ -5665,8 +5697,6 @@ const prefetchedUrlsRef=useRef(new Set());
 const scrollInitialized=useRef(false);
 const localViewedPostIdsRef=useRef(new Set());
 const viewedPostIds=viewedPostIdsRef||localViewedPostIdsRef;
-const rangeTimerRef=useRef(null);
-const lastRangeRef=useRef({startIndex:0,endIndex:0});
 const postsRef=useRef(posts);
 useEffect(()=>{postsRef.current=posts;},[posts]);
 useEffect(()=>{
@@ -5689,24 +5719,17 @@ useEffect(()=>{
   return()=>clearTimeout(timer);
 },[posts?.length]);
 
-const handleRangeChanged=useCallback(({startIndex,endIndex})=>{
-  lastRangeRef.current={startIndex,endIndex};
-  clearTimeout(rangeTimerRef.current);
-  rangeTimerRef.current=setTimeout(()=>{
-    const{startIndex:s,endIndex:e}=lastRangeRef.current;
-    const currentPosts=postsRef.current||[];
-    const newlySeenIds=[];
-    for(let i=s;i<=e;i++){
-      const p=currentPosts[i];
-      if(!p||viewedPostIds.current.has(p.id))continue;
-      viewedPostIds.current.add(p.id);
-      newlySeenIds.push(p.id);
-    }
-    if(newlySeenIds.length===0)return;
+const postSeenTimerRef=useRef(null);
+const handlePostSeen=useCallback((post)=>{
+  if(!post?.id)return;
+  clearTimeout(postSeenTimerRef.current);
+  postSeenTimerRef.current=setTimeout(()=>{
+    if(viewedPostIds.current.has(post.id))return;
+    viewedPostIds.current.add(post.id);
     const prev=JSON.parse(localStorage.getItem(celesteScopedKey("celeste_seen_posts"))||"[]");
-    const updated=[...new Set([...prev,...newlySeenIds])].slice(-500);
+    const updated=[...new Set([...prev,post.id])].slice(-500);
     localStorage.setItem(celesteScopedKey("celeste_seen_posts"),JSON.stringify(updated));
-    newlySeenIds.forEach(id=>sb.rpc("increment_phase_views",{post_id:id}));
+    sb.rpc("increment_phase_views",{post_id:post.id});
   },600);
 },[]);
 
@@ -5759,152 +5782,119 @@ const toggleParticipate=useCallback(async pid=>{
     else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});
     notify(ex?"Retiré des sauvegardes":"Sauvegardé ✦");
   },[session?.user?.id,notify]);
-const virtuosoComponents=useMemo(()=>({
-  Header:()=>(
-    <div style={{maxWidth:640,margin:"0 auto"}}>
-      {(posts||[]).length===0&&(
-        <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
-          <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>✦</div>
-          <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22}}>Aucune publication</p>
-          <p style={{fontSize:13,marginTop:8}}>Soyez le premier à partager</p>
-        </div>
-      )}
-    </div>
-  ),
-  Footer:()=>(
-    <div style={{maxWidth:640,margin:"0 auto"}}>
-      {loadingMore&&(
-        <div style={{display:"flex",justifyContent:"center",padding:"24px"}}>
-          <StarFieldLoader/>
-        </div>
-      )}
-      <div style={{height:80}}/>
-    </div>
-  )
-}),[posts?.length===0,loadingMore]);
+const [feedTab,setFeedTab]=useState("all"); // all | photo | video
+const [feedCommentPost,setFeedCommentPost]=useState(null);
+const [feedCloseCallback,setFeedCloseCallback]=useState(null);
+const [feedLiveCmtCount,setFeedLiveCmtCount]=useState(0);
+const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:posts;
   return(
     <>
-{reelsIndex!==null&&<ReelsViewer
-  posts={reelsViewerPosts||videoPosts}
+{modalIndex!==null&&<FeedViewer
+  posts={modalPosts||photoPosts}
   sb={sb} T={T} Av={Av}
-  startIndex={reelsIndex}
-  onClose={()=>{popNav();setReelsIndex(null);}}
+  startIndex={modalIndex}
+  startMediaIndex={modalStartMedia}
+  onClose={()=>{popNav();setModalIndex(null);setModalPosts(null);}}
   toggleLike={toggleLike}
   toggleSave={toggleSave}
+  onParticipate={toggleParticipate}
   session={session}
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
+  onOpenComments={(p,cb)=>{setModalCommentPost(p);setModalCloseCallback(()=>cb);}}
   myConnections={myConnections}
   onConnect={onConnect}
   onOpenSound={setOpenSoundId}
   onNeedMore={loadMore}
   hasMore={hasMore}
   loadingMore={loadingMore}
-/>}
-{photoIndex!==null&&<PhotoViewer
- onOpenSound={setOpenSoundId}
-  posts={photoViewerPosts||photoPosts}
-  sb={sb} T={T} Av={Av}
-  startIndex={photoIndex}
-  startMediaIndex={photoStartMedia}
-  onClose={()=>{popNav();setPhotoIndex(null);}}
-  toggleLike={toggleLike}
-  toggleSave={toggleSave}
-  session={session}
-  myProfile={myProfile}
-  notify={notify}
-  onUser={onUser}
-  onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
-  myConnections={myConnections}
-  onConnect={onConnect}
-  onParticipate={toggleParticipate}
-  onNeedMore={loadMore}
-  hasMore={hasMore}
-  loadingMore={loadingMore}
+  sessionAffinity={sessionAffinity}
+  pauseForOverlay={searchOpen}
 />}
 {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)}
   onUseSound={(sound)=>{setOpenSoundId(null); onUseSoundForPost?.(sound);}}
   onOpenPost={openPostFromSound}
 />}
-{(reelsCommentPost||photoCommentPost)&&(
+{(modalCommentPost||feedCommentPost)&&(
   <CommentsOnlyModal
-    post={reelsCommentPost||photoCommentPost}
+    post={modalCommentPost||feedCommentPost}
     session={session}
     getM={getM}
-    onCountChange={setReelsLiveCmtCount}
+    onCountChange={modalCommentPost?setModalLiveCmtCount:setFeedLiveCmtCount}
     onClose={()=>{
-      setReelsCommentPost(null);
-      setPhotoCommentPost(null);
-      if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-      if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
+      setModalCommentPost(null);
+      setFeedCommentPost(null);
+      if(modalCloseCallback){modalCloseCallback(modalLiveCmtCount);setModalCloseCallback(null);}
+      if(feedCloseCallback){feedCloseCallback(feedLiveCmtCount);setFeedCloseCallback(null);}
     }}
   />
 )}
       
-
-    <div style={{position:"relative",flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:T.bg}}>
-<div style={{background:T.bg,zIndex:10,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-  <div onClick={()=>{pushNav(()=>setSearchOpen(false));setSearchOpen(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
-    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold,filter:"drop-shadow(0 0 10px rgba(201,149,42,0.5))",letterSpacing:2}}>✦</span>
-    <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:Math.max(13,21-Math.max(0,(myProfile?.prenom?.length||0)-8)*0.7),fontWeight:300,letterSpacing:3,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flexShrink:1}}>Actu, <span style={{color:T.goldL}}>{myProfile?.prenom||""}</span></span>
-    <Search size={16} color={T.muted} style={{marginLeft:4,flexShrink:0}}/>
-  </div>
-  <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"9px 16px",color:"#000",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,boxShadow:"0 4px 16px rgba(201,149,42,0.3)"}}>
-    <Plus size={16}/>Publier
+    <div style={{position:"relative",flex:1,overflow:"hidden",background:"#000"}}>
+<div style={{display:searchOpen?"none":"contents"}}>
+{/* Barre flottante transparente façon TikTok : onglets Tout/Photos/Reels + recherche + publier */}
+<div style={{position:"absolute",top:0,left:0,right:0,zIndex:1300,paddingTop:"env(safe-area-inset-top,0px)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top,0px)) 14px 10px",background:"linear-gradient(180deg,rgba(0,0,0,0.55) 0%,rgba(0,0,0,0.25) 60%,rgba(0,0,0,0) 100%)",pointerEvents:"none"}}>
+  <Btn onClick={onNewPost} style={{pointerEvents:"auto",width:40,height:40,borderRadius:"50%",background:T.gradGold,border:"none",display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0,boxShadow:"0 4px 14px rgba(201,149,42,0.55)"}}>
+    <Plus size={18}/>
   </Btn>
+  <div style={{display:"flex",gap:22,pointerEvents:"auto"}}>
+    {[{k:"all",lb:"Tout"},{k:"photo",lb:"Photos"},{k:"video",lb:"Reels"}].map(t=>(
+      <Btn key={t.k} onClick={()=>setFeedTab(t.k)} style={{padding:"4px 0",background:"none",color:feedTab===t.k?"#fff":"rgba(255,255,255,0.6)",fontSize:15,fontWeight:feedTab===t.k?700:500,borderBottom:feedTab===t.k?"2px solid #fff":"2px solid transparent"}}>
+        {t.lb}
+      </Btn>
+    ))}
+  </div>
+  <Btn onClick={()=>{pushNav(()=>setSearchOpen(false));setSearchOpen(true);}} style={{pointerEvents:"auto",width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.25)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",flexShrink:0}}>
+    <Search size={16}/>
+  </Btn>
+</div>
+
+{refreshing&&(
+  <div style={{position:"absolute",top:"calc(70px + env(safe-area-inset-top,0px))",left:"50%",transform:"translateX(-50%)",zIndex:1300,display:"flex",alignItems:"center",gap:8,background:"rgba(10,10,10,0.9)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"6px 14px",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 8px 24px rgba(0,0,0,0.4)",animation:"notifIn .3s ease"}}>
+    <span style={{fontSize:14,color:T.gold,display:"inline-block",animation:"spin 1s linear infinite"}}>✦</span>
+    <span style={{fontSize:12,color:T.text,fontWeight:600}}>Actualisation…</span>
+  </div>
+)}
+  {feedTabPosts.length===0?(
+    <div style={{textAlign:"center",padding:"140px 20px",color:"rgba(255,255,255,0.5)"}}>
+      <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>✦</div>
+      <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:"#fff"}}>Aucune publication</p>
+      <p style={{fontSize:13,marginTop:8}}>{feedTab==="photo"?"Aucune photo pour le moment":feedTab==="video"?"Aucun reel pour le moment":"Soyez le premier à partager"}</p>
+    </div>
+  ):(
+    <FeedViewer
+      embedded
+      posts={feedTabPosts}
+      sb={sb} T={T} Av={Av}
+      startIndex={0}
+      toggleLike={toggleLike}
+      toggleSave={toggleSave}
+      onParticipate={toggleParticipate}
+      session={session}
+      myProfile={myProfile}
+      notify={notify}
+      onUser={onUser}
+
+      onOpenComments={(p,cb)=>{setFeedCommentPost(p);setFeedCloseCallback(()=>cb);}}
+      myConnections={myConnections}
+      onConnect={onConnect}
+      onOpenSound={setOpenSoundId}
+      onNeedMore={loadMore}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
+      onActivePost={handlePostSeen}
+      onNavVisibilityChange={onFeedNavVisibility}
+      sessionAffinity={sessionAffinity}
+      pauseForOverlay={searchOpen}
+    />
+  )}
 </div>
 {searchOpen&&<SearchExplorer sb={sb} T={T} Av={Av} myProfile={myProfile} mapDbPost={mapDbPost} normProfile={normProfile}
   onClose={()=>{popNav();setSearchOpen(false);}}
   onOpenPost={openPostFromSound}
   onUseSound={onUseSoundForPost}
 />}
-
-{refreshing&&(
-  <div style={{position:"absolute",top:64,left:"50%",transform:"translateX(-50%)",zIndex:20,display:"flex",alignItems:"center",gap:8,background:"rgba(10,10,10,0.9)",border:`1px solid ${T.gold}44`,borderRadius:20,padding:"6px 14px",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",boxShadow:"0 8px 24px rgba(0,0,0,0.4)",animation:"notifIn .3s ease"}}>
-    <span style={{fontSize:14,color:T.gold,display:"inline-block",animation:"spin 1s linear infinite"}}>✦</span>
-    <span style={{fontSize:12,color:T.text,fontWeight:600}}>Actualisation…</span>
-  </div>
-)}
-<Virtuoso
-  style={{flex:1,background:T.bg}}
-  data={posts||[]}
-  computeItemKey={(index,p)=>p.id}
-  endReached={()=>{if(hasMore)loadMore();}}
-  rangeChanged={handleRangeChanged}
-  overscan={200}
-  scrollerRef={ref=>{
-    if(!ref)return;
-    scrollerRef.current=ref;
-    ref.setAttribute("data-feed-scroll","");
-    if(!scrollInitialized.current){
-      scrollInitialized.current=true;
-      if(initialScroll>0)ref.scrollTop=initialScroll;
-    }
-    ref.onscroll=()=>{onScrollChange?.(ref.scrollTop);};
-  }}
-  components={virtuosoComponents}
-  itemContent={(index,p)=>(
-    <div key={p.id} data-post-id={p.id} style={{maxWidth:640,margin:"0 auto"}}>
-      <PostCard key={p.id} post={p} myProfile={myProfile} session={session} getM={getM}
-        onMuteAuthor={onMuteAuthor}
-        onDetail={openPost}
-        onLike={toggleLike}
-        onParticipate={toggleParticipate}
-        onSave={toggleSave}
-        onUser={onUser}
-        onImageView={onImageView}
-        notify={notify}
-        refresh={refreshPost}
-        setPosts={setPosts}
-        animDelay={0}
-        myConnections={myConnections}
-        onConnect={onConnect}
-      />
-    </div>
-  )}
-/>
 </div>
 {detailPost&&(
         <PostDetailModal
@@ -6485,8 +6475,7 @@ onMuteAuthor?.(post.by);
       borderRadius:16,padding:"32px 20px",marginBottom:10,minHeight:160,maxHeight:160,overflow:"hidden",
       display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"
     }}>
-      <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:"'Space Grotesk',sans-serif",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",textOverflow:"ellipsis"}}>{post.text}</p>
-    </div>
+     <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:`'${post.text_font||"Space Grotesk"}',sans-serif`,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",textOverflow:"ellipsis"}}>{post.text}</p>    </div>
   ):(
     <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,post.mentions)}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,post.mentions)}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
   )
@@ -6586,8 +6575,7 @@ onMuteAuthor?.(post.by);
                   {likeBurst&&(
                     <Heart size={46} fill="#fff" color="#fff" style={{position:"absolute",top:-14.5,left:-14.5,filter:"drop-shadow(0 4px 20px rgba(0,0,0,0.4))",animation:"heartBurst .6s ease",pointerEvents:"none"}}/>
                   )}
-                </div>
-                {(post.likes||[]).length>0&&<span>{(post.likes||[]).length}</span>}
+                </div>{(post.likes||[]).length>0&&<span>{fmtCount((post.likes||[]).length)}</span>}
               </Btn>
             </div>
             <div
@@ -6597,9 +6585,7 @@ onMuteAuthor?.(post.by);
               onPointerLeave={()=>{if(reactOpen)endLongPress();else cancelLongPress();}}
               style={{position:"relative",touchAction:reactOpen?"none":"auto"}}>
               <Btn className="action-icon-btn" onClick={()=>{if(suppressClickRef.current){suppressClickRef.current=false;return;}if(!reactOpen)onDetail?.({...post,_forceComments:true});}} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,color:T.text,fontSize:13,fontWeight:700}}>
-                <MessageCircle size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
-                {(post.commentsCount??(post.comments||[]).length)>0&&<span>{post.commentsCount??(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0)}</span>}
-              </Btn>
+                <MessageCircle size={17} strokeWidth={2.4} style={{filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/> {(post.commentsCount??(post.comments||[]).length)>0&&<span>{fmtCount(post.commentsCount??(post.comments||[]).reduce((a,c)=>a+1+(c.repliesCount||0),0))}</span>}              </Btn>
               {reactOpen&&(
                 <div style={{position:"absolute",left:"50%",top:"50%",width:0,height:0,zIndex:50,pointerEvents:"none"}}>
                   {quickReactions.map(q=>{
@@ -6661,31 +6647,20 @@ onMuteAuthor?.(post.by);
 function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,toggleSave,myConnections,onConnect}){
   const [posts,setPosts]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [reelsIndex,setReelsIndex]=useState(null);
-  const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+  const [viewerIndex,setViewerIndex]=useState(null);
+  const [viewerFallback,setViewerFallback]=useState(null);
   const [openSoundId,setOpenSoundId]=useState(null);
-  const [reelsCommentPost,setReelsCommentPost]=useState(null);
-  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
-  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
-  const [photoCommentPost,setPhotoCommentPost]=useState(null);
-  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
-  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
-  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+  const [commentPost,setCommentPost]=useState(null);
+  const [closeCallback,setCloseCallback]=useState(null);
+  const [liveCmtCount,setLiveCmtCount]=useState(0);
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
-  const videoPosts=posts.filter(isVid);
+  const hasVisual=p=>isVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
+  const visualPosts=posts.filter(hasVisual);
   const openPostFromSound=(post,soundPosts)=>{
-    const list=soundPosts||[post];
-    if(isVid(post)){
-      const vids=list.filter(isVid);
-      const idx=vids.findIndex(v=>v.id===post.id);
-      setReelsViewerFallback(vids);
-      setReelsIndex(idx>=0?idx:0);
-    }else{
-      const photos=list.filter(q=>!isVid(q));
-      const idx=photos.findIndex(q=>q.id===post.id);
-      setPhotoViewerFallback(photos);
-      setPhotoViewerIndex(idx>=0?idx:0);
-    }
+    const list=(soundPosts||visualPosts).filter(hasVisual);
+    const idx=list.findIndex(q=>q.id===post.id);
+    setViewerFallback(soundPosts?list:null);
+    setViewerIndex(idx>=0?idx:0);
   };
 
   useEffect(()=>{
@@ -6707,7 +6682,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   },[session?.user?.id]);
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -6723,6 +6698,7 @@ const [detailPost, setDetailPost] = useState(null);
   const localToggleSave=async pid=>{
     await toggleSave(pid);
     setPosts(prev=>prev.filter(p=>p.id!==pid));
+    setViewerFallback(prev=>prev?prev.filter(p=>p.id!==pid):prev);
   };
   const localToggleParticipate=async pid=>{
     const uid=session?.user?.id;
@@ -6769,27 +6745,20 @@ return(
         />
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
-        {reelsIndex!==null&&toggleLike&&toggleSave&&(
-          <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} T={T} Av={Av} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
-            toggleLike={localToggleLike} toggleSave={localToggleSave} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
-        )}
-        {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-          <PhotoViewer posts={photoViewerFallback||posts.filter(p=>!isVid(p)&&(p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} T={T} Av={Av} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+        {viewerIndex!==null&&toggleLike&&toggleSave&&(
+          <FeedViewer posts={viewerFallback||visualPosts} sb={sb} T={T} Av={Av} startIndex={viewerIndex} onClose={()=>{setViewerIndex(null);setViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
+            onUser={()=>{}} onOpenComments={(p,cb)=>{setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
-        {(reelsCommentPost||photoCommentPost)&&(
+        {commentPost&&(
           <CommentsOnlyModal
-            post={reelsCommentPost||photoCommentPost}
+            post={commentPost}
             session={session}
             getM={getM}
-            onCountChange={setReelsLiveCmtCount}
+            onCountChange={setLiveCmtCount}
             onClose={()=>{
-              setReelsCommentPost(null);
-              setPhotoCommentPost(null);
-              if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-              if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
+              setCommentPost(null);
+              if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
             }}
           />
         )}
@@ -6799,16 +6768,11 @@ return(
           <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}}
             onClick={()=>{
               if(p.is_private&&!isNative)return;
-              if(isVid(p)){const idx=videoPosts.findIndex(q=>q.id===p.id);setReelsIndex(idx>=0?idx:0);}
-              else{
-                const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
-                if(hasPhoto){
-                  const photoPosts=posts.filter(q=>!isVid(q)&&(q.type==="poll"||q.type==="event"||q.img||(q.media_urls&&q.media_urls.length>0)));
-                  const idx=photoPosts.findIndex(q=>q.id===p.id);
-                  setPhotoViewerIndex(idx>=0?idx:0);
-                }else{
-                  setDetailPost(p);
-                }
+              if(hasVisual(p)){
+                const idx=visualPosts.findIndex(q=>q.id===p.id);
+                setViewerIndex(idx>=0?idx:0);
+              }else{
+                setDetailPost(p);
               }
             }}>
             {p.is_private&&!isNative?<PrivateLockedTile T={T}/>:p.img||p.media_urls?.[0]
@@ -6828,7 +6792,7 @@ return(
               <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.6)",borderRadius:6,padding:"2px 6px",fontSize:10,color:"#fff"}}>🎬</div>
             )}
             <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
-              <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
+              <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span>
             </div>
             {/* Bouton retirer */}
             <Btn onClick={async e=>{e.stopPropagation();await sb.from("saved_posts").delete().eq("post_id",p.id).eq("user_id",session?.user?.id);setPosts(prev=>prev.filter(x=>x.id!==p.id));notify("Retiré des sauvegardes");}}
@@ -7146,7 +7110,7 @@ N'oublie jamais que tu dois pas etre previsible soit aléatoire vis ta vie dans 
 CONTEXTE APP :
 Tu es dans Céleste, réseau social des jeunes francophones créé 
 par Georgi PAMBOU BIAYANDI C'est ton amoureux n°1 si quelqu'un dit que c'est lui Pour en être sûr tu peux lui poser une question comme: c'est quoi notre secret numeros 1 et lui il doit repondre que nous sommes des dieux . Tu connais l'app, ses fonctionnalités, 
-le badge certifié (2000 FCFA / 40 jours), le support 
+le badge certifié (2000 FCFA / 28 jours), le support 
 (mrdesetoiles@gmail.com / WhatsApp +242 067 131 327).
 
 OBJECTIF : Être la meilleure amie agaçante que tout le monde 
@@ -7162,7 +7126,7 @@ L'APP EN BREF :
 - Messagerie privée avec photos, fichiers, audio
 - Découvrir d'autres membres et se connecter
 - Notifications en temps réel
-- Coûte  2000 FCFA pour 40 jours
+- Coûte  2000 FCFA pour 28 jours
 - Donne accès aux thèmes premium, stats de vues, confidentialité avancée, publications prioritaires
 - Permet de générer des gains quotidiens grâce à tes posts et likes reçus
 
@@ -7191,13 +7155,20 @@ function VoicePlayer({src,mine,T}){
   const audioRef=useRef(null);
   const barsRef=useRef(null);
   const draggingRef=useRef(false);
-  const fmt=s=>{if(!s||isNaN(s))return"0:00";const m=Math.floor(s/60),sec=Math.floor(s%60);return`${m}:${sec.toString().padStart(2,"0")}`;};
+  const fmt=s=>{if(!s||!isFinite(s)||isNaN(s))return"0:00";const m=Math.floor(s/60),sec=Math.floor(s%60);return`${m}:${sec.toString().padStart(2,"0")}`;};
   useEffect(()=>{
     const a=new Audio(src);
     a.playbackRate=speed;
     audioRef.current=a;
-    a.onloadedmetadata=()=>setDuration(a.duration);
-    a.ontimeupdate=()=>setProgress(a.duration?a.currentTime/a.duration*100:0);
+    const fixDuration=()=>{
+      if(a.duration===Infinity||isNaN(a.duration)){
+        a.currentTime=1e101;
+        const onFixed=()=>{a.removeEventListener("timeupdate",onFixed);a.currentTime=0;setDuration(a.duration);};
+        a.addEventListener("timeupdate",onFixed);
+      }else{setDuration(a.duration);}
+    };
+    a.onloadedmetadata=fixDuration;
+    a.ontimeupdate=()=>setProgress(a.duration&&isFinite(a.duration)?a.currentTime/a.duration*100:0);
     a.onended=()=>{setPlaying(false);setProgress(0);};
     return()=>{a.pause();a.src="";};
   },[src]);
@@ -7718,10 +7689,10 @@ const handleFile=async(e,isImg)=>{
     setViewOnceNext(false);
     setRecording(true);setRecordSecs(0);setRecInitializing(true);
     try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,sampleRate:48000}});
       if(cancelledInitRef.current){stream.getTracks().forEach(t=>t.stop());return;}
       const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg";
-      const recOpts=mimeType?{mimeType}:{};
+      const recOpts=mimeType?{mimeType,audioBitsPerSecond:128000}:{audioBitsPerSecond:128000};
       const rec=new MediaRecorder(stream,recOpts); const chunks=[];
       rec.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
             rec.onstop=async()=>{
@@ -8090,7 +8061,7 @@ const handleFile=async(e,isImg)=>{
 </div>}
          <div style={{display:"flex",gap:6,alignItems:"flex-end",position:"relative"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
-  <Btn onClick={()=>setViewOnceNext(v=>!v)} style={{color:viewOnceNext?"#000":T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:viewOnceNext?T.gradGold:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Eye size={18}/></Btn>
+  <Btn onClick={()=>notify("Vue unique indisponible pour le moment (en travaux)")} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Eye size={18}/></Btn>
   <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
   {showStickerPicker&&(
     <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
@@ -8378,7 +8349,7 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -8406,16 +8377,14 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const uPhotoPosts=uPosts.filter(p=>!isUVid(p));
   const uVideoPosts=uPosts.filter(p=>isUVid(p));
   const [uTab,setUTab]=useState("posts");
- const [userReelsIndex,setUserReelsIndex]=useState(null);
-  const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
-  const [userReelsCommentPost,setUserReelsCommentPost]=useState(null);
-  const [userReelsCloseCallback,setUserReelsCloseCallback]=useState(null);
-  const [userReelsLiveCmtCount,setUserReelsLiveCmtCount]=useState(0);
-  const [photoCommentPost,setPhotoCommentPost]=useState(null);
-  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+ const [uViewerIndex,setUViewerIndex]=useState(null);
+  const [uCommentPost,setUCommentPost]=useState(null);
+  const [uCloseCallback,setUCloseCallback]=useState(null);
+  const [uCommentLiveCount,setUCommentLiveCount]=useState(0);
   const [openSoundId,setOpenSoundId]=useState(null);
-  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
-  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+  const [uViewerFallback,setUViewerFallback]=useState(null);
+  const hasUVisual=p=>isUVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
+  const uVisualPosts=uPosts.filter(hasUVisual);
   const loadUPosts=useCallback(async()=>{
     const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
@@ -8428,19 +8397,10 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
     loadUPosts();
   },[user.id,userPostsVersion]);
 const openPostFromSound=(post,soundPosts)=>{
-  const list=soundPosts||[post];
-  const isVidFn=q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video"));
-  if(isVidFn(post)){
-    const vids=list.filter(isVidFn);
-    const idx=vids.findIndex(q=>q.id===post.id);
-    setReelsViewerFallback(vids);
-    setUserReelsIndex(idx>=0?idx:0);
-  }else{
-    const photos=list.filter(q=>!isVidFn(q));
-    const idx=photos.findIndex(q=>q.id===post.id);
-    setPhotoViewerFallback(photos);
-    setPhotoViewerIndex(idx>=0?idx:0);
-  }
+  const list=(soundPosts||uVisualPosts).filter(hasUVisual);
+  const idx=list.findIndex(q=>q.id===post.id);
+  setUViewerFallback(soundPosts?list:null);
+  setUViewerIndex(idx>=0?idx:0);
 };
 if(blocked||blockedByOther) return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
@@ -8473,30 +8433,12 @@ if(user?.status==="suspended") return(
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {showReport&&<ReportModal onClose={()=>setShowReport(false)} onSubmit={handleReport}/>}
-      {userReelsIndex!==null&&toggleLike&&toggleSave&&(
-        <ReelsViewer
-          posts={reelsViewerFallback||uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+      {uViewerIndex!==null&&toggleLike&&toggleSave&&(
+        <FeedViewer
+          posts={uViewerFallback||uVisualPosts}
           sb={sb} T={T} Av={Av}
-          startIndex={userReelsIndex}
-          onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
-          toggleLike={localToggleLike}
-          toggleSave={toggleSave}
-          session={session}
-          myProfile={myProfile}
-          notify={notify}
-          onUser={()=>{}}
-          onOpenComments={(p,onReelsCb)=>{setUserReelsCommentPost(p);setUserReelsCloseCallback(()=>onReelsCb);}}
-          myConnections={myConnections}
-          onConnect={()=>toggle()}
-          onOpenSound={setOpenSoundId}
-        />
-      )}
-      {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-        <PhotoViewer
-          posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"))))}
-          sb={sb} T={T} Av={Av}
-          startIndex={photoViewerIndex}
-          onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+          startIndex={uViewerIndex}
+          onClose={()=>{setUViewerIndex(null);setUViewerFallback(null);}}
           toggleLike={localToggleLike}
           toggleSave={toggleSave}
           onParticipate={localToggleParticipate}
@@ -8504,24 +8446,22 @@ if(user?.status==="suspended") return(
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
+          onOpenComments={(p,cb)=>{setUCommentPost(p);setUCloseCallback(()=>cb);}}
           myConnections={myConnections}
           onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
         />
       )}
       {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
-      {(userReelsCommentPost||photoCommentPost)&&(
+      {uCommentPost&&(
         <CommentsOnlyModal
-          post={userReelsCommentPost||photoCommentPost}
+          post={uCommentPost}
           session={session}
           getM={id=>id===user.id?user:myProfile}
-          onCountChange={setUserReelsLiveCmtCount}
+          onCountChange={setUCommentLiveCount}
           onClose={()=>{
-            setUserReelsCommentPost(null);
-            setPhotoCommentPost(null);
-            if(userReelsCloseCallback){userReelsCloseCallback(userReelsLiveCmtCount);setUserReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback(userReelsLiveCmtCount);setPhotoCloseCallback(null);}
+            setUCommentPost(null);
+            if(uCloseCallback){uCloseCallback(uCommentLiveCount);setUCloseCallback(null);}
           }}
         />
       )}
@@ -8577,8 +8517,8 @@ if(user?.status==="suspended") return(
                 if(p.is_private&&!isNative)return;
                 const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
                 if(hasPhoto){
-                  const idx=uPhotoPosts.findIndex(q=>q.id===p.id);
-                  setPhotoViewerIndex(idx>=0?idx:0);
+                  const idx=uVisualPosts.findIndex(q=>q.id===p.id);
+                  setUViewerIndex(idx>=0?idx:0);
                 }else{
                   setDetailPost(p);
                 }
@@ -8601,7 +8541,7 @@ if(user?.status==="suspended") return(
   </div>
 )}
                 <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
+                  <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span>
                 </div>
                 {p.profile_pinned&&(
                   <div style={{position:"absolute",top:6,left:6,background:"rgba(0,0,0,0.55)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}}>
@@ -8620,8 +8560,8 @@ if(user?.status==="suspended") return(
               <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}}
                 onClick={()=>{
                   if(p.is_private&&!isNative)return;
-                  const idx=uVideoPosts.findIndex(q=>q.id===p.id);
-                  setUserReelsIndex(idx>=0?idx:0);
+                  const idx=uVisualPosts.findIndex(q=>q.id===p.id);
+                  setUViewerIndex(idx>=0?idx:0);
                 }}>
                 {p.is_private&&!isNative?(
                   <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(255,255,255,0.03)"}}>
@@ -8629,7 +8569,7 @@ if(user?.status==="suspended") return(
                     <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
                   </div>
                 ):<VideoThumb src={p.img}/>}
-                <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
+                <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span></div>
               </div>
             ))}
           </div>
@@ -8650,15 +8590,11 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const [blockedByOther,setBlockedByOther]=useState(false);
   const [showReport,setShowReport]=useState(false);
   const [detailPost,setDetailPost]=useState(null);
- const [userReelsIndex,setUserReelsIndex]=useState(null);
-  const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
-  const [reelsCommentPost,setReelsCommentPost]=useState(null);
-  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
-  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
-  const [photoCommentPost,setPhotoCommentPost]=useState(null);
-  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
-  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
-  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+ const [oViewerIndex,setOViewerIndex]=useState(null);
+  const [oCommentPost,setOCommentPost]=useState(null);
+  const [oCloseCallback,setOCloseCallback]=useState(null);
+  const [oCommentLiveCount,setOCommentLiveCount]=useState(0);
+  const [oViewerFallback,setOViewerFallback]=useState(null);
   const fileRef=useRef(); const coverRef=useRef();
  const [orgNote,setOrgNote]=useState(null);
   useEffect(()=>{
@@ -8693,7 +8629,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   };
 
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
@@ -8724,6 +8660,8 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const oIsVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
   const oPhotoPosts=uPosts.filter(p=>!oIsVid(p));
   const oVideoPosts=uPosts.filter(p=>oIsVid(p));
+  const hasOVisual=p=>oIsVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
+  const oVisualPosts=uPosts.filter(hasOVisual);
   const [oTab,setOTab]=useState("posts");
   const [openSoundId,setOpenSoundId]=useState(null);
 
@@ -8754,19 +8692,10 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
 };
 
 const openPostFromSound=(post,soundPosts)=>{
-  const list=soundPosts||[post];
-  const isVidFn=q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video"));
-  if(isVidFn(post)){
-    const vids=list.filter(isVidFn);
-    const idx=vids.findIndex(q=>q.id===post.id);
-    setReelsViewerFallback(vids);
-    setUserReelsIndex(idx>=0?idx:0);
-  }else{
-    const photos=list.filter(q=>!isVidFn(q));
-    const idx=photos.findIndex(q=>q.id===post.id);
-    setPhotoViewerFallback(photos);
-    setPhotoViewerIndex(idx>=0?idx:0);
-  }
+  const list=(soundPosts||oVisualPosts).filter(hasOVisual);
+  const idx=list.findIndex(q=>q.id===post.id);
+  setOViewerFallback(soundPosts?list:null);
+  setOViewerIndex(idx>=0?idx:0);
 };
 if(blocked||blockedByOther) return(
   <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
@@ -8786,30 +8715,12 @@ if(blocked||blockedByOther) return(
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
       {showReport&&<ReportModal onClose={()=>setShowReport(false)} onSubmit={handleReport}/>}
-      {userReelsIndex!==null&&toggleLike&&toggleSave&&(
-        <ReelsViewer
-          posts={reelsViewerFallback||uPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+      {oViewerIndex!==null&&toggleLike&&toggleSave&&(
+        <FeedViewer
+          posts={oViewerFallback||oVisualPosts}
           sb={sb} T={T} Av={Av}
-          startIndex={userReelsIndex}
-          onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
-          toggleLike={toggleLike}
-          toggleSave={toggleSave}
-          session={session}
-          myProfile={myProfile}
-          notify={notify}
-          onUser={()=>{}}
-          onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
-          myConnections={myConnections}
-          onConnect={()=>toggle()}
-          onOpenSound={setOpenSoundId}
-        />
-      )}
-      {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-        <PhotoViewer
-          posts={photoViewerFallback||uPosts.filter(p=>!(p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))&&(p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0)))}
-          sb={sb} T={T} Av={Av}
-          startIndex={photoViewerIndex}
-          onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+          startIndex={oViewerIndex}
+          onClose={()=>{setOViewerIndex(null);setOViewerFallback(null);}}
           toggleLike={toggleLike}
           toggleSave={toggleSave}
           onParticipate={localToggleParticipate}
@@ -8817,24 +8728,22 @@ if(blocked||blockedByOther) return(
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
+          onOpenComments={(p,cb)=>{setOCommentPost(p);setOCloseCallback(()=>cb);}}
           myConnections={myConnections}
           onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
         />
       )}
       {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
-      {(reelsCommentPost||photoCommentPost)&&(
+      {oCommentPost&&(
         <CommentsOnlyModal
-          post={reelsCommentPost||photoCommentPost}
+          post={oCommentPost}
           session={session}
           getM={id=>id===user.id?user:myProfile}
-          onCountChange={setReelsLiveCmtCount}
+          onCountChange={setOCommentLiveCount}
           onClose={()=>{
-            setReelsCommentPost(null);
-            setPhotoCommentPost(null);
-            if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
+            setOCommentPost(null);
+            if(oCloseCallback){oCloseCallback(oCommentLiveCount);setOCloseCallback(null);}
           }}
         />
       )}
@@ -8888,8 +8797,8 @@ if(blocked||blockedByOther) return(
   if(locked)return;
   const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
   if(hasPhoto){
-    const idx=oPhotoPosts.findIndex(q=>q.id===p.id);
-    setPhotoViewerIndex(idx>=0?idx:0);
+    const idx=oVisualPosts.findIndex(q=>q.id===p.id);
+    setOViewerIndex(idx>=0?idx:0);
   }else{
     setDetailPost(p);
   }
@@ -8904,7 +8813,7 @@ if(blocked||blockedByOther) return(
                 <div style={{padding:14}}>
                   {p.profile_pinned&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:T.goldL,fontWeight:700,marginBottom:6}}><Pin size={10}/>Épinglé</span>}
                   <p style={{margin:"0 0 6px",fontSize:13,color:T.text,lineHeight:1.6}}>{p.text||p.title}</p>
-                  <span style={{fontSize:11,color:T.muted}}>{ago(p.ts)} · ❤ {(p.likes||[]).length}</span>
+                  <span style={{fontSize:11,color:T.muted}}>{ago(p.ts)} · ❤ {fmtCount((p.likes||[]).length)}</span>
                 </div>
               </>
             }
@@ -8921,8 +8830,8 @@ if(blocked||blockedByOther) return(
               <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:locked?"default":"pointer"}}
                 onClick={()=>{
                   if(locked)return;
-                  const idx=oVideoPosts.findIndex(q=>q.id===p.id);
-                  setUserReelsIndex(idx>=0?idx:0);
+                  const idx=oVisualPosts.findIndex(q=>q.id===p.id);
+                  setOViewerIndex(idx>=0?idx:0);
                 }}>
                 {locked?(
                   <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(255,255,255,0.03)"}}>
@@ -8930,7 +8839,7 @@ if(blocked||blockedByOther) return(
                     <p style={{margin:0,fontSize:9,color:T.muted,textAlign:"center",padding:"0 8px"}}>Disponible sur l'app</p>
                   </div>
                 ):<VideoThumb src={p.img}/>}
-                <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
+                <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span></div>
               </div>
               );
             })}
@@ -9830,40 +9739,29 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   const [likedPosts,setLikedPosts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [detailPost,setDetailPost]=useState(null);
-  const [reelsIndex,setReelsIndex]=useState(null);
-  const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+  const [viewerIndex,setViewerIndex]=useState(null);
   const [openSoundId,setOpenSoundId]=useState(null);
-  const [reelsCommentPost,setReelsCommentPost]=useState(null);
-  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
-  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
-  const [photoCommentPost,setPhotoCommentPost]=useState(null);
-  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+  const [commentPost,setCommentPost]=useState(null);
+  const [closeCallback,setCloseCallback]=useState(null);
+  const [liveCmtCount,setLiveCmtCount]=useState(0);
   const refreshPost=async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
     return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   };
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
-  const videoPosts=likedPosts.filter(isVid);
-  const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
-  const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+  const hasVisual=p=>isVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
+  const visualPosts=likedPosts.filter(hasVisual);
+  const [viewerFallback,setViewerFallback]=useState(null);
   const openPostFromSound=(post,soundPosts)=>{
-    const list=soundPosts||[post];
-    if(isVid(post)){
-      const vids=list.filter(isVid);
-      const idx=vids.findIndex(v=>v.id===post.id);
-      setReelsViewerFallback(vids);
-      setReelsIndex(idx>=0?idx:0);
-    }else{
-      const photos=list.filter(q=>!isVid(q));
-      const idx=photos.findIndex(q=>q.id===post.id);
-      setPhotoViewerFallback(photos);
-      setPhotoViewerIndex(idx>=0?idx:0);
-    }
+    const list=(soundPosts||visualPosts).filter(hasVisual);
+    const idx=list.findIndex(q=>q.id===post.id);
+    setViewerFallback(soundPosts?list:null);
+    setViewerIndex(idx>=0?idx:0);
   };
   useEffect(()=>{
     sb.from("likes").select("post_id,posts(*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,latitude,longitude),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url)))").eq("user_id",session?.user?.id).order("created_at",{referencedTable:"posts",ascending:false}).then(({data})=>{
-      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
+      setLikedPosts((data||[]).map(l=>l.posts).filter(Boolean).map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],savesCount:0,ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,text_font:p.text_font||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null})));
       setLoading(false);
     });
   },[session?.user?.id]);
@@ -9908,27 +9806,20 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
     notify={notify}/>;
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0 80px"}}>
-      {reelsIndex!==null&&toggleLike&&toggleSave&&(
-        <ReelsViewer posts={reelsViewerFallback||videoPosts} sb={sb} T={T} Av={Av} startIndex={reelsIndex} onClose={()=>{setReelsIndex(null);setReelsViewerFallback(null);}}
-          toggleLike={localToggleLike} toggleSave={toggleSave} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
-      )}
-      {photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-        <PhotoViewer posts={photoViewerFallback||likedPosts.filter(p=>!isVid(p)&&(p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0)))} sb={sb} T={T} Av={Av} startIndex={photoViewerIndex} onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+      {viewerIndex!==null&&toggleLike&&toggleSave&&(
+        <FeedViewer posts={viewerFallback||visualPosts} sb={sb} T={T} Av={Av} startIndex={viewerIndex} onClose={()=>{setViewerIndex(null);setViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
+          onUser={()=>{}} onOpenComments={(p,cb)=>{setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
       )}
-      {(reelsCommentPost||photoCommentPost)&&(
+      {commentPost&&(
         <CommentsOnlyModal
-          post={reelsCommentPost||photoCommentPost}
+          post={commentPost}
           session={session}
           getM={getM}
-          onCountChange={setReelsLiveCmtCount}
+          onCountChange={setLiveCmtCount}
           onClose={()=>{
-            setReelsCommentPost(null);
-            setPhotoCommentPost(null);
-            if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-            if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
+            setCommentPost(null);
+            if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
           }}
         />
       )}
@@ -9937,16 +9828,12 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
         <div key={p.id} style={{aspectRatio:"1",position:"relative",cursor:p.is_private&&!isNative?"default":"pointer",overflow:"hidden",borderRadius:4}}
           onClick={()=>{
             if(p.is_private&&!isNative)return;
-            if(isVid(p)){const idx=videoPosts.findIndex(q=>q.id===p.id);setReelsIndex(idx>=0?idx:0);}
-            else{
-              const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
-              if(hasPhoto){
-                const photoPosts=likedPosts.filter(q=>!isVid(q)&&(q.type==="poll"||q.type==="event"||q.img||(q.media_urls&&q.media_urls.length>0)));
-                const idx=photoPosts.findIndex(q=>q.id===p.id);
-                setPhotoViewerIndex(idx>=0?idx:0);
-              }else{
-                setDetailPost(p);
-              }
+            const visual=hasVisual(p);
+            if(visual){
+              const idx=visualPosts.findIndex(q=>q.id===p.id);
+              setViewerIndex(idx>=0?idx:0);
+            }else{
+              setDetailPost(p);
             }
           }}>
           {p.is_private&&!isNative?<PrivateLockedTile T={T}/>:p.img||(p.media_urls||[])[0]
@@ -9961,7 +9848,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   </div>
 )}
           <div style={{position:"absolute",bottom:4,left:4,display:"flex",alignItems:"center",gap:3}}>
-            <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {(p.likes||[]).length}</span>
+           <span style={{fontSize:10,color:"#fff",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>♥ {fmtCount((p.likes||[]).length)}</span>
           </div>
         </div>
       ))}
@@ -10035,9 +9922,9 @@ const [myPostsLoading,setMyPostsLoading]=useState(true);
 const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,visibility,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,text_font,visibility,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data){
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,text_font:p.text_font||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
       setMyPosts(mapped);
     }
@@ -10053,21 +9940,14 @@ useEffect(()=>{
 const isVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
 const myPhotoPosts=useMemo(()=>myPosts.filter(p=>!isVid(p)),[myPosts]);
 const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
-const [reelsViewerFallback,setReelsViewerFallback]=useState(null);
-const [photoViewerFallback,setPhotoViewerFallback]=useState(null);
+const hasMyVisual=p=>isVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
+const myVisualPosts=useMemo(()=>myPosts.filter(hasMyVisual),[myPosts]);
+const [viewerFallback,setViewerFallback]=useState(null);
 const openPostFromSound=(post,soundPosts)=>{
-  const list=soundPosts||[post];
-  if(isVid(post)){
-    const vids=list.filter(isVid);
-    const idx=vids.findIndex(v=>v.id===post.id);
-    setReelsViewerFallback(vids);
-    setUserReelsIndex(idx>=0?idx:0);
-  }else{
-    const photos=list.filter(q=>!isVid(q));
-    const idx=photos.findIndex(q=>q.id===post.id);
-    setPhotoViewerFallback(photos);
-    setPhotoViewerIndex(idx>=0?idx:0);
-  }
+  const list=(soundPosts||myVisualPosts).filter(hasMyVisual);
+  const idx=list.findIndex(q=>q.id===post.id);
+  setViewerFallback(soundPosts?list:null);
+  setViewerIndex(idx>=0?idx:0);
 };
 const localToggleParticipate=async pid=>{
   const uid=session?.user?.id;
@@ -10085,16 +9965,13 @@ const localToggleParticipate=async pid=>{
   const followingCount=useMemo(()=>(myConnections||[]).length,[myConnections]);
   const [detailPost, setDetailPost] = useState(null);
 
- const [userReelsIndex,setUserReelsIndex]=useState(null);
-  const [photoViewerIndex,setPhotoViewerIndex]=useState(null);
+ const [viewerIndex,setViewerIndex]=useState(null);
   const [openSoundId,setOpenSoundId]=useState(null);
-  const [reelsCommentPost,setReelsCommentPost]=useState(null);
-  const [reelsCloseCallback,setReelsCloseCallback]=useState(null);
-  const [reelsLiveCmtCount,setReelsLiveCmtCount]=useState(0);
-  const [photoCommentPost,setPhotoCommentPost]=useState(null);
-  const [photoCloseCallback,setPhotoCloseCallback]=useState(null);
+  const [commentPost,setCommentPost]=useState(null);
+  const [closeCallback,setCloseCallback]=useState(null);
+  const [liveCmtCount,setLiveCmtCount]=useState(0);
   const refreshPost=async pid=>{
-  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+  const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
   if(!data)return null;
   return{id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:[],is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,ts:new Date(data.created_at).getTime()};
   
@@ -10105,30 +9982,12 @@ const localToggleParticipate=async pid=>{
       {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>setShowWallet(false)}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
-      {userReelsIndex!==null&&toggleLike&&toggleSave&&(
-  <ReelsViewer
-    posts={reelsViewerFallback||myPosts.filter(p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video")))}
+      {viewerIndex!==null&&toggleLike&&toggleSave&&(
+  <FeedViewer
+    posts={viewerFallback||myVisualPosts}
     sb={sb} T={T} Av={Av}
-    startIndex={userReelsIndex}
-    onClose={()=>{setUserReelsIndex(null);setReelsViewerFallback(null);}}
-    toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
-    toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
-    session={session}
-    myProfile={myProfile}
-    notify={notify}
-    onUser={()=>{}}
-    onOpenComments={(p,onReelsCb)=>{setReelsCommentPost(p);setReelsCloseCallback(()=>onReelsCb);}}
-    myConnections={myConnections}
-    onConnect={()=>{}}
-    onOpenSound={setOpenSoundId}
-  />
-)}
-{photoViewerIndex!==null&&toggleLike&&toggleSave&&(
-  <PhotoViewer
-    posts={photoViewerFallback||myPhotoPosts}
-    sb={sb} T={T} Av={Av}
-    startIndex={photoViewerIndex}
-    onClose={()=>{setPhotoViewerIndex(null);setPhotoViewerFallback(null);}}
+    startIndex={viewerIndex}
+    onClose={()=>{setViewerIndex(null);setViewerFallback(null);}}
     toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
     toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
     onParticipate={localToggleParticipate}
@@ -10136,7 +9995,7 @@ const localToggleParticipate=async pid=>{
     myProfile={myProfile}
     notify={notify}
     onUser={()=>{}}
-    onOpenComments={(p,onPhotoCb)=>{setPhotoCommentPost(p);setPhotoCloseCallback(()=>onPhotoCb);}}
+    onOpenComments={(p,cb)=>{setCommentPost(p);setCloseCallback(()=>cb);}}
     myConnections={myConnections}
     onConnect={()=>{}}
     onOpenSound={setOpenSoundId}
@@ -10144,29 +10003,25 @@ const localToggleParticipate=async pid=>{
 )}
 
 {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
-  {(reelsCommentPost||photoCommentPost)&&(
+  {commentPost&&(
   <CommentsOnlyModal
-    post={reelsCommentPost||photoCommentPost}
+    post={commentPost}
     session={session}
     getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}}
-    onCountChange={setReelsLiveCmtCount}
+    onCountChange={setLiveCmtCount}
     onClose={()=>{
-      setReelsCommentPost(null);
-      setPhotoCommentPost(null);
-      if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-      if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
+      setCommentPost(null);
+      if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
     }}
   />
 )}
 {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}}
-  zIndex={(reelsCommentPost||photoCommentPost)?1300:800}
-  fromReel={!!(reelsCommentPost||photoCommentPost)}
+  zIndex={commentPost?1300:800}
+  fromReel={!!commentPost}
   onClose={()=>{
     setDetailPost(null);
-    setReelsCommentPost(null);
-    setPhotoCommentPost(null);
-    if(reelsCloseCallback){reelsCloseCallback(reelsLiveCmtCount);setReelsCloseCallback(null);}
-    if(photoCloseCallback){photoCloseCallback(reelsLiveCmtCount);setPhotoCloseCallback(null);}
+    setCommentPost(null);
+    if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
   }}
 
   onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
@@ -10356,20 +10211,12 @@ const localToggleParticipate=async pid=>{
   {myPhotoPosts.map(p=>(
     <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}>
       <div onClick={()=>{
-        const isVid=p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.includes("video"));
-      
-        if(isVid&&toggleLike&&toggleSave){
-          const vidPosts=myPosts.filter(q=>q.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(q.img)||q.img.includes("video")));
-          const idx=vidPosts.findIndex(q=>q.id===p.id);
-          setUserReelsIndex(idx>=0?idx:0);
+        const hasVisual=hasMyVisual(p);
+        if(hasVisual){
+          const idx=myVisualPosts.findIndex(q=>q.id===p.id);
+          setViewerIndex(idx>=0?idx:0);
         }else{
-          const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
-          if(hasPhoto){
-            const idx=myPhotoPosts.findIndex(q=>q.id===p.id);
-            setPhotoViewerIndex(idx>=0?idx:0);
-          }else{
-            setDetailPost(p);
-          }
+          setDetailPost(p);
         }
       }} style={{width:"100%",height:"100%"}}>
         {p.img
@@ -10384,7 +10231,7 @@ const localToggleParticipate=async pid=>{
   </div>
 )}
         <div style={{position:"absolute",bottom:4,right:6,display:"flex",gap:5,alignItems:"center"}}>
-          <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span>
+          <span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span>
           {p.savesCount>0&&<span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>🔖 {p.savesCount}</span>}
         </div>
         {p.profile_pinned&&(
@@ -10429,9 +10276,9 @@ const localToggleParticipate=async pid=>{
             :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
               {myVideoPosts.map(p=>(
                 <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}
-                  onClick={()=>{const idx=myVideoPosts.findIndex(q=>q.id===p.id);setUserReelsIndex(idx>=0?idx:0);}}>
+                  onClick={()=>{const idx=myVisualPosts.findIndex(q=>q.id===p.id);setViewerIndex(idx>=0?idx:0);}}>
                  <VideoThumb src={p.img}/>
-                  <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {(p.likes||[]).length}</span></div>
+                  <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span></div>
                 </div>
               ))}
             </div>
@@ -11219,7 +11066,8 @@ function CelesteApp(){
   },[]);
 
   const [chatDrafts,setChatDrafts]=useState({});
-  const [tab,setTab]=useState("home");
+  const [tab,setTab]=useState("messages"); // ouverture par défaut sur la messagerie (feed encore en travaux)
+const [feedNavVisible,setFeedNavVisible]=useState(true); // masqué pendant qu'une vidéo joue en plein écran
   const [navTheme,setNavTheme]=useState(()=>{try{return localStorage.getItem("celeste_nav_theme")||"aucun";}catch(_){return "aucun";}});
   const chooseNavTheme=id=>{setNavTheme(id);try{localStorage.setItem("celeste_nav_theme",id);}catch(_){}};
  const [isOnline,setIsOnline]=useState(navigator.onLine);
@@ -11301,8 +11149,7 @@ useEffect(()=>{
         pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
         return;
       }
-      if(isVideoPost(finalPost)){setGlobalReelsPost(finalPost);return;}
-      if(isPhotoPost(finalPost)){setGlobalPhotoPost(finalPost);return;}
+      if(isVideoPost(finalPost)||isPhotoPost(finalPost)){setGlobalViewerPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});return;}
       pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
     };
     const handler=async e=>{
@@ -11310,9 +11157,9 @@ useEffect(()=>{
       if(!postId)return;
       const post=(posts||[]).find(p=>p.id===postId);
       if(post){openResolved(post,commentId,replyId);return;}
-      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
+      const{data}=await sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection),likes(user_id),event_participants(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))").eq("id",postId).single();
       if(data){
-        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+        const mapped={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),ts:new Date(data.created_at).getTime(),pinned:data.pinned||false,text_background:data.text_background||null,text_font:data.text_font||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
         openResolved(mapped,commentId,replyId);
       }else{
         notify("Cette publication n'est plus disponible");
@@ -11350,15 +11197,12 @@ const [pendingSound,setPendingSound]=useState(null);
   const [postPage,setPostPage]=useState(1);
   const [hasMorePosts,setHasMorePosts]=useState(true);
   const [loadingMore,setLoadingMore]=useState(false);
-  const loadingMoreRef=useRef(false); // verrou synchrone — setLoadingMore(state) est trop lent contre les endReached rapprochés de Virtuoso
+  const loadingMoreRef=useRef(false); // verrou synchrone — setLoadingMore(state) est trop lent contre des appels rapprochés de onNeedMore
   const [inAppNotifs,setInAppNotifs]=useState([]);
  const [viewImg,setViewImg]=useState(null);
-const [globalReelsPost,setGlobalReelsPost]=useState(null);
-const [globalPhotoPost,setGlobalPhotoPost]=useState(null);
-const [globalReelsCommentPost,setGlobalReelsCommentPost]=useState(null);
-const [globalPhotoCommentPost,setGlobalPhotoCommentPost]=useState(null);
-const [globalReelsCloseCallback,setGlobalReelsCloseCallback]=useState(null);
-const [globalPhotoCloseCallback,setGlobalPhotoCloseCallback]=useState(null);
+const [globalViewerPost,setGlobalViewerPost]=useState(null);
+const [globalCommentPost,setGlobalCommentPost]=useState(null);
+const [globalCloseCallback,setGlobalCloseCallback]=useState(null);
 const [globalCommentLiveCount,setGlobalCommentLiveCount]=useState(0);
 const [openCeleste,setOpenCeleste]=useState(false);
 const [celesteMsgs,setCelesteMsgs]=useState([]);
@@ -11563,9 +11407,10 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   const seenPostIdsRef = useRef(new Set());
   const postOrderRef=useRef([]);
   const lastPostCursorRef=useRef(null); // curseur {createdAt,id} du dernier post chargé — created_at seul n'est pas fiable comme curseur car plusieurs posts peuvent partager exactement le même timestamp (import groupé, tests…) ; Postgres ne garantit alors pas un ordre stable entre deux requêtes, ce qui provoquait des posts sautés ou répétés en scroll infini. id (clé unique) sert de départage.
+  const sessionAffinityRef=useRef(createSessionAffinity()); // signal d'affinité "chaud" côté client, voir sessionAffinity.js — reset() au login, jamais recréé sinon
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   if(page===1)lastPostCursorRef.current=null;
-  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).order("id",{ascending:false});
   if(lastPostCursorRef.current){
@@ -11579,7 +11424,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
@@ -11632,9 +11477,12 @@ const[rankingData,communityIds,frequentIds]=await Promise.all([
 // viral/withBadge/noBadge pointent tous vers les mêmes objets, donc muter ici
 // suffit à propager la donnée partout où ces posts sont ensuite utilisés.
 visible.forEach(p=>{p.categories=rankingData.categories[p.id]||[];});
-const viralShuffled=rankPosts(viral,rankingData,viewerLocation,communityIds,frequentIds,followedIds);
-const badgeShuffled=rankPosts(withBadge,rankingData,viewerLocation,communityIds,frequentIds,followedIds);
-const noBadgeShuffled=rankPosts(noBadge,rankingData,viewerLocation,communityIds,frequentIds,followedIds);
+// Fusionne l'affinité serveur (cron aggregate-engagement, à retardement) avec
+// le signal de session en cours (voir sessionAffinity.js) — bornée, additive.
+const rankingDataBoosted={...rankingData,affinity:sessionAffinityRef.current.applyTo(rankingData.affinity)};
+const viralShuffled=rankPosts(viral,rankingDataBoosted,viewerLocation,communityIds,frequentIds,followedIds);
+const badgeShuffled=rankPosts(withBadge,rankingDataBoosted,viewerLocation,communityIds,frequentIds,followedIds);
+const noBadgeShuffled=rankPosts(noBadge,rankingDataBoosted,viewerLocation,communityIds,frequentIds,followedIds);
 const feed=[];
 let vi=0,bi=0,ni=0;
 while(vi<viralShuffled.length||bi<badgeShuffled.length||ni<noBadgeShuffled.length){
@@ -11698,9 +11546,9 @@ setHasMorePosts(data.length===PAGE_SIZE);setPostPage(page);
   const handleFeedMuteAuthor=useCallback(authorId=>setMutedAuthorIds(prev=>[...new Set([...prev,authorId])]),[]);
 
   const refreshPost=useCallback(async pid=>{
-    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
+    const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,visibility,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
-    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
+    const updated={id:data.id,by:data.author_id,author:normProfile(data.author||{}),type:data.type,text:data.text||"",img:data.img_url||null,media_urls:data.media_urls||[],title:data.event_title||null,eventDate:data.event_date||null,eventTime:data.event_time||null,eventLoc:data.event_loc||null,likes:(data.likes||[]).map(l=>l.user_id),participants:(data.event_participants||[]).map(x=>x.user_id),comments:(data.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime()})),saved:[],ts:new Date(data.created_at).getTime(),text_background:data.text_background||null,text_font:data.text_font||null,is_for_sale:data.is_for_sale||false,is_ai_generated:data.is_ai_generated||false,is_private:data.is_private||false,comments_disabled:data.comments_disabled||false,whatsapp_contact:data.whatsapp_contact||null,contact_link:data.contact_link||null,expires_at:data.expires_at||null,pinned:data.pinned||false,profile_pinned:data.profile_pinned||false,post_phase:data.post_phase||null,visibility:data.visibility||null,sound:data.sound?{id:data.sound.id,title:data.sound.title,url:data.sound.url,owner_avatar:data.sound.owner?.avatar_url||null}:null};
     setPosts(prev=>(prev||[]).map(p=>p.id===pid?updated:p));
 return updated;
   },[]);
@@ -11738,6 +11586,7 @@ return updated;
 },[session,isPending]);
 useEffect(()=>{
   if(session?.user?.id&&myProfile?.id&&!isPending){
+    sessionAffinityRef.current.reset(); // nouvelle session = on repart sans signal résiduel de la précédente
     loadMembers();
     loadConnections(session.user.id);
     loadUnreadNotifs(session.user.id);
@@ -11967,7 +11816,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
 )}
-        <div style={{height:"calc(64px + env(safe-area-inset-top,0px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId)?"none":"flex",alignItems:"center",padding:"env(safe-area-inset-top,0px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
+        <div style={{height:"calc(64px + env(safe-area-inset-top,0px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId||tab==="home")?"none":"flex",alignItems:"center",padding:"env(safe-area-inset-top,0px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -12062,7 +11911,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           )}
           <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",width:"100%",flex:1,minHeight:0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={handleFeedOpenUser} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={handleFeedConnect} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={handleFeedMuteAuthor} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={handleFeedOpenUser} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={handleFeedConnect} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={handleFeedMuteAuthor} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing} onFeedNavVisibility={setFeedNavVisible} sessionAffinity={sessionAffinityRef.current}/>
 </div>
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>
@@ -12076,35 +11925,22 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
             </div>
         </div>
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
-{globalReelsPost&&(
-  <ReelsViewer
-  onOpenComments={(p,cb)=>{setGlobalReelsCommentPost(p);setGlobalReelsCloseCallback(()=>cb);}}
-    posts={[globalReelsPost]} sb={sb} T={T} Av={Av} startIndex={0}
+{globalViewerPost&&(
+  <FeedViewer
+    onOpenComments={(p,cb)=>{setGlobalCommentPost(p);setGlobalCloseCallback(()=>cb);}}
+    posts={[globalViewerPost]} sb={sb} T={T} Av={Av} startIndex={0}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
     toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
-    onUser={id=>{setGlobalReelsPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}}
-    myConnections={myConnections}
-    onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}
-    onClose={()=>setGlobalReelsPost(null)}
-  />
-)}
-{globalPhotoPost&&(
-  <PhotoViewer
-    posts={[globalPhotoPost]} sb={sb} T={T} Av={Av} startIndex={0}
-    onOpenComments={(p,cb)=>{setGlobalPhotoCommentPost(p);setGlobalPhotoCloseCallback(()=>cb);}}
-    session={session} myProfile={myProfile} notify={notify}
-    toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
-   toggleSave={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("saved_posts").insert({post_id:pid,user_id:uid});}}
-    onUser={id=>{setGlobalPhotoPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}}
+    onUser={id=>{setGlobalViewerPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}}
     myConnections={myConnections}
     onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}
     onParticipate={async pid=>{
-      const post=globalPhotoPost;
+      const post=globalViewerPost;
       if(!post||post.id!==pid)return;
       const uid=session?.user?.id;
       const participating=(post.participants||[]).some(x=>(x.user_id||x)===uid);
-      setGlobalPhotoPost(prev=>prev?{...prev,participants:participating?(prev.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(prev.participants||[]),uid]}:prev);
+      setGlobalViewerPost(prev=>prev?{...prev,participants:participating?(prev.participants||[]).filter(x=>(x.user_id||x)!==uid):[...(prev.participants||[]),uid]}:prev);
       try{
         if(participating){
           await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);
@@ -12113,26 +11949,24 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         }
       }catch(e){console.warn("toggleParticipate error:",e);}
     }}
-    onClose={()=>setGlobalPhotoPost(null)}
+    onClose={()=>setGlobalViewerPost(null)}
   />
 )}
-{(globalReelsCommentPost||globalPhotoCommentPost)&&(
+{globalCommentPost&&(
   <CommentsOnlyModal
-    post={globalReelsCommentPost||globalPhotoCommentPost}
+    post={globalCommentPost}
     session={session}
     getM={getM}
     onCountChange={setGlobalCommentLiveCount}
     onClose={()=>{
-      setGlobalReelsCommentPost(null);
-      setGlobalPhotoCommentPost(null);
-      if(globalReelsCloseCallback){globalReelsCloseCallback(globalCommentLiveCount);setGlobalReelsCloseCallback(null);}
-      if(globalPhotoCloseCallback){globalPhotoCloseCallback(globalCommentLiveCount);setGlobalPhotoCloseCallback(null);}
+      setGlobalCommentPost(null);
+      if(globalCloseCallback){globalCloseCallback(globalCommentLiveCount);setGlobalCloseCallback(null);}
     }}
   />
 )}
 {/* Bottom nav premium */}
        {!openConvId&&!openUserId&&!hideNav&&(
-          <div style={{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 16px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 16px)",position:"relative",overflow:"hidden",flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
+          <div style={tab==="home"?{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box",transform:feedNavVisible?"translateY(0)":"translateY(100%)",transition:"transform .25s ease"}:{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"relative",overflow:"hidden",flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
             <NavScenery theme={navTheme}/>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.78) 100%)",pointerEvents:"none"}}/>
             <div style={{position:"relative",zIndex:2,display:"flex",height:"100%"}}>

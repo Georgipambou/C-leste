@@ -858,13 +858,20 @@ function GroupVoicePlayer({ src, mine, T }) {
   const audioRef = useRef(null);
   const barsRef = useRef(null);
   const draggingRef = useRef(false);
-  const fmt = s => { if (!s || isNaN(s)) return "0:00"; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; };
+  const fmt = s => { if (!s || !isFinite(s) || isNaN(s)) return "0:00"; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; };
   useEffect(() => {
     const a = new Audio(src);
     a.playbackRate = speed;
     audioRef.current = a;
-    a.onloadedmetadata = () => setDuration(a.duration);
-    a.ontimeupdate = () => setProgress(a.duration ? (a.currentTime / a.duration) * 100 : 0);
+    const fixDuration = () => {
+      if (a.duration === Infinity || isNaN(a.duration)) {
+        a.currentTime = 1e101;
+        const onFixed = () => { a.removeEventListener("timeupdate", onFixed); a.currentTime = 0; setDuration(a.duration); };
+        a.addEventListener("timeupdate", onFixed);
+      } else { setDuration(a.duration); }
+    };
+    a.onloadedmetadata = fixDuration;
+    a.ontimeupdate = () => setProgress(a.duration && isFinite(a.duration) ? (a.currentTime / a.duration) * 100 : 0);
     a.onended = () => { setPlaying(false); setProgress(0); };
     return () => { a.pause(); a.src = ""; };
   }, [src]);
@@ -1424,10 +1431,10 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     setViewOnceNext(false);
     setRecording(true); setRecordSecs(0); setRecInitializing(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 } });
       if (cancelledInitRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       const mimeType = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 });
       const chunks = [];
       rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       rec.onstop = async () => {
@@ -1596,7 +1603,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Camera size={20} />
         </Btn>
-        <Btn onClick={() => setViewOnceNext(v => !v)} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: viewOnceNext ? T.goldL : T.muted }}>
+        <Btn onClick={() => notify("Vue unique indisponible pour le moment (en travaux)")} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Eye size={20} />
         </Btn>
         <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
