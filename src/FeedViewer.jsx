@@ -9,7 +9,7 @@
  * (supprimer / signaler / ne plus voir), participation aux événements.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye, Check, Share2, Sparkles, BarChart3, Calendar, MapPin, Clock, Users, UserPlus, CheckCircle2 } from "lucide-react";
 import SharePostModal from "./SharePostModal";
 import { pauseOtherVideos, releaseActiveVideo } from "./videoRegistry";
@@ -585,7 +585,7 @@ export default function FeedViewer({
   // ── Nouvelles publications en tête de liste (ex: post qu'on vient de
   // publier) : on les ajoute sans toucher au reste, pour ne pas perturber
   // le jonglage déjà en cours ni la pagination (loadMore ajoute à la fin) ──
-  useEffect(() => {
+  useLayoutEffect(() => {
     const incoming = posts || [];
     if (incoming.length === 0) return;
     setOrderedPosts(prev => {
@@ -596,6 +596,8 @@ export default function FeedViewer({
         leadingNew.push(p);
       }
       if (leadingNew.length === 0) return prev;
+      const el = containerRef.current;
+      if (el) el.scrollTop += leadingNew.length * window.innerHeight;
       return [...leadingNew, ...prev];
     });
   }, [posts]);
@@ -769,13 +771,18 @@ export default function FeedViewer({
   useEffect(() => {
     setOrderedPosts(prev => {
       const byId = new Map((posts || []).map(p => [p.id, p]));
+      let changed = false;
       const refreshed = prev.map(p => {
         const latest = byId.get(p.id);
-        return latest ? { ...p, likes: latest.likes, comments: latest.comments, saved: latest.saved, savesCount: latest.savesCount } : p;
+        if (!latest) return p;
+        const same = latest.likes === p.likes && latest.comments === p.comments && latest.saved === p.saved && latest.savesCount === p.savesCount;
+        if (same) return p;
+        changed = true;
+        return { ...p, likes: latest.likes, comments: latest.comments, saved: latest.saved, savesCount: latest.savesCount };
       });
       const existingIds = new Set(prev.map(p => p.id));
       const fresh = (posts || []).filter(p => !existingIds.has(p.id));
-      if (!fresh.length) return refreshed;
+      if (!fresh.length) return changed ? refreshed : prev;
 
       const refCats = interestBoost.length ? interestBoost : (refreshed[0]?.categories || []);
       const refSound = soundBoost || refreshed[0]?.sound?.id || null;

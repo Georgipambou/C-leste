@@ -863,14 +863,7 @@ function GroupVoicePlayer({ src, mine, T }) {
     const a = new Audio(src);
     a.playbackRate = speed;
     audioRef.current = a;
-    const fixDuration = () => {
-      if (a.duration === Infinity || isNaN(a.duration)) {
-        a.currentTime = 1e101;
-        const onFixed = () => { a.removeEventListener("timeupdate", onFixed); a.currentTime = 0; setDuration(a.duration); };
-        a.addEventListener("timeupdate", onFixed);
-      } else { setDuration(a.duration); }
-    };
-    a.onloadedmetadata = fixDuration;
+    a.onloadedmetadata = () => { if (isFinite(a.duration)) setDuration(a.duration); };
     a.ontimeupdate = () => setProgress(a.duration && isFinite(a.duration) ? (a.currentTime / a.duration) * 100 : 0);
     a.onended = () => { setPlaying(false); setProgress(0); };
     return () => { a.pause(); a.src = ""; };
@@ -896,7 +889,7 @@ function GroupVoicePlayer({ src, mine, T }) {
           peaks.push(max);
         }
         const maxPeak = Math.max(...peaks, 0.01);
-        if (!cancelled) setBars(peaks.map(p => Math.max(0.15, p / maxPeak)));
+        if (!cancelled) { setBars(peaks.map(p => Math.max(0.15, p / maxPeak))); if (isFinite(decoded.duration)) setDuration(decoded.duration); }
         ctx.close();
       } catch { if (!cancelled) setBars(Array.from({ length: 32 }, () => 0.4)); }
     })();
