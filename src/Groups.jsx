@@ -1032,7 +1032,25 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                   )
                 : (m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} />)
             )}
-            {m.type === "sticker" && <img src={m.file_url} style={{ width: 100, height: 100, objectFit: "contain", display: "block" }} />}
+             {m.type === "sticker" && <img src={m.file_url} style={{ width: 100, height: 100, objectFit: "contain", display: "block" }} />}
+            {m.type === "post_share" && (
+              <div onClick={e => { e.stopPropagation(); m.shared_post_id && window.dispatchEvent(new CustomEvent("celeste_open_post", { detail: { postId: m.shared_post_id } })); }}
+                style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "8px 10px", cursor: m.shared_post_id ? "pointer" : "default", maxWidth: 240, width: "100%", boxSizing: "border-box" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {m.reply_metadata?.mediaUrl
+                    ? <img src={m.reply_metadata.mediaUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : <FileText size={18} color={T.goldL} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: mine ? "rgba(0,0,0,0.55)" : T.goldL }}>
+                    Publication{m.reply_metadata?.authorName ? ` de ${m.reply_metadata.authorName}` : ""}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: mine ? "rgba(0,0,0,0.6)" : T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.reply_metadata?.previewText || "Voir la publication"}
+                  </p>
+                </div>
+              </div>
+            )}
             {m.type === "text" && m.view_once
               ? (mine
                   ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Message vue unique envoyé</span></div>
@@ -1199,7 +1217,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const load = useCallback(async () => {
     const { data } = await sb
       .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
       .eq("group_id", group.id)
       .order("created_at", { ascending: true })
       .limit(300);
@@ -1219,7 +1237,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const fetchMessageById = useCallback(async id => {
     const { data } = await sb
       .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
       .eq("id", id)
       .single();
     return data;
@@ -1312,13 +1330,10 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       if (msgType === "text") {
         if (typeof data.text !== "string") throw new Error("Contenu indisponible");
         setViewOnceTexts(p => ({ ...p, [msgId]: data.text }));
-      } else {
-        if (!data.data) throw new Error("Contenu indisponible");
-        const bytes = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
-        const blob = new Blob([bytes], { type: data.mime || "application/octet-stream" });
-        const objUrl = URL.createObjectURL(blob);
-        viewOnceUrlsRef.current = { ...viewOnceUrlsRef.current, [msgId]: objUrl };
-        setViewOnceUrls(p => ({ ...p, [msgId]: objUrl }));
+     } else {
+        if (!data.url) throw new Error("Contenu indisponible");
+        viewOnceUrlsRef.current = { ...viewOnceUrlsRef.current, [msgId]: data.url };
+        setViewOnceUrls(p => ({ ...p, [msgId]: data.url }));
       }
       setRevealedOnce(p => new Set([...p, msgId]));
       wipeQueueRef.current.add(msgId);
@@ -1422,8 +1437,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     cancelledInitRef.current = false;
     const wantViewOnce = viewOnceNext;
     setViewOnceNext(false);
-    setRecording(true); setRecordSecs(0); setRecInitializing(true);
-    try {
+    const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
+    setRecording(true); setRecordSecs(0); setRecInitializing(true);    try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 } });
       if (cancelledInitRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       const mimeType = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
@@ -1440,11 +1455,12 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         const attempt = async (tries = 0) => {
           try {
             const url = await uploadToR2(audioFile, "group_messages", pct => updateGroupFileSend(tempId, { pct }));
-            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce });
+           
+            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce, ...replyPayload });
             if (error) throw error;
             removeGroupFileSend(tempId);
             load();
-          } catch (err) {
+            setReplyTo(null);          } catch (err) {
             if (tries < 2) { setTimeout(() => attempt(tries + 1), 1500 * (tries + 1)); }
             else {
               updateGroupFileSend(tempId, { sending: false, status: "error" });

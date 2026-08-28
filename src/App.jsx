@@ -53,13 +53,14 @@ import {
   Play, Pause, Volume2,  VolumeX, Maximize2, Minimize2, Zap, Star,
   Bookmark, Share2, MoreHorizontal, Pin,
   Reply, ArrowLeft, Check, CheckCheck, Copy, ChevronDown,
-  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2, MessageCircleOff,
+  Eye, Paperclip, LogOut, Sparkles, FileText, Video, EyeOff, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2, Phone, MessageCircleOff,
   Globe
 
 } from "lucide-react";
 
 import { ProfileViewsCard, DiscoverPeopleSection, logProfileView, ProfileHeader } from "./ProfileDashboard";
 import { DuoButton, DuoBadge, DuoPrivacySetting, saveDuoCollaborators } from "./Duo";
+import { CallProvider, CallButton } from "./CallSystem";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react"; 
@@ -710,10 +711,8 @@ const sendPushNotif=async(title,body)=>{
 
 // ── CSS GLOBAL PREMIUM ────────────────────────────────────
 const getGS = () => `
- @import url('https://fonts.googleapis.com/css2?family=Sacramento&family=Pacifico&family=Grand+Hotel&family=Yellowtail&family=Permanent+Marker&family=Bangers&family=Creepster&family=Lobster&family=Caveat&family=Bebas+Neue&family=Fredoka&family=Rock+Salt&family=Special+Elite&family=Metal+Mania&family=Great+Vibes&family=Luckiest+Guy&display=swap');
-  @font-face{font-family:'Cormorant Garamond';src:url('/fonts/cormorant.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
+ @import url('https://fonts.googleapis.com/css2?family=Sacramento&family=Pacifico&family=Grand+Hotel&family=Yellowtail&family=Permanent+Marker&family=Bangers&family=Creepster&family=Lobster&family=Caveat&family=Bebas+Neue&family=Fredoka&family=Rock+Salt&family=Special+Elite&family=Metal+Mania&family=Great+Vibes&family=Luckiest+Guy&family=Cormorant+Garamond:wght@300..700&family=Space+Grotesk:wght@300..700&display=swap');
 @font-face{font-family:'DM Sans';src:url('/fonts/dmsans.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
-@font-face{font-family:'Space Grotesk';src:url('/fonts/spacegrotesk.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @font-face{font-family:'Sora';src:url('/fonts/sora.woff2') format('woff2');font-weight:300 700;font-style:normal;font-display:block;}
 @media(prefers-reduced-motion:reduce){*{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
 
@@ -1617,15 +1616,19 @@ function ProtectedVideo({url,style={}}){
 }
 
 function ViewOnceViewer({type,url,onClose}){
+  const videoRef=useRef(null);
   useEffect(()=>{
     const onBack=()=>{onClose();return false;};
     window.addEventListener("celeste_hw_back",onBack);
-    return()=>window.removeEventListener("celeste_hw_back",onBack);
+    return()=>{
+      window.removeEventListener("celeste_hw_back",onBack);
+      if(videoRef.current){try{videoRef.current.pause();videoRef.current.removeAttribute("src");videoRef.current.load();}catch(_){}}
+    };
   },[onClose]);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:3000,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
       {type==="video"
-        ? <video src={url} autoPlay playsInline disablePictureInPicture controlsList="nodownload noremoteplayback noplaybackrate"
+        ? <video ref={videoRef} src={url} autoPlay playsInline disablePictureInPicture controlsList="nodownload noremoteplayback noplaybackrate"
             style={{width:"100%",height:"100%",objectFit:"contain",pointerEvents:"none"}}/>
         : <img src={url} alt="" draggable={false} onContextMenu={e=>e.preventDefault()}
             style={{width:"100%",height:"100%",objectFit:"contain",WebkitTouchCallout:"none",WebkitUserSelect:"none",userSelect:"none"}}/>
@@ -1682,7 +1685,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
   };
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
+    <div style={{position:"fixed",inset:0,zIndex:1500,background:"#000",display:"flex",flexDirection:"column"}}>
       {/* Header */}
       <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
@@ -3702,6 +3705,7 @@ const {members}=useApp();
   });
 
 const handlePick=async e=>{
+    try{
     const files=Array.from(e.target.files).slice(0,10-previews.length);
     if(!files.length)return;
     for(const f of files){
@@ -3709,7 +3713,7 @@ const handlePick=async e=>{
       if(f.type.startsWith("image/")&&f.size>20*1024*1024){notify?.("Image trop volumineuse (max 20MB)");continue;}
       if(f.type.startsWith("image/")){
         const reader=new FileReader();
-        const src=await new Promise(res=>{reader.onload=ev=>res(ev.target.result);reader.readAsDataURL(f);});
+        const src=await new Promise((res,rej)=>{reader.onload=ev=>res(ev.target.result);reader.onerror=rej;reader.readAsDataURL(f);});
         const croppedFile=await cropImage(src);
         file=croppedFile||await compressImage(f);
       }
@@ -3752,6 +3756,11 @@ try {
 }
     }
     e.target.value="";
+    }catch(err){
+      console.error("handlePick error:",err);
+      notify?.("Erreur média : "+(err?.message||String(err)));
+      e.target.value="";
+    }
   };
 
   const removeMedia=idx=>{
@@ -6477,7 +6486,7 @@ onMuteAuthor?.(post.by);
     }}>
      <p style={{margin:0,fontSize:22,fontWeight:700,color:T.text,lineHeight:1.6,fontFamily:`'${post.text_font||"Space Grotesk"}',sans-serif`,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",textOverflow:"ellipsis"}}>{post.text}</p>    </div>
   ):(
-    <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{renderTextWithMentions(post.text,post.mentions)}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{renderTextWithMentions(post.text,post.mentions)}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
+  <>{expanded?(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:`'${post.text_font||"Space Grotesk"}',sans-serif`}}>{renderTextWithMentions(post.text,post.mentions)}</p>):(<p style={{margin:"0 0 4px 0",fontSize:14,color:T.text,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",fontFamily:`'${post.text_font||"Space Grotesk"}',sans-serif`}}>{renderTextWithMentions(post.text,post.mentions)}</p>)}{post.text?.length>120&&<Btn onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{fontSize:12,color:T.goldL,padding:"2px 0",marginBottom:4,display:"block"}}>{expanded?"Voir moins ▲":"Voir plus ▼"}</Btn>}<TranslateBtn text={post.text}/></>
   )
 )}
               {(()=>{
@@ -6905,7 +6914,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               <p style={{margin:0,fontSize:14,fontWeight:unreads>0?700:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name||"?"}</p>
               {isFav&&<span style={{fontSize:12}}>⭐</span>}
               {locked&&<Lock size={11} color={T.muted}/>}
-              {isConvMuted(c.id)&&<BellOff size={11} color={T.muted}/>}
+              {isConvMuted(c,session?.user?.id)&&<BellOff size={11} color={T.muted}/>}
               {c.ephemeral_ttl_seconds&&<Clock size={11} color={T.muted}/>}
             </div>
             <span style={{fontSize:11,color:unreads>0?T.goldL:T.muted,fontWeight:unreads>0?700:400,flexShrink:0}}>{fmtTime(last?.ts)}</span>
@@ -7279,7 +7288,7 @@ const askGemini=async(text)=>{
   const {chatDrafts,setChatDrafts}=useApp();
   const user=(members||[]).find(m=>m.id===conv.uid)||{name:"…",initials:"?",color:"#888"};
   const offline=!navigator.onLine;
-  const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false);
+   const [inp,setInp]=useState(()=>chatDrafts?.[conv.id]||""); const [attach,setAttach]=useState(false); const msgTaRef=useRef(null);
   const [recording,setRecording]=useState(false); const [recordSecs,setRecordSecs]=useState(0);
   const [recPaused,setRecPaused]=useState(false);
   const [recInitializing,setRecInitializing]=useState(false);
@@ -7438,7 +7447,7 @@ const wipeQueueRef=useRef(new Set());
   const [viewOnceTexts,setViewOnceTexts]=useState({});
   const [revealingOnce,setRevealingOnce]=useState(()=>new Set());
   const viewOnceUrlsRef=useRef({});
-  useEffect(()=>()=>{Object.values(viewOnceUrlsRef.current).forEach(u=>{try{URL.revokeObjectURL(u);}catch{}});},[]);
+  useEffect(()=>()=>{const urls=Object.values(viewOnceUrlsRef.current);setTimeout(()=>{urls.forEach(u=>{try{URL.revokeObjectURL(u);}catch{}});},150);},[]);
   useEffect(()=>{
     return()=>{
       const ids=[...wipeQueueRef.current];
@@ -7463,6 +7472,7 @@ const wipeQueueRef=useRef(new Set());
     return()=>{try{disableScreenProtection();}catch(_){}};
   },[peerScreenshotProtection,conv.secure_mode,revealedOnce]);
   const [openViewOnce,setOpenViewOnce]=useState(null); // {id,type} | null
+  useEffect(()=>()=>{setOpenViewOnce(null);},[]);
   const revealedOnceRef=useRef(revealedOnce);
   useEffect(()=>{revealedOnceRef.current=revealedOnce;},[revealedOnce]);
 
@@ -7548,10 +7558,11 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     return()=>window.removeEventListener("celeste_chat_style_change",h);
   },[conv.id]);
   const FONT_SIZES={small:13,normal:14,large:17};
-  const revealOnce=async(m)=>{
+ const revealOnce=async(m)=>{
     if(!isNative){notify("Vue unique disponible uniquement depuis l'app iOS ou Android");return;}
     if(revealedOnce.has(m.id)||revealingOnce.has(m.id))return;
     setRevealingOnce(p=>new Set([...p,m.id]));
+    await enableScreenProtection();
     try{
       const{data,error}=await sb.functions.invoke("view-once-media",{body:{message_id:m.id},headers:{"X-Celeste-Platform":Capacitor.getPlatform()}});
       if(error||!data)throw error||new Error("Contenu indisponible");
@@ -7559,12 +7570,9 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
         if(typeof data.text!=="string")throw new Error("Contenu indisponible");
         setViewOnceTexts(p=>({...p,[m.id]:data.text}));
       }else{
-        if(!data.data)throw new Error("Contenu indisponible");
-        const bytes=Uint8Array.from(atob(data.data),c=>c.charCodeAt(0));
-        const blob=new Blob([bytes],{type:data.mime||"application/octet-stream"});
-        const objUrl=URL.createObjectURL(blob);
-        viewOnceUrlsRef.current={...viewOnceUrlsRef.current,[m.id]:objUrl};
-        setViewOnceUrls(p=>({...p,[m.id]:objUrl}));
+        if(!data.url)throw new Error("Contenu indisponible");
+        viewOnceUrlsRef.current={...viewOnceUrlsRef.current,[m.id]:data.url};
+        setViewOnceUrls(p=>({...p,[m.id]:data.url}));
       }
       setRevealedOnce(p=>new Set([...p,m.id]));
       wipeQueueRef.current.add(m.id);
@@ -7595,11 +7603,12 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     attempt();
   };
 
+  const resetTaHeight=()=>{if(msgTaRef.current)msgTaRef.current.style.height="auto";};
   const sendTxt=async()=>{
     if(!inp.trim()||sending)return;
     if(editingMsg){
       const txt=inp.trim();
-      setInp(""); setChatDrafts(d=>({...d,[conv.id]:""})); setEditingMsg(null);
+      setInp(""); setChatDrafts(d=>({...d,[conv.id]:""})); setEditingMsg(null); resetTaHeight();
       await editMessage(sb,editingMsg.id,txt); reload();
       return;
     }
@@ -7608,6 +7617,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     setViewOnceNext(false);
     setInp("");
     setChatDrafts(d=>({...d,[conv.id]:""}));
+    resetTaHeight();
     setSending(true);
     const replyPayload=replyTo?{reply_to_id:replyTo.id,reply_to_text:replyTo.text||"",reply_to_author:replyTo.authorName||""}:{};
     try{
@@ -7678,8 +7688,9 @@ const handleFile=async(e,isImg)=>{
 
   const startRecording=async()=>{
     cancelledInitRef.current=false;
-    const wantViewOnce=viewOnceNext;
+        const wantViewOnce=viewOnceNext;
     setViewOnceNext(false);
+    const replyPayload=replyTo?{reply_to_id:replyTo.id,reply_to_text:replyTo.text||"",reply_to_author:replyTo.authorName||""}:{};
     setRecording(true);setRecordSecs(0);setRecInitializing(true);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,sampleRate:48000}});
@@ -7701,12 +7712,12 @@ const handleFile=async(e,isImg)=>{
             const ext=mimeType.includes("mp4")?"m4a":mimeType.includes("ogg")?"ogg":"webm";
             const audioFile=new File([blob],`voice_${Date.now()}.${ext}`,{type:mimeType});
             const publicUrl=await uploadToR2(audioFile,"messages",pct=>updateFileSend(tempId,{pct}));
-            const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce});
+           const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce,...replyPayload});
             if(error)throw error;
             removeFileSend(tempId);
             playChatSound("send");
             reload();
-          }catch(err){
+            setReplyTo(null);          }catch(err){
             if(tries<2){setTimeout(()=>attempt(tries+1),1500*(tries+1));}
             else{updateFileSend(tempId,{sending:false,status:"error"});notify("Erreur d'envoi vocal — vérifie ta connexion");}
           }
@@ -7813,6 +7824,8 @@ const handleFile=async(e,isImg)=>{
     </p>
   </div>
  
+  <CallButton targetUserId={user.id} video={false} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",background:"none",border:"none"}}><Phone size={20}/></CallButton>
+  <CallButton targetUserId={user.id} video={true} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",background:"none",border:"none"}}><Video size={20}/></CallButton>
   <Btn onClick={()=>bgRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Image size={20}/></Btn>
   <Btn onClick={()=>setSearchOpen(s=>!s)} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Search size={20}/></Btn>
 </div>
@@ -8054,7 +8067,7 @@ const handleFile=async(e,isImg)=>{
 </div>}
          <div style={{display:"flex",gap:6,alignItems:"flex-end",position:"relative"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
-  <Btn onClick={()=>notify("Vue unique indisponible pour le moment (en travaux)")} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Eye size={18}/></Btn>
+ <Btn onClick={()=>setViewOnceNext(v=>!v)} style={{color:viewOnceNext?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:viewOnceNext?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Eye size={18}/></Btn>
   <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
   {showStickerPicker&&(
     <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
@@ -8062,7 +8075,7 @@ const handleFile=async(e,isImg)=>{
     </div>
   )}
   <div style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(255,255,255,0.10)`,borderRadius:22,padding:"9px 14px",transition:"border-color .2s"}}>
-    <textarea value={inp} onChange={e=>{
+    <textarea ref={msgTaRef} value={inp} onChange={e=>{
 setInp(e.target.value);
 notifyTyping();
 setChatDrafts(d=>({...d,[conv.id]:e.target.value}));
@@ -8377,7 +8390,7 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const [openSoundId,setOpenSoundId]=useState(null);
   const [uViewerFallback,setUViewerFallback]=useState(null);
   const hasUVisual=p=>isUVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
-  const uVisualPosts=uPosts.filter(hasUVisual);
+  const uVisualPosts=uPosts;
   const loadUPosts=useCallback(async()=>{
     const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
@@ -8483,6 +8496,8 @@ if(user?.status==="suspended") return(
         actions={<>
           <div style={{display:"flex",gap:8}}>
             <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Message</Btn>
+            <CallButton targetUserId={user.id} video={false} style={{background:"rgba(10,10,10,0.85)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Appel</CallButton>
+            <CallButton targetUserId={user.id} video={true} style={{background:"rgba(10,10,10,0.85)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Vidéo</CallButton>
             <Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
           </div>
           <div style={{display:"flex",gap:6,justifyContent:"flex-end",marginTop:8}}>
@@ -8505,16 +8520,10 @@ if(user?.status==="suspended") return(
           uPhotoPosts.length===0
           ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8,animation:"float 3s ease infinite"}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucune publication encore</p></div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
-            {uPhotoPosts.map(p=>(
-              <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}} onClick={()=>{
+            {uPhotoPosts.map(p=>(<div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}} onClick={()=>{
                 if(p.is_private&&!isNative)return;
-                const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
-                if(hasPhoto){
-                  const idx=uVisualPosts.findIndex(q=>q.id===p.id);
-                  setUViewerIndex(idx>=0?idx:0);
-                }else{
-                  setDetailPost(p);
-                }
+                const idx=uVisualPosts.findIndex(q=>q.id===p.id);
+                setUViewerIndex(idx>=0?idx:0);
               }}>
                 {p.is_private&&!isNative?(
                   <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(255,255,255,0.03)"}}>
@@ -9934,7 +9943,7 @@ const isVid=p=>p.img&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img)||p.img.incl
 const myPhotoPosts=useMemo(()=>myPosts.filter(p=>!isVid(p)),[myPosts]);
 const myVideoPosts=useMemo(()=>myPosts.filter(p=>isVid(p)),[myPosts]);
 const hasMyVisual=p=>isVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
-const myVisualPosts=useMemo(()=>myPosts.filter(hasMyVisual),[myPosts]);
+const myVisualPosts=useMemo(()=>myPosts,[myPosts]);
 const [viewerFallback,setViewerFallback]=useState(null);
 const openPostFromSound=(post,soundPosts)=>{
   const list=(soundPosts||myVisualPosts).filter(hasMyVisual);
@@ -10204,13 +10213,8 @@ const localToggleParticipate=async pid=>{
   {myPhotoPosts.map(p=>(
     <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}>
       <div onClick={()=>{
-        const hasVisual=hasMyVisual(p);
-        if(hasVisual){
-          const idx=myVisualPosts.findIndex(q=>q.id===p.id);
-          setViewerIndex(idx>=0?idx:0);
-        }else{
-          setDetailPost(p);
-        }
+        const idx=myVisualPosts.findIndex(q=>q.id===p.id);
+        setViewerIndex(idx>=0?idx:0);
       }} style={{width:"100%",height:"100%"}}>
         {p.img
           ?(isVid(p)?<VideoThumb src={p.img||(p.media_urls||[])[0]}/>:<SmartImage src={p.img||(p.media_urls||[])[0]} alt=""/>)
@@ -10881,7 +10885,7 @@ const send=async()=>{
       </div>
 
       {/* Input */}
-      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px))",background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+      <div style={{padding:"10px 12px",paddingBottom:"calc(10px + env(safe-area-inset-bottom,0px) + var(--kb-height,0px))",background:T.bg2,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
         <div style={{flex:1,background:"rgba(123,47,190,0.06)",border:"1px solid rgba(123,47,190,0.2)",borderRadius:20,padding:"10px 16px"}}>
           <textarea value={inp} onChange={e=>{
     setInp(e.target.value);
@@ -11138,13 +11142,8 @@ useEffect(()=>{
       return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
     };
     const openResolved=(finalPost,commentId,replyId)=>{
-      if(finalPost.type==="text"||finalPost.type==="event"){
-        pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
-        return;
-      }
-      if(isVideoPost(finalPost)||isPhotoPost(finalPost)){setGlobalViewerPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});return;}
-      pushNav(()=>setDetailPost(null));setDetailPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
-    };
+  setGlobalViewerPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
+};
     const handler=async e=>{
       const{postId,commentId,replyId}=e.detail||{};
       if(!postId)return;
@@ -11558,7 +11557,7 @@ return updated;
     ]);
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
-      const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,ephemeral_ttl_seconds:c.ephemeral_ttl_seconds||null,hasMoreMsgs:(c.messages||[]).length===MSG_PAGE_SIZE,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>mapMsgRow(m,myId))}));
+       const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,user1_id:c.user1_id,user2_id:c.user2_id,muted_by_user1:c.muted_by_user1,muted_by_user2:c.muted_by_user2,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,ephemeral_ttl_seconds:c.ephemeral_ttl_seconds||null,hasMoreMsgs:(c.messages||[]).length===MSG_PAGE_SIZE,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>mapMsgRow(m,myId))}));
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem(celesteScopedKey("celeste_convs_cache"),JSON.stringify(filtered));}catch(e){}
@@ -11622,6 +11621,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       });
     };
     window.addEventListener("celeste_open_conv",handleOpenConv);
+    const isUserMuted=uid=>{const c=convsRef.current.find(cv=>cv.user1_id===uid||cv.user2_id===uid||cv.uid===uid);return c?isConvMuted(c,myId):false;};
     const ch=sb.channel("celeste_rt")
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},async payload=>{
         const nm=payload.new;
@@ -11636,7 +11636,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         const updated=await loadConvs(myId);
         if(updated){
           const totalNew=(updated||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
-          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}
+          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));if(!conv||!isConvMuted(conv,myId)){const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}}
           prevMsgCount.current=totalNew;
         }
       })
@@ -11658,17 +11658,17 @@ window.addEventListener("celeste_open_user",handleOpenUser);
         
         const pid=payload.new?.post_id;if(!pid)return;
         const updated=await refreshPost(pid);
-        if(updated&&updated.by===myId&&payload.new?.user_id!==myId){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
+        if(updated&&updated.by===myId&&payload.new?.user_id!==myId&&!isUserMuted(payload.new.user_id)){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"likes"},payload=>{if(payload.old?.post_id)refreshPost(payload.old.post_id);})
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments"},async payload=>{
         const cmt=payload.new;if(!cmt?.post_id)return;
         const updated=await refreshPost(cmt.post_id);
-        if(updated&&updated.by===myId&&cmt.author_id!==myId){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("💬",`${commenter?.name||"Quelqu'un"} a commenté`,cmt.text||"…",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:cmt.post_id}})),300);});}
+       if(updated&&updated.by===myId&&cmt.author_id!==myId&&!isUserMuted(cmt.author_id)){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("💬",`${commenter?.name||"Quelqu'un"} a commenté`,cmt.text||"…",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:cmt.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comment_likes"},async payload=>{
         // Notification pour likes de commentaires
-        const cl=payload.new;if(!cl||cl.user_id===myId)return;
+        const cl=payload.new;if(!cl||cl.user_id===myId||isUserMuted(cl.user_id))return;
         addInAppNotif("💛","Commentaire aimé","Quelqu'un a aimé votre commentaire",()=>{setTab("home");});
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${myId}`},()=>{
@@ -11682,12 +11682,12 @@ window.addEventListener("celeste_open_user",handleOpenUser);
   }
 })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"connections"},async payload=>{
-        if(payload.new?.to_id===myId){await loadConnections(myId);const follower=(members||[]).find(m=>m.id===payload.new.from_id);addInAppNotif("✦",`${follower?.name||"Quelqu'un"} s'est connecté`,"Nouvelle connexion !",()=>setTab("discover"));}
+       if(payload.new?.to_id===myId){await loadConnections(myId);if(!isUserMuted(payload.new.from_id)){const follower=(members||[]).find(m=>m.id===payload.new.from_id);addInAppNotif("✦",`${follower?.name||"Quelqu'un"} s'est connecté`,"Nouvelle connexion !",()=>setTab("discover"));}}
         else if(payload.new?.from_id===myId)loadConnections(myId);
       })
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"connections"},async payload=>{
         loadConnections(myId);
-        if(payload.old?.to_id===myId){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
+       if(payload.old?.to_id===myId&&!isUserMuted(payload.old.from_id)){const who=(members||[]).find(m=>m.id===payload.old.from_id);addInAppNotif("👋",`${who?.name||"Quelqu'un"} s'est désabonné`,"",()=>setTab("discover"));}
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"statuses"},async payload=>{
         const{data:conn}=await sb.from("connections").select("id").eq("from_id",myId).eq("to_id",payload.new?.user_id).maybeSingle();
@@ -11772,6 +11772,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     <ContentQuizModal sb={sb} T={T} Av={Av} userId={session.user.id} onDone={()=>setMyProfile(p=>({...p,quiz_completed:true}))}/>
   );
   return(
+    <CallProvider sb={sb} currentUser={{ id: session?.user?.id, name: myProfile?.name, avatar_url: myProfile?.avatar_url }} T={T}>
     <AppContext.Provider value={appCtx}>
       <div style={{display:"flex",flexDirection:"column",width:"100%",height:"calc(var(--app-vh, 1vh) * 100)",background:T.bg,color:T.text,fontFamily:"'DM Sans',sans-serif"}}>
         <style>{getGS()}</style>
@@ -12001,6 +12002,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
       )}
       <GlobalConfirmModal/>
     </AppContext.Provider>
+    </CallProvider>
   );
 }
 

@@ -1205,7 +1205,7 @@ export default function FeedViewer({
                   style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 32px", background: textBg }}
                 >
                   {nearActive && (
-                    <p style={{ margin: 0, maxWidth: 520, fontFamily: "'Cormorant Garamond',serif", fontWeight: 600, fontSize: textFontSize(caption.length), lineHeight: 1.45, color: "#fff", textAlign: "center", textShadow: "0 2px 10px rgba(0,0,0,0.35)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                    <p style={{ margin: 0, maxWidth: 520, fontFamily: `'${post.text_font || "Cormorant Garamond"}',sans-serif`, fontWeight: 600, fontSize: textFontSize(caption.length), lineHeight: 1.45, color: "#fff", textAlign: "center", textShadow: "0 2px 10px rgba(0,0,0,0.35)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       {caption}
                     </p>
                   )}

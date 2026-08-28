@@ -997,7 +997,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   if (phase === "textcard") {
     const [c1, c2] = GRADIENTS[gradIdx];
     return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 600, background: `linear-gradient(160deg, ${c1}, ${c2})`, display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: `linear-gradient(160deg, ${c1}, ${c2})`, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "52px 16px 0" }}>
           <button onClick={() => setPhase("camera")} style={Ic()}><X size={18} /></button>
         </div>
@@ -1038,7 +1038,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
   if (phase === "crop" && pendingCrop) {
     return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 600, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: "#000", display: "flex", flexDirection: "column" }}>
         <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div ref={cropFrameRef} style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}
             onPointerDown={cropDown}>
@@ -1070,7 +1070,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
 
   if (phase === "trim" && pendingTrim) {
     return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 600, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: "#000", display: "flex", flexDirection: "column" }}>
         <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
           <video src={pendingTrim.url} autoPlay loop muted playsInline
             onTimeUpdate={(e) => { if (e.target.currentTime >= trimEnd) e.target.currentTime = trimStart; }}
@@ -1106,7 +1106,7 @@ export default function CameraStudioModal({ onClose, onDone, onSaveDraft, onOpen
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 600, backgroundImage: `url(${isLightBg(T?.bg) ? previewLight : previewDark})`, backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 1500, backgroundImage: `url(${isLightBg(T?.bg) ? previewLight : previewDark})`, backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={onGalleryPick} />
       <input ref={imgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onOverlayImg} />
       <input ref={vidOvRef} type="file" accept="video/*" style={{ display: "none" }} onChange={onOverlayVideo} />

@@ -1,12 +1,16 @@
 // SharePostModal.jsx — Céleste
-// Composant "Envoyer à" : partage d'un post vers une conversation interne à l'app.
-// Autonome : si T/Av/members/convs/blockedUserIds ne sont pas fournis, le composant
-// se débrouille seul (thème sombre par défaut, avatar simple, requêtes Supabase directes).
-// Utilisable depuis n'importe où (feed, ReelsViewer, PhotoViewer) sans faire remonter
-// des props supplémentaires dans tout App.jsx.
+// Composant "Envoyer à" : partage d'un post vers une conversation interne à l'app,
+// ou vers un groupe. Autonome : si T/Av/blockedUserIds ne sont pas fournis, le
+// composant se débrouille seul (thème sombre par défaut, avatar simple, requêtes
+// Supabase directes). Utilisable depuis n'importe où (feed, ReelsViewer, PhotoViewer)
+// sans faire remonter des props supplémentaires dans tout App.jsx.
+//
+// La liste par défaut (hors recherche) vient de la fonction SQL get_share_targets :
+// une seule liste triée — conversations et groupes récents en premier (par dernière
+// activité), puis connexions, puis suggestions de match — dédupliquée automatiquement.
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { X, Search, Check } from "lucide-react";
+import { X, Search, Check, Users } from "lucide-react";
 
 const FALLBACK_T = {
   bg3: "#15151a",
@@ -19,6 +23,15 @@ const FALLBACK_T = {
 };
 
 function DefaultAv({ u, size = 46 }) {
+  if (u?.isGroup) {
+    return u?.avatar_url ? (
+      <img src={u.avatar_url} alt="" style={{ width: size, height: size, borderRadius: 14, objectFit: "cover", display: "block" }} />
+    ) : (
+      <div style={{ width: size, height: size, borderRadius: 14, background: "linear-gradient(135deg,#555,#222)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+        <Users size={Math.round(size * 0.4)} />
+      </div>
+    );
+  }
   return u?.avatar_url ? (
     <img src={u.avatar_url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", display: "block" }} />
   ) : (
@@ -30,7 +43,7 @@ function DefaultAv({ u, size = 46 }) {
 
 export default function SharePostModal({
   post, sb, session, notify, onClose, onShared,
-  T: TProp, Av: AvProp, members: membersProp, convs: convsProp, blockedUserIds: blockedProp,
+  T: TProp, Av: AvProp, blockedUserIds: blockedProp,
 }) {
   const T = TProp || FALLBACK_T;
   const Av = AvProp || DefaultAv;
@@ -40,33 +53,25 @@ export default function SharePostModal({
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [sentIds, setSentIds] = useState(() => new Set());
-  const [selfConvs, setSelfConvs] = useState(null);
-  const [selfMembers, setSelfMembers] = useState(null);
+  const [targets, setTargets] = useState(null);
+  const [loadingTargets, setLoadingTargets] = useState(true);
   const [selfBlocked, setSelfBlocked] = useState(null);
   const debounceRef = useRef(null);
 
-  const needsSelfFetch = !convsProp || !membersProp;
-
-  // Repli : si l'appelant ne fournit pas convs/members (cas de ReelsViewer/PhotoViewer),
-  // on va chercher les conversations existantes nous-mêmes.
+  // Liste par défaut : récents (conversations + groupes) → connexions → matchs,
+  // une seule requête déjà triée côté base.
   useEffect(() => {
-    if (!needsSelfFetch || !uid) return;
+    if (!uid) return;
     let alive = true;
-    (async () => {
-      const { data: convData } = await sb
-        .from("conversations")
-        .select("id,user1_id,user2_id")
-        .or(`user1_id.eq.${uid},user2_id.eq.${uid}`);
-      const otherIds = [...new Set((convData || []).map(c => (c.user1_id === uid ? c.user2_id : c.user1_id)))];
-      const { data: profiles } = otherIds.length
-        ? await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,status").in("id", otherIds)
-        : { data: [] };
+    setLoadingTargets(true);
+    sb.rpc("get_share_targets", { p_limit: 40 }).then(({ data, error }) => {
       if (!alive) return;
-      setSelfMembers((profiles || []).map(p => ({ id: p.id, name: [p.prenom, p.nom].filter(Boolean).join(" ") || "…", avatar_url: p.avatar_url, badge: p.badge, status: p.status })));
-      setSelfConvs((convData || []).map(c => ({ id: c.id, uid: c.user1_id === uid ? c.user2_id : c.user1_id })));
-    })();
+      if (error) { console.error("get_share_targets:", error); setTargets([]); }
+      else setTargets(data || []);
+      setLoadingTargets(false);
+    });
     return () => { alive = false; };
-  }, [needsSelfFetch, uid, sb]);
+  }, [uid, sb]);
 
   useEffect(() => {
     if (blockedProp || !uid) return;
@@ -77,11 +82,10 @@ export default function SharePostModal({
       });
   }, [blockedProp, uid, sb]);
 
-  const members = membersProp || selfMembers || [];
-  const convs = convsProp || selfConvs || [];
   const blockedSet = useMemo(() => new Set(blockedProp || selfBlocked || []), [blockedProp, selfBlocked]);
 
-  // Recherche globale d'utilisateurs
+  // Recherche globale d'utilisateurs (uniquement des personnes, pas de groupes —
+  // on ne propose que ce qu'on connaît déjà pour les groupes).
   useEffect(() => {
     clearTimeout(debounceRef.current);
     const q = query.trim();
@@ -100,20 +104,19 @@ export default function SharePostModal({
   const list = useMemo(() => {
     if (isSearchMode) {
       return searchResults.map(p => ({
-        id: p.id,
+        id: p.id, isGroup: false,
         name: [p.prenom, p.nom].filter(Boolean).join(" ") || "…",
         avatar_url: p.avatar_url, badge: p.badge, status: p.status,
       }));
     }
-    return convs
-      .filter(c => !blockedSet.has(c.uid))
-      .map(c => {
-        const m = members.find(x => x.id === c.uid);
-        if (!m || m.status === "suspended") return null;
-        return { id: c.uid, name: m.name || [m.prenom, m.nom].filter(Boolean).join(" ") || "…", avatar_url: m.avatar_url, badge: m.badge, status: m.status };
-      })
-      .filter(Boolean);
-  }, [isSearchMode, searchResults, convs, members, blockedSet]);
+    return (targets || [])
+      .filter(t => t.target_type === "group" || !blockedSet.has(t.target_id))
+      .filter(t => t.target_type !== "user" || t.status !== "suspended")
+      .map(t => ({
+        id: t.target_id, isGroup: t.target_type === "group",
+        name: t.name || "…", avatar_url: t.avatar_url, badge: t.badge, status: t.status,
+      }));
+  }, [isSearchMode, searchResults, targets, blockedSet]);
 
   const ensureConvId = useCallback(async recipientId => {
     const { data } = await sb
@@ -130,34 +133,49 @@ export default function SharePostModal({
     return created?.id;
   }, [sb, uid]);
 
+  const buildReplyMetadata = useCallback(() => JSON.stringify({
+    mediaUrl: (post.media_urls && post.media_urls[0]) || post.img || null,
+    previewText: post.text || "",
+    authorName: post.author?.name || post.author?.fullName || "",
+  }), [post]);
+
   const handleSend = useCallback(async recipient => {
     if (sentIds.has(recipient.id)) return;
-    if (blockedSet.has(recipient.id)) { notify?.("Envoi impossible avec cette personne"); return; }
-    if (recipient.status === "suspended") { notify?.("Ce compte est suspendu"); return; }
+    if (!recipient.isGroup) {
+      if (blockedSet.has(recipient.id)) { notify?.("Envoi impossible avec cette personne"); return; }
+      if (recipient.status === "suspended") { notify?.("Ce compte est suspendu"); return; }
+    }
     setSentIds(prev => new Set([...prev, recipient.id]));
     try {
-      const convId = await ensureConvId(recipient.id);
-      if (!convId) throw new Error("no conv");
-      await sb.from("messages").insert({
-        conv_id: convId,
-        sender_id: uid,
-        type: "post_share",
-        text: "📎 a partagé une publication",
-        shared_post_id: post.id,
-        reply_metadata: JSON.stringify({
-          mediaUrl: (post.media_urls && post.media_urls[0]) || post.img || null,
-          previewText: post.text || "",
-          authorName: post.author?.name || post.author?.fullName || "",
-        }),
-      });
-      await sb.from("post_shares").insert({ post_id: post.id, sender_id: uid, recipient_id: recipient.id });
+      if (recipient.isGroup) {
+        await sb.from("group_messages").insert({
+          group_id: recipient.id,
+          sender_id: uid,
+          type: "post_share",
+          text: "📎 a partagé une publication",
+          shared_post_id: post.id,
+          reply_metadata: JSON.parse(buildReplyMetadata()),
+        });
+      } else {
+        const convId = await ensureConvId(recipient.id);
+        if (!convId) throw new Error("no conv");
+        await sb.from("messages").insert({
+          conv_id: convId,
+          sender_id: uid,
+          type: "post_share",
+          text: "📎 a partagé une publication",
+          shared_post_id: post.id,
+          reply_metadata: buildReplyMetadata(),
+        });
+        await sb.from("post_shares").insert({ post_id: post.id, sender_id: uid, recipient_id: recipient.id });
+      }
       notify?.(`Envoyé à ${recipient.name} ✦`);
       onShared?.(post.id);
     } catch (e) {
       notify?.("Erreur lors de l'envoi");
       setSentIds(prev => { const n = new Set(prev); n.delete(recipient.id); return n; });
     }
-  }, [sentIds, blockedSet, ensureConvId, sb, uid, post, notify, onShared]);
+  }, [sentIds, blockedSet, ensureConvId, sb, uid, post, notify, onShared, buildReplyMetadata]);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
@@ -187,8 +205,8 @@ export default function SharePostModal({
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 14px 24px" }}>
-          {searching && <p style={{ textAlign: "center", color: T.muted, fontSize: 12, marginTop: 24 }}>Recherche…</p>}
-          {!searching && list.length === 0 && (
+          {(searching || (!isSearchMode && loadingTargets)) && <p style={{ textAlign: "center", color: T.muted, fontSize: 12, marginTop: 24 }}>Recherche…</p>}
+          {!searching && !(!isSearchMode && loadingTargets) && list.length === 0 && (
             <p style={{ textAlign: "center", color: T.muted, fontSize: 12, marginTop: 24 }}>
               {isSearchMode ? "Aucun résultat" : "Aucune conversation pour l'instant"}
             </p>
@@ -198,14 +216,14 @@ export default function SharePostModal({
               const sent = sentIds.has(u.id);
               return (
                 <button
-                  key={u.id}
+                  key={(u.isGroup ? "g_" : "u_") + u.id}
                   onClickCapture={e => { e.stopPropagation(); e.preventDefault(); handleSend(u); }}
                   style={{ background: "none", border: "none", cursor: sent ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: "4px 2px" }}
                 >
                   <div style={{ position: "relative", width: 60, height: 60 }}>
                     <Av u={u} size={60} />
                     {sent && (
-                      <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", animation: "sharePopIn .25s cubic-bezier(.34,1.56,.64,1)" }}>
+                      <div style={{ position: "absolute", inset: 0, borderRadius: u.isGroup ? 14 : "50%", background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", animation: "sharePopIn .25s cubic-bezier(.34,1.56,.64,1)" }}>
                         <Check size={22} color="#4ade80" strokeWidth={3} />
                       </div>
                     )}

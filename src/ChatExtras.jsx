@@ -13,16 +13,14 @@ import {
 function readIdList(key) { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; } }
 function writeIdList(key, list) { try { localStorage.setItem(key, JSON.stringify(list)); } catch {} }
 
-export function isConvMuted(convId) {
-  return readIdList("celeste_muted_convs").includes(convId);
+export function isConvMuted(conv, myId) {
+  if (!conv) return false;
+  return !!(conv.user1_id === myId ? conv.muted_by_user1 : conv.muted_by_user2);
 }
 export async function toggleConvMute(sb, userId, conv, nextMuted) {
   const col = conv.user1_id === userId ? "muted_by_user1" : "muted_by_user2";
   const { error } = await sb.from("conversations").update({ [col]: nextMuted }).eq("id", conv.id);
   if (error) { console.error("Erreur mute conversation:", error); throw error; }
-  const list = readIdList("celeste_muted_convs");
-  const next = nextMuted ? [...new Set([...list, conv.id])] : list.filter(id => id !== conv.id);
-  writeIdList("celeste_muted_convs", next);
   return nextMuted;
 }
 
@@ -826,7 +824,7 @@ export function SharedMediaScreen({ T, Btn, conv, sb, onBack }) {
 }
 export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBack, onOpenProfile, onCreateGroup, notify, reload }) {
   const soon = (label) => () => notify?.(`${label} — bientôt disponible ✦`);
-  const [muted, setMuted] = useState(() => conv ? isConvMuted(conv.id) : false);
+   const [muted, setMuted] = useState(() => isConvMuted(conv, myId));
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showEphemeral, setShowEphemeral] = useState(false);
   const [showTheme, setShowTheme] = useState(false);

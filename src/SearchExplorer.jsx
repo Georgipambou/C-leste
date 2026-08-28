@@ -124,6 +124,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
 
   const [sounds, setSounds] = useState([]);
   const [soundsLoading, setSoundsLoading] = useState(false);
+  const [categoryAuthors, setCategoryAuthors] = useState([]);
 
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -136,16 +137,24 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
   // normalizeSearch (minuscule + accents retirés) des deux côtés.
   useEffect(() => {
     const q = query.trim();
-    if (!q) { setUsers([]); setPostResults([]); setSounds([]); return; }
+    if (!q) { setUsers([]); setPostResults([]); setSounds([]); setCategoryAuthors([]); return; }
     const nq = normalizeSearch(q);
-    const matchedCategoryIds = CONTENT_CATEGORIES
+    // Catégories littérales : instantané, fonctionne même sans IA/sans crédit.
+    const literalCategoryIds = CONTENT_CATEGORIES
       .filter(c => normalizeSearch(c.label).includes(nq) || normalizeSearch(c.id).includes(nq))
       .map(c => c.id);
     let cancelled = false;
     setLoading(true);
     setSoundsLoading(true);
     const t = setTimeout(async () => {
-      const [{ data: uData }, { data: pData }, { data: sData }, { data: cData }] = await Promise.all([
+      // Interprétation IA de la requête ("restaurant" → cuisine, lifestyle...).
+      // Ne bloque jamais : en cas d'échec ou de crédit DeepSeek épuisé,
+      // l'edge function renvoie categories:[] et le reste continue de marcher.
+      const aiCategoriesPromise = sb.functions.invoke("search-interpret-query", { body: { query: nq } })
+        .then(({ data }) => (data?.categories || []).map(c => c.category))
+        .catch(() => []);
+
+      const [{ data: uData }, { data: pData }, { data: sData }, aiCategoryIds] = await Promise.all([
         sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse")
           .eq("is_discoverable", true)
           .ilike("search_text", `%${nq}%`)
@@ -161,40 +170,72 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
           .ilike("search_text", `%${nq}%`)
           .order("usage_count", { ascending: false })
           .limit(60),
-        matchedCategoryIds.length
-          ? sb.from("posts").select(`${POSTS_SELECT},post_categories!inner(category)`)
+        aiCategoriesPromise,
+      ]);
+      if (cancelled) return;
+
+      const categoryIds = Array.from(new Set([...literalCategoryIds, ...aiCategoryIds]));
+      const matchedUsers = (uData || []).map(normProfile);
+
+      // posts.search_text ne couvre pas le nom de l'auteur (nécessite une
+      // jointure) ; on complète donc avec les publications des auteurs dont
+      // le nom matche, avec celles où ils sont mentionnés, et avec celles
+      // qui matchent par catégorie (littérale ou IA).
+      const authorIds = matchedUsers.map(u => u.id);
+      const mentionOr = authorIds.map(id => `mentions.cs.${JSON.stringify([{ id }])}`).join(",");
+
+      const [{ data: apData }, { data: mpData }, { data: cData }, { data: acData }] = await Promise.all([
+        authorIds.length
+          ? sb.from("posts").select(POSTS_SELECT)
               .not("visibility", "eq", "hidden")
-              .in("post_categories.category", matchedCategoryIds)
+              .in("author_id", authorIds)
               .order("created_at", { ascending: false })
               .limit(60)
+          : Promise.resolve({ data: [] }),
+        authorIds.length
+          ? sb.from("posts").select(POSTS_SELECT)
+              .not("visibility", "eq", "hidden")
+              .or(mentionOr)
+              .order("created_at", { ascending: false })
+              .limit(60)
+          : Promise.resolve({ data: [] }),
+        categoryIds.length
+          ? sb.from("posts").select(`${POSTS_SELECT},post_categories!inner(category)`)
+              .not("visibility", "eq", "hidden")
+              .in("post_categories.category", categoryIds)
+              .order("created_at", { ascending: false })
+              .limit(60)
+          : Promise.resolve({ data: [] }),
+        categoryIds.length
+          ? sb.from("author_content_categories")
+              .select("author_id,category,weight,profiles!inner(id,prenom,nom,avatar_url,badge,paroisse)")
+              .in("category", categoryIds)
+              .order("weight", { ascending: false })
+              .limit(30)
           : Promise.resolve({ data: [] }),
       ]);
       if (cancelled) return;
 
-      const matchedUsers = (uData || []).map(normProfile);
-
-      // posts.search_text ne couvre pas le nom de l'auteur (nécessite une
-      // jointure) ; on complète donc avec les publications des auteurs
-      // dont le nom matche, puis on fusionne en dédoublonnant par id.
-      const authorIds = matchedUsers.map(u => u.id);
-      let authorPosts = [];
-      if (authorIds.length) {
-        const { data: apData } = await sb.from("posts").select(POSTS_SELECT)
-          .not("visibility", "eq", "hidden")
-          .in("author_id", authorIds)
-          .order("created_at", { ascending: false })
-          .limit(60);
-        authorPosts = apData || [];
-      }
-      if (cancelled) return;
-
       const byId = new Map();
-      [...(pData || []), ...authorPosts, ...(cData || [])].forEach(p => byId.set(p.id, p));
+      [...(pData || []), ...(apData || []), ...(mpData || []), ...(cData || [])].forEach(p => byId.set(p.id, p));
       const matchedPosts = Array.from(byId.values()).map(p => mapDbPost(p, new Set()));
+
+      const authorsById = new Map();
+      (acData || []).forEach(row => {
+        if (!row.profiles) return;
+        const existing = authorsById.get(row.author_id);
+        if (!existing || row.weight > existing._weight) {
+          authorsById.set(row.author_id, { ...normProfile(row.profiles), _weight: row.weight });
+        }
+      });
+      const matchedCategoryAuthors = Array.from(authorsById.values())
+        .filter(u => !authorIds.includes(u.id))
+        .sort((a, b) => b._weight - a._weight);
 
       setUsers(matchedUsers);
       setPostResults(matchedPosts);
       setSounds(sData || []);
+      setCategoryAuthors(matchedCategoryAuthors);
       setLoading(false);
       setSoundsLoading(false);
     }, 300);
@@ -303,6 +344,21 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
                     <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Utilisateurs</p>
                     <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 6 }}>
                       {users.slice(0, 8).map(u => (
+                        <div key={u.id} onClick={() => openPivot(u)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0, width: 64 }}>
+                          {u.avatar_url
+                            ? <img src={u.avatar_url} style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover" }} />
+                            : <div style={{ width: 52, height: 52, borderRadius: "50%", background: T.goldBg, display: "flex", alignItems: "center", justifyContent: "center", color: T.gold, fontWeight: 700 }}>{u.initials}</div>}
+                          <p style={{ margin: 0, fontSize: 11, color: T.text, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{u.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {categoryAuthors.length > 0 && (
+                  <div style={{ padding: "14px 16px 4px" }}>
+                    <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Profils qui publient ce genre de contenu</p>
+                    <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 6 }}>
+                      {categoryAuthors.map(u => (
                         <div key={u.id} onClick={() => openPivot(u)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0, width: 64 }}>
                           {u.avatar_url
                             ? <img src={u.avatar_url} style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover" }} />

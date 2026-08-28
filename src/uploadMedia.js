@@ -1,4 +1,4 @@
-const UPLOAD_URL = "https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/upload-media";
+const PRESIGN_URL = "https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/presign-upload";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON;
 
 export async function uploadToR2(file, folder = "media", onProgress = null) {
@@ -8,14 +8,24 @@ export async function uploadToR2(file, folder = "media", onProgress = null) {
   while (attempt < MAX_RETRIES) {
     attempt++;
     try {
-      const url = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("folder", folder);
+      // 1) Demande une URL signée (aucun transfert de fichier à cette étape — quasi instantané)
+      const presignRes = await fetch(PRESIGN_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ folder, fileName: file.name, fileSize: file.size }),
+      });
+      const presignData = await presignRes.json().catch(() => null);
+      if (!presignRes.ok || !presignData?.uploadUrl) {
+        throw new Error(presignData?.error || "Erreur de préparation de l'upload");
+      }
 
-        xhr.open("POST", UPLOAD_URL);
-        xhr.setRequestHeader("Authorization", `Bearer ${SUPABASE_ANON_KEY}`);
+      // 2) Upload direct du fichier vers R2 (un seul saut réseau)
+      const publicUrl = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", presignData.uploadUrl);
         xhr.timeout = 300000; // 5 minutes max
 
         xhr.upload.onprogress = (e) => {
@@ -26,25 +36,20 @@ export async function uploadToR2(file, folder = "media", onProgress = null) {
         };
 
         xhr.onload = () => {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              onProgress?.(100);
-              resolve(data.url);
-            } else {
-              reject(new Error(data.error || "Erreur upload"));
-            }
-          } catch {
-            reject(new Error("Réponse invalide du serveur"));
+          if (xhr.status >= 200 && xhr.status < 300) {
+            onProgress?.(100);
+            resolve(presignData.publicUrl);
+          } else {
+            reject(new Error("Erreur upload (" + xhr.status + ")"));
           }
         };
 
         xhr.onerror = () => reject(new Error("Erreur réseau"));
         xhr.ontimeout = () => reject(new Error("Timeout upload"));
-        xhr.send(formData);
+        xhr.send(file);
       });
 
-      return url;
+      return publicUrl;
 
     } catch (err) {
       console.warn(`Upload tentative ${attempt}/${MAX_RETRIES} échouée:`, err.message);
