@@ -79,6 +79,7 @@ import { Browser } from '@capacitor/browser';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import EasyCrop from "react-easy-crop";
 import { setNativeBackground } from "./nativeBackground";
+import { confirmAction, resolveConfirmAction } from "./confirmAction";
 import FeedViewer from "./FeedViewer";
 import SearchExplorer from "./SearchExplorer";
 import CameraStudioModal from "./CameraStudioModal";
@@ -1014,7 +1015,7 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick,noStatus=
         ? <img src={u.avatar_url} loading="lazy"
             style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${showRing?T.gold:T.border}`,cursor:"pointer"}}
             alt=""
-            onClick={e=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:u.avatar_url}}));}}/>
+            onClick={e=>{if(onClick)return;e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:u.avatar_url}}));}}/>
         : <div style={{width:size,height:size,borderRadius:"50%",
             background:`radial-gradient(circle at 35% 35%, ${u?.color||"#666"}cc, ${u?.color||"#444"}44)`,
             border:`1.5px solid ${showRing?T.gold:u?.color||"#888"}44`,
@@ -1275,18 +1276,6 @@ const Btn = ({children,onClick,style={},disabled=false,type="button",...rest})=>
   </button>
 );
 
-// ── CONFIRMATION GLOBALE (remplace window.confirm) ─────────
-// Usage: if(!(await confirmAction("Supprimer ce message ?")))return;
-// Avec sous-texte: confirmAction("Désactiver votre compte ?",{detail:"Cette action est irréversible.",confirmLabel:"Désactiver"})
-const _confirmResolvers=new Map();
-let _confirmIdSeq=0;
-function confirmAction(message,opts={}){
-  return new Promise(resolve=>{
-    const id=++_confirmIdSeq;
-    _confirmResolvers.set(id,resolve);
-    window.dispatchEvent(new CustomEvent("celeste_confirm_open",{detail:{id,message,...opts}}));
-  });
-}
 function GlobalConfirmModal(){
   const [req,setReq]=useState(null);
   useEffect(()=>{
@@ -1295,8 +1284,7 @@ function GlobalConfirmModal(){
     return()=>window.removeEventListener("celeste_confirm_open",h);
   },[]);
   const close=result=>{
-    const resolve=_confirmResolvers.get(req.id);
-    if(resolve){resolve(result);_confirmResolvers.delete(req.id);}
+    resolveConfirmAction(req.id,result);
     setReq(null);
   };
   if(!req)return null;
@@ -1764,7 +1752,7 @@ function ImageViewer({url,onClose}){
 // ── TOAST ─────────────────────────────────────────────────
 function Toast({msg}){
   return(
-    <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:T.bg2,border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
+    <div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:9999999,background:T.bg2,border:`1px solid ${T.border}`,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:20,padding:"10px 20px",color:T.text,fontSize:13,fontWeight:500,whiteSpace:"nowrap",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",animation:"notifIn .3s ease"}}>
       {msg}
     </div>
   );
@@ -2082,6 +2070,8 @@ function NotifsScreen({myProfile,session,members}){
     approved:"Ton compte a été validé ✦",
     earning:n.text||"Nouveau gain",
     poll_ended:n.text||"Ton sondage est terminé",
+    broadcast:n.text||"Message de l'équipe Céleste",
+    withdrawal_request:n.text||"Nouvelle demande de retrait",
   }[n.type]||n.text||n.type);
 
   const icon=n=>({
@@ -2098,6 +2088,8 @@ function NotifsScreen({myProfile,session,members}){
     approved:"✅",
     earning:"💰",
     poll_ended:"📊",
+    broadcast:"📢",
+    withdrawal_request:"💸",
     new_post_favorite:"✦",
     new_note:"📝",
     friend_online:"🟢",
@@ -2105,8 +2097,9 @@ function NotifsScreen({myProfile,session,members}){
     group_invite_declined:"🚫",
   }[n.type]||"🔔");
 
-  const SYSTEM_TYPES=["post_deleted","warning","approved","earning","poll_ended"];
+  const SYSTEM_TYPES=["post_deleted","warning","approved","earning","poll_ended","broadcast","withdrawal_request"];
   const GROUPABLE_TYPES=["like","comment","comment_like","reply","mention"];
+  const PERSON_GROUPABLE_TYPES=["friend_online"];
   const groupTypeMeta={
     like:{icon:"❤",label:"aimé ta publication"},
     comment:{icon:"💬",label:"commenté ta publication"},
@@ -2129,30 +2122,37 @@ function NotifsScreen({myProfile,session,members}){
   });
 
   const tabs=[
+    {id:"systeme",l:"Système"},
     {id:"tous",l:"Tous"},
     {id:"mentions",l:"Mentions"},
     {id:"likes",l:"Likes"},
     {id:"commentaires",l:"Commentaires"},
     {id:"abonnements",l:"Abonnements"},
-    {id:"systeme",l:"Système"},
   ];
 // Regroupe likes/commentaires/mentions/réponses par publication,
   // pour éviter une liste de centaines de lignes identiques
   const feedItems=useMemo(()=>{
-    const groups={};
+    const postGroups={};
+    const personGroups={};
     const standalone=[];
     filtered.forEach(n=>{
       if(n.post_id&&GROUPABLE_TYPES.includes(n.type)){
-        if(!groups[n.post_id]){
-          groups[n.post_id]={key:`post-${n.post_id}`,isGroup:true,post_id:n.post_id,post:n.post||null,items:[],latest:n.created_at};
+        if(!postGroups[n.post_id]){
+          postGroups[n.post_id]={key:`post-${n.post_id}`,isGroup:true,kind:"post",post_id:n.post_id,post:n.post||null,items:[],latest:n.created_at};
         }
-        groups[n.post_id].items.push(n);
-        if(n.created_at>groups[n.post_id].latest)groups[n.post_id].latest=n.created_at;
+        postGroups[n.post_id].items.push(n);
+        if(n.created_at>postGroups[n.post_id].latest)postGroups[n.post_id].latest=n.created_at;
+      }else if(n.from_id&&PERSON_GROUPABLE_TYPES.includes(n.type)){
+        if(!personGroups[n.from_id]){
+          personGroups[n.from_id]={key:`person-${n.type}-${n.from_id}`,isGroup:true,kind:"person",from_id:n.from_id,from:n.from||null,type:n.type,items:[],latest:n.created_at};
+        }
+        personGroups[n.from_id].items.push(n);
+        if(n.created_at>personGroups[n.from_id].latest)personGroups[n.from_id].latest=n.created_at;
       }else{
         standalone.push({key:n.id,isGroup:false,n,latest:n.created_at});
       }
     });
-    const groupList=Object.values(groups).map(g=>({...g,items:g.items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))}));
+    const groupList=[...Object.values(postGroups),...Object.values(personGroups)].map(g=>({...g,items:g.items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))}));
     return [...groupList,...standalone].sort((a,b)=>new Date(b.latest)-new Date(a.latest));
   },[filtered]);
 
@@ -2222,6 +2222,11 @@ function NotifsScreen({myProfile,session,members}){
                       window.__celesteSetTab?.("statuses",()=>window.dispatchEvent(new CustomEvent("celeste_open_status",{detail:{statusId:n.status_id}})));
                       return;
                     }
+                    if(n.type==="withdrawal_request"){
+                      window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+                      window.__celesteSetTab?.("admin",()=>window.dispatchEvent(new CustomEvent("celeste_open_admin_withdrawals",{})));
+                      return;
+                    }
                     if(n.post_id){
                       const{data}=await sb.from("posts").select("id,author_id").eq("id",n.post_id).maybeSingle();
                       if(!data){alert("Cette publication n'existe plus.");return;}
@@ -2254,7 +2259,7 @@ function NotifsScreen({myProfile,session,members}){
               );
             }
 
-            // ── Carte groupée par publication ──────────────
+            // ── Carte groupée par publication ou par personne ──────────────
             const g=item;
             const isExpanded=!!expandedGroups[g.key];
             const hasUnread=g.items.some(n=>!n.read);
@@ -2267,11 +2272,16 @@ function NotifsScreen({myProfile,session,members}){
               if(f?.id&&!seenIds.has(f.id)){seenIds.add(f.id);uniqueFroms.push(f);}
             });
             const preview=(g.post?.text||"").trim();
+            const personFrom=g.kind==="person"?(g.from?normProfile(g.from):null):null;
 
             return(
               <div key={g.key} style={{borderBottom:`1px solid ${T.border}`,background:hasUnread?"rgba(201,149,42,0.03)":"transparent",animation:"fadeUp .3s ease"}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer"}}
                   onClick={async()=>{
+                    if(g.kind==="person"){
+                      setExpandedGroups(p=>({...p,[g.key]:!p[g.key]}));
+                      return;
+                    }
                     const{data}=await sb.from("posts").select("id,author_id").eq("id",g.post_id).maybeSingle();
                     if(!data){alert("Cette publication n'existe plus.");return;}
                     setTab("home");
@@ -2279,7 +2289,9 @@ function NotifsScreen({myProfile,session,members}){
                     setTimeout(()=>{window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:g.post_id}}));},600);
                   }}>
                   <div style={{display:"flex",flexShrink:0}}>
-                    {uniqueFroms.slice(0,3).map((f,i)=>(
+                    {g.kind==="person"?(
+                      <Av u={personFrom||{initials:"?",color:"#888"}} size={40} onClick={e=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_open_user",{detail:{uid:personFrom?.id}}));}}/>
+                    ):uniqueFroms.slice(0,3).map((f,i)=>(
                       <div key={f.id} style={{marginLeft:i===0?0:-14,border:`2px solid ${T.bg}`,borderRadius:"50%"}}>
                         <Av u={f} size={40}/>
                       </div>
@@ -2287,9 +2299,13 @@ function NotifsScreen({myProfile,session,members}){
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{margin:"0 0 2px",fontSize:13,color:T.text,lineHeight:1.5}}>
-                      <strong>{uniqueFroms[0]?.name||"Quelqu'un"}</strong>
-                      {uniqueFroms.length>1&&<span style={{color:T.sub}}> et {g.items.length-1} autre{g.items.length>2?"s":""}</span>}
-                      {" "}<span style={{color:T.sub}}>ont interagi avec ta publication</span>
+                      {g.kind==="person"?(
+                        <><strong style={{color:T.text}}>{personFrom?.name||"Quelqu'un"}</strong>{" "}<span style={{color:T.sub}}>{groupTypeMeta[g.type]?.label||"s'est connecté"} · {g.items.length} fois</span></>
+                      ):(
+                        <><strong>{uniqueFroms[0]?.name||"Quelqu'un"}</strong>
+                        {uniqueFroms.length>1&&<span style={{color:T.sub}}> et {g.items.length-1} autre{g.items.length>2?"s":""}</span>}
+                        {" "}<span style={{color:T.sub}}>ont interagi avec ta publication</span></>
+                      )}
                     </p>
                     {preview&&(
                       <p style={{margin:"0 0 3px",fontSize:11,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>« {preview} »</p>
@@ -3650,7 +3666,7 @@ const evImgRef=useRef();
 const handleEventImagePick=async e=>{
   const f=e.target.files[0];
   if(!f)return;
-  const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+  const src=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.onerror=()=>rej(new Error("Lecture du fichier vidéo impossible"));r.readAsDataURL(f);});
   const croppedFile=await cropImage(src);
   const file=croppedFile||await compressImage(f);
   setEvImgUploading(true);
@@ -3725,12 +3741,12 @@ const handlePick=async e=>{
         setUploading(true);setUploadPct(0);
 lastVideoFileRef.current=f;
 try{const publicUrl=await uploadToR2(f,"posts",pct=>setUploadPct(pct));setMediaUrls(p=>[...p,publicUrl]);}
-catch(err){console.error(err);}
+catch(err){console.error(err);notify?.("Échec upload vidéo : "+(err?.message||String(err)));}
 finally{setUploading(false);setUploadPct(0);}
 continue;
       }
       if(f.type.startsWith("video/")){
-        const src=await new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(f);});
+        const src=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.onerror=()=>rej(new Error("Lecture du fichier vidéo impossible"));r.readAsDataURL(f);});
         const trimData=await new Promise(resolve=>setVideoTrimSrc({src,resolve}));
         setVideoTrimSrc(null);
         if(!trimData)continue;
@@ -3751,6 +3767,7 @@ try {
   setMediaUrls(p=>[...p,publicUrl]);
 } catch(e) {
   console.error("Erreur upload post:", e);
+  notify?.("Échec upload : "+(e?.message||String(e)));
 } finally {
   setUploading(false);setUploadPct(0);
 }
@@ -6690,6 +6707,17 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
       });
   },[session?.user?.id]);
 
+  useEffect(()=>{
+    const onPostDeleted=e=>{
+      const id=e.detail?.id;
+      if(!id)return;
+      setPosts(prev=>prev.filter(p=>p.id!==id));
+      setViewerFallback(prev=>prev?prev.filter(p=>p.id!==id):prev);
+    };
+    window.addEventListener("celeste_post_deleted",onPostDeleted);
+    return()=>window.removeEventListener("celeste_post_deleted",onPostDeleted);
+  },[]);
+
   const refreshPost=async pid=>{
     const{data}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url))`).eq("id",pid).single();
     if(!data)return null;
@@ -7155,6 +7183,22 @@ CONTACT & SUPPORT :
 TON RÔLE :
 Réponds aux questions des utilisateurs sur l'app avec simplicité et bienveillance. Si tu ne sais pas quelque chose de précis, invite l'utilisateur à contacter le support.`;
 
+// Corrige l'en-tête EBML "Duration" absent/infini des blobs webm produits par MediaRecorder —
+// cause connue de coupures/fins de lecture prématurées sur Android (Chromium).
+async function fixWebmDuration(blob,durationSeconds){
+  try{
+    const buffer=await blob.arrayBuffer();
+    const bytes=new Uint8Array(buffer);
+    for(let i=0;i<bytes.length-10;i++){
+      if(bytes[i]===0x44&&bytes[i+1]===0x89&&bytes[i+2]===0x88){
+        const view=new DataView(buffer,i+3,8);
+        view.setFloat64(0,durationSeconds*1000,false);
+        return new Blob([buffer],{type:blob.type});
+      }
+    }
+  }catch(_){}
+  return blob;
+}
 function VoicePlayer({src,mine,T}){
   const [playing,setPlaying]=useState(false);
   const [progress,setProgress]=useState(0);
@@ -7565,7 +7609,12 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
     await enableScreenProtection();
     try{
       const{data,error}=await sb.functions.invoke("view-once-media",{body:{message_id:m.id},headers:{"X-Celeste-Platform":Capacitor.getPlatform()}});
-      if(error||!data)throw error||new Error("Contenu indisponible");
+if(error){
+  let msg=error.message;
+  try{const body=await error.context?.json();if(body?.error)msg=body.error;}catch{}
+  throw new Error(msg);
+}
+if(!data)throw new Error("Contenu indisponible");
       if(m.type==="text"){
         if(typeof data.text!=="string")throw new Error("Contenu indisponible");
         setViewOnceTexts(p=>({...p,[m.id]:data.text}));
@@ -7695,13 +7744,18 @@ const handleFile=async(e,isImg)=>{
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,sampleRate:48000}});
       if(cancelledInitRef.current){stream.getTracks().forEach(t=>t.stop());return;}
-      const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg";
+      const mimeType=MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":MediaRecorder.isTypeSupported("audio/ogg")?"audio/ogg":"";
       const recOpts=mimeType?{mimeType,audioBitsPerSecond:128000}:{audioBitsPerSecond:128000};
       const rec=new MediaRecorder(stream,recOpts); const chunks=[];
+      const recStartedAt=Date.now();
       rec.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
             rec.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
-        const blob=new Blob(chunks,{type:mimeType||"audio/webm"});
+        let blob=new Blob(chunks,{type:mimeType||"audio/webm"});
+        if((mimeType||"").includes("webm")){
+          const realDuration=(Date.now()-recStartedAt)/1000;
+          blob=await fixWebmDuration(blob,realDuration);
+        }
         const tempId="tmp_voice_"+Date.now();
         trackFileSend(tempId,conv.id,{fileType:"voice",fileName:null});
         const convId=await ensureConv();
@@ -7735,7 +7789,7 @@ const handleFile=async(e,isImg)=>{
   };
 
   const cancelRecording=()=>{
-    if(mediaRecRef.current){mediaRecRef.current.ondata=null;mediaRecRef.current.onstop=null;mediaRecRef.current.stop();}
+    if(mediaRecRef.current){mediaRecRef.current.ondataavailable=null;mediaRecRef.current.onstop=null;mediaRecRef.current.stop();}
     else cancelledInitRef.current=true;
     clearInterval(timerRef.current);setRecording(false);setRecordSecs(0);setRecPaused(false);setRecInitializing(false);
     notifyRecording(false);
@@ -8067,7 +8121,7 @@ const handleFile=async(e,isImg)=>{
 </div>}
          <div style={{display:"flex",gap:6,alignItems:"flex-end",position:"relative"}}>
   <Btn onClick={()=>iRef.current.click()} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Camera size={18}/></Btn>
- <Btn onClick={()=>setViewOnceNext(v=>!v)} style={{color:viewOnceNext?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:viewOnceNext?"rgba(201,149,42,0.15)":"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><Eye size={18}/></Btn>
+ <Btn onClick={()=>notify?.("Vue unique en maintenance, réessaie plus tard")} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center",opacity:0.5}}><Eye size={18}/></Btn>
   <Btn onClick={()=>setShowStickerPicker(v=>!v)} style={{color:showStickerPicker?T.goldL:T.muted,padding:"6px",display:"flex",alignItems:"center",flexShrink:0,background:"rgba(255,255,255,0.06)",borderRadius:"50%",width:36,height:36,justifyContent:"center"}}><StickerIcon size={18}/></Btn>
   {showStickerPicker&&(
     <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,width:300,maxWidth:"90vw",zIndex:20}}>
@@ -8496,8 +8550,7 @@ if(user?.status==="suspended") return(
         actions={<>
           <div style={{display:"flex",gap:8}}>
             <Btn onClick={()=>onChat(user.id)} style={{background:"rgba(10,10,10,0.85)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Message</Btn>
-            <CallButton targetUserId={user.id} video={false} style={{background:"rgba(10,10,10,0.85)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Appel</CallButton>
-            <CallButton targetUserId={user.id} video={true} style={{background:"rgba(10,10,10,0.85)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 14px",color:"#fff",fontSize:11,fontWeight:600,backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>Vidéo</CallButton>
+            
             <Btn onClick={toggle} style={{background:conn?"rgba(201,149,42,0.85)":T.gradGold,border:conn?`1px solid ${T.gold}`:"none",borderRadius:20,padding:"10px 14px",color:"#000",fontSize:11,fontWeight:700,boxShadow:"0 4px 16px rgba(201,149,42,0.4)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}}>{conn?"✦ Connecté":"+ Connecter"}</Btn>
           </div>
           <div style={{display:"flex",gap:6,justifyContent:"flex-end",marginTop:8}}>
@@ -9767,6 +9820,16 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
       setLoading(false);
     });
   },[session?.user?.id]);
+  useEffect(()=>{
+    const onPostDeleted=e=>{
+      const id=e.detail?.id;
+      if(!id)return;
+      setLikedPosts(prev=>prev.filter(p=>p.id!==id));
+      setViewerFallback(prev=>prev?prev.filter(p=>p.id!==id):prev);
+    };
+    window.addEventListener("celeste_post_deleted",onPostDeleted);
+    return()=>window.removeEventListener("celeste_post_deleted",onPostDeleted);
+  },[]);
   const localToggleLike=async pid=>{
     const uid=session?.user?.id;
     const post=likedPosts.find(p=>p.id===pid);
@@ -9951,6 +10014,42 @@ const openPostFromSound=(post,soundPosts)=>{
   setViewerFallback(soundPosts?list:null);
   setViewerIndex(idx>=0?idx:0);
 };
+useEffect(()=>{
+  const onPostDeleted=e=>{
+    const id=e.detail?.id;
+    if(!id)return;
+    setMyPosts(prev=>prev.filter(p=>p.id!==id));
+    setViewerFallback(prev=>prev?prev.filter(p=>p.id!==id):prev);
+  };
+  window.addEventListener("celeste_post_deleted",onPostDeleted);
+  return()=>window.removeEventListener("celeste_post_deleted",onPostDeleted);
+},[]);
+
+// ── Sélection multiple (appui long sur une case) ──────────────
+const pressTimerRef=useRef({});
+const [selectMode,setSelectMode]=useState(false);
+const [selectedIds,setSelectedIds]=useState(()=>new Set());
+const enterSelectMode=id=>{setSelectMode(true);setSelectedIds(new Set([id]));};
+const toggleSelected=id=>{
+  setSelectedIds(prev=>{
+    const next=new Set(prev);
+    if(next.has(id))next.delete(id);else next.add(id);
+    if(next.size===0)setSelectMode(false);
+    return next;
+  });
+};
+const cancelSelect=()=>{setSelectMode(false);setSelectedIds(new Set());};
+const deleteSelectedPosts=async()=>{
+  const ids=Array.from(selectedIds);
+  if(ids.length===0)return;
+  if(!(await confirmAction(`Supprimer ${ids.length} publication${ids.length>1?"s":""} ?`,{confirmLabel:"Supprimer"})))return;
+  setMyPosts(prev=>prev.filter(p=>!selectedIds.has(p.id)));
+  cancelSelect();
+  notify(`${ids.length} publication${ids.length>1?"s":""} supprimée${ids.length>1?"s":""}`);
+  await sb.from("posts").delete().in("id",ids).eq("author_id",session.user.id);
+  ids.forEach(id=>window.dispatchEvent(new CustomEvent("celeste_post_deleted",{detail:{id}})));
+};
+
 const localToggleParticipate=async pid=>{
   const uid=session?.user?.id;
   const post=myPosts.find(p=>p.id===pid);
@@ -10202,6 +10301,16 @@ const localToggleParticipate=async pid=>{
 ))}
         </div>
 
+        {selectMode&&(
+          <div style={{position:"fixed",left:0,right:0,bottom:0,zIndex:300,background:T.bg3,borderTop:`1px solid ${T.border}`,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"}}>
+            <Btn onClick={cancelSelect} style={{color:T.muted,fontSize:13}}>Annuler</Btn>
+            <span style={{fontSize:13,color:T.text,fontWeight:600}}>{selectedIds.size} sélectionnée{selectedIds.size>1?"s":""}</span>
+            <Btn onClick={deleteSelectedPosts} disabled={selectedIds.size===0} style={{display:"flex",alignItems:"center",gap:6,color:"#e06060",fontSize:13,fontWeight:700,opacity:selectedIds.size===0?0.4:1}}>
+              <Trash2 size={16}/> Supprimer
+            </Btn>
+          </div>
+        )}
+
         {tab==="posts"&&(
           myPhotoPosts.length===0 
             ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}>
@@ -10210,12 +10319,21 @@ const localToggleParticipate=async pid=>{
               <Btn onClick={onNewPost} style={{background:T.gradGold,borderRadius:14,padding:"11px 24px",color:"#000",fontSize:13,fontWeight:700}}>Publier maintenant</Btn>
             </div>
             :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
-  {myPhotoPosts.map(p=>(
-    <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}>
+  {myPhotoPosts.map(p=>{
+  const isSelected=selectedIds.has(p.id);
+  return(
+    <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}
+      onTouchStart={()=>{pressTimerRef.current[p.id]=setTimeout(()=>{if(!selectMode)enterSelectMode(p.id);},500);}}
+      onTouchEnd={()=>clearTimeout(pressTimerRef.current[p.id])}
+      onTouchMove={()=>clearTimeout(pressTimerRef.current[p.id])}
+      onMouseDown={()=>{pressTimerRef.current[p.id]=setTimeout(()=>{if(!selectMode)enterSelectMode(p.id);},500);}}
+      onMouseUp={()=>clearTimeout(pressTimerRef.current[p.id])}
+      onMouseLeave={()=>clearTimeout(pressTimerRef.current[p.id])}>
       <div onClick={()=>{
+        if(selectMode){toggleSelected(p.id);return;}
         const idx=myVisualPosts.findIndex(q=>q.id===p.id);
         setViewerIndex(idx>=0?idx:0);
-      }} style={{width:"100%",height:"100%"}}>
+      }} style={{width:"100%",height:"100%",opacity:selectMode&&!isSelected?0.5:1}}>
         {p.img
           ?(isVid(p)?<VideoThumb src={p.img||(p.media_urls||[])[0]}/>:<SmartImage src={p.img||(p.media_urls||[])[0]} alt=""/>)
           :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",padding:8,background:p.text_background?({bg_noir:"#000000",bg_bleu:"#1565C0",bg_vert:"#1B5E20",bg_rouge:"#B71C1C",bg_or:"#7B5A00",bg_violet:"#4A148C"}[p.text_background]||T.bg2):T.bg2}}>
@@ -10237,6 +10355,11 @@ const localToggleParticipate=async pid=>{
           </div>
         )}
       </div>
+      {selectMode?(
+        <div onClick={()=>toggleSelected(p.id)} style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:"50%",border:`2px solid ${isSelected?T.goldL:"#fff"}`,background:isSelected?T.goldL:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {isSelected&&<Check size={13} color="#000"/>}
+        </div>
+      ):(
       <Btn onClick={e=>{
         e.stopPropagation();
         const next=!p.profile_pinned;
@@ -10263,21 +10386,39 @@ const localToggleParticipate=async pid=>{
       }} style={{position:"absolute",top:6,right:36,background:"rgba(0,0,0,0.7)",borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:p.profile_pinned?T.goldL:"#fff",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",border:`1px solid ${p.profile_pinned?T.goldL+"55":"rgba(255,255,255,0.2)"}`}}>
   <Pin size={13}/>
 </Btn>
+      )}
     </div>
-  ))}
+  );})}
 </div>
         )}
 {tab==="reels"&&(
           myVideoPosts.length===0
             ?<div style={{textAlign:"center",padding:"40px 0",color:T.muted}}><div style={{fontSize:40,marginBottom:8}}>✦</div><p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18}}>Aucun reel encore</p></div>
             :<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,margin:"0 -18px"}}>
-              {myVideoPosts.map(p=>(
+              {myVideoPosts.map(p=>{
+                const isSelected=selectedIds.has(p.id);
+                return(
                 <div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:"pointer",contentVisibility:"auto",containIntrinsicSize:"120px 120px"}}
-                  onClick={()=>{const idx=myVisualPosts.findIndex(q=>q.id===p.id);setViewerIndex(idx>=0?idx:0);}}>
-                 <VideoThumb src={p.img}/>
+                  onTouchStart={()=>{pressTimerRef.current[p.id]=setTimeout(()=>{if(!selectMode)enterSelectMode(p.id);},500);}}
+                  onTouchEnd={()=>clearTimeout(pressTimerRef.current[p.id])}
+                  onTouchMove={()=>clearTimeout(pressTimerRef.current[p.id])}
+                  onMouseDown={()=>{pressTimerRef.current[p.id]=setTimeout(()=>{if(!selectMode)enterSelectMode(p.id);},500);}}
+                  onMouseUp={()=>clearTimeout(pressTimerRef.current[p.id])}
+                  onMouseLeave={()=>clearTimeout(pressTimerRef.current[p.id])}
+                  onClick={()=>{
+                    if(selectMode){toggleSelected(p.id);return;}
+                    const idx=myVisualPosts.findIndex(q=>q.id===p.id);setViewerIndex(idx>=0?idx:0);
+                  }}>
+                 <div style={{width:"100%",height:"100%",opacity:selectMode&&!isSelected?0.5:1}}><VideoThumb src={p.img}/></div>
                   <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span></div>
+                  {selectMode&&(
+                    <div onClick={e=>{e.stopPropagation();toggleSelected(p.id);}} style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:"50%",border:`2px solid ${isSelected?T.goldL:"#fff"}`,background:isSelected?T.goldL:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {isSelected&&<Check size={13} color="#000"/>}
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
         )}
         {tab==="likes"&&(
@@ -10447,12 +10588,13 @@ function WalletComplaints({notify}){
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────
-function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile}){
+function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initialFilter}){
   const [list,setList]=useState([]);
   const [allReports,setAllReports]=useState([]);
   const [allPosts,setAllPosts]=useState([]);
   const [filter,setFilter]=useState(()=>{
     const initial=myProfile?.is_super_admin?["pending","members","suspended","reports","stickers","finance"]:(myProfile?.admin_scopes||[]);
+    if(initialFilter&&initial.includes(initialFilter))return initialFilter;
     if(initial.includes("pending"))return"pending";
     if(initial.includes("members"))return"all";
     if(initial.includes("suspended"))return"suspended";
@@ -11018,6 +11160,20 @@ function CelesteApp(){
   const [feedPreloaded,setFeedPreloaded]=useState(false);
   const [onlinePresenceIds,setOnlinePresenceIds]=useState(()=>new Set());
 
+  // Synchronise toute suppression de post faite depuis FeedViewer (feed, grille
+  // de profil, viewer global…) avec la liste maîtresse — sinon le post
+  // supprimé réapparaît dès qu'on quitte le viewer et redemande confirmation.
+  useEffect(()=>{
+    const onPostDeleted=e=>{
+      const id=e.detail?.id;
+      if(!id)return;
+      setPosts(prev=>(prev||[]).filter(p=>p.id!==id));
+      setGlobalViewerPost(prev=>prev&&prev.id===id?null:prev);
+    };
+    window.addEventListener("celeste_post_deleted",onPostDeleted);
+    return()=>window.removeEventListener("celeste_post_deleted",onPostDeleted);
+  },[]);
+
   useEffect(()=>{
     const setAppVh=()=>{
       document.documentElement.style.setProperty("--app-vh",`${window.innerHeight*0.01}px`);
@@ -11184,6 +11340,7 @@ useEffect(()=>{
   const [showNewPost,setShowNewPost]=useState(false);
 const [pendingSound,setPendingSound]=useState(null);
   const [showAdmin,setShowAdmin]=useState(false);
+  const [adminOpenSection,setAdminOpenSection]=useState(null);
   const [showNotifs,setShowNotifs]=useState(false);
   const [toast,setToast]=useState(null);
   const [postPage,setPostPage]=useState(1);
@@ -11258,6 +11415,19 @@ useEffect(()=>{
 },[]);
 const navStack = useRef([]);
 const pushNav = useCallback((closeFn) => { navStack.current.push(closeFn); }, []);
+useEffect(()=>{
+  window.__celesteOpenAdmin=(section)=>{
+    pushNav(()=>setShowAdmin(false));
+    setAdminOpenSection(section||null);
+    setShowAdmin(true);
+  };
+  return()=>{delete window.__celesteOpenAdmin;};
+},[pushNav]);
+useEffect(()=>{
+  const h=()=>window.__celesteOpenAdmin?.("finance");
+  window.addEventListener("celeste_open_admin_withdrawals",h);
+  return()=>window.removeEventListener("celeste_open_admin_withdrawals",h);
+},[]);
 const popNav = useCallback(() => { navStack.current.pop(); }, []);
 
 useEffect(() => {
@@ -11796,7 +11966,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   <button onClick={()=>setSharedMedia(null)} style={{color:T.muted,background:"none",border:"none",fontSize:13,cursor:"pointer"}}>Annuler</button>
 </div>}
         {showNewPost&&<NewPostModal myProfile={myProfile} session={session} initialSound={pendingSound} onClose={()=>{popNav();setShowNewPost(false);setPendingSound(null);}} onPost={()=>{loadPosts(1);setShowNewPost(false);setPendingSound(null);notify("Publié ✦");}} notify={notify}/>}
-        {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session} myProfile={myProfile}/>}
+        {showAdmin&&myProfile?.is_admin&&<AdminPanel onClose={()=>{popNav();setShowAdmin(false);}} notify={notify} reload={loadMembers} reloadPosts={()=>loadPosts(1)} session={session} myProfile={myProfile} initialFilter={adminOpenSection}/>}
 {openCeleste&&<CelesteChatScreen msgs={celesteMsgs} setMsgs={setCelesteMsgs} onClose={()=>{popNav();setOpenCeleste(false);}} myProfile={myProfile} session={session}/>}
 {showCreateGroup&&(
   <CreateGroupModal sb={sb} T={T} Av={Av} Btn={Btn} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers}
@@ -11810,7 +11980,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
 )}
-        <div style={{height:"calc(64px + env(safe-area-inset-top,0px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId||tab==="home")?"none":"flex",alignItems:"center",padding:"env(safe-area-inset-top,0px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
+        <div style={{height:"calc(64px + env(safe-area-inset-top,0px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId||(tab==="home"&&!openUserId))?"none":"flex",alignItems:"center",padding:"env(safe-area-inset-top,0px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>

@@ -50,7 +50,13 @@ export default function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}
         return;
       }
       v.currentTime=start;
-      await new Promise(res=>v.addEventListener("seeked",res,{once:true}));
+// Filet de sécurité : "seeked" ne se déclenche pas toujours (ex: currentTime
+// déjà égal à start), ce qui bloquait handleValidate indéfiniment et empêchait
+// toute preview/upload d'apparaître.
+await Promise.race([
+  new Promise(res=>v.addEventListener("seeked",res,{once:true})),
+  new Promise(res=>setTimeout(res,600)),
+]);
       const stream=v.captureStream?v.captureStream():v.mozCaptureStream();
       const chunks=[];
       const mimeType=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")?"video/webm;codecs=vp8,opus":"video/webm";
@@ -87,7 +93,7 @@ export default function VideoTrimModal({videoSrc,onClose,onDone,maxDuration=600}
   };
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:1100,background:"#000",display:"flex",flexDirection:"column"}}>
+    <div style={{position:"fixed",inset:0,zIndex:1500,background:"#000",display:"flex",flexDirection:"column"}}>
       <div style={{padding:"12px 20px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>Annuler</button>
         <p style={{margin:0,fontSize:15,fontWeight:600,color:"#fff"}}>Couper la vidéo</p>

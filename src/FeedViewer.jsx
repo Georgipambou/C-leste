@@ -12,6 +12,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { X, Heart, MessageCircle, Bookmark, Play, Volume2, VolumeX, MoreVertical, Trash2, Flag, EyeOff, ChevronLeft, Eye, Check, Share2, Sparkles, BarChart3, Calendar, MapPin, Clock, Users, UserPlus, CheckCircle2 } from "lucide-react";
 import SharePostModal from "./SharePostModal";
+import { confirmAction } from "./confirmAction";
 import { pauseOtherVideos, releaseActiveVideo } from "./videoRegistry";
 import { useVideoEngagement } from "./lib/recommendation/useVideoEngagement";
 import { useFeedIntersection, shouldMountFull } from "./lib/recommendation/useFeedIntersection";
@@ -546,8 +547,10 @@ export default function FeedViewer({
     const post = displayPosts[activeIdx];
     if (!post) return;
     const isPlayingVideo = kindOf(post) === "video" && !pausedMap[activeIdx];
-    onNavVisibilityChange?.(!isPlayingVideo);
-  }, [activeIdx, displayPosts, pausedMap, kindOf, onNavVisibilityChange]);
+    const shouldHide = commentsModalOpen || !!shareModalPostId || !!menuPostId || !!reportPost || !!deleteReasonPost || isPlayingVideo;
+    onNavVisibilityChange?.(!shouldHide);
+    return () => { onNavVisibilityChange?.(true); };
+  }, [activeIdx, displayPosts, pausedMap, kindOf, onNavVisibilityChange, commentsModalOpen, shareModalPostId, menuPostId, reportPost, deleteReasonPost]);
 
   // Réapparition le temps d'un swipe ou d'un retour en arrière, même sur vidéo
   useEffect(() => {
@@ -1016,6 +1019,7 @@ export default function FeedViewer({
     setHiddenPostIds(p => new Set([...p, post.id]));
     notify?.("Publication supprimée");
     await sb.from("posts").delete().eq("id", post.id).eq("author_id", uid);
+    window.dispatchEvent(new CustomEvent("celeste_post_deleted", { detail: { id: post.id } }));
   }, [uid, myProfile, notify]);
 
   const handleAdminDeleteWithReason = useCallback(async (reason) => {
@@ -1026,6 +1030,7 @@ export default function FeedViewer({
     notify?.("Publication supprimée");
     await sb.from("posts").delete().eq("id", post.id);
     await sb.from("notifications").insert({ user_id: post.by, from_id: uid, type: "post_deleted", text: `Ta publication a été supprimée par un administrateur (motif : ${reason})`, read: false });
+    window.dispatchEvent(new CustomEvent("celeste_post_deleted", { detail: { id: post.id } }));
   }, [uid, deleteReasonPost, notify]);
 
   const handleMuteAuthor = useCallback(async (post) => {
@@ -1132,9 +1137,10 @@ export default function FeedViewer({
                 <>
                   {nearActive && rawVideoSrc && (
                     <video
-                      ref={el => { videoRefs.current[idx] = el; }}
-                      src={rawVideoSrc}
-                      loop playsInline webkit-playsinline="true"
+  ref={el => { videoRefs.current[idx] = el; }}
+  src={rawVideoSrc}
+  poster={post.img || undefined}
+  loop playsInline webkit-playsinline="true"
                       muted={muted}
                       preload={isActive ? "auto" : "metadata"}
                       style={{ width: "100%", height: "100%", objectFit: "contain", position: "absolute", inset: 0, background: "#000" }}

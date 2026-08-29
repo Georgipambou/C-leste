@@ -16,7 +16,7 @@ export default function DraftsGallery({ onClose, onResume, onPublishAsIs, T }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 500, background: T.bg, display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: T.bg, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "52px 20px 16px", borderBottom: `1px solid ${T.border}` }}>
         <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, color: T.text, letterSpacing: 2, fontWeight: 600 }}>
           Brouillons {drafts ? `(${drafts.length})` : ""}
