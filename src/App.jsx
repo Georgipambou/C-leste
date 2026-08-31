@@ -10982,7 +10982,7 @@ const send=async()=>{
 };
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
+    <div style={{position:"fixed",inset:0,zIndex:1400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
       {/* Header */}
       <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -12073,7 +12073,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               }}
             />
           )}
-          <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",width:"100%",flex:1,minHeight:0}}>
+          <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",width:"100%",flex:1,minHeight:0,paddingBottom:(tab!=="home"&&!openConvId&&!openUserId&&!hideNav)?"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))":0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
   <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={handleFeedOpenUser} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={handleFeedConnect} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={handleFeedMuteAuthor} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing} onFeedNavVisibility={setFeedNavVisible} sessionAffinity={sessionAffinityRef.current}/>
 </div>
@@ -12130,7 +12130,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 )}
 {/* Bottom nav premium */}
        {!openConvId&&!openUserId&&!hideNav&&(
-          <div style={tab==="home"?{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box",transform:feedNavVisible?"translateY(0)":"translateY(100%)",transition:"transform .25s ease"}:{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"relative",overflow:"hidden",flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
+          <div style={{...(tab==="home"?{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box",transform:feedNavVisible?"translateY(0)":"translateY(100%)",transition:"transform .25s ease"}:{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box"}),display:openCeleste?"none":undefined}}>
             <NavScenery theme={navTheme}/>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.78) 100%)",pointerEvents:"none"}}/>
             <div style={{position:"relative",zIndex:2,display:"flex",height:"100%"}}>
