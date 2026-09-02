@@ -1,5 +1,5 @@
 ﻿/**
- * Céleste — Version Premium 6.0 (FUSION)
+ * Céleste — Version Premium 9.0 (FUSION)
  * Design: Noir absolu · Gold vibrant · Glassmorphism · Animations cinématiques
  * Base: Céleste v3 (src_src_App_4.jsx) + nouvelles fonctionnalités App 9
  *
@@ -75,6 +75,7 @@ import { Keyboard } from '@capacitor/keyboard';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Geolocation } from '@capacitor/geolocation';
 import { App as CapApp } from '@capacitor/app';
+import { SendIntent } from 'send-intent';
 import { Browser } from '@capacitor/browser';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import EasyCrop from "react-easy-crop";
@@ -1120,7 +1121,7 @@ function NoteReplyModal({sb,session,note,onClose,notify}){
   );
 }
 
-function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
+function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify,pushNav,popNav}){
   const[myNote,setMyNote]=useState(null);
   const[notes,setNotes]=useState([]);
   const[showComposer,setShowComposer]=useState(false);
@@ -1157,7 +1158,7 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
         <p style={{margin:0,fontSize:10,color:T.muted}}>Ta note</p>
       </div>
       {notes.map(n=>(
-        <div key={n.id} onClick={()=>setReplyNote(n)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
+        <div key={n.id} onClick={()=>{pushNav(()=>setReplyNote(null));setReplyNote(n);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
           <div style={{position:"relative"}}>
             <div style={bubbleStyle}>{renderTextWithMentions(n.text)}</div>
             <Av u={n.author} size={40} noStatus/>
@@ -1179,7 +1180,7 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify}){
         }
       }}
       onDeleted={()=>setMyNote(null)}/>}
-    {replyNote&&<NoteReplyModal sb={sb} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
+    {replyNote&&<NoteReplyModal sb={sb} session={session} note={replyNote} notify={notify} onClose={()=>{popNav();setReplyNote(null);}}/>}
     </>
   );
 }
@@ -1675,7 +1676,7 @@ function ImageCropModal({imageSrc,onClose,onDone}){
   return(
     <div style={{position:"fixed",inset:0,zIndex:1500,background:"#000",display:"flex",flexDirection:"column"}}>
       {/* Header */}
-      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + max(env(safe-area-inset-top,0px), 24px))",background:"rgba(0,0,0,0.95)",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:15,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
           <X size={18}/>Garder l'originale
         </button>
@@ -1864,7 +1865,7 @@ const ORG_TYPES=[
   {v:"autre",l:"📌 Autre"},
 ];
 // ── AUTH SCREEN ───────────────────────────────────────────
-function AuthScreen({mode,setMode,onSuccess}){
+function AuthScreen({mode,setMode,onSuccess,pushNav,popNav}){
   const [logoFont]=useState(pickLogoFont);
   const [accountType,setAccountType]=useState("membre");
   const [prenom,setPrenom]=useState(""); const [nom,setNom]=useState("");
@@ -1969,7 +1970,7 @@ if(data.user){onSuccess?.("pending");}
                 ):(
                   <>
                     <AuthField val={orgName} set={setOrgName} placeholder="Nom de l'organisation *"/>
-<Btn onClick={()=>setShowOrgTypePicker(true)} style={{width:"100%",textAlign:"left",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:orgType?T.text:T.sub,fontSize:13}}>
+<Btn onClick={()=>{pushNav(()=>setShowOrgTypePicker(false));setShowOrgTypePicker(true);}} style={{width:"100%",textAlign:"left",padding:"13px 14px",background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`,borderRadius:14,color:orgType?T.text:T.sub,fontSize:13}}>
   {ORG_TYPES.find(t=>t.v===orgType)?.l||"Type *"}
 </Btn>
                     <AuthField val={orgCountry} set={setOrgCountry} placeholder="Ville / Quartier *"/>
@@ -2000,11 +2001,11 @@ if(data.user){onSuccess?.("pending");}
       </div>
       
     {showOrgTypePicker&&(
-        <div style={{position:"fixed",inset:0,zIndex:1300,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end"}} onClick={()=>setShowOrgTypePicker(false)}>
+        <div style={{position:"fixed",inset:0,zIndex:1300,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end"}} onClick={()=>{popNav();setShowOrgTypePicker(false);}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxHeight:"70vh",overflowY:"auto",background:T.bg,borderTopLeftRadius:24,borderTopRightRadius:24,padding:"16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)"}}>
             <p style={{textAlign:"center",color:T.text,fontWeight:700,margin:"4px 0 14px"}}>Type d'organisation</p>
             {ORG_TYPES.map(t=>(
-              <Btn key={t.v} onClick={()=>{setOrgType(t.v);setShowOrgTypePicker(false);}}
+              <Btn key={t.v} onClick={()=>{setOrgType(t.v);popNav();setShowOrgTypePicker(false);}}
                 style={{display:"block",width:"100%",textAlign:"left",padding:"14px 12px",borderRadius:12,color:orgType===t.v?T.goldL:T.text,background:orgType===t.v?T.goldBg2:"transparent",fontSize:14,marginBottom:4}}>
                 {t.l}
               </Btn>
@@ -5064,7 +5065,7 @@ const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_
   return(
     <div style={{position:"fixed",inset:0,zIndex:1200,background:T.bg,display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
       {/* Header barre progression */}
-      <div style={{padding:"calc(env(safe-area-inset-top,0px) + 16px) 20px 0",flexShrink:0}}>
+      <div style={{padding:"calc(max(env(safe-area-inset-top,0px), 24px) + 16px) 20px 0",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
           {step>0&&<Btn onClick={()=>setStep(s=>s-1)} style={{color:T.muted,display:"flex"}}><ChevronLeft size={22}/></Btn>}
           <div style={{flex:1,height:3,background:"rgba(255,255,255,0.08)",borderRadius:2}}>
@@ -5176,7 +5177,7 @@ function MatchWriteBtn({u,score,onChat,notify,onWriteOpen}){
   );
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:99999,background:T.bg,display:"flex",flexDirection:"column"}}>
-      <div style={{padding:"14px 16px",paddingTop:"calc(60px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+      <div style={{padding:"14px 16px",paddingTop:"calc(60px + max(env(safe-area-inset-top,0px), 24px))",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <Btn onClick={()=>{setOpen(false);onWriteOpen?.(false);}} style={{color:T.text,display:"flex",alignItems:"center",gap:6}}>
           <ChevronLeft size={22}/><span style={{fontSize:15,fontWeight:600}}>Retour</span>
         </Btn>
@@ -5828,7 +5829,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={(p,cb)=>{setModalCommentPost(p);setModalCloseCallback(()=>cb);}}
+  onOpenComments={(p,cb)=>{pushNav(()=>{setModalCommentPost(null);setModalCloseCallback(null);});setModalCommentPost(p);setModalCloseCallback(()=>cb);}}
   myConnections={myConnections}
   onConnect={onConnect}
   onOpenSound={setOpenSoundId}
@@ -5849,6 +5850,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
     getM={getM}
     onCountChange={modalCommentPost?setModalLiveCmtCount:setFeedLiveCmtCount}
     onClose={()=>{
+      popNav();
       setModalCommentPost(null);
       setFeedCommentPost(null);
       if(modalCloseCallback){modalCloseCallback(modalLiveCmtCount);setModalCloseCallback(null);}
@@ -5902,7 +5904,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
       notify={notify}
       onUser={onUser}
 
-      onOpenComments={(p,cb)=>{setFeedCommentPost(p);setFeedCloseCallback(()=>cb);}}
+      onOpenComments={(p,cb)=>{pushNav(()=>{setFeedCommentPost(null);setFeedCloseCallback(null);});setFeedCommentPost(p);setFeedCloseCallback(()=>cb);}}
       myConnections={myConnections}
       onConnect={onConnect}
       onOpenSound={setOpenSoundId}
@@ -6670,7 +6672,7 @@ onMuteAuthor?.(post.by);
 }
 );
 // ── SAVED POSTS (NOUVEAU depuis App 9) ────────────────────
-function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,toggleSave,myConnections,onConnect}){
+function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,toggleSave,myConnections,onConnect,pushNav,popNav}){
   const [posts,setPosts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [viewerIndex,setViewerIndex]=useState(null);
@@ -6686,6 +6688,7 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
     const list=(soundPosts||visualPosts).filter(hasVisual);
     const idx=list.findIndex(q=>q.id===post.id);
     setViewerFallback(soundPosts?list:null);
+    pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});
     setViewerIndex(idx>=0?idx:0);
   };
 
@@ -6783,9 +6786,9 @@ return(
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
         {viewerIndex!==null&&toggleLike&&toggleSave&&(
-          <FeedViewer posts={viewerFallback||visualPosts} sb={sb} T={T} Av={Av} startIndex={viewerIndex} onClose={()=>{setViewerIndex(null);setViewerFallback(null);}}
+          <FeedViewer posts={viewerFallback||visualPosts} sb={sb} T={T} Av={Av} startIndex={viewerIndex} onClose={()=>{popNav();setViewerIndex(null);setViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={(p,cb)=>{setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
+            onUser={()=>{}} onOpenComments={(p,cb)=>{pushNav(()=>{setCommentPost(null);setCloseCallback(null);});setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
         {commentPost&&(
           <CommentsOnlyModal
@@ -6794,6 +6797,7 @@ return(
             getM={getM}
             onCountChange={setLiveCmtCount}
             onClose={()=>{
+              popNav();
               setCommentPost(null);
               if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
             }}
@@ -6807,6 +6811,7 @@ return(
               if(p.is_private&&!isNative)return;
               if(hasVisual(p)){
                 const idx=visualPosts.findIndex(q=>q.id===p.id);
+                pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});
                 setViewerIndex(idx>=0?idx:0);
               }else{
                 setDetailPost(p);
@@ -6842,7 +6847,7 @@ return(
 }
 
 // ── MESSAGES TAB ──────────────────────────────────────────
-function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup,notify,myProfile,myConnections,myFollowers}){
+function MsgsTab({convs,getM,onOpen,onDeleteConv,onOpenCeleste,session,sb,members,onCreateGroup,onOpenGroup,notify,myProfile,myConnections,myFollowers,pushNav,popNav}){
   const [q,setQ]=useState("");
   const [queueStatuses,setQueueStatuses]=useState(()=>getConvStatuses());
   useEffect(()=>subscribeQueue(()=>setQueueStatuses(getConvStatuses())),[]);
@@ -6855,7 +6860,8 @@ const pressTimer=useRef(null);
 
   const toggleFav=id=>{const next=favorites.includes(id)?favorites.filter(f=>f!==id):[...favorites,id];setFavorites(next);localStorage.setItem(celesteScopedKey("celeste_favs"),JSON.stringify(next));};
 const togglePin=id=>{const next=pinned.includes(id)?pinned.filter(p=>p!==id):[...pinned,id];setPinned(next);localStorage.setItem(celesteScopedKey("celeste_pins"),JSON.stringify(next));};
-const openMenu=id=>{setMenuConvId(id);};
+const openMenu=id=>{pushNav(()=>setMenuConvId(null));setMenuConvId(id);};
+const openGroupMenu=id=>{pushNav(()=>setMenuGroupId(null));setMenuGroupId(id);};
 
   const sorted=useMemo(()=>[...(convs||[])].sort((a,b)=>{
   const aPin=pinned.includes(a.id)?1:0,bPin=pinned.includes(b.id)?1:0;
@@ -6963,7 +6969,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
     <div style={{flex:1,overflowY:"auto",background:T.bg,position:"relative"}}>
       <InstallBanner/>
       {/* Notes — défile avec le contenu, ne reste pas collée */}
-      <NotesBar sb={sb} T={T} Av={Av} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify}/>
+      <NotesBar sb={sb} T={T} Av={Av} session={session} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} notify={notify} pushNav={pushNav} popNav={popNav}/>
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
@@ -7015,7 +7021,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               </div>
             )}
             {[...visibleGroups].sort((a,b)=>(isGroupPinned(b.id)?1:0)-(isGroupPinned(a.id)?1:0)).map(g=>(
-              <GroupRow key={g.id} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
+              <GroupRow key={g.id} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={openGroupMenu}/>
             ))}
           </>
         )}
@@ -7028,14 +7034,14 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         )}
         {filter==="tous"&&visibleUnifiedAll.map(item=>(
           item.kind==="group"
-            ? <GroupRow key={`g_${item.id}`} g={item.data} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
+            ? <GroupRow key={`g_${item.id}`} g={item.data} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={openGroupMenu}/>
             : renderConvRow(item.data)
         ))}
         {filter==="nonlus"&&unreadGroups.map(g=>(
-          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
+          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={openGroupMenu}/>
         ))}
         {filter==="favoris"&&favoriteGroups.map(g=>(
-          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={setMenuGroupId}/>
+          <GroupRow key={`g_${g.id}`} g={g} T={T} Av={Av} onOpen={onOpenGroup} onLongPress={openGroupMenu}/>
         ))}
         {(filter==="nonlus"||filter==="favoris")&&filtered.length===0&&unreadGroups.length===0&&favoriteGroups.length===0&&(
           <div style={{textAlign:"center",padding:"80px 20px",color:T.muted}}>
@@ -7047,13 +7053,13 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         {(filter==="nonlus"||filter==="favoris")&&filtered.map(c=>renderConvRow(c))}
       </div>
 {menuConvId&&(
-  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuConvId(null)}>
+  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setMenuConvId(null);}}>
     <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"24px 24px 0 0",padding:"20px 0 40px"}} onClick={e=>e.stopPropagation()}>
       <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
       {[
-        {ic:<Star size={20}/>,label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);setMenuConvId(null);}},
-        {ic:<Pin size={20}/>,label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);setMenuConvId(null);}},
-        {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);setMenuConvId(null);},danger:true},
+        {ic:<Star size={20}/>,label:favorites.includes(menuConvId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleFav(menuConvId);popNav();setMenuConvId(null);}},
+        {ic:<Pin size={20}/>,label:pinned.includes(menuConvId)?"Désépingler":"Épingler",action:()=>{togglePin(menuConvId);popNav();setMenuConvId(null);}},
+        {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{onDeleteConv(menuConvId);popNav();setMenuConvId(null);},danger:true},
       ].map(opt=>(
         <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
           <span style={{display:"flex",alignItems:"center"}}>{opt.ic}</span>{opt.label}
@@ -7063,13 +7069,13 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
   </div>
 )}
 {menuGroupId&&(
-  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setMenuGroupId(null)}>
+  <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setMenuGroupId(null);}}>
     <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"24px 24px 0 0",padding:"20px 0 40px"}} onClick={e=>e.stopPropagation()}>
       <div style={{width:36,height:4,borderRadius:2,background:T.border,margin:"0 auto 20px"}}/>
       {[
-        {ic:<Star size={20}/>,label:isGroupFavorite(menuGroupId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleGroupFavorite(menuGroupId);setMenuGroupId(null);}},
-        {ic:<Pin size={20}/>,label:isGroupPinned(menuGroupId)?"Désépingler":"Épingler",action:()=>{toggleGroupPin(menuGroupId);setMenuGroupId(null);}},
-        {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{hideGroupForMe(menuGroupId);setMenuGroupId(null);},danger:true},
+        {ic:<Star size={20}/>,label:isGroupFavorite(menuGroupId)?"Retirer des favoris":"Ajouter aux favoris",action:()=>{toggleGroupFavorite(menuGroupId);popNav();setMenuGroupId(null);}},
+        {ic:<Pin size={20}/>,label:isGroupPinned(menuGroupId)?"Désépingler":"Épingler",action:()=>{toggleGroupPin(menuGroupId);popNav();setMenuGroupId(null);}},
+        {ic:<Trash2 size={20}/>,label:"Supprimer (pour moi)",action:()=>{hideGroupForMe(menuGroupId);popNav();setMenuGroupId(null);},danger:true},
       ].map(opt=>(
         <button key={opt.label} onClick={opt.action} style={{width:"100%",padding:"16px 24px",background:"transparent",border:"none",display:"flex",alignItems:"center",gap:14,fontSize:15,color:opt.danger?"#f87171":T.text,cursor:"pointer",textAlign:"left"}}>
           <span style={{display:"flex",alignItems:"center"}}>{opt.ic}</span>{opt.label}
@@ -7291,7 +7297,7 @@ function VoicePlayer({src,mine,T}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated}){
+function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated,pushNav,popNav}){
 const [selectedMsg,setSelectedMsg]=useState(null);
 const [showGemini,setShowGemini]=useState(false);
 const [cropSrc,setCropSrc]=useState(null);
@@ -7585,6 +7591,7 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
   if(!convId)return;
   enqueueMessage(convId,session?.user?.id,payload);
   setAttach(false);playChatSound("send");
+  requestAnimationFrame(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}));
   processQueue(sb,notify).then(reload);
 };
 
@@ -7811,13 +7818,13 @@ const handleFile=async(e,isImg)=>{
     notifyRecording(true);
   };
   const [confirmDeleteId,setConfirmDeleteId]=useState(null);
-  const requestDeleteMsg=msgId=>setConfirmDeleteId(msgId);
+  const requestDeleteMsg=msgId=>{pushNav(()=>setConfirmDeleteId(null));setConfirmDeleteId(msgId);};
   const deleteMsg=async msgId=>{await sb.from("messages").delete().eq("id",msgId);reload();};
 
   if(conv.secure_mode&&!isNative&&conv.secure_mode_by!==session?.user?.id){
     return(
       <div style={{flex:1,display:"flex",flexDirection:"column",background:T.bg}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",paddingTop:"calc(10px + env(safe-area-inset-top,0px))",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",paddingTop:"calc(10px + max(env(safe-area-inset-top,0px), 24px))",borderBottom:`1px solid ${T.border}`}}>
           <Btn onClick={onBack} style={{color:T.gold}}><ChevronLeft size={22}/></Btn>
         </div>
         <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:30}}>
@@ -7862,7 +7869,7 @@ const handleFile=async(e,isImg)=>{
       {bgPhoto&&<div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgPhoto})`,backgroundSize:"cover",backgroundPosition:"center",opacity:.35,pointerEvents:"none"}}/>}
 
       {/* Chat header — style Instagram */}
-<div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"3px 10px",paddingTop:"calc(3px + env(safe-area-inset-top,0px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
+<div style={{position:"relative",zIndex:1,background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"3px 10px",paddingTop:"calc(3px + max(env(safe-area-inset-top,0px), 24px))",display:"flex",alignItems:"center",gap:6,flexShrink:0,minHeight:0}}>
   <Btn onClick={()=>onBack&&onBack()} style={{color:T.gold,padding:"6px 2px 6px 0",display:"flex",alignItems:"center",flexShrink:0}}><ChevronLeft size={22}/></Btn>
   <div style={{position:"relative",flexShrink:0}}>
     <Av u={user} size={26} onClick={()=>onOpenConvInfo&&onOpenConvInfo(user.id)}/>
@@ -7907,11 +7914,11 @@ const handleFile=async(e,isImg)=>{
 <SwipeToReply message={m} mine={mine} onReply={msg=>setReplyTo({id:msg.id,text:msg.text||mediaReplyLabel(msg.type,msg.fileName)||"",authorName:(msg.f==="me"||msg.f===session?.user?.id)?"Vous":user.name})}>
 <div
   onClick={m.error?()=>retryMessage(sb,m.id,notify).then(reload):doubleTap}
-  onMouseDown={e=>{const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpm=t;}}
+  onMouseDown={e=>{const t=setTimeout(()=>{pushNav(()=>setSelectedMsg(null));setSelectedMsg(m);},500);e.currentTarget._lpm=t;}}
   onMouseUp={e=>{clearTimeout(e.currentTarget._lpm);}}
   onMouseLeave={e=>{clearTimeout(e.currentTarget._lpm);}}
-  onContextMenu={e=>{e.preventDefault();setSelectedMsg(m);}}
-  onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>setSelectedMsg(m),500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
+  onContextMenu={e=>{e.preventDefault();pushNav(()=>setSelectedMsg(null));setSelectedMsg(m);}}
+  onTouchStart={e=>{const startY=e.touches[0].clientY;const t=setTimeout(()=>{pushNav(()=>setSelectedMsg(null));setSelectedMsg(m);},500);e.currentTarget._lpt=t;e.currentTarget._startY=startY;}}
   onTouchMove={e=>{const dy=Math.abs(e.touches[0].clientY-(e.currentTarget._startY||0));if(dy>8)clearTimeout(e.currentTarget._lpt);}}
   onTouchEnd={e=>{clearTimeout(e.currentTarget._lpt);}}>
                <div style={{
@@ -8216,11 +8223,11 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
       )}
 
       {selectedMsg&&(
-        <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>setSelectedMsg(null)}>
+        <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>{popNav();setSelectedMsg(null);}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
             <div style={{display:"flex",justifyContent:"center",gap:10,padding:"14px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
               {QUICK_REACTIONS.map(e=>(
-                <button key={e} onClick={()=>{toggleReaction(sb,selectedMsg.id,session?.user?.id,e,selectedMsg.reactions).then(()=>reload());setSelectedMsg(null);}}
+                <button key={e} onClick={()=>{toggleReaction(sb,selectedMsg.id,session?.user?.id,e,selectedMsg.reactions).then(()=>reload());popNav();setSelectedMsg(null);}}
                   style={{background:"none",border:"none",fontSize:26,cursor:"pointer",padding:4}}>
                   {e}
                 </button>
@@ -8229,12 +8236,12 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             {selectedMsg.text&&<div style={{padding:"14px 20px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
               <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.5,maxHeight:50,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{selectedMsg.text}</p>
             </div>}
-            <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text||mediaReplyLabel(selectedMsg.type,selectedMsg.fileName)||"",authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+            <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text||mediaReplyLabel(selectedMsg.type,selectedMsg.fileName)||"",authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});popNav();setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <Reply size={18}/><span>Répondre</span>
             </Btn>
             
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&selectedMsg.text&&(
-              <Btn onClick={()=>{setEditingMsg(selectedMsg);setInp(selectedMsg.text);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <Btn onClick={()=>{setEditingMsg(selectedMsg);setInp(selectedMsg.text);popNav();setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                 <Edit2 size={18}/><span>Modifier</span>
               </Btn>
             )}
@@ -8245,16 +8252,16 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
               <Copy size={18}/><span>Copier</span>
             </Btn>
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&(
-              <Btn onClick={()=>{requestDeleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+              <Btn onClick={()=>{popNav();requestDeleteMsg(selectedMsg.id);setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.err,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                 <Trash2 size={18}/><span>Supprimer</span>
               </Btn>
             )}
-            <Btn onClick={()=>setSelectedMsg(null)} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
+            <Btn onClick={()=>{popNav();setSelectedMsg(null);}} style={{width:"100%",padding:"14px 20px",fontSize:14,color:T.muted,textAlign:"center"}}>Annuler</Btn>
           </div>
         </div>
       )}
       {confirmDeleteId&&(
-        <div style={{position:"fixed",inset:0,zIndex:520,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>setConfirmDeleteId(null)}>
+        <div style={{position:"fixed",inset:0,zIndex:520,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>{popNav();setConfirmDeleteId(null);}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
             <div style={{padding:"20px 20px 14px",textAlign:"center"}}>
               <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Supprimer ce message ?</p>
@@ -8344,7 +8351,7 @@ function LinksEditor({links,onChange}){
 
 // ── USER VIEW ─────────────────────────────────────────────
 // ── USER VIEW ─────────────────────────────────────────────
-function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0,toggleLike,toggleSave,popNav}){
+function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,myFollowers,onConnectionChange,onImageView,userPostsVersion=0,toggleLike,toggleSave,popNav,pushNav}){
   const conn=(myConnections||[]).includes(user.id);
   const [followersCount,setFollowersCount]=useState("…");
   const [followingCount,setFollowingCount]=useState("…");
@@ -8460,6 +8467,7 @@ const openPostFromSound=(post,soundPosts)=>{
   const list=(soundPosts||uVisualPosts).filter(hasUVisual);
   const idx=list.findIndex(q=>q.id===post.id);
   setUViewerFallback(soundPosts?list:null);
+  pushNav(()=>{setUViewerIndex(null);setUViewerFallback(null);});
   setUViewerIndex(idx>=0?idx:0);
 };
 if(blocked||blockedByOther) return(
@@ -8498,7 +8506,7 @@ if(user?.status==="suspended") return(
           posts={uViewerFallback||uVisualPosts}
           sb={sb} T={T} Av={Av}
           startIndex={uViewerIndex}
-          onClose={()=>{setUViewerIndex(null);setUViewerFallback(null);}}
+          onClose={()=>{popNav();setUViewerIndex(null);setUViewerFallback(null);}}
           toggleLike={localToggleLike}
           toggleSave={toggleSave}
           onParticipate={localToggleParticipate}
@@ -8506,7 +8514,7 @@ if(user?.status==="suspended") return(
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={(p,cb)=>{setUCommentPost(p);setUCloseCallback(()=>cb);}}
+          onOpenComments={(p,cb)=>{pushNav(()=>{setUCommentPost(null);setUCloseCallback(null);});setUCommentPost(p);setUCloseCallback(()=>cb);}}
           myConnections={myConnections}
           onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
@@ -8520,6 +8528,7 @@ if(user?.status==="suspended") return(
           getM={id=>id===user.id?user:myProfile}
           onCountChange={setUCommentLiveCount}
           onClose={()=>{
+            popNav();
             setUCommentPost(null);
             if(uCloseCallback){uCloseCallback(uCommentLiveCount);setUCloseCallback(null);}
           }}
@@ -8530,7 +8539,7 @@ if(user?.status==="suspended") return(
         T={T} Av={Av} Badge={Badge} fmtCount={fmtCount}
         coverUrl={coverUrl} color={user.color} avatarShape="circle"
         avatarUrl={avatarUrl} user={user}
-        note={userNote?.text} onNoteClick={()=>userNote&&setReplyNote({...userNote,author:user})}
+        note={userNote?.text} onNoteClick={()=>{if(!userNote)return;pushNav(()=>setReplyNote(null));setReplyNote({...userNote,author:user});}}
         onAvatarClick={()=>{if(avatarUrl)window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:avatarUrl}}));}}
         title={user.fullName||user.name}
         subtitle={<><MapPin size={11}/> {user.paroisse}</>}
@@ -8576,6 +8585,7 @@ if(user?.status==="suspended") return(
             {uPhotoPosts.map(p=>(<div key={p.id} style={{aspectRatio:"1/1",overflow:"hidden",background:T.card,position:"relative",cursor:p.is_private&&!isNative?"default":"pointer"}} onClick={()=>{
                 if(p.is_private&&!isNative)return;
                 const idx=uVisualPosts.findIndex(q=>q.id===p.id);
+                pushNav(()=>{setUViewerIndex(null);setUViewerFallback(null);});
                 setUViewerIndex(idx>=0?idx:0);
               }}>
                 {p.is_private&&!isNative?(
@@ -8616,6 +8626,7 @@ if(user?.status==="suspended") return(
                 onClick={()=>{
                   if(p.is_private&&!isNative)return;
                   const idx=uVisualPosts.findIndex(q=>q.id===p.id);
+                  pushNav(()=>{setUViewerIndex(null);setUViewerFallback(null);});
                   setUViewerIndex(idx>=0?idx:0);
                 }}>
                 {p.is_private&&!isNative?(
@@ -8631,13 +8642,13 @@ if(user?.status==="suspended") return(
         )}
         <div style={{height:80}}/>
       </div>
-      {replyNote&&<NoteReplyModal sb={sb} T={T} Av={Av} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
+      {replyNote&&<NoteReplyModal sb={sb} T={T} Av={Av} session={session} note={replyNote} notify={notify} onClose={()=>{popNav();setReplyNote(null);}}/>}
     </div>
   );
 }
 
 // ── ORG VIEW ──────────────────────────────────────────────
-function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView,toggleLike,toggleSave,userPostsVersion=0}){
+function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnections,onConnectionChange,onImageView,toggleLike,toggleSave,userPostsVersion=0,pushNav,popNav}){
   const conn=(myConnections||[]).includes(user.id);
   const [followersCount,setFollowersCount]=useState("…");
   const [coverPhoto,setCoverPhoto]=useState(user.cover_url||null);
@@ -8750,6 +8761,7 @@ const openPostFromSound=(post,soundPosts)=>{
   const list=(soundPosts||oVisualPosts).filter(hasOVisual);
   const idx=list.findIndex(q=>q.id===post.id);
   setOViewerFallback(soundPosts?list:null);
+  pushNav(()=>{setOViewerIndex(null);setOViewerFallback(null);});
   setOViewerIndex(idx>=0?idx:0);
 };
 if(blocked||blockedByOther) return(
@@ -8775,7 +8787,7 @@ if(blocked||blockedByOther) return(
           posts={oViewerFallback||oVisualPosts}
           sb={sb} T={T} Av={Av}
           startIndex={oViewerIndex}
-          onClose={()=>{setOViewerIndex(null);setOViewerFallback(null);}}
+          onClose={()=>{popNav();setOViewerIndex(null);setOViewerFallback(null);}}
           toggleLike={toggleLike}
           toggleSave={toggleSave}
           onParticipate={localToggleParticipate}
@@ -8783,7 +8795,7 @@ if(blocked||blockedByOther) return(
           myProfile={myProfile}
           notify={notify}
           onUser={()=>{}}
-          onOpenComments={(p,cb)=>{setOCommentPost(p);setOCloseCallback(()=>cb);}}
+          onOpenComments={(p,cb)=>{pushNav(()=>{setOCommentPost(null);setOCloseCallback(null);});setOCommentPost(p);setOCloseCallback(()=>cb);}}
           myConnections={myConnections}
           onConnect={()=>toggle()}
           onOpenSound={setOpenSoundId}
@@ -8797,6 +8809,7 @@ if(blocked||blockedByOther) return(
           getM={id=>id===user.id?user:myProfile}
           onCountChange={setOCommentLiveCount}
           onClose={()=>{
+            popNav();
             setOCommentPost(null);
             if(oCloseCallback){oCloseCallback(oCommentLiveCount);setOCloseCallback(null);}
           }}
@@ -8809,7 +8822,7 @@ if(blocked||blockedByOther) return(
         coverUrl={coverPhoto} color={T.gold} avatarShape="square"
         avatarUrl={user.avatar_url} user={user}
         onAvatarClick={()=>{if(isMe)fileRef.current.click();else if(user.avatar_url)onImageView(user.avatar_url);}}
-        note={orgNote?.text} onNoteClick={()=>orgNote&&setReplyNote({...orgNote,author:user})}
+        note={orgNote?.text} onNoteClick={()=>{if(!orgNote)return;pushNav(()=>setReplyNote(null));setReplyNote({...orgNote,author:user});}}
         title={user.org_name||user.fullName}
         subtitle={<>{orgTypeLabel} · 🌍 {user.org_country||user.paroisse}</>}
         extraLines={<>
@@ -8853,6 +8866,7 @@ if(blocked||blockedByOther) return(
   const hasPhoto=p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
   if(hasPhoto){
     const idx=oVisualPosts.findIndex(q=>q.id===p.id);
+    pushNav(()=>{setOViewerIndex(null);setOViewerFallback(null);});
     setOViewerIndex(idx>=0?idx:0);
   }else{
     setDetailPost(p);
@@ -8886,6 +8900,7 @@ if(blocked||blockedByOther) return(
                 onClick={()=>{
                   if(locked)return;
                   const idx=oVisualPosts.findIndex(q=>q.id===p.id);
+                  pushNav(()=>{setOViewerIndex(null);setOViewerFallback(null);});
                   setOViewerIndex(idx>=0?idx:0);
                 }}>
                 {locked?(
@@ -8902,7 +8917,7 @@ if(blocked||blockedByOther) return(
         )}
         <div style={{height:80}}/>
       </div>
-      {replyNote&&<NoteReplyModal sb={sb} T={T} Av={Av} session={session} note={replyNote} notify={notify} onClose={()=>setReplyNote(null)}/>}
+      {replyNote&&<NoteReplyModal sb={sb} T={T} Av={Av} session={session} note={replyNote} notify={notify} onClose={()=>{popNav();setReplyNote(null);}}/>}
     </div>
   );
 }
@@ -9187,7 +9202,7 @@ const NAV_THEMES=[
               </Btn>
             ))}
             <div style={{height:1,background:T.border,margin:"16px 0"}}/>
-            <Btn onClick={()=>setShowBugReport(true)} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
+            <Btn onClick={()=>{pushNav(()=>setShowBugReport(false));setShowBugReport(true);}} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
               <span>🐛</span>Signaler un bug
             </Btn>
             <Btn onClick={()=>{setOpen(false);setTimeout(async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))onLogout();},200);}}
@@ -9196,7 +9211,7 @@ const NAV_THEMES=[
             </Btn>
           </>
         )}
-        {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowBugReport(false)}>
+        {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setShowBugReport(false);}}>
   <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500,marginBottom:"var(--kb-height,0px)"}} onClick={e=>e.stopPropagation()}>
     <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
     <textarea value={bugText||""} onChange={e=>setBugText(e.target.value)} placeholder="Décris le bug que tu as rencontré…" rows={5}
@@ -9212,7 +9227,7 @@ const NAV_THEMES=[
           message:bugText
         },"ZGvH2EMAp3UlglKfe");
         alert("Bug signalé ✦ Merci !");
-        setShowBugReport(false);
+        popNav();setShowBugReport(false);
         setBugText("");
       }catch(e){
         alert("Erreur envoi. Réessaie.");
@@ -9495,7 +9510,7 @@ if(checkoutUrl){
     <div style={{textAlign:"center",padding:"16px 0 8px"}}>
       <div style={{fontFamily:logoFont,fontSize:52,color:T.gold,lineHeight:1,marginBottom:10}}>✦</div>
       <h2 style={{fontFamily:logoFont,fontSize:30,fontWeight:400,color:T.text,letterSpacing:0,margin:"0 0 4px"}}>Céleste</h2>
-      <p style={{color:T.gold,fontSize:11,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v4.0</p>
+      <p style={{color:T.gold,fontSize:11,letterSpacing:2,textTransform:"uppercase",margin:0}}>Réseau privé des jeunes · v7.1</p>
     </div>
 
     {[
@@ -9571,7 +9586,7 @@ if(checkoutUrl){
   );
 }
 
-function WalletScreen({session,myProfile,notify,onClose}){
+function WalletScreen({session,myProfile,notify,onClose,pushNav,popNav}){
   const [wallet,setWallet]=useState(null);
   const [transactions,setTransactions]=useState([]);
   const [monthStats,setMonthStats]=useState(null);
@@ -9629,7 +9644,7 @@ function WalletScreen({session,myProfile,notify,onClose}){
     const net=Math.floor(amount*0.95);
     const{error:wErr}=await sb.rpc("request_withdrawal",{p_amount:amount,p_phone:withdrawPhone.trim(),p_beneficiary_name:withdrawName.trim(),p_operator:withdrawOp});
 if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Solde insuffisant":"Erreur, réessaie");}
-    setLoading(false);setShowWithdraw(false);setWithdrawAmount("");setWithdrawPhone("");setWithdrawName("");
+    setLoading(false);popNav();setShowWithdraw(false);setWithdrawAmount("");setWithdrawPhone("");setWithdrawName("");
     notify("Demande envoyée ✦");load();
   };
   const reportWithdrawalIssue=async(tx)=>{
@@ -9682,7 +9697,7 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
               <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.5)"}}>Total gagné</p>
               <p style={{margin:0,fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(wallet?.total_earned||0).toLocaleString("fr-FR")} F</p>
             </div>
-            <button onClick={()=>setShowWithdraw(true)} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            <button onClick={()=>{pushNav(()=>setShowWithdraw(false));setShowWithdraw(true);}} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               Retirer
             </button>
           </div>
@@ -9745,11 +9760,11 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
 
       {/* Modal retrait */}
       {showWithdraw&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:10000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowWithdraw(false)}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:10000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setShowWithdraw(false);}}>
           <div style={{width:"100%",maxWidth:480,background:T.bg2,borderRadius:"28px 28px 0 0",padding:"28px 20px 48px",marginBottom:"var(--kb-height,0px)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
               <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:T.text}}>Retirer mon argent</h3>
-              <button onClick={()=>setShowWithdraw(false)} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>✕</button>
+              <button onClick={()=>{popNav();setShowWithdraw(false);}} style={{background:"none",border:"none",color:T.muted,fontSize:22,cursor:"pointer"}}>✕</button>
             </div>
             {availableOperators.length===0?(
               <div style={{padding:"20px 16px",background:T.bg3,borderRadius:14,textAlign:"center",color:T.muted,fontSize:13,marginBottom:14}}>
@@ -9790,7 +9805,7 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
     </div>
   );
 }
-function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,onConnect,toggleLike,toggleSave}){
+function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,onConnect,toggleLike,toggleSave,pushNav,popNav}){
   const [likedPosts,setLikedPosts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [detailPost,setDetailPost]=useState(null);
@@ -9812,6 +9827,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
     const list=(soundPosts||visualPosts).filter(hasVisual);
     const idx=list.findIndex(q=>q.id===post.id);
     setViewerFallback(soundPosts?list:null);
+    pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});
     setViewerIndex(idx>=0?idx:0);
   };
   useEffect(()=>{
@@ -9874,7 +9890,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
       {viewerIndex!==null&&toggleLike&&toggleSave&&(
         <FeedViewer posts={viewerFallback||visualPosts} sb={sb} T={T} Av={Av} startIndex={viewerIndex} onClose={()=>{setViewerIndex(null);setViewerFallback(null);}}
           toggleLike={localToggleLike} toggleSave={toggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
-          onUser={()=>{}} onOpenComments={(p,cb)=>{setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
+          onUser={()=>{}} onOpenComments={(p,cb)=>{pushNav(()=>{setCommentPost(null);setCloseCallback(null);});setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
       )}
       {commentPost&&(
         <CommentsOnlyModal
@@ -9882,10 +9898,11 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
           session={session}
           getM={getM}
           onCountChange={setLiveCmtCount}
-          onClose={()=>{
-            setCommentPost(null);
-            if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
-          }}
+                  onClose={()=>{
+          popNav();
+          setCommentPost(null);
+          if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
+        }}
         />
       )}
       {openSoundId&&<SoundDetailModal sb={sb} T={T} Av={Av} soundId={openSoundId} onClose={()=>setOpenSoundId(null)} onUseSound={()=>setOpenSoundId(null)} onOpenPost={openPostFromSound}/>}
@@ -9896,6 +9913,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
             const visual=hasVisual(p);
             if(visual){
               const idx=visualPosts.findIndex(q=>q.id===p.id);
+              pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});
               setViewerIndex(idx>=0?idx:0);
             }else{
               setDetailPost(p);
@@ -9921,7 +9939,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
   );
 }
 // ── PROFILE TAB (ENRICHI - onglet Sauvegardés) ───────────
-function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave,onConnect}){
+function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave,onConnect,pushNav,popNav}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
  const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||"",links:myProfile?.links?.length?myProfile.links:[{label:"",url:""}]});
@@ -9950,13 +9968,15 @@ const [showWallet,setShowWallet]=useState(false);
     if(ids.length===0){setFollowerProfiles([]);setShowFollowers(true);return;}
     const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse").in("id",ids);
     setFollowerProfiles((data||[]).map(normProfile));
+    pushNav(()=>setShowFollowers(false));
     setShowFollowers(true);
   };
   const openFollowing=async()=>{
     const ids=myConnections||[];
-    if(ids.length===0){setFollowingProfiles([]);setShowFollowing(true);return;}
+    if(ids.length===0){setFollowingProfiles([]);pushNav(()=>setShowFollowing(false));setShowFollowing(true);return;}
     const{data}=await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse").in("id",ids);
     setFollowingProfiles((data||[]).map(normProfile));
+    pushNav(()=>setShowFollowing(false));
     setShowFollowing(true);
   };
 
@@ -10012,6 +10032,7 @@ const openPostFromSound=(post,soundPosts)=>{
   const list=(soundPosts||myVisualPosts).filter(hasMyVisual);
   const idx=list.findIndex(q=>q.id===post.id);
   setViewerFallback(soundPosts?list:null);
+  pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});
   setViewerIndex(idx>=0?idx:0);
 };
 useEffect(()=>{
@@ -10080,7 +10101,7 @@ const localToggleParticipate=async pid=>{
   return(
     
     <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
-      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>setShowWallet(false)}/>}
+      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} pushNav={pushNav} popNav={popNav}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
       {viewerIndex!==null&&toggleLike&&toggleSave&&(
@@ -10088,7 +10109,7 @@ const localToggleParticipate=async pid=>{
     posts={viewerFallback||myVisualPosts}
     sb={sb} T={T} Av={Av}
     startIndex={viewerIndex}
-    onClose={()=>{setViewerIndex(null);setViewerFallback(null);}}
+    onClose={()=>{popNav();setViewerIndex(null);setViewerFallback(null);}}
     toggleLike={async pid=>{await toggleLike(pid);loadMyPosts();}}
     toggleSave={async pid=>{await toggleSave(pid);loadMyPosts();}}
     onParticipate={localToggleParticipate}
@@ -10096,7 +10117,7 @@ const localToggleParticipate=async pid=>{
     myProfile={myProfile}
     notify={notify}
     onUser={()=>{}}
-    onOpenComments={(p,cb)=>{setCommentPost(p);setCloseCallback(()=>cb);}}
+    onOpenComments={(p,cb)=>{pushNav(()=>{setCommentPost(null);setCloseCallback(null);});setCommentPost(p);setCloseCallback(()=>cb);}}
     myConnections={myConnections}
     onConnect={()=>{}}
     onOpenSound={setOpenSoundId}
@@ -10111,6 +10132,7 @@ const localToggleParticipate=async pid=>{
     getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}}
     onCountChange={setLiveCmtCount}
     onClose={()=>{
+      popNav();
       setCommentPost(null);
       if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
     }}
@@ -10139,10 +10161,10 @@ const localToggleParticipate=async pid=>{
           <div style={{position:"relative",cursor:"pointer"}}>
   <div style={{position:"absolute",inset:-5,borderRadius:"50%",background:`conic-gradient(from 120deg, ${myProfile?.color||T.gold}, transparent 60%, ${myProfile?.color||T.gold})`,filter:"blur(7px)",opacity:.55}}/>
   {myNote&&(
-    <div onClick={e=>{e.stopPropagation();setShowNoteComposer(true);}} style={{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)",zIndex:2}}>{renderTextWithMentions(myNote.text)}</div>
+    <div onClick={e=>{e.stopPropagation();pushNav(()=>setShowNoteComposer(false));setShowNoteComposer(true);}} style={{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",marginBottom:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,padding:"6px 10px",fontSize:11,color:T.text,whiteSpace:"nowrap",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",backdropFilter:"blur(10px)",zIndex:2}}>{renderTextWithMentions(myNote.text)}</div>
   )}
   <Av u={myProfile} size={92} ring onClick={e=>{e.stopPropagation();avRef.current.click();}}/>
-  <div onClick={e=>{e.stopPropagation();setShowNoteComposer(true);}} style={{position:"absolute",top:-2,left:-2,width:26,height:26,borderRadius:8,background:T.glass,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.goldL,cursor:"pointer"}}>
+  <div onClick={e=>{e.stopPropagation();pushNav(()=>setShowNoteComposer(false));setShowNoteComposer(true);}} style={{position:"absolute",top:-2,left:-2,width:26,height:26,borderRadius:8,background:T.glass,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.goldL,cursor:"pointer"}}>
     {myNote?<Edit2 size={12}/>:<Plus size={12}/>}
   </div>
   <div onClick={e=>{e.stopPropagation();avRef.current.click();}} style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:8,background:T.gradGold,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",boxShadow:"0 2px 8px rgba(201,149,42,0.4)",cursor:"pointer"}}>
@@ -10154,7 +10176,7 @@ const localToggleParticipate=async pid=>{
     <Edit2 size={14}/>{editing?"Annuler":"Modifier"}
   </Btn>
   {(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
-    <button onClick={()=>setShowWallet(true)} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+    <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
       💰 Portefeuille
     </button>
   )}
@@ -10216,7 +10238,7 @@ const localToggleParticipate=async pid=>{
           ))}
         </div>
 
-        <ProfileViewsCard sb={sb} T={T} Av={Av} Btn={Btn} Badge={Badge} fmtCount={fmtCount} session={session}/>
+        <ProfileViewsCard sb={sb} T={T} Av={Av} Btn={Btn} Badge={Badge} fmtCount={fmtCount} session={session} pushNav={pushNav} popNav={popNav}/>
                <Btn onClick={async()=>{
           const platform=Capacitor.getPlatform();
           const url=platform==="android"
@@ -10237,11 +10259,11 @@ const localToggleParticipate=async pid=>{
 
         {/* Modal Abonnés */}
         {showFollowers&&(
-          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowers(false)}>
+          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setShowFollowers(false);}}>
             <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"75vh",display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>Abonnés <span style={{color:T.goldL}}>({fmtCount(followersCount)})</span></h3>
-                <Btn onClick={()=>setShowFollowers(false)} style={{color:T.muted}}><X size={20}/></Btn>
+                <Btn onClick={()=>{popNav();setShowFollowers(false);}} style={{color:T.muted}}><X size={20}/></Btn>
               </div>
               <div style={{overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
                 {followerProfiles.length===0?<p style={{textAlign:"center",color:T.muted,padding:"24px 0"}}>Aucun abonné pour l'instant</p>
@@ -10265,11 +10287,11 @@ const localToggleParticipate=async pid=>{
 
         {/* Modal Abonnements */}
         {showFollowing&&(
-          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowFollowing(false)}>
+          <div style={{position:"fixed",inset:0,zIndex:800,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setShowFollowing(false);}}>
             <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,maxHeight:"75vh",display:"flex",flexDirection:"column",animation:"slideUp .3s ease"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <h3 style={{margin:0,fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:300,color:T.text}}>Abonnements <span style={{color:T.goldL}}>({followingCount})</span></h3>
-                <Btn onClick={()=>setShowFollowing(false)} style={{color:T.muted}}><X size={20}/></Btn>
+                <Btn onClick={()=>{popNav();setShowFollowing(false);}} style={{color:T.muted}}><X size={20}/></Btn>
               </div>
               <div style={{overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
                 {followingProfiles.length===0?<p style={{textAlign:"center",color:T.muted,padding:"24px 0"}}>Vous ne suivez personne</p>
@@ -10332,6 +10354,7 @@ const localToggleParticipate=async pid=>{
       <div onClick={()=>{
         if(selectMode){toggleSelected(p.id);return;}
         const idx=myVisualPosts.findIndex(q=>q.id===p.id);
+        pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});
         setViewerIndex(idx>=0?idx:0);
       }} style={{width:"100%",height:"100%",opacity:selectMode&&!isSelected?0.5:1}}>
         {p.img
@@ -10407,7 +10430,7 @@ const localToggleParticipate=async pid=>{
                   onMouseLeave={()=>clearTimeout(pressTimerRef.current[p.id])}
                   onClick={()=>{
                     if(selectMode){toggleSelected(p.id);return;}
-                    const idx=myVisualPosts.findIndex(q=>q.id===p.id);setViewerIndex(idx>=0?idx:0);
+                    const idx=myVisualPosts.findIndex(q=>q.id===p.id);pushNav(()=>{setViewerIndex(null);setViewerFallback(null);});setViewerIndex(idx>=0?idx:0);
                   }}>
                  <div style={{width:"100%",height:"100%",opacity:selectMode&&!isSelected?0.5:1}}><VideoThumb src={p.img}/></div>
                   <div style={{position:"absolute",bottom:4,right:6}}><span style={{fontSize:9,color:"rgba(255,255,255,0.8)",fontWeight:700,textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>❤ {fmtCount((p.likes||[]).length)}</span></div>
@@ -10422,15 +10445,15 @@ const localToggleParticipate=async pid=>{
             </div>
         )}
         {tab==="likes"&&(
-          <LikedPostsTab session={session} notify={notify} onImageView={onImageView} myProfile={myProfile} getM={getM} myConnections={myConnections} onConnect={onConnect} toggleLike={toggleLike} toggleSave={toggleSave}/>
+          <LikedPostsTab session={session} notify={notify} onImageView={onImageView} myProfile={myProfile} getM={getM} myConnections={myConnections} onConnect={onConnect} toggleLike={toggleLike} toggleSave={toggleSave} pushNav={pushNav} popNav={popNav}/>
         )}
         {tab==="saved"&&(
-          <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView} toggleLike={toggleLike} toggleSave={toggleSave} myConnections={myConnections} onConnect={onConnect}/>
+          <SavedPostsTab myProfile={myProfile} session={session} getM={id=>id===session?.user?.id?myProfile:{initials:"?",color:"#888",name:"?"}} notify={notify} onImageView={onImageView} toggleLike={toggleLike} toggleSave={toggleSave} myConnections={myConnections} onConnect={onConnect} pushNav={pushNav} popNav={popNav}/>
         )}
         <div style={{height:80}}/>
       </div>
       {showNoteComposer&&<NoteComposerModal sb={sb} T={T} Av={Av} userId={session.user.id} existingText={myNote?.text} notify={notify}
-        onClose={()=>setShowNoteComposer(false)} onSaved={t=>setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}))} onDeleted={()=>setMyNote(null)}/>}
+        onClose={()=>{popNav();setShowNoteComposer(false);}} onSaved={t=>setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}))} onDeleted={()=>setMyNote(null)}/>}
     </div>
   );
 }
@@ -10984,7 +11007,7 @@ const send=async()=>{
   return(
     <div style={{position:"fixed",inset:0,zIndex:1400,background:T.bg,display:"flex",flexDirection:"column",animation:"slideIn .3s ease"}}>
       {/* Header */}
-      <div style={{padding:"12px 16px",paddingTop:"calc(12px + env(safe-area-inset-top,0px))",background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <div style={{padding:"12px 16px",paddingTop:"calc(12px + max(env(safe-area-inset-top,0px), 24px))",background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <Btn onClick={onClose} style={{color:T.gold,display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
         <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#4A90D9,#7B2FBE)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 4px 16px rgba(123,47,190,0.4)"}}><Sparkles size={46} color="#fff"/></div>
         <div style={{flex:1}}>
@@ -11090,15 +11113,15 @@ function SplashScreen(){
     </div>
   );
 }
-function VerificationInfoModal(){
+function VerificationInfoModal({pushNav,popNav}){
   const [open,setOpen]=useState(false);
   return(
     <>
-      <Btn onClick={()=>setOpen(true)} style={{marginTop:16,width:"100%",padding:"13px 30px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+      <Btn onClick={()=>{pushNav(()=>setOpen(false));setOpen(true);}} style={{marginTop:16,width:"100%",padding:"13px 30px",background:"rgba(255,255,255,0.03)",border:`1px solid ${T.border}`,borderRadius:14,color:T.muted,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
         <span>ℹ️</span> En savoir plus sur la vérification
       </Btn>
       {open&&(
-        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setOpen(false)}>
+        <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setOpen(false);}}>
           <div style={{background:T.bg3,border:`1px solid ${T.border}`,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:520,padding:"32px 24px 48px",animation:"slideUp .35s cubic-bezier(0.34,1.1,0.64,1)"}} onClick={e=>e.stopPropagation()}>
             <div style={{textAlign:"center",marginBottom:24}}>
               <span style={{fontSize:40}}>🔐</span>
@@ -11123,7 +11146,7 @@ function VerificationInfoModal(){
                 <p style={{margin:0,fontSize:13,color:T.sub,lineHeight:1.8}}>Cette vérification existe uniquement pour garantir ta sécurité et celle de tous les membres. Pour être sûrs d'être vraiment entre nous — entre jeunes.</p>
               </div>
             </div>
-            <Btn onClick={()=>setOpen(false)} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris ✦</Btn>
+            <Btn onClick={()=>{popNav();setOpen(false);}} style={{width:"100%",padding:"14px",background:T.gradGold,borderRadius:14,color:"#000",fontSize:14,fontWeight:700}}>J'ai compris ✦</Btn>
           </div>
         </div>
       )}
@@ -11245,15 +11268,17 @@ const [feedNavVisible,setFeedNavVisible]=useState(true); // masqué pendant qu'u
   },[session?.user?.id]);
   const checkShared=async()=>{
   try{
-    const{url}=await CapApp.getLaunchUrl()||{};
-    if(!url)return;
-    const res=await fetch(url);
+    const result=await SendIntent.checkSendIntentReceived();
+    if(!result?.url)return;
+    const resolvedUrl=Capacitor.convertFileSrc(decodeURIComponent(result.url));
+    const res=await fetch(resolvedUrl);
     const blob=await res.blob();
-    const file=new File([blob],url.split("/").pop()||"media",{type:blob.type});
+    const file=new File([blob],result.url.split("/").pop()||"media",{type:blob.type||result.type||"image/jpeg"});
     setSharedMedia(file);
   }catch(e){}
 };
 checkShared();
+window.addEventListener("sendIntentReceived",checkShared);
 CapApp.addListener("appStateChange",({isActive})=>{if(isActive)checkShared();});
   useEffect(()=>{
   window.__celesteSetTab=(t,cb)=>{
@@ -11298,6 +11323,7 @@ useEffect(()=>{
       return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
     };
     const openResolved=(finalPost,commentId,replyId)=>{
+  pushNav(()=>setGlobalViewerPost(null));
   setGlobalViewerPost({...finalPost,_targetCommentId:commentId||null,_targetReplyId:replyId||null});
 };
     const handler=async e=>{
@@ -11910,7 +11936,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   // Splash screen
   if(session===undefined||(session&&!isPending&&!feedPreloaded)) return(<SplashScreen/>);
 
-  if(!session) return(<><style>{getGS()}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}}/></>);
+  if(!session) return(<><style>{getGS()}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}} pushNav={pushNav} popNav={popNav}/></>);
 
   if(myProfile?.status==="suspended") return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
@@ -11934,7 +11960,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Bonjour <strong style={{color:T.goldL}}>{myProfile?.name}</strong> !<br/>Un administrateur vérifiera votre profil sous 24–48h.</p>
         <Btn onClick={async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
 
-<VerificationInfoModal/>
+<VerificationInfoModal pushNav={pushNav} popNav={popNav}/>
       </div>
     </div>
   );
@@ -11978,9 +12004,10 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   <GroupChatScreen sb={sb} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
     members={members} myConnections={myConnections} myFollowers={myFollowers}
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
-    onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}/>
+    onOpenProfile={uid=>{setOpenGroup(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
+    pushNav={pushNav} popNav={popNav}/>
 )}
-        <div style={{height:"calc(64px + env(safe-area-inset-top,0px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId||(tab==="home"&&!openUserId))?"none":"flex",alignItems:"center",padding:"env(safe-area-inset-top,0px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
+        <div style={{height:"calc(64px + max(env(safe-area-inset-top,0px), 24px))",background:T.bg2,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,display:(hideNav||openConvId||(tab==="home"&&!openUserId))?"none":"flex",alignItems:"center",padding:"max(env(safe-area-inset-top,0px), 24px) 16px 0",gap:12,flexShrink:0,zIndex:30,boxSizing:"border-box"}}>
           {(openConvId||openUserId)
             ?<>
               <Btn onClick={()=>{setOpenConvId(null);setOpenUserId(null);}} style={{color:T.gold,padding:"0 8px 0 0",display:"flex",alignItems:"center"}}><ChevronLeft size={24}/></Btn>
@@ -12021,7 +12048,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
           {openUserId&&openUser&&(
             openUser.account_type==="organisation"
-              ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
+              ?<OrgView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} pushNav={pushNav} popNav={popNav} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
   setPosts(prev=>(prev||[]).filter(p=>!ids.includes(p.by)));
   if(ids.length){
     const{data}=await sb.from("post_collaborators").select("post_id").in("collaborator_id",ids);
@@ -12029,11 +12056,11 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     if(collabPostIds.size)setPosts(prev=>(prev||[]).filter(p=>!collabPostIds.has(p.id)));
   }
 });}} onImageView={setViewImg} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
-              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
+              :<UserView user={openUser} myProfile={myProfile} session={session} posts={posts} onBack={()=>{popNav();setOpenUserId(null);}} onChat={openChat} notify={notify} myConnections={myConnections} myFollowers={myFollowers} pushNav={pushNav} onConnectionChange={()=>{loadConnections(session?.user?.id);loadBlockedUsers().then(async ids=>{
 });}} onImageView={setViewImg} popNav={popNav} userPostsVersion={userPostsVersion} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}}/>
           )}
           {!openUserId&&openConvId&&openConv&&!openConvInfoUid&&(
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}}/>
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}} pushNav={pushNav} popNav={popNav}/>
           )}
           {openConvInfoUid&&(
             <ConversationInfoScreen
@@ -12082,7 +12109,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat} blockedUserIds={blockedUserIds}/>}
               <div style={{display:tab==="messages"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-                <MsgsTab convs={convs} getM={getM} session={session} sb={sb} T={T} Av={Av} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}}/>
+                <MsgsTab convs={convs} getM={getM} session={session} sb={sb} T={T} Av={Av} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}} pushNav={pushNav} popNav={popNav}/>
               </div>
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme} pushNav={pushNav} popNav={popNav}/>
@@ -12091,7 +12118,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
 {globalViewerPost&&(
   <FeedViewer
-    onOpenComments={(p,cb)=>{setGlobalCommentPost(p);setGlobalCloseCallback(()=>cb);}}
+    onOpenComments={(p,cb)=>{pushNav(()=>{setGlobalCommentPost(null);setGlobalCloseCallback(null);});setGlobalCommentPost(p);setGlobalCloseCallback(()=>cb);}}
     posts={[globalViewerPost]} sb={sb} T={T} Av={Av} startIndex={0}
     session={session} myProfile={myProfile} notify={notify}
     toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}}
@@ -12113,7 +12140,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         }
       }catch(e){console.warn("toggleParticipate error:",e);}
     }}
-    onClose={()=>setGlobalViewerPost(null)}
+    onClose={()=>{popNav();setGlobalViewerPost(null);}}
   />
 )}
 {globalCommentPost&&(
@@ -12122,14 +12149,15 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     session={session}
     getM={getM}
     onCountChange={setGlobalCommentLiveCount}
-    onClose={()=>{
-      setGlobalCommentPost(null);
-      if(globalCloseCallback){globalCloseCallback(globalCommentLiveCount);setGlobalCloseCallback(null);}
-    }}
+     onClose={()=>{
+    popNav();
+    setGlobalCommentPost(null);
+    if(globalCloseCallback){globalCloseCallback(globalCommentLiveCount);setGlobalCloseCallback(null);}
+  }}
   />
 )}
 {/* Bottom nav premium */}
-       {!openConvId&&!openUserId&&!hideNav&&(
+       {!openConvId&&!openUserId&&!openGroup&&!hideNav&&(
           <div style={{...(tab==="home"?{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box",transform:feedNavVisible?"translateY(0)":"translateY(100%)",transition:"transform .25s ease"}:{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box"}),display:openCeleste?"none":undefined}}>
             <NavScenery theme={navTheme}/>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.78) 100%)",pointerEvents:"none"}}/>

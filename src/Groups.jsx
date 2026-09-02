@@ -1091,7 +1091,7 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
   );
 }
 
-export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack, onOpenProfile, members, myConnections, myFollowers }) {
+export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack, onOpenProfile, members, myConnections, myFollowers, pushNav, popNav }) {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1160,10 +1160,31 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const cancelledInitRef = useRef(false);
   const canPauseRec = typeof MediaRecorder !== "undefined" && typeof MediaRecorder.prototype.pause === "function";
   const mapQueue = q => ({ id: q.tempId, tempId: q.tempId, ...q.payload, sender_id: q.senderId, ts: q.ts, sending: q.status !== "error" && q.status !== "blocked", error: q.status === "error", blocked: q.status === "blocked" });
-  const [sendingMsgs, setSendingMsgs] = useState(() => getQueueForGroup(group.id).map(mapQueue));
-  useEffect(() => subscribeGroupQueue(() => {
-    setSendingMsgs(getQueueForGroup(group.id).map(mapQueue));
-  }), [group.id]);
+  const buildSendingMsgs = useCallback(() => getQueueForGroup(group.id).map(mapQueue), [group.id]);
+  const [sendingMsgs, setSendingMsgs] = useState(buildSendingMsgs);
+  const sendingMsgsRef = useRef(sendingMsgs);
+  useEffect(() => { sendingMsgsRef.current = sendingMsgs; }, [sendingMsgs]);
+  // Même protection anti-clignotement que ChatScreen (conversations 1-à-1) : une bulle
+  // "en cours d'envoi" ne doit disparaître que lorsque le message confirmé équivalent
+  // est déjà visible dans `msgs` — sinon on la garde affichée le temps que Realtime
+  // livre la confirmation. Évite "le message disparaît puis réapparaît".
+  const isConfirmedInMsgs = useCallback(m => (msgs || []).some(cm => cm.sender_id === myId && Math.abs((cm.ts || 0) - (m.ts || 0)) < 15000 && (cm.text || "") === (m.text || "") && (cm.type || "text") === (m.type || "text")), [msgs, myId]);
+  useEffect(() => {
+    const applyQueue = () => {
+      const fresh = buildSendingMsgs();
+      const freshIds = new Set(fresh.map(m => m.id));
+      const stillPending = sendingMsgsRef.current.filter(m => !freshIds.has(m.id) && !isConfirmedInMsgs(m));
+      setSendingMsgs([...fresh, ...stillPending].sort((a, b) => a.ts - b.ts));
+    };
+    applyQueue();
+    return subscribeGroupQueue(applyQueue);
+  }, [group.id, buildSendingMsgs, isConfirmedInMsgs]);
+  useEffect(() => {
+    setSendingMsgs(p => p.filter(m => {
+      const stillQueued = getQueueForGroup(group.id).some(q => q.tempId === m.id);
+      return stillQueued || !isConfirmedInMsgs(m);
+    }));
+  }, [msgs, group.id, isConfirmedInMsgs]);
   const mapFileQueue = f => ({ id: f.id, type: f.fileType, file_name: f.fileName, sender_id: myId, ts: f.ts, pct: f.pct, sending: f.status !== "error", error: f.status === "error" });
   const [sendingFiles, setSendingFiles] = useState(() => getGroupFileSendsForConv(group.id).map(mapFileQueue));
   useEffect(() => subscribeGroupFileSends(() => {
@@ -1221,7 +1242,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       .eq("group_id", group.id)
       .order("created_at", { ascending: true })
       .limit(300);
-    const mapped = (data || []).map(m => ({ ...m, ts: m.created_at, authorName: m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.trim() : "" }));
+    const mapped = (data || []).map(m => ({ ...m, ts: new Date(m.created_at).getTime(), authorName: m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.trim() : "" }));
     setMsgs(mapped);
     const voIds = mapped.filter(m => m.view_once && m.sender_id !== myId).map(m => m.id);
     if (voIds.length) {
@@ -1244,7 +1265,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   }, [sb]);
 
   useEffect(() => {
-    const mapOne = full => ({ ...full, ts: full.created_at, authorName: full.sender ? `${full.sender.prenom || ""} ${full.sender.nom || ""}`.trim() : "" });
+    const mapOne = full => ({ ...full, ts: new Date(full.created_at).getTime(), authorName: full.sender ? `${full.sender.prenom || ""} ${full.sender.nom || ""}`.trim() : "" });
     const ch = sb.channel(`group_messages:${group.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, async payload => {
         const full = await fetchMessageById(payload.new.id);
@@ -1373,6 +1394,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     setReplyTo(null);
     if (wantViewOnce) { sendViewOnceGroupText(t, replyPayload); return; }
     enqueueGroupMessage(group.id, myId, { type: "text", text: t, view_once: false, ...replyPayload });
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
     processGroupQueue(sb, notify).then(load);
   };
   const retryOwnMessage = tempId => { retryGroupMessage(sb, tempId, notify).then(load); };
@@ -1425,9 +1447,11 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const sendSticker = (sticker) => {
+    popNav();
     setShowStickerPicker(false);
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
     enqueueGroupMessage(group.id, myId, { type: "sticker", text: "", file_url: sticker.url, sticker_id: sticker.id, ...replyPayload });
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
     setReplyTo(null);
     processGroupQueue(sb, notify).then(load);
     Promise.resolve(sb.rpc("increment_sticker_usage", { sticker_id: sticker.id })).catch(() => {});
@@ -1564,7 +1588,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         borderBottom: `1px solid ${T.border}`, background: "rgba(0,0,0,0.92)"
       }}>
         <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
-        <div onClick={() => setShowGroupInfo(true)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flex: 1 }}>
+        <div onClick={() => { pushNav(() => setShowGroupInfo(false)); setShowGroupInfo(true); }} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flex: 1 }}>
           <Av u={{ name: displayGroup.name, avatar_url: displayGroup.photo_url, initials: (displayGroup.name || "?").slice(0, 2).toUpperCase(), color: "#888" }} size={34} />
           <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.text }}>{displayGroup.name}</p>
         </div>
@@ -1581,7 +1605,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 key={item.id} m={item} mine={item.sender_id === myId} T={T} Av={Av} Btn={Btn} myId={myId}
                 showHeader={item.showHeader} onOpenProfile={onOpenProfile}
                 onReply={m => setReplyTo({ ...m, text: m.text || mediaReplyLabel(m.type, m.file_name) || "" })}
-                onLongPress={m => setActionMsg(m)}
+                onLongPress={m => { pushNav(() => setActionMsg(null)); setActionMsg(m); }}
                 onDoubleTap={() => doubleTap(item)}
                 burstOn={burstMsgId === item.id}
                 onRetry={retryOwnMessage}
@@ -1618,12 +1642,12 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Paperclip size={20} />
         </Btn>
-        <Btn onClick={() => setShowStickerPicker(v => !v)} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: showStickerPicker ? T.goldL : T.muted }}>
+        <Btn onClick={() => { if (showStickerPicker) { popNav(); setShowStickerPicker(false); } else { pushNav(() => setShowStickerPicker(false)); setShowStickerPicker(true); } }} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: showStickerPicker ? T.goldL : T.muted }}>
           <Smile size={20} />
         </Btn>
         {showStickerPicker && (
           <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, zIndex: 40 }}>
-            <StickerPicker sb={sb} userId={myId} T={T} onClose={() => setShowStickerPicker(false)} onSelect={sendSticker} />
+            <StickerPicker sb={sb} userId={myId} T={T} onClose={() => { popNav(); setShowStickerPicker(false); }} onSelect={sendSticker} />
           </div>
         )}
         {recording ? (
@@ -1675,19 +1699,19 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       )}
 
       {actionMsg && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={() => setActionMsg(null)}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={() => { popNav(); setActionMsg(null); }}>
           <div style={{ width: "100%", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 0 24px" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "center", gap: 14, padding: "0 16px 14px", borderBottom: `1px solid ${T.border}` }}>
               {QUICK_REACTIONS.map(em => (
-                <span key={em} onClick={() => { toggleGroupReaction(sb, actionMsg.id, myId, em, actionMsg.reactions).then(load); setActionMsg(null); }} style={{ fontSize: 24, cursor: "pointer" }}>{em}</span>
+                <span key={em} onClick={() => { toggleGroupReaction(sb, actionMsg.id, myId, em, actionMsg.reactions).then(load); popNav(); setActionMsg(null); }} style={{ fontSize: 24, cursor: "pointer" }}>{em}</span>
               ))}
             </div>
-            <div onClick={() => { setReplyTo(actionMsg ? { ...actionMsg, text: actionMsg.text || mediaReplyLabel(actionMsg.type, actionMsg.file_name) || "" } : null); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
+            <div onClick={() => { setReplyTo(actionMsg ? { ...actionMsg, text: actionMsg.text || mediaReplyLabel(actionMsg.type, actionMsg.file_name) || "" } : null); popNav(); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
             {actionMsg.sender_id === myId && actionMsg.type === "text" && (
-              <div onClick={() => { setEditingMsg(actionMsg); setText(actionMsg.text); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Modifier</div>
+              <div onClick={() => { setEditingMsg(actionMsg); setText(actionMsg.text); popNav(); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Modifier</div>
             )}
             {actionMsg.sender_id === myId && (
-              <div onClick={async () => { await sb.from("group_messages").delete().eq("id", actionMsg.id); setActionMsg(null); load(); }} style={{ padding: "14px 20px", fontSize: 15, color: T.err || "#c84040", cursor: "pointer" }}>Supprimer</div>
+              <div onClick={async () => { await sb.from("group_messages").delete().eq("id", actionMsg.id); popNav(); setActionMsg(null); load(); }} style={{ padding: "14px 20px", fontSize: 15, color: T.err || "#c84040", cursor: "pointer" }}>Supprimer</div>
             )}
           </div>
         </div>
@@ -1697,9 +1721,10 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
           allMembers={members} myConnections={myConnections} myFollowers={myFollowers}
           onGroupUpdated={patch => setGroupOverride(prev => ({ ...(prev || {}), ...patch }))}
           onOpenProfile={onOpenProfile}
-          onBack={() => setShowGroupInfo(false)}
-          onLeftGroup={() => { setShowGroupInfo(false); onBack(); }}
-          onDeletedGroup={() => { setShowGroupInfo(false); onBack(); }}
+          pushNav={pushNav} popNav={popNav}
+          onBack={() => { popNav(); setShowGroupInfo(false); }}
+          onLeftGroup={() => { popNav(); setShowGroupInfo(false); onBack(); }}
+          onDeletedGroup={() => { popNav(); setShowGroupInfo(false); onBack(); }}
         />
       )}
     </div>
@@ -1810,7 +1835,7 @@ function GroupSharedMediaScreen({ T, Btn, group, sb, onBack }) {
     </div>
   );
 }
-export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack, onLeftGroup, onDeletedGroup, allMembers, myConnections, myFollowers, onGroupUpdated, onOpenProfile }) {
+export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack, onLeftGroup, onDeletedGroup, allMembers, myConnections, myFollowers, onGroupUpdated, onOpenProfile, pushNav, popNav }) {
   const [members, setMembers] = useState([]);
   const [showReport, setShowReport] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -1837,6 +1862,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     const tp = members.find(m => m.user_id === uid)?.profiles;
     const targetName = tp ? `${tp.prenom || ""} ${tp.nom || ""}`.trim() : "";
     await sb.from("group_members").update({ role: "admin" }).eq("group_id", group.id).eq("user_id", uid);
+    popNav();
     setActionMember(null);
     notify?.("Membre promu admin ✦");
     if (targetName) postSystemMessage(sb, group.id, myId, `a promu ${targetName} admin`);
@@ -1846,6 +1872,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     const tp = members.find(m => m.user_id === uid)?.profiles;
     const targetName = tp ? `${tp.prenom || ""} ${tp.nom || ""}`.trim() : "";
     await sb.from("group_members").update({ role: "member" }).eq("group_id", group.id).eq("user_id", uid);
+    popNav();
     setActionMember(null);
     notify?.("Rôle admin retiré");
     if (targetName) postSystemMessage(sb, group.id, myId, `a retiré le rôle admin à ${targetName}`);
@@ -1855,6 +1882,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     const tp = members.find(m => m.user_id === uid)?.profiles;
     const targetName = tp ? `${tp.prenom || ""} ${tp.nom || ""}`.trim() : "";
     await sb.from("group_members").delete().eq("group_id", group.id).eq("user_id", uid);
+    popNav();
     setActionMember(null);
     notify?.("Membre exclu du groupe");
     if (targetName) postSystemMessage(sb, group.id, myId, `a exclu ${targetName} du groupe`);
@@ -1862,6 +1890,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const leave = async () => {
+    popNav();
+    setConfirmLeave(false);
     // Le message système doit être posté AVANT la suppression : une fois la ligne
     // group_members supprimée, la policy RLS sur group_messages (réservée aux
     // membres acceptés) bloque l'insertion et personne n'est prévenu.
@@ -1873,6 +1903,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const remove = async () => {
+    popNav();
+    setConfirmDelete(false);
     const { error } = await sb.from("groups").delete().eq("id", group.id);
     if (error) { notify?.("Impossible de supprimer le groupe"); console.error("Erreur remove:", error); return; }
     notify?.("Groupe supprimé");
@@ -1881,12 +1913,13 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   const submitReport = async (reason) => {
     await sb.from("reports").insert({ reporter_id: myId, reported_id: group.created_by, group_id: group.id, reason });
+    popNav();
     setShowReport(false);
     notify?.("Signalement envoyé ✦");
   };
 
-  if (showTheme) return <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} onBack={() => setShowTheme(false)} />;
-  if (showMedia) return <GroupSharedMediaScreen T={T} Btn={Btn} group={group} sb={sb} onBack={() => setShowMedia(false)} />;
+  if (showTheme) return <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} onBack={() => { popNav(); setShowTheme(false); }} />;
+  if (showMedia) return <GroupSharedMediaScreen T={T} Btn={Btn} group={group} sb={sb} onBack={() => { popNav(); setShowMedia(false); }} />;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 270, background: T.bg, display: "flex", flexDirection: "column" }}>
@@ -1896,7 +1929,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 0 40px" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 20px 20px" }}>
-          <div onClick={() => isAdmin && setShowEditGroup(true)} style={{ cursor: isAdmin ? "pointer" : "default", position: "relative" }}>
+          <div onClick={() => { if (!isAdmin) return; pushNav(() => setShowEditGroup(false)); setShowEditGroup(true); }} style={{ cursor: isAdmin ? "pointer" : "default", position: "relative" }}>
             <Av u={{ name: group.name, avatar_url: group.photo_url, initials: (group.name || "?").slice(0, 2).toUpperCase(), color: "#888" }} size={92} />
             {isAdmin && (
               <div style={{ position: "absolute", bottom: 0, right: 0, width: 28, height: 28, borderRadius: "50%", background: T.gradGold, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #000" }}>
@@ -1906,7 +1939,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           </div>
           <p style={{ margin: "14px 0 2px", fontSize: 19, fontWeight: 700, color: T.text, textAlign: "center" }}>{group.name}</p>
           {isAdmin && (
-            <p onClick={() => setShowEditGroup(true)} style={{ margin: "0 0 4px", fontSize: 12, color: T.goldL, cursor: "pointer" }}>Modifier le groupe</p>
+            <p onClick={() => { pushNav(() => setShowEditGroup(false)); setShowEditGroup(true); }} style={{ margin: "0 0 4px", fontSize: 12, color: T.goldL, cursor: "pointer" }}>Modifier le groupe</p>
           )}
           <p style={{ margin: 0, fontSize: 13, color: T.muted }}>Groupe · {members.length} membre{members.length !== 1 ? "s" : ""}</p>
           {group.secure_mode && (
@@ -1934,7 +1967,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 <div style={{ position: "absolute", top: 2, left: pinned ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: pinned ? "#000" : "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
               </div>
             </div>
-            <div onClick={() => setShowTheme(true)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer" }}>
+            <div onClick={() => { pushNav(() => setShowTheme(false)); setShowTheme(true); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer" }}>
               <Sparkles size={18} color={T.muted} />
               <p style={{ margin: 0, fontSize: 14, color: T.text, flex: 1 }}>Personnaliser</p>
               <ChevronRight size={16} color={T.muted} />
@@ -1943,7 +1976,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
         </div>
 
         {isAdmin && (
-          <div onClick={() => setShowAddMembers(true)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", cursor: "pointer", borderTop: `1px solid ${T.border}` }}>
+          <div onClick={() => { pushNav(() => setShowAddMembers(false)); setShowAddMembers(true); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", cursor: "pointer", borderTop: `1px solid ${T.border}` }}>
             <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(201,149,42,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UserPlus size={18} color={T.goldL} />
             </div>
@@ -1954,7 +1987,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           {members.map(m => {
             const canManage = isAdmin && m.user_id !== myId;
             return (
-              <div key={m.user_id} onClick={() => canManage && setActionMember(m)}
+              <div key={m.user_id} onClick={() => { if (!canManage) return; pushNav(() => setActionMember(null)); setActionMember(m); }}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", cursor: canManage ? "pointer" : "default" }}>
                 <Av u={m.profiles} size={40} onClick={e => { e.stopPropagation(); onOpenProfile?.(m.user_id); }} />
                 <p onClick={e => { e.stopPropagation(); onOpenProfile?.(m.user_id); }}
@@ -1966,7 +1999,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           })}
         </div>
 
-        <div onClick={() => setShowMedia(true)} style={{ padding: "20px", cursor: "pointer" }}>
+        <div onClick={() => { pushNav(() => setShowMedia(false)); setShowMedia(true); }} style={{ padding: "20px", cursor: "pointer" }}>
           <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Médias partagés</p>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 0", color: T.muted }}>
             <Grid size={20} />
@@ -1978,18 +2011,18 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 10 }}>
           {!isCreator && (
             <>
-              <Btn onClick={() => setShowReport(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, color: T.text, fontSize: 15, textAlign: "left" }}>
+              <Btn onClick={() => { pushNav(() => setShowReport(false)); setShowReport(true); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, color: T.text, fontSize: 15, textAlign: "left" }}>
                 <Flag size={17} />
                 Signaler le groupe
               </Btn>
-              <Btn onClick={() => setConfirmLeave(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(200,64,64,0.1)", border: "1px solid rgba(200,64,64,0.25)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
+              <Btn onClick={() => { pushNav(() => setConfirmLeave(false)); setConfirmLeave(true); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(200,64,64,0.1)", border: "1px solid rgba(200,64,64,0.25)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
                 <LogOut size={17} />
                 Quitter le groupe
               </Btn>
             </>
           )}
           {isCreator && (
-            <Btn onClick={() => setConfirmDelete(true)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(200,64,64,0.1)", border: "1px solid rgba(200,64,64,0.25)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
+            <Btn onClick={() => { pushNav(() => setConfirmDelete(false)); setConfirmDelete(true); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 16px", borderRadius: 14, background: "rgba(200,64,64,0.1)", border: "1px solid rgba(200,64,64,0.25)", color: T.err || "#c84040", fontSize: 15, textAlign: "left" }}>
                 <Trash2 size={17} />
                 Supprimer le groupe
               </Btn>
@@ -1997,11 +2030,11 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
         </div>
       </div>
 
-      {confirmLeave && <ConfirmSheet T={T} Btn={Btn} title="Quitter le groupe ?" text="Tu ne recevras plus les messages de ce groupe." confirmLabel="Quitter" onCancel={() => setConfirmLeave(false)} onConfirm={leave} />}
-      {confirmDelete && <ConfirmSheet T={T} Btn={Btn} title="Supprimer le groupe ?" text="Cette action est définitive pour tous les membres." confirmLabel="Supprimer" onCancel={() => setConfirmDelete(false)} onConfirm={remove} />}
-      {showReport && <ReportSheet T={T} reasons={GROUP_REPORT_REASONS} onClose={() => setShowReport(false)} onSubmit={submitReport} />}
+      {confirmLeave && <ConfirmSheet T={T} Btn={Btn} title="Quitter le groupe ?" text="Tu ne recevras plus les messages de ce groupe." confirmLabel="Quitter" onCancel={() => { popNav(); setConfirmLeave(false); }} onConfirm={leave} />}
+      {confirmDelete && <ConfirmSheet T={T} Btn={Btn} title="Supprimer le groupe ?" text="Cette action est définitive pour tous les membres." confirmLabel="Supprimer" onCancel={() => { popNav(); setConfirmDelete(false); }} onConfirm={remove} />}
+      {showReport && <ReportSheet T={T} reasons={GROUP_REPORT_REASONS} onClose={() => { popNav(); setShowReport(false); }} onSubmit={submitReport} />}
       {actionMember && (
-        <MemberActionSheet T={T} member={actionMember} onClose={() => setActionMember(null)}
+        <MemberActionSheet T={T} member={actionMember} onClose={() => { popNav(); setActionMember(null); }}
           onPromote={() => promote(actionMember.user_id)}
           onDemote={() => demote(actionMember.user_id)}
           onKick={() => kick(actionMember.user_id)}
@@ -2011,15 +2044,15 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <AddMembersModal sb={sb} T={T} Av={Av} Btn={Btn} session={session} group={group}
           members={allMembers} myConnections={myConnections} myFollowers={myFollowers}
           existingMemberIds={members.map(m => m.user_id)}
-          onClose={() => setShowAddMembers(false)}
+          onClose={() => { popNav(); setShowAddMembers(false); }}
           onAdded={loadMembers}
           notify={notify}
         />
       )}
       {showEditGroup && (
         <EditGroupModal sb={sb} T={T} Av={Av} Btn={Btn} group={group} actorId={myId}
-          onClose={() => setShowEditGroup(false)}
-          onSaved={patch => { setShowEditGroup(false); onGroupUpdated?.(patch); }}
+          onClose={() => { popNav(); setShowEditGroup(false); }}
+          onSaved={patch => { popNav(); setShowEditGroup(false); onGroupUpdated?.(patch); }}
           notify={notify}
         />
       )}

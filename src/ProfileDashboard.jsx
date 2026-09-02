@@ -29,7 +29,7 @@ export async function logProfileView(sb, viewerId, viewedId) {
 }
 
 // ── Carte "Tableau de bord" (vues du profil) ──────────────
-export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
+export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session, pushNav, popNav }) {
   const [count, setCount] = useState(null);
   const [uniqueCount, setUniqueCount] = useState(null);
   const [showViewers, setShowViewers] = useState(false);
@@ -49,6 +49,7 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
   }, [session?.user?.id]);
 
   const openViewers = async () => {
+    pushNav(() => setShowViewers(false));
     setShowViewers(true); setLoadingViewers(true);
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
     const { data: rows, error } = await sb.from("profile_views")
@@ -88,11 +89,11 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session }) {
       </div>
 
       {showViewers && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 800, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setShowViewers(false)}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 800, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => { popNav(); setShowViewers(false); }}>
           <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 520, maxHeight: "75vh", display: "flex", flexDirection: "column", animation: "slideUp .3s ease" }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: "20px 20px 12px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h3 style={{ margin: 0, fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 300, color: T.text }}>Visiteurs <span style={{ color: T.goldL }}>(30j)</span></h3>
-              <Btn onClick={() => setShowViewers(false)} style={{ color: T.muted }}><X size={20} /></Btn>
+              <Btn onClick={() => { popNav(); setShowViewers(false); }} style={{ color: T.muted }}><X size={20} /></Btn>
             </div>
             <div style={{ overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               {loadingViewers ? <p style={{ textAlign: "center", color: T.muted, padding: "24px 0" }}>Chargement…</p>
@@ -174,7 +175,7 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
     const need = 12 - pool.size;
     if (need > 0) {
       const excludeAndPoolIds = [...excludeIds, ...pool.keys()];
-      let q = sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,is_discoverable").neq("is_discoverable", false).limit(need * 5);
+      let q = sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,is_discoverable").eq("status", "active").neq("is_discoverable", false).limit(need * 5);
       if (excludeAndPoolIds.length > 0) q = q.not("id", "in", `(${excludeAndPoolIds.join(",")})`);
       const { data: extra } = await q;
       const shuffledExtra = (extra || []).sort(() => Math.random() - 0.5).slice(0, need);
@@ -184,7 +185,7 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
     const candidateIds = [...pool.keys()];
     if (candidateIds.length === 0) { setSuggestions([]); setLoading(false); return; }
 
-    const { data: profiles } = await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse").in("id", candidateIds);
+    const { data: profiles } = await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse").eq("status", "active").in("id", candidateIds);
     const merged = (profiles || []).map(p => ({ ...pool.get(p.id), ...p }));
     const today = new Date().toISOString().slice(0, 10);
     setSuggestions(seededShuffle(merged, `${myId}_${today}`).slice(0, 12));
@@ -221,8 +222,8 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
           : suggestions.map(u => (
             <div key={u.id} style={{ position: "relative", flexShrink: 0, width: 132, background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center" }}>
               <Btn onClick={() => dismiss(u.id)} style={{ position: "absolute", top: 6, right: 6, color: T.muted, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}><X size={13} /></Btn>
-              <div onClick={() => onUser?.(u.id)} style={{ cursor: "pointer" }}>
-                <Av u={{ ...u, fullName: `${u.prenom || ""} ${u.nom || ""}`.trim(), name: `${u.prenom || ""} ${u.nom || ""}`.trim() }} size={54} ring />
+              <div style={{ cursor: "pointer" }}>
+                <Av u={{ ...u, fullName: `${u.prenom || ""} ${u.nom || ""}`.trim(), name: `${u.prenom || ""} ${u.nom || ""}`.trim() }} size={54} ring onClick={() => onUser?.(u.id)} />
               </div>
               <div style={{ minWidth: 0, width: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, minWidth: 0 }}>
