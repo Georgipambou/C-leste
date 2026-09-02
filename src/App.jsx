@@ -780,6 +780,20 @@ const getGS = () => `
     display: none;
   }
 
+  /* Masque le gros bouton play natif Android/Chromium sur <video> */
+  video::-webkit-media-controls-start-playback-button {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    -webkit-appearance: none !important;
+  }
+  video::-webkit-media-controls {
+    display: none !important;
+  }
+  video::-webkit-media-controls-panel {
+    display: none !important;
+  }
+
   /* Version corrigée pour le scroll fluide */
   .scroll-container {
     overflow-y: auto;
