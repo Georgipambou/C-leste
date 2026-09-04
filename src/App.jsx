@@ -10999,7 +10999,8 @@ const send=async()=>{
   const tryGemini=async(retries=3)=>{
     for(let i=0;i<retries;i++){
       try{
-        const history=updatedMsgs.reduce((acc,m)=>{
+        const recentMsgs=updatedMsgs.slice(-20);
+        const history=recentMsgs.reduce((acc,m)=>{
           const last=acc[acc.length-1];
           const role=m.role==="user"?"user":"model";
           if(last&&last.role===role){last.parts[0].text+="\n"+m.text;}
