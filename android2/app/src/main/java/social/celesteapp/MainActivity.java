@@ -22,6 +22,7 @@ public void onCreate(Bundle savedInstanceState) {
     this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);
     WebSettings settings = this.bridge.getWebView().getSettings();
     settings.setTextZoom(100);
+    settings.setMediaPlaybackRequiresUserGesture(false);
   }
 
   @Override

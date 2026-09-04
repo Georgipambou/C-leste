@@ -1151,7 +1151,9 @@ export default function FeedViewer({
                         const v = videoRefs.current[idx];
                         if (idx === activeIdx && !pausedMap[idx] && v) {
                           pauseOtherVideos(v);
-                          v.play().catch(() => { setPausedMap(p => ({ ...p, [idx]: true })); });
+                          const wantMuted = muted;
+                          v.muted = true;
+                          v.play().then(() => { v.muted = wantMuted; }).catch(() => { setPausedMap(p => ({ ...p, [idx]: true })); });
                         }
                       }}
                       onPlaying={() => setVideoLoadingMap(p => ({ ...p, [idx]: false }))}

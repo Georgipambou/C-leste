@@ -5063,7 +5063,11 @@ function MatchOnboardingModal({myProfile,session,onClose,onDone,notify,initialDa
       const{seeking_age:_,...rest}=next;
       let lat=myProfile?.latitude||null,lng=myProfile?.longitude||null;
 if(next.distance_ok==="sur_place"&&!lat){
-  try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:8000});lat=pos.coords.latitude;lng=pos.coords.longitude;await sb.from("profiles").update({latitude:lat,longitude:lng}).eq("id",session?.user?.id);}
+  try{
+    const perm=await Geolocation.checkPermissions();
+    if(perm.location!=="granted"){const req=await Geolocation.requestPermissions();if(req.location!=="granted")throw new Error("permission refusée");}
+    const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:8000});lat=pos.coords.latitude;lng=pos.coords.longitude;await sb.from("profiles").update({latitude:lat,longitude:lng}).eq("id",session?.user?.id);
+  }
   catch(e){notify("GPS non disponible — tu verras tout le monde");}
 }
 const payload={user_id:session?.user?.id,...rest,seeking_age_min:ageMin,seeking_age_max:ageMax,is_active:true,updated_at:new Date().toISOString(),age:myProfile?.age||null,latitude:lat,longitude:lng};
@@ -5614,6 +5618,7 @@ const [modalIsReel,setModalIsReel]=useState(false);
 const [modalCommentPost,setModalCommentPost]=useState(null);
 const [modalCloseCallback,setModalCloseCallback]=useState(null);
 const [modalLiveCmtCount,setModalLiveCmtCount]=useState(0);
+const closeCommentsRef=useRef(null);
 const videoPosts=useMemo(()=>posts.filter(p=>(p.img||"").match(/\.(mp4|mov|webm)/i)||(p.media_urls||[]).some(u=>(u||"").match(/\.(mp4|mov|webm)/i))),[posts]);
 // Tant qu'une session Reel est ouverte, on garde son pool de vidéos à jour
 // quand loadMore() ramène de nouvelles vidéos — sans ré-ordonner ici, c'est
@@ -5827,6 +5832,12 @@ const [feedTab,setFeedTab]=useState("all"); // all | photo | video
 const [feedCommentPost,setFeedCommentPost]=useState(null);
 const [feedCloseCallback,setFeedCloseCallback]=useState(null);
 const [feedLiveCmtCount,setFeedLiveCmtCount]=useState(0);
+closeCommentsRef.current=()=>{
+  setModalCommentPost(null);
+  setFeedCommentPost(null);
+  if(modalCloseCallback){modalCloseCallback(modalLiveCmtCount);setModalCloseCallback(null);}
+  if(feedCloseCallback){feedCloseCallback(feedLiveCmtCount);setFeedCloseCallback(null);}
+};
 const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:posts;
   return(
     <>
@@ -5843,7 +5854,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
   myProfile={myProfile}
   notify={notify}
   onUser={onUser}
-  onOpenComments={(p,cb)=>{pushNav(()=>{setModalCommentPost(null);setModalCloseCallback(null);});setModalCommentPost(p);setModalCloseCallback(()=>cb);}}
+  onOpenComments={(p,cb)=>{pushNav(()=>closeCommentsRef.current());setModalCommentPost(p);setModalCloseCallback(()=>cb);}}
   myConnections={myConnections}
   onConnect={onConnect}
   onOpenSound={setOpenSoundId}
@@ -5918,7 +5929,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
       notify={notify}
       onUser={onUser}
 
-      onOpenComments={(p,cb)=>{pushNav(()=>{setFeedCommentPost(null);setFeedCloseCallback(null);});setFeedCommentPost(p);setFeedCloseCallback(()=>cb);}}
+      onOpenComments={(p,cb)=>{pushNav(()=>closeCommentsRef.current());setFeedCommentPost(p);setFeedCloseCallback(()=>cb);}}
       myConnections={myConnections}
       onConnect={onConnect}
       onOpenSound={setOpenSoundId}
@@ -6695,6 +6706,11 @@ function SavedPostsTab({myProfile,session,getM,notify,onImageView,toggleLike,tog
   const [commentPost,setCommentPost]=useState(null);
   const [closeCallback,setCloseCallback]=useState(null);
   const [liveCmtCount,setLiveCmtCount]=useState(0);
+const closeCommentsRef=useRef(null);
+closeCommentsRef.current=()=>{
+  setCommentPost(null);
+  if(closeCallback){closeCallback(liveCmtCount);setCloseCallback(null);}
+};
   const isVid=p=>(p.img||(p.media_urls||[])[0])&&(/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(p.img||(p.media_urls||[])[0])||(p.img||"").includes("video"));
   const hasVisual=p=>isVid(p)||p.type==="poll"||p.type==="event"||p.img||(p.media_urls&&p.media_urls.length>0);
   const visualPosts=posts.filter(hasVisual);
@@ -6802,7 +6818,7 @@ return(
         {viewerIndex!==null&&toggleLike&&toggleSave&&(
           <FeedViewer posts={viewerFallback||visualPosts} sb={sb} T={T} Av={Av} startIndex={viewerIndex} onClose={()=>{popNav();setViewerIndex(null);setViewerFallback(null);}}
             toggleLike={localToggleLike} toggleSave={localToggleSave} onParticipate={localToggleParticipate} session={session} myProfile={myProfile} notify={notify}
-            onUser={()=>{}} onOpenComments={(p,cb)=>{pushNav(()=>{setCommentPost(null);setCloseCallback(null);});setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
+            onUser={()=>{}} onOpenComments={(p,cb)=>{pushNav(()=>closeCommentsRef.current());setCommentPost(p);setCloseCallback(()=>cb);}} myConnections={myConnections} onConnect={onConnect} onOpenSound={setOpenSoundId}/>
         )}
         {commentPost&&(
           <CommentsOnlyModal
@@ -11454,7 +11470,11 @@ useEffect(()=>{
   };
 },[]);
 const navStack = useRef([]);
-const pushNav = useCallback((closeFn) => { navStack.current.push(closeFn); }, []);
+const ignoreNextPopRef = useRef(false);
+const pushNav = useCallback((closeFn) => {
+  navStack.current.push(closeFn);
+  if(!isNative){ try{ window.history.pushState({celesteModal:true}, ""); }catch(e){} }
+}, []);
 useEffect(()=>{
   window.__celesteOpenAdmin=(section)=>{
     pushNav(()=>setShowAdmin(false));
@@ -11468,22 +11488,40 @@ useEffect(()=>{
   window.addEventListener("celeste_open_admin_withdrawals",h);
   return()=>window.removeEventListener("celeste_open_admin_withdrawals",h);
 },[]);
-const popNav = useCallback(() => { navStack.current.pop(); }, []);
+const popNav = useCallback(() => {
+  navStack.current.pop();
+  if(!isNative){ ignoreNextPopRef.current = true; try{ window.history.back(); }catch(e){} }
+}, []);
+
+const closeTopNav = useCallback(() => {
+  if (viewImg) { setViewImg(null); return true; }
+  if (navStack.current.length > 0) {
+    const closeFn = navStack.current.pop();
+    closeFn();
+    return true;
+  }
+  return false;
+}, [viewImg]);
 
 useEffect(() => {
   const handler = CapApp.addListener('backButton', () => {
-    if (viewImg) { setViewImg(null); return; }
-    if (navStack.current.length > 0) {
-      const closeFn = navStack.current.pop();
-      closeFn();
-      return;
-    }
+    if (closeTopNav()) return;
     if (tab !== 'home') { navStack.current=[]; setTab('home'); return; }
     CapApp.minimizeApp();
   });
 
   return () => { Promise.resolve(handler).then(h=>h?.remove()).catch(()=>{}); };
-}, [viewImg, tab]);
+}, [closeTopNav, tab]);
+
+useEffect(() => {
+  if (isNative) return;
+  const onPopState = () => {
+    if (ignoreNextPopRef.current) { ignoreNextPopRef.current = false; return; }
+    closeTopNav();
+  };
+  window.addEventListener('popstate', onPopState);
+  return () => window.removeEventListener('popstate', onPopState);
+}, [closeTopNav]);
   const notify=useCallback(m=>{setToast(m);setTimeout(()=>setToast(null),2800);},[]);
   const myId=session?.user?.id;
   const addInAppNotif=useCallback((icon,title,body,action)=>{
@@ -11520,7 +11558,7 @@ useEffect(() => {
     sb.auth.getSession().then(({data:{session:s}})=>{setSession(s||null);if(s){loadMyProfile(s.user.id);
 subscribePush(sb,s.user.id).then(ok=>{if(!ok)console.warn("⚠️ Push non initialisé");});
 sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.id).then(({error})=>{if(error)console.warn("last_seen:",error);});
-(async()=>{try{const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:10000});await sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);}catch(e){console.warn("geo:",e);}})();}});
+(async()=>{try{const perm=await Geolocation.checkPermissions();if(perm.location!=="granted"){const req=await Geolocation.requestPermissions();if(req.location!=="granted")return;}const pos=await Geolocation.getCurrentPosition({enableHighAccuracy:false,timeout:10000});await sb.from("profiles").update({latitude:pos.coords.latitude,longitude:pos.coords.longitude}).eq("id",s.user.id);}catch(e){console.warn("geo:",e);}})();}});
     const{data:{subscription}}=sb.auth.onAuthStateChange((_e,s)=>{
       const newUid=s?.user?.id||null;
       let prevUid=null;
