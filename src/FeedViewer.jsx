@@ -1062,7 +1062,7 @@ export default function FeedViewer({
           <X size={20} />
         </button>
       )}
-      <button onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: `calc(${embedded ? 62 : 14}px + env(safe-area-inset-top,0px))`, right: 14, zIndex: 10, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
+      <button onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: `calc(${embedded ? 62 : 62}px + env(safe-area-inset-top,0px))`, left: 14, zIndex: 10, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
         {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
       </button>
 
@@ -1139,7 +1139,7 @@ export default function FeedViewer({
                     <video
   ref={el => { videoRefs.current[idx] = el; }}
   src={rawVideoSrc}
-  poster={post.img || undefined}
+  poster={post.img || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAIAAAC2BqGFAAAB0klEQVR42u3cwU3DQBAFUDzHiBroJUWlCoqil1TCIRInEEFivDOz7xeQ7D5/j4OxfFwury+Sn0AAGrSABg1aQIMW0KBBC2jQAho0aAENWkCDBi2gQQto0KCb5eP9DbRMgX7UuV2pNRr0lOncvtG90I0O0E9UuFGpNRr0lMvgkEZ3OQBGB+hBc2NIo1schuAI2oyuV+f6rddo0LNGebADbXRUrXPlM0CjT8qR8WKU7rP1erv3aHTGQlsrJ46OptZ5yz6y36nUZYxkNyO6b6DLImPGNuovLyZtpvLCYt6Wai7pOP8FgxUuj+cf9dhhkxUWEPtsde1Xx1YbXniAY59TeO3IOiq8bTf78ljhB0+J26SpEEV+Vla5H53EUefHuxv/m0Enjek69w41GjRo6QqdOkmLjGmNBg1aWkKfMEMrjOl+jb7e7h0fGol2yk25o3WRG1kvvh/95PT8FfSZz1l7VKJjkashtof+E1/xqR2ti9yo2itn9E+D9V+wvv3wTf8Lnnr6V6t2lFIe/KdNDCty2Wovm9FfM/Q0iMc3bvdI2PmntieVtoj70aBBC2jQoBGABi2gQYMW0KAFNGjQAhq0gAYNWkCDFtCgQQto0AIaNGhJzydnmpZAgYRNOQAAAABJRU5ErkJggg=="}
   loop playsInline webkit-playsinline="true"
                       muted={muted}
                       preload={isActive ? "auto" : "metadata"}
