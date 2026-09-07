@@ -19,3 +19,26 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor - pont JS <-> natif, charge par reflexion
+-keep class com.getcapacitor.** { *; }
+-keep public class * extends com.getcapacitor.Plugin
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class *
+-keepclassmembers class * {
+    @com.getcapacitor.annotation.PluginMethod public *;
+}
+-keep class org.apache.cordova.** { *; }
+
+# Interface JavaScript du WebView
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# OneSignal (notifications push)
+-keep class com.onesignal.** { *; }
+-dontwarn com.onesignal.**
+
+# Modeles serialises en JSON
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class org.json.** { *; }

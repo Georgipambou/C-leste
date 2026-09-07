@@ -5887,7 +5887,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
     <div style={{position:"relative",flex:1,overflow:"hidden",background:"#000"}}>
 <div style={{display:searchOpen?"none":"contents"}}>
 {/* Barre flottante transparente façon TikTok : onglets Tout/Photos/Reels + recherche + publier */}
-<div style={{position:"absolute",top:0,left:0,right:0,zIndex:1300,paddingTop:"env(safe-area-inset-top,0px)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top,0px)) 14px 10px",background:"linear-gradient(180deg,rgba(0,0,0,0.55) 0%,rgba(0,0,0,0.25) 60%,rgba(0,0,0,0) 100%)",pointerEvents:"none"}}>
+<div style={{position:"absolute",top:0,left:0,right:0,zIndex:1300,paddingTop:"env(safe-area-inset-top,0px)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(max(env(safe-area-inset-top,0px), 24px) + 14px) 14px 10px",background:"linear-gradient(180deg,rgba(0,0,0,0.55) 0%,rgba(0,0,0,0.25) 60%,rgba(0,0,0,0) 100%)",pointerEvents:"none"}}>
   <Btn onClick={onNewPost} style={{pointerEvents:"auto",width:40,height:40,borderRadius:"50%",background:T.gradGold,border:"none",display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0,boxShadow:"0 4px 14px rgba(201,149,42,0.55)"}}>
     <Plus size={18}/>
   </Btn>
@@ -11267,13 +11267,23 @@ function CelesteApp(){
       try{
         await StatusBar.setOverlaysWebView({overlay:true});
         await StatusBar.setStyle({style:Style.Dark});
-        await StatusBar.setBackgroundColor({color:"#00000000"});
       }catch(_){}
     })();
   },[]);
 
   const [chatDrafts,setChatDrafts]=useState({});
   const [tab,setTab]=useState("messages"); // ouverture par défaut sur la messagerie (feed encore en travaux)
+  const tabHistoryRef=useRef([]);
+  const prevTabRef=useRef("messages");
+  const isBackNavRef=useRef(false);
+  useEffect(()=>{
+    if(!isBackNavRef.current && prevTabRef.current!==tab){
+      tabHistoryRef.current.push(prevTabRef.current);
+      if(tabHistoryRef.current.length>20) tabHistoryRef.current.shift();
+    }
+    isBackNavRef.current=false;
+    prevTabRef.current=tab;
+  },[tab]);
 const [feedNavVisible,setFeedNavVisible]=useState(true); // masqué pendant qu'une vidéo joue en plein écran
   const [navTheme,setNavTheme]=useState(()=>{try{return localStorage.getItem("celeste_nav_theme")||"aucun";}catch(_){return "aucun";}});
   const chooseNavTheme=id=>{setNavTheme(id);try{localStorage.setItem("celeste_nav_theme",id);}catch(_){}};
@@ -11507,6 +11517,13 @@ const closeTopNav = useCallback(() => {
 useEffect(() => {
   const handler = CapApp.addListener('backButton', () => {
     if (closeTopNav()) return;
+    if (tabHistoryRef.current.length > 0) {
+      const prevTab = tabHistoryRef.current.pop();
+      isBackNavRef.current = true;
+      navStack.current = [];
+      setTab(prevTab);
+      return;
+    }
     if (tab !== 'home') { navStack.current=[]; setTab('home'); return; }
     CapApp.minimizeApp();
   });

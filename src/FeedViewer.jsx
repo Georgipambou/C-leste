@@ -370,7 +370,7 @@ export default function FeedViewer({
   const [progressMap,     setProgressMap]     = useState({});     // vidéo seulement
   const [expandedCaption, setExpandedCaption] = useState(false);
   const [showControls,    setShowControls]    = useState(false);
-  const [muted,           setMuted]           = useState(true);
+  const [muted,           setMuted]           = useState(false);
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [hiddenPostIds,   setHiddenPostIds]   = useState(() => new Set());
   const [menuPostId,      setMenuPostId]      = useState(null);
@@ -618,11 +618,12 @@ export default function FeedViewer({
     const active = videoRefs.current[activeIdx];
     const thisIdx = activeIdx;
     if (kind === "video" && active) {
-      active.muted = muted;
+      const wantMuted = muted;
+      active.muted = true;
       pauseOtherVideos(active);
       active.play().then(() => {
-        if (activeIdxRef.current !== thisIdx) active.pause();
-        else setPausedMap(p => ({ ...p, [thisIdx]: false }));
+        if (activeIdxRef.current !== thisIdx) { active.pause(); }
+        else { active.muted = wantMuted; setPausedMap(p => ({ ...p, [thisIdx]: false })); }
       }).catch(() => {
         if (activeIdxRef.current === thisIdx) setPausedMap(p => ({ ...p, [thisIdx]: true }));
       });
@@ -1062,7 +1063,7 @@ export default function FeedViewer({
           <X size={20} />
         </button>
       )}
-      <button onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: `calc(${embedded ? 62 : 62}px + env(safe-area-inset-top,0px))`, left: 14, zIndex: 10, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
+      <button onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: `calc(max(env(safe-area-inset-top,0px), 24px) + 80px)`, left: 14, zIndex: 10, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
         {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
       </button>
 
@@ -1139,7 +1140,7 @@ export default function FeedViewer({
                     <video
   ref={el => { videoRefs.current[idx] = el; }}
   src={rawVideoSrc}
-  poster={post.img || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAIAAAC2BqGFAAAB0klEQVR42u3cwU3DQBAFUDzHiBroJUWlCoqil1TCIRInEEFivDOz7xeQ7D5/j4OxfFwury+Sn0AAGrSABg1aQIMW0KBBC2jQAho0aAENWkCDBi2gQQto0KCb5eP9DbRMgX7UuV2pNRr0lOncvtG90I0O0E9UuFGpNRr0lMvgkEZ3OQBGB+hBc2NIo1schuAI2oyuV+f6rddo0LNGebADbXRUrXPlM0CjT8qR8WKU7rP1erv3aHTGQlsrJ46OptZ5yz6y36nUZYxkNyO6b6DLImPGNuovLyZtpvLCYt6Wai7pOP8FgxUuj+cf9dhhkxUWEPtsde1Xx1YbXniAY59TeO3IOiq8bTf78ljhB0+J26SpEEV+Vla5H53EUefHuxv/m0Enjek69w41GjRo6QqdOkmLjGmNBg1aWkKfMEMrjOl+jb7e7h0fGol2yk25o3WRG1kvvh/95PT8FfSZz1l7VKJjkashtof+E1/xqR2ti9yo2itn9E+D9V+wvv3wTf8Lnnr6V6t2lFIe/KdNDCty2Wovm9FfM/Q0iMc3bvdI2PmntieVtoj70aBBC2jQoBGABi2gQYMW0KAFNGjQAhq0gAYNWkCDFtCgQQto0AIaNGhJzydnmpZAgYRNOQAAAABJRU5ErkJggg=="}
+   poster={post.img || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAIAAAC2BqGFAAAE7UlEQVR42u2dz0/bZhjHHRzM4mLGvKIVkapSe4gigQQXpEgFTYjTJHYpBy477oB2221/RU8Vrbo/Yb3AuknTxIFW6i4Tlehg4bRCkDggNyVKAq8cvAMSamnwa79+43wf8nxvSV5b+CPz8fvbGdseNDidTx8jYNAMmsOgGTSD5jBoBs1h0Kgx+/stQn/u4ozzcPmr7+Y/PxHB9p5g0B1JqZj7aelLsy9j9mWmC7ndiqgc+awO/ZmbskM+MmhtGb8zEPKRQeuJ65i33OyH39xys65jMmjNKeStiF8yaJ2CJqdpMqDbGpmQpmmA/lTQ5DRNA/TcpK3wE4OO/yS8bSn8xKD1CJqWpgmAvkrQtDRNALTUwiQ0TQC01MIkNE0A9OyEnbAAg44kaCubCS9jZTP4mkYHHdG/+JpGBx3Rv/iaRgcd0b/4moYGXSrmpIK+0HSpmGPQihm7me1QYQatbl5wTUODjmVecE3jgo4uaBKaxgWt4FxkTeOCfnDfSeGQXgftOqY7FLtV7Q6ZsG1xUNCFvBVL0Beahp2AAApaeR4B7AQEUNDKA1SwI1uIoMPHrsIDO7KFCDqhZzE1jQg6oWcxNQ0H2nXMhI3p2Qkb0B5woJcXhhUqdpcqecsLw2jXhbW0YnHGWfp6KPl57o5a9ZMzqEUuQKAXZ5wfvv1C19mmCzko1hCgXcf8cdHVci9fYp0fyf7zn2iKoOvXmOnixiiuYxby1tyUPTthJ/RySIQfbGw11jcb5Yrwaq0eAl0q5sZuZh/cd9whs3N82+bQ89+8Pe0K9JRAn8Mt3LY6evPGhf7sZe3gyH+106QNGhDuVW7xjludhq4ZtOuYc5M2PtxwoZf3hXboGkBTh5sOdEXQFxWG8TsDyj1thHL+FC3vi/XXDbWnaAzQvQZXL3Q56FIxx3Cl9UWpWySg9TaLr3Eerb775UUtpICk9+77b4YZYpRIQfFWPylFAvrpb1VmFCVSUJLeu+09sVsRgWHYA32DOb792zwM//q3+fPv7//4u87VOyLVO4aedoOFm+Bd7uu4TtChO5VCmpTcTZoGaHDo16fjPxw6D2WlFx6c7QLx5YXh+akb2s/852Z9Za3aRb5RW4bppCmCF1vN+snZdEHnsqpHq++ePK8iTOowoGYqbe8Jjayl/Za9C/qcdX4ke3fUSm6MJ8+rUJVIuH6ilbWq8BP9sws/WFmrol0XHGiv1trYaiQ5w8ZWA+Hphw7aMIz1zUYXD+8h0OWK6OLhPQTaq7UOPcXN+w89H9AbBuyY4Zu3p2oHPntZw7wiUNDKnj1AfY8FKOhyRShU8oQfYAoaF7RXa3nHsVXrHbcwBW0gz+tQsC2soKFBK9j2APhFQ7igX+00Y2la+EE6YyXXDfR5Y7pDhRn0x3WPfdGhwgxa3bkH2G+CgwYdXdPggjbwp+1GNC+4oAmAjmhecEETAL3+uqGxGIMOa4tLNS38ALblTQZ0FP/iC5oGaKl/8QVNA7TUv/iCpgE6fGQLduyKHmgjdGRLedCLQcezMAlBkwEdYmESgiYD+ipNUxG0QWiJclsXUxE0JdBtJyBgzv6iDbrtPALYyQWEQX+qaUKCNmhtI3HJyIQETQz0JSMTErSBtrQiPJUjv35yNnnvs9aZ8fjXqnTnBqhALH/rhfBeJwyaQXMYNINm0IyAQTNoDoOGzf+ARoMkW4uuZAAAAABJRU5ErkJggg=="}
   loop playsInline webkit-playsinline="true"
                       muted={muted}
                       preload={isActive ? "auto" : "metadata"}
