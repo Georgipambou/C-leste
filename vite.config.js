@@ -35,7 +35,7 @@ export default defineConfig({
       manifest: {
         name: 'Céleste',
         short_name: 'Céleste',
-        description: 'Des rencontres ancrées dans la foi',
+        description: 'Exprime ta vraie personnalitée',
         theme_color: '#0A0705',
         background_color: '#0A0705',
         display: 'standalone',

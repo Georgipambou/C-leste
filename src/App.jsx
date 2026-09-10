@@ -5610,7 +5610,7 @@ function TypewriterText({text,style}){
   return <p style={style}>{text.slice(0,shown)}</p>;
 }
 
-function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef,refreshing,onFeedNavVisibility,sessionAffinity}){
+function HomeTab({posts,setPosts,myProfile,session,getM,onNewPost,onUseSoundForPost,onUser,notify,reload,loadMore,hasMore,loadingMore,refreshPost,onImageView,myConnections,onConnect,initialScroll,onScrollChange,pushNav,popNav,onMuteAuthor,viewedPostIdsRef,refreshing,onFeedNavVisibility,sessionAffinity,isVisible=true}){
 
 const [detailPost,setDetailPost]=useState(null);
 const [modalIndex,setModalIndex]=useState(null);
@@ -5940,6 +5940,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
       onNavVisibilityChange={onFeedNavVisibility}
       sessionAffinity={sessionAffinity}
       pauseForOverlay={searchOpen}
+      feedActive={isVisible}
     />
   )}
 </div>
@@ -10037,9 +10038,9 @@ const [myPostsLoading,setMyPostsLoading]=useState(true);
 const loadMyPosts=useCallback(()=>{
   if(!session?.user?.id)return;
   setMyPostsLoading(true);
-  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,text_font,visibility,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
+  sb.from("posts").select("id,author_id,type,text,mentions,img_url,media_urls,event_title,pinned,profile_pinned,text_background,text_font,visibility,poll_multiple,is_for_sale,whatsapp_contact,contact_link,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)").eq("author_id",session.user.id).order("created_at",{ascending:false}).limit(30).then(({data})=>{
     if(data){
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,text_font:p.text_font||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments||[]),ts:new Date(p.created_at).getTime(),text_background:p.text_background||null,text_font:p.text_font||null,visibility:p.visibility||null,profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
       setMyPosts(mapped);
     }
@@ -12172,7 +12173,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           )}
           <div style={{display:openUserId||openConvId||openConvInfoUid?"none":"flex",flexDirection:"column",width:"100%",flex:1,minHeight:0,paddingBottom:(tab!=="home"&&!openConvId&&!openUserId&&!hideNav)?"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))":0}}>
               <div style={{display:tab==="home"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={handleFeedOpenUser} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={handleFeedConnect} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={handleFeedMuteAuthor} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing} onFeedNavVisibility={setFeedNavVisible} sessionAffinity={sessionAffinityRef.current}/>
+  <HomeTab posts={posts} setPosts={setPosts} myProfile={myProfile} session={session} getM={getM} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUseSoundForPost={(sound)=>{setPendingSound(sound);pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} onUser={handleFeedOpenUser} notify={notify} reload={()=>loadPosts(1)} loadMore={loadMorePosts} hasMore={hasMorePosts} loadingMore={loadingMore} refreshPost={refreshPost} onImageView={setViewImg} myConnections={myConnections} onConnect={handleFeedConnect} initialScroll={feedScrollRef.current} onScrollChange={pos=>feedScrollRef.current=pos} pushNav={pushNav} popNav={popNav} onMuteAuthor={handleFeedMuteAuthor} viewedPostIdsRef={viewedPostIdsRef} refreshing={feedRefreshing} onFeedNavVisibility={setFeedNavVisible} sessionAffinity={sessionAffinityRef.current} isVisible={tab==="home"}/>
 </div>
               <div style={{display:tab==="statuses"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
                 <StatusesTab myProfile={myProfile} session={session} members={members} myConnections={myConnections} myFollowers={myFollowers} notify={notify} blockedUserIds={blockedUserIds} pushNav={pushNav} popNav={popNav}/>

@@ -29,7 +29,7 @@ const enableScreenProtection  = async () => { if (!isNative) return; try { await
 const disableScreenProtection = async () => { if (!isNative) return; try { await PrivacyScreen.disable(); } catch (_) {} };
 
 // ── Détection vidéo ────────────────────────────────────────────────
-const isVideoUrl = (u) => /\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u || "") || (u || "").includes("video");
+const isVideoUrl = (u) => /\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u || "");
 
 // ── Formatage compact des compteurs (likes, commentaires) : 950, 1.5K, 12K, 1M…
 // Même logique que fmtCount() dans App.jsx, dupliquée ici car FeedViewer.jsx
@@ -362,6 +362,7 @@ export default function FeedViewer({
   onNavVisibilityChange, // (visible:boolean) => void — signale au parent s'il doit montrer/cacher sa propre nav flottante
   sessionAffinity, // instance de sessionAffinity.js, créée une fois par session de feed (voir App.jsx) — optionnel
   pauseForOverlay = false, // true = un panneau externe (ex: recherche) est ouvert par-dessus le feed — coupe la vidéo active
+  feedActive = true, // false = cet onglet n'est plus affiché (ex: on est passé sur Messages) — coupe totalement le son/la lecture
 }) {
   const [activeIdx,       setActiveIdx]       = useState(startIndex);
   const [pausedMap,       setPausedMap]       = useState({});     // vidéo seulement
@@ -611,6 +612,27 @@ export default function FeedViewer({
   // useFeedIntersection.js pour le détail et le pourquoi.
   const { registerItem } = useFeedIntersection(displayPosts, setActiveIdx, () => setExpandedCaption(false));
 
+  // ── Fonction unique pour démarrer la lecture d'une vidéo : mute-d'abord
+  // puis restauration du son, avec verification que l'index est toujours
+  // actif au moment ou play() se resout — evite le son "en desordre"
+  // quand plusieurs declencheurs (swipe, fermeture des commentaires,
+  // chargement termine) tentent de lancer la lecture en meme temps ──
+  const playActiveVideo = useCallback((idx) => {
+    const v = videoRefs.current[idx];
+    if (!v) return;
+    pauseOtherVideos(v);
+    const wantMuted = muted;
+    v.muted = true;
+    v.play().then(() => {
+      if (activeIdxRef.current !== idx) { v.pause(); return; }
+      v.muted = wantMuted;
+      setPausedMap(p => ({ ...p, [idx]: false }));
+    }).catch(() => {
+      if (activeIdxRef.current === idx) setPausedMap(p => ({ ...p, [idx]: true }));
+    });
+    requestWakeLock();
+  }, [muted, requestWakeLock]);
+
   // ── Lecture / pause / preload — VIDÉO uniquement ───────────────
   useEffect(() => {
     const post = displayPosts[activeIdx];
@@ -618,16 +640,7 @@ export default function FeedViewer({
     const active = videoRefs.current[activeIdx];
     const thisIdx = activeIdx;
     if (kind === "video" && active) {
-      const wantMuted = muted;
-      active.muted = true;
-      pauseOtherVideos(active);
-      active.play().then(() => {
-        if (activeIdxRef.current !== thisIdx) { active.pause(); }
-        else { active.muted = wantMuted; setPausedMap(p => ({ ...p, [thisIdx]: false })); }
-      }).catch(() => {
-        if (activeIdxRef.current === thisIdx) setPausedMap(p => ({ ...p, [thisIdx]: true }));
-      });
-      requestWakeLock();
+      playActiveVideo(thisIdx);
       engagement.start(post.id, (active.duration || 0) * 1000, post.categories);
     } else {
       releaseWakeLock();
@@ -662,10 +675,7 @@ export default function FeedViewer({
     const active = videoRefs.current[activeIdx];
     if (!active) return;
     if (!commentsModalOpen && !pausedMap[activeIdx]) {
-      pauseOtherVideos(active);
-      const thisIdx = activeIdx;
-      active.play().catch(() => { setPausedMap(p => ({ ...p, [thisIdx]: true })); });
-      requestWakeLock();
+      playActiveVideo(activeIdx);
     }
   }, [commentsModalOpen]);
 
@@ -683,6 +693,14 @@ export default function FeedViewer({
     Object.values(videoRefs.current).forEach(v => { if (v) v.muted = muted; });
     if (soundAudioRef.current) soundAudioRef.current.muted = muted;
   }, [muted]);
+
+  // ── Coupure totale si l'onglet du feed n'est plus affiché ───────
+  useEffect(() => {
+    if (feedActive) return;
+    Object.values(videoRefs.current).forEach(v => { if (v) { v.pause(); v.muted = true; releaseActiveVideo(v); } });
+    if (soundAudioRef.current) { soundAudioRef.current.pause(); soundAudioRef.current.muted = true; }
+    releaseWakeLock();
+  }, [feedActive]);
 
   // ── Lecture du son attaché à un post non-vidéo actif ────────────
   useEffect(() => {
@@ -1067,8 +1085,7 @@ export default function FeedViewer({
         {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
       </button>
 
-      <div ref={containerRef} style={{ height: "100%", overflowY: "scroll", scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
-        {displayPosts.map((post, idx) => {
+       <div ref={containerRef} {...(embedded ? { "data-feed-scroll": true } : {})} style={{ height: "100%", overflowY: "scroll", scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>        {displayPosts.map((post, idx) => {
           if (!shouldMountFull(idx, activeIdx)) {
             // Hors fenêtre de montage : un simple placeholder de même hauteur,
             // toujours observé (pour le scroll-snap et la détection d'activité),
@@ -1149,12 +1166,8 @@ export default function FeedViewer({
                       onWaiting={() => setVideoLoadingMap(p => ({ ...p, [idx]: true  }))}
                       onCanPlay={() => {
                         setVideoLoadingMap(p => ({ ...p, [idx]: false }));
-                        const v = videoRefs.current[idx];
-                        if (idx === activeIdx && !pausedMap[idx] && v) {
-                          pauseOtherVideos(v);
-                          const wantMuted = muted;
-                          v.muted = true;
-                          v.play().then(() => { v.muted = wantMuted; }).catch(() => { setPausedMap(p => ({ ...p, [idx]: true })); });
+                        if (idx === activeIdx && !pausedMap[idx]) {
+                          playActiveVideo(idx);
                         }
                       }}
                       onPlaying={() => setVideoLoadingMap(p => ({ ...p, [idx]: false }))}
