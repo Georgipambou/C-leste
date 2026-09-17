@@ -11029,7 +11029,7 @@ const send=async()=>{
         return;
       }catch{if(i<retries-1){await new Promise(r=>setTimeout(r,2500));continue;}}
     }
-    setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, réessaie dans quelques secondes 🙏"}]);
+    setMsgs(p=>[...p,{role:"model",text:"Je suis momentanément indisponible, j'ai un petit soucis revient plus tard 😅"}]);
   };
   await tryGemini();
   setLoading(false);
