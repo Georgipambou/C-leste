@@ -5644,6 +5644,36 @@ const photoPosts=useMemo(()=>posts.filter(p=>{
   const allMedia=p.media_urls?.length>0?p.media_urls:(p.img?[p.img]:[]);
   return allMedia.some(u=>!/\.(mp4|mov|webm|ogg|avi)(\?|$)/i.test(u||""));
 }),[posts]);
+
+// ── Abonnés : uniquement les gens qu'on suit, tri principalement
+// chronologique avec un léger coup de pouce pour les posts qui ont
+// déjà des likes (1 like = l'équivalent d'environ 1h de fraîcheur en plus) ──
+const abonnesPosts=useMemo(()=>{
+  const followingSet=new Set(myConnections||[]);
+  return posts
+    .filter(p=>followingSet.has(p.by))
+    .slice()
+    .sort((a,b)=>{
+      const scoreA=a.ts+(a.likes?.length||0)*3600000;
+      const scoreB=b.ts+(b.likes?.length||0)*3600000;
+      return scoreB-scoreA;
+    });
+},[posts,myConnections]);
+
+// ── Tendances : posts des dernières 24h, triés par engagement
+// (likes + commentaires) sur cette même fenêtre ──
+const tendancesPosts=useMemo(()=>{
+  const dayAgo=Date.now()-24*60*60*1000;
+  return posts
+    .filter(p=>p.ts>=dayAgo)
+    .slice()
+    .sort((a,b)=>{
+      const scoreA=(a.likes?.length||0)+(a.comments?.length||0);
+      const scoreB=(b.likes?.length||0)+(b.comments?.length||0);
+      if(scoreB!==scoreA)return scoreB-scoreA;
+      return b.ts-a.ts;
+    });
+},[posts]);
 useEffect(()=>{
   if(!modalPosts||modalIsReel)return;
   const existingIds=new Set(modalPosts.map(p=>p.id));
@@ -5828,7 +5858,7 @@ const toggleParticipate=useCallback(async pid=>{
     else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});
     notify(ex?"Retiré des sauvegardes":"Sauvegardé ✦");
   },[session?.user?.id,notify]);
-const [feedTab,setFeedTab]=useState("all"); // all | photo | video
+const [feedTab,setFeedTab]=useState("pourtoi"); // pourtoi | abonnes | tendances
 const [feedCommentPost,setFeedCommentPost]=useState(null);
 const [feedCloseCallback,setFeedCloseCallback]=useState(null);
 const [feedLiveCmtCount,setFeedLiveCmtCount]=useState(0);
@@ -5838,7 +5868,7 @@ closeCommentsRef.current=()=>{
   if(modalCloseCallback){modalCloseCallback(modalLiveCmtCount);setModalCloseCallback(null);}
   if(feedCloseCallback){feedCloseCallback(feedLiveCmtCount);setFeedCloseCallback(null);}
 };
-const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:posts;
+const feedTabPosts=feedTab==="abonnes"?abonnesPosts:feedTab==="tendances"?tendancesPosts:posts;
   return(
     <>
 {modalIndex!==null&&<FeedViewer
@@ -5892,7 +5922,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
     <Plus size={18}/>
   </Btn>
   <div style={{display:"flex",gap:22,pointerEvents:"auto"}}>
-    {[{k:"all",lb:"Tout"},{k:"photo",lb:"Photos"},{k:"video",lb:"Reels"}].map(t=>(
+    {[{k:"pourtoi",lb:"Pour toi"},{k:"abonnes",lb:"Abonnés"},{k:"tendances",lb:"Tendances"}].map(t=>(
       <Btn key={t.k} onClick={()=>setFeedTab(t.k)} style={{padding:"4px 0",background:"none",color:feedTab===t.k?"#fff":"rgba(255,255,255,0.6)",fontSize:15,fontWeight:feedTab===t.k?700:500,borderBottom:feedTab===t.k?"2px solid #fff":"2px solid transparent"}}>
         {t.lb}
       </Btn>
@@ -5913,8 +5943,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
     <div style={{textAlign:"center",padding:"140px 20px",color:"rgba(255,255,255,0.5)"}}>
       <div style={{fontSize:40,marginBottom:12,opacity:.3,animation:"float 3s ease infinite"}}>✦</div>
       <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:"#fff"}}>Aucune publication</p>
-      <p style={{fontSize:13,marginTop:8}}>{feedTab==="photo"?"Aucune photo pour le moment":feedTab==="video"?"Aucun reel pour le moment":"Soyez le premier à partager"}</p>
-    </div>
+      <p style={{fontSize:13,marginTop:8}}>{feedTab==="abonnes"?"Aucune publication de tes abonnements pour l'instant":feedTab==="tendances"?"Rien ne tend dans les dernières 24h":"Soyez le premier à partager"}</p>    </div>
   ):(
     <FeedViewer
       embedded
@@ -5941,6 +5970,7 @@ const feedTabPosts=feedTab==="video"?videoPosts:feedTab==="photo"?photoPosts:pos
       sessionAffinity={sessionAffinity}
       pauseForOverlay={searchOpen}
       feedActive={isVisible}
+    
     />
   )}
 </div>
@@ -9606,7 +9636,7 @@ if(checkoutUrl){
 
     <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",textAlign:"center"}}>
       <p style={{margin:"0 0 4px",fontSize:16,color:T.gold,fontFamily:"'Cormorant Garamond',serif",letterSpacing:2}}>✦ DES-ÉTOILES ✦</p>
-      <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}>Créé par Georgi PAMBOU BIAYANDI</p>
+      <p style={{margin:"0 0 4px",fontSize:12,color:T.sub}}> </p>
       <p style={{margin:0,fontSize:11,color:T.muted}}>© 2025 · Tous droits réservés</p>
     </div>
   </div>
@@ -11426,6 +11456,7 @@ const [celesteMsgs,setCelesteMsgs]=useState([]);
 const feedScrollRef=useRef(0);
 const viewedPostIdsRef=useRef(new Set());
 const [feedRefreshing,setFeedRefreshing]=useState(false);
+
 const [sharedMedia,setSharedMedia]=useState(null);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
 const [unreadStatuses,setUnreadStatuses]=useState(0);
@@ -11772,6 +11803,7 @@ if(page===1){
   const order=mixed2.map(p=>p.id);
   postOrderRef.current=order;
   setPosts(mixed2);
+  
   try{localStorage.setItem(celesteScopedKey("celeste_posts_cache"),JSON.stringify(mixed2.slice(0,20)));}catch(e){}
 }else{
  
@@ -11974,7 +12006,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
    document.querySelector("[data-feed-scroll]")?.scrollTo({top:0,behavior:"smooth"});
    setFeedRefreshing(true);
    const refreshStart=Date.now();
-   loadPosts(1).finally(()=>{
+   loadPosts(1,null,true).finally(()=>{
      const elapsed=Date.now()-refreshStart;
      setTimeout(()=>setFeedRefreshing(false),Math.max(0,500-elapsed));
    });

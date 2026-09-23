@@ -363,6 +363,7 @@ export default function FeedViewer({
   sessionAffinity, // instance de sessionAffinity.js, créée une fois par session de feed (voir App.jsx) — optionnel
   pauseForOverlay = false, // true = un panneau externe (ex: recherche) est ouvert par-dessus le feed — coupe la vidéo active
   feedActive = true, // false = cet onglet n'est plus affiché (ex: on est passé sur Messages) — coupe totalement le son/la lecture
+  
 }) {
   const [activeIdx,       setActiveIdx]       = useState(startIndex);
   const [pausedMap,       setPausedMap]       = useState({});     // vidéo seulement
