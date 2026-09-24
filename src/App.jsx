@@ -60,6 +60,7 @@ import {
 
 import { ProfileViewsCard, DiscoverPeopleSection, logProfileView, ProfileHeader } from "./ProfileDashboard";
 import { DuoButton, DuoBadge, DuoPrivacySetting, saveDuoCollaborators } from "./Duo";
+import DepositScreen from "./DepositScreen";
 import { CallProvider, CallButton } from "./CallSystem";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -9647,7 +9648,8 @@ if(checkoutUrl){
   );
 }
 
-function WalletScreen({session,myProfile,notify,onClose,pushNav,popNav}){
+function WalletScreen({session,myProfile,notify,onClose,onOpenDeposit,pushNav,popNav}){
+  const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
   const [wallet,setWallet]=useState(null);
   const [transactions,setTransactions]=useState([]);
   const [monthStats,setMonthStats]=useState(null);
@@ -9704,7 +9706,7 @@ function WalletScreen({session,myProfile,notify,onClose,pushNav,popNav}){
     setLoading(true);
     const net=Math.floor(amount*0.95);
     const{error:wErr}=await sb.rpc("request_withdrawal",{p_amount:amount,p_phone:withdrawPhone.trim(),p_beneficiary_name:withdrawName.trim(),p_operator:withdrawOp});
-if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Solde insuffisant":"Erreur, réessaie");}
+if(wErr){setLoading(false);return notify(wErr.message||"Erreur, réessaie");}
     setLoading(false);popNav();setShowWithdraw(false);setWithdrawAmount("");setWithdrawPhone("");setWithdrawName("");
     notify("Demande envoyée ✦");load();
   };
@@ -9754,16 +9756,24 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
             <span style={{fontSize:16,fontWeight:400,marginLeft:6,opacity:.7}}>F CFA</span>
           </p>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            {hasBadge?(
             <div>
               <p style={{margin:0,fontSize:10,color:"rgba(255,255,255,0.5)"}}>Total gagné</p>
               <p style={{margin:0,fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(wallet?.total_earned||0).toLocaleString("fr-FR")} F</p>
             </div>
-            <button onClick={()=>{pushNav(()=>setShowWithdraw(false));setShowWithdraw(true);}} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-              Retirer
-            </button>
+            ):<div/>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={onOpenDeposit} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Déposer
+              </button>
+              <button onClick={()=>{pushNav(()=>setShowWithdraw(false));setShowWithdraw(true);}} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Retirer
+              </button>
+            </div>
           </div>
         </div>
 {/* Stats du mois — discret */}
+{hasBadge&&(
         <div style={{display:"flex",gap:10,marginBottom:24}}>
           <div style={{flex:1,background:T.bg2,borderRadius:16,padding:"14px",border:`1px solid ${T.border}`,textAlign:"center"}}>
             <p style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.goldL}}>{monthStats?.myLikes||0}</p>
@@ -9774,6 +9784,7 @@ if(wErr){setLoading(false);return notify(wErr.message==="Solde insuffisant"?"Sol
             <p style={{margin:0,fontSize:11,color:T.muted}}>Posts actifs</p>
           </div>
         </div>
+)}
 
         {/* Transactions */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -10009,6 +10020,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
   const [showFollowers,setShowFollowers]=useState(false);
  const [showFollowing,setShowFollowing]=useState(false);
 const [showWallet,setShowWallet]=useState(false);
+const [showDeposit,setShowDeposit]=useState(false);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
   const avRef=useRef(); const cvRef=useRef();
@@ -10162,7 +10174,8 @@ const localToggleParticipate=async pid=>{
   return(
     
     <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
-      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} pushNav={pushNav} popNav={popNav}/>}
+      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} pushNav={pushNav} popNav={popNav}/>}
+{showDeposit&&<DepositScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowDeposit(false);}} pushNav={pushNav} popNav={popNav}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
       {viewerIndex!==null&&toggleLike&&toggleSave&&(
@@ -10236,11 +10249,9 @@ const localToggleParticipate=async pid=>{
   <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
     <Edit2 size={14}/>{editing?"Annuler":"Modifier"}
   </Btn>
-  {(myProfile?.badge==="confirmed"||myProfile?.badge==="friend")&&(
-    <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-      💰 Portefeuille
-    </button>
-  )}
+  <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+  💰 Portefeuille
+</button>
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
     <Settings size={18} color={T.gold}/>
   </Btn>
