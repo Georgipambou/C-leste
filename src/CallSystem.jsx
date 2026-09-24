@@ -57,6 +57,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
         apiKey: STREAM_API_KEY,
         user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
         token: data.token,
+        options: { timeout: 20000 },
       });
       if (!cancelled) setClient(c);
     }
@@ -89,9 +90,8 @@ export function CallProvider({ sb, currentUser, T, children }) {
           custom: { video },
         },
       });
-      await call.join();
-
       if (!video) { try { await call.camera.disable(); } catch (e) {} }
+      await call.join();
 
       setMinimized(false);
       setActiveCall(call);
@@ -189,8 +189,8 @@ function IncomingCallGate({ call, T, onAccepted, onError }) {
   const accept = async () => {
     try {
       const isVideo = call.state.custom?.video !== false;
-      await call.join();
       if (!isVideo) { try { await call.camera.disable(); } catch (e) {} }
+      await call.join();
       onAccepted(call);
     } catch (e) {
       console.error('[Call] Échec pour rejoindre l\'appel:', e);
