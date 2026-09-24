@@ -61,6 +61,8 @@ import {
 import { ProfileViewsCard, DiscoverPeopleSection, logProfileView, ProfileHeader } from "./ProfileDashboard";
 import { DuoButton, DuoBadge, DuoPrivacySetting, saveDuoCollaborators } from "./Duo";
 import DepositScreen from "./DepositScreen";
+import { MarketplaceFields, ForSaleButton, ProductBuyModal } from "./Marketplace";
+import TransactionsScreen from "./Transactions";
 import { CallProvider, CallButton } from "./CallSystem";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
@@ -648,7 +650,7 @@ longitude:p.longitude||null,
 });
 
 function mapDbPost(p, followedIds) {
-  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,text_font:p.text_font||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,text_font:p.text_font||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],price:p.price||null,stock:p.stock??null,deal_type:p.deal_type||null,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
 }
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
@@ -3578,6 +3580,7 @@ async function runPublish(payload,{onProgress}={}){
     uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,textFont,
     isForSale,isAiGenerated,isPrivate,commentsDisabled,
     contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
+    price,stock,dealType,
     pollExpiresAt,pollMultiple,pollOptions,
     selectedCategories,duoCollaborators,selectedSound,lastVideoFile,
     mentions,mentionedIds,authorName,
@@ -3601,6 +3604,9 @@ async function runPublish(payload,{onProgress}={}){
     comments_disabled:commentsDisabled||false,
     whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
     contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
+    price:isForSale?(Number(price)||null):null,
+    stock:isForSale?(Number(stock)||null):null,
+    deal_type:isForSale?(dealType||"sale"):null,
     expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
     poll_multiple:type==="poll"?pollMultiple:false,
     mentions
@@ -3811,6 +3817,7 @@ try {
       uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,textFont,
       isForSale,isAiGenerated,isPrivate,commentsDisabled,
       contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
+      price,stock,dealType,
       pollExpiresAt,pollMultiple,pollOptions,
       selectedCategories,duoCollaborators,selectedSound,
       lastVideoFile:lastVideoFileRef.current,
@@ -3832,6 +3839,9 @@ try {
 
   const canSell=true;
 const [saleExpiry,setSaleExpiry]=useState("30");
+const [price,setPrice]=useState("");
+const [stock,setStock]=useState("");
+const [dealType,setDealType]=useState("sale");
 const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:type==="poll"?(text.trim().length>0&&pollOptions.filter(o=>o.trim()).length>=2):evTitle.trim().length>0;
 
   return(
@@ -3942,6 +3952,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
                 </div>
               </div>
             )}
+            {isForSale&&<MarketplaceFields T={T} myProfile={myProfile} price={price} setPrice={setPrice} stock={stock} setStock={setStock} dealType={dealType} setDealType={setDealType}/>}
             {/* Option contenu généré par IA (photo/vidéo uniquement) */}
             {type==="photo"&&(
               <div onClick={()=>setIsAiGenerated(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
@@ -6637,6 +6648,9 @@ onMuteAuthor?.(post.by);
               En savoir plus
             </a>
           )}
+{post.is_for_sale&&post.price&&(
+  <div style={{marginBottom:8}}><ForSaleButton T={T} post={post}/></div>
+)}
 {post.is_for_sale&&post.expires_at&&(
   <p style={{margin:"0 0 6px",fontSize:11,color:T.muted}}>
     Expire le {new Date(post.expires_at).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}
@@ -8517,7 +8531,7 @@ const [uPosts,setUPosts]=useState((posts||[]).filter(p=>p.by===user.id));
   const loadUPosts=useCallback(async()=>{
     const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
    if(data){
-     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+     const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,price:p.price||null,stock:p.stock??null,deal_type:p.deal_type||null,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
      mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
      setUPosts(mapped);
    }
@@ -8767,7 +8781,7 @@ function OrgView({user,myProfile,session,posts,onBack,onChat,notify,myConnection
   const loadUPosts=useCallback(async()=>{
     const{data}=await sb.from("posts").select(`*,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(id)`).eq("author_id",user.id).order("created_at",{ascending:false});
     if(data){
-      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
+      const mapped=data.map(p=>({id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:[],ts:new Date(p.created_at).getTime(),profile_pinned:p.profile_pinned||false,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],is_for_sale:p.is_for_sale||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,price:p.price||null,stock:p.stock??null,deal_type:p.deal_type||null,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null}));
       mapped.sort((a,b)=>(b.profile_pinned?1:0)-(a.profile_pinned?1:0));
       setUPosts(mapped);
     }
@@ -10021,6 +10035,13 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
  const [showFollowing,setShowFollowing]=useState(false);
 const [showWallet,setShowWallet]=useState(false);
 const [showDeposit,setShowDeposit]=useState(false);
+const [buyingPost,setBuyingPost]=useState(null);
+const [showTransactions,setShowTransactions]=useState(false);
+useEffect(()=>{
+  const h=e=>{pushNav(()=>setBuyingPost(null));setBuyingPost(e.detail);};
+  window.addEventListener("celeste_open_product",h);
+  return()=>window.removeEventListener("celeste_open_product",h);
+},[pushNav]);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
   const avRef=useRef(); const cvRef=useRef();
@@ -10176,6 +10197,8 @@ const localToggleParticipate=async pid=>{
     <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
       {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} pushNav={pushNav} popNav={popNav}/>}
 {showDeposit&&<DepositScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowDeposit(false);}} pushNav={pushNav} popNav={popNav}/>}
+{buyingPost&&<ProductBuyModal sb={sb} T={T} Btn={Btn} post={buyingPost} notify={notify} onClose={()=>{popNav();setBuyingPost(null);}} onDone={()=>{}}/>}
+{showTransactions&&<TransactionsScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowTransactions(false);}} pushNav={pushNav} popNav={popNav}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
       {viewerIndex!==null&&toggleLike&&toggleSave&&(
@@ -10251,6 +10274,9 @@ const localToggleParticipate=async pid=>{
   </Btn>
   <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
   💰 Portefeuille
+</button>
+<button onClick={()=>{pushNav(()=>setShowTransactions(false));setShowTransactions(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,color:T.text,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+  📦 Achats/Ventes
 </button>
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
     <Settings size={18} color={T.gold}/>
@@ -11711,7 +11737,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   const sessionAffinityRef=useRef(createSessionAffinity()); // signal d'affinité "chaud" côté client, voir sessionAffinity.js — reset() au login, jamais recréé sinon
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   if(page===1)lastPostCursorRef.current=null;
-  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,price,stock,deal_type,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).order("id",{ascending:false});
   if(lastPostCursorRef.current){
@@ -11725,7 +11751,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,price,stock,deal_type,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
@@ -12036,6 +12062,11 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
     pushNav(()=>setOpenConvId(null));setOpenConvId(id);
   };
   const openChat=uid=>{setOpenUserId(null);let c=(convs||[]).find(x=>x.uid===uid);if(!c){c={id:"cv"+Date.now(),uid,msgs:[]};setConvs(p=>[...(p||[]),c]);}if(isConvLocked(c.id)&&!unlockedConvIds.has(c.id)){setPendingUnlockConvId(c.id);setTab("messages");return;}pushNav(()=>setOpenConvId(null));setOpenConvId(c.id);setTab("messages");};
+  useEffect(()=>{
+    const h=e=>{if(e.detail)openChat(e.detail);};
+    window.addEventListener("celeste_open_chat_with",h);
+    return()=>window.removeEventListener("celeste_open_chat_with",h);
+  },[openChat]);
 
   // AppContext value
   const appCtx={

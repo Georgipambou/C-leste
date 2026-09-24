@@ -89,14 +89,14 @@ export function MarketplaceFields({ T, myProfile, price, setPrice, stock, setSto
 /* ---------------------------------------------------------------- */
 /* Bouton à afficher sur un post marchand dans le feed               */
 /* ---------------------------------------------------------------- */
-export function ForSaleButton({ T, post, onOpen }) {
+export function ForSaleButton({ T, post }) {
   if (!post?.is_for_sale || !post?.price) return null;
   const soldOut = (post.stock ?? 0) <= 0;
   const label = soldOut ? "Épuisé" : post.deal_type === "sale" ? "Acheter" : "Réserver";
 
   return (
     <button
-      onClick={() => !soldOut && onOpen(post)}
+      onClick={(e) => { e.stopPropagation(); if (!soldOut) window.dispatchEvent(new CustomEvent("celeste_open_product", { detail: post })); }}
       disabled={soldOut}
       style={{
         display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 20,
@@ -213,6 +213,12 @@ export function ProductBuyModal({ sb, T, Btn, post, onClose, notify, onDone }) {
             <Btn onClick={() => setConfirming(true)} style={{ width: "100%", height: 50, borderRadius: 14, background: T.gradGold, color: "#000", fontWeight: 800, fontSize: 14 }}>
               Continuer
             </Btn>
+            <button
+              onClick={() => { window.dispatchEvent(new CustomEvent("celeste_open_chat_with", { detail: post.by || post.author?.id })); onClose(); }}
+              style={{ width: "100%", marginTop: 10, height: 44, borderRadius: 14, background: "none", border: `1px solid ${T.border}`, color: T.sub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+            >
+              Discuter d'abord avec le vendeur
+            </button>
           </>
         ) : (
           <>
