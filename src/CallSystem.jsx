@@ -159,6 +159,8 @@ export function CallProvider({ sb, currentUser, T, children }) {
       try { if (video) await call.camera.enable(); else await call.camera.disable(); } catch (e) { console.warn('[Call] caméra:', e); }
       try { await call.microphone.enable(); } catch (e) { console.warn('[Call] micro:', e); }
       await call.join({
+        joinResponseTimeout: 20000,
+        rpcRequestTimeout: 15000,
         create: true,
         ring: true,
         video,
@@ -270,7 +272,7 @@ function IncomingCallGate({ call, T, onAccepted, onError }) {
       const isVideo = call.state.custom?.video !== false;
       try { if (isVideo) await call.camera.enable(); else await call.camera.disable(); } catch (e) { console.warn('[Call] caméra:', e); }
       try { await call.microphone.enable(); } catch (e) { console.warn('[Call] micro:', e); }
-      await call.join();
+      await call.join({ joinResponseTimeout: 20000, rpcRequestTimeout: 15000 });
     } catch (e) {
       console.error('[Call] Échec pour rejoindre l\'appel:', e);
       setAnswered(false);
