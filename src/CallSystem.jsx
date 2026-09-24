@@ -5,7 +5,9 @@ import {
   StreamCall,
   SpeakerLayout,
   useCallStateHooks,
+  useCall,
   useCalls,
+  VideoPreview,
   CallingState,
 } from '@stream-io/video-react-sdk';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
@@ -22,11 +24,80 @@ const DEFAULT_T = {
   err: '#C84040', ok: '#3DB654', glass: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.08)',
 };
 
-// Place un fichier de sonnerie ici : /public/sounds/ringtone.mp3
-const RINGTONE_URL = '/sounds/ringtone.mp3';
+// Sonneries synthétisées, même style que playNotifSound / playChatSound (App.jsx) : aucun fichier requis.
+const RING_PATTERNS = {
+  // appelé : petit motif cristallin qui se répète
+  incoming: { period: 2.6, notes: [[1047, 0, 0.16], [784, 0.16, 0.16], [1047, 0.5, 0.16], [784, 0.66, 0.16], [1319, 1.05, 0.5]] },
+  // appelant : musique d'attente douce
+  outgoing: { period: 3.6, notes: [[523, 0, 0.45], [659, 0.5, 0.45], [784, 1.0, 0.45], [659, 1.5, 0.45], [880, 2.0, 0.9]] },
+};
 
-// Interrupteur global : passe à true quand la fonctionnalité est prête à être exposée.
-// Tant que c'est false, aucune connexion Stream n'est ouverte et les boutons
+function startRingtone(kind) {
+  const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+  const pattern = RING_PATTERNS[kind];
+  if (!AC || !pattern) return () => {};
+  let ctx;
+  try { ctx = new AC(); } catch (e) { return () => {}; }
+  let next = 0;
+  const playCycle = () => {
+    const t0 = ctx.currentTime + 0.03;
+    pattern.notes.forEach(([freq, at, dur]) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, t0 + at);
+      g.gain.setValueAtTime(0.0001, t0 + at);
+      g.gain.exponentialRampToValueAtTime(0.3, t0 + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + at + dur);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(t0 + at);
+      o.stop(t0 + at + dur + 0.05);
+    });
+  };
+  const tick = () => {
+    if (ctx.state !== 'running') { ctx.resume().catch(() => {}); return; }
+    if (ctx.currentTime >= next) { playCycle(); next = ctx.currentTime + pattern.period; }
+  };
+  tick();
+  const id = setInterval(tick, 200);
+  return () => { clearInterval(id); try { ctx.close(); } catch (e) {} };
+}
+
+// Sonnerie de l'appelé : ton fichier /public/sounds/ringtone.mp3 (repli sur le carillon généré si le fichier ne joue pas)
+const RINGTONE_FILE = '/sounds/ringtone.mp3';
+
+function useRingtone(kind) {
+  useEffect(() => {
+    if (!kind) return;
+    if (kind === 'incoming') {
+      const audio = new Audio(RINGTONE_FILE);
+      audio.loop = true;
+      let stopped = false;
+      let stopFallback = null;
+      audio.play().catch(() => { if (!stopped) stopFallback = startRingtone('incoming'); });
+      return () => { stopped = true; audio.pause(); audio.src = ''; stopFallback?.(); };
+    }
+    return startRingtone(kind);
+  }, [kind]);
+}
+
+// Les utilisateurs doivent exister côté Stream avant qu'un appel les référence.
+// Résultat mis en cache : une seule requête par utilisateur et par session.
+const ensuredUsers = new Map();
+function ensureStreamUsers(sb, ids) {
+  const missing = ids.filter(id => id && !ensuredUsers.has(id));
+  if (missing.length) {
+    const p = sb.functions.invoke('stream-ensure-users', { body: { userIds: missing } })
+      .then(({ error }) => { if (error) throw new Error('ensure-users: ' + error.message); });
+    missing.forEach(id => ensuredUsers.set(id, p));
+    p.catch(() => missing.forEach(id => ensuredUsers.delete(id)));
+  }
+  return Promise.all(ids.filter(Boolean).map(id => ensuredUsers.get(id)));
+}
+
+// Interrupteur global : passe à false pour désactiver la fonctionnalité.
+// Quand c'est false, aucune connexion Stream n'est ouverte et les boutons
 // d'appel affichent juste un message "prochaine mise à jour".
 const CALLS_ENABLED = true;
 
@@ -34,72 +105,81 @@ const CALLS_ENABLED = true;
 export function CallProvider({ sb, currentUser, T, children }) {
   const [client, setClient] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
-  
   const [connecting, setConnecting] = useState(false);
   const [callError, setCallError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [minimized, setMinimized] = useState(false);
   const theme = T || DEFAULT_T;
-  const ringtoneRef = useRef(null);
+  const clientRef = useRef(null);
 
+  // Connexion Stream : token renouvelé automatiquement, déconnexion propre à la déconnexion du compte
   useEffect(() => {
-    if (!CALLS_ENABLED || !currentUser?.id || !sb) return;
-    let cancelled = false;
-
-    async function init() {
-      const { data, error } = await sb.functions.invoke('stream-token');
-      if (error || !data?.token) {
-        console.error('[Call] Erreur récupération token Stream:', error);
-        setCallError("Impossible de se connecter au service d'appel.");
-        return;
-      }
+    if (!CALLS_ENABLED || !sb) return;
+    if (!currentUser?.id) {
+      const old = clientRef.current;
+      clientRef.current = null;
+      setClient(null);
+      old?.disconnectUser().catch(() => {});
+      return;
+    }
+    try {
       const c = StreamVideoClient.getOrCreateInstance({
         apiKey: STREAM_API_KEY,
         user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
-        token: data.token,
+        tokenProvider: async () => {
+          const { data, error } = await sb.functions.invoke('stream-token');
+          if (error || !data?.token) throw new Error('stream-token indisponible');
+          return data.token;
+        },
         options: { timeout: 20000 },
       });
-      if (!cancelled) setClient(c);
+      clientRef.current = c;
+      setClient(c);
+    } catch (e) {
+      console.error('[Call] Init Stream impossible:', e);
+      setCallError("Impossible de se connecter au service d'appel.");
     }
-    init();
-    return () => { cancelled = true; };
   }, [currentUser?.id, sb]);
 
- 
   const startCall = useCallback(async (targetUserId, { video = true } = {}) => {
     if (!client || !sb) {
       console.error('[Call] startCall appelé sans client Stream prêt.');
       setCallError("Le service d'appel n'est pas encore prêt, réessaie dans un instant.");
       return;
     }
+    if (connecting || activeCall) return;
     setCallError(null);
     setConnecting(true);
     try {
-      const { error: ensureError } = await sb.functions.invoke('stream-ensure-users', {
-        body: { userIds: [currentUser.id, targetUserId] },
-      });
-      if (ensureError) throw new Error('ensure-users: ' + ensureError.message);
-
-      const callId = crypto.randomUUID();
-      const call = client.call('default', callId);
-
-      await call.getOrCreate({
+      const call = client.call('default', crypto.randomUUID());
+      call.__outgoing = true;
+      setMinimized(false);
+      setActiveCall(call);
+      await ensureStreamUsers(sb, [currentUser.id, targetUserId]);
+      try { if (video) await call.camera.enable(); else await call.camera.disable(); } catch (e) { console.warn('[Call] caméra:', e); }
+      try { await call.microphone.enable(); } catch (e) { console.warn('[Call] micro:', e); }
+      await call.join({
+        create: true,
         ring: true,
+        video,
         data: {
           members: [{ user_id: currentUser.id }, { user_id: targetUserId }],
           custom: { video },
         },
       });
-      if (!video) { try { await call.camera.disable(); } catch (e) {} }
-      await call.join();
-
-      setMinimized(false);
-      setActiveCall(call);
     } catch (e) {
       console.error('[Call] Échec du démarrage de l\'appel:', e);
+      setActiveCall(null);
       setCallError("L'appel n'a pas pu démarrer : " + (e?.message || 'erreur inconnue'));
     } finally {
       setConnecting(false);
+    }
+  }, [client, sb, currentUser?.id, connecting, activeCall]);
+
+  // Prépare l'utilisateur ciblé côté Stream dès l'affichage du bouton d'appel
+  const prepareCall = useCallback((targetUserId) => {
+    if (client && sb && currentUser?.id && targetUserId) {
+      ensureStreamUsers(sb, [currentUser.id, targetUserId]).catch(() => {});
     }
   }, [client, sb, currentUser?.id]);
 
@@ -115,7 +195,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
     setTimeout(() => setNotice(null), 3000);
   }, []);
 
-  const value = { client, startCall, endCall, activeCall, connecting, minimized, setMinimized, showComingSoon };
+  const value = { client, startCall, prepareCall, endCall, activeCall, connecting, minimized, setMinimized, showComingSoon };
 
   return (
     <CallContext.Provider value={value}>
@@ -152,6 +232,8 @@ export function CallProvider({ sb, currentUser, T, children }) {
 
 export function CallButton({ targetUserId, video = true, style, children }) {
   const ctx = useCallSystem();
+  const prepare = ctx?.prepareCall;
+  useEffect(() => { prepare?.(targetUserId); }, [prepare, targetUserId]);
   if (!ctx) return null;
   const onClick = CALLS_ENABLED
     ? () => ctx.startCall(targetUserId, { video })
@@ -162,16 +244,10 @@ export function CallButton({ targetUserId, video = true, style, children }) {
     </button>
   );
 }
-function useRingtone(active) {
-  useEffect(() => {
-    if (!active) return;
-    const audio = new Audio(RINGTONE_URL);
-    audio.loop = true;
-    audio.play().catch(() => {});
-    return () => { audio.pause(); audio.currentTime = 0; };
-  }, [active]);
-}
 
+// ─────────────────────────────────────────────
+// Détection des appels entrants (instances Call réelles du SDK)
+// ─────────────────────────────────────────────
 function IncomingCallHandler({ T, onAccepted, onError }) {
   const calls = useCalls();
   return calls.filter(c => !c.isCreatedByMe).map(c => (
@@ -184,16 +260,21 @@ function IncomingCallHandler({ T, onAccepted, onError }) {
 function IncomingCallGate({ call, T, onAccepted, onError }) {
   const { useCallCallingState } = useCallStateHooks();
   const callingState = useCallCallingState();
-  if (callingState !== CallingState.RINGING) return null;
+  const [answered, setAnswered] = useState(false);
+  if (callingState !== CallingState.RINGING || answered) return null;
 
   const accept = async () => {
+    setAnswered(true);
+    onAccepted(call);
     try {
       const isVideo = call.state.custom?.video !== false;
-      if (!isVideo) { try { await call.camera.disable(); } catch (e) {} }
+      try { if (isVideo) await call.camera.enable(); else await call.camera.disable(); } catch (e) { console.warn('[Call] caméra:', e); }
+      try { await call.microphone.enable(); } catch (e) { console.warn('[Call] micro:', e); }
       await call.join();
-      onAccepted(call);
     } catch (e) {
       console.error('[Call] Échec pour rejoindre l\'appel:', e);
+      setAnswered(false);
+      onAccepted(null);
       onError("Impossible de rejoindre l'appel.");
     }
   };
@@ -218,15 +299,17 @@ function IconLabel({ onClick, active, danger, T, icon, label }) {
   );
 }
 
-
+// Chrono basé sur l'heure de connexion de l'appel : ne repart pas à zéro quand on réduit/agrandit l'écran
 function useElapsedSeconds(active) {
-  const [sec, setSec] = useState(0);
+  const call = useCall();
+  const [, tick] = useState(0);
   useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setSec(s => s + 1), 1000);
+    if (!active || !call) return;
+    if (!call.__connectedAt) call.__connectedAt = Date.now();
+    const id = setInterval(() => tick(t => t + 1), 1000);
     return () => clearInterval(id);
-  }, [active]);
-  return sec;
+  }, [active, call]);
+  return active && call?.__connectedAt ? Math.floor((Date.now() - call.__connectedAt) / 1000) : 0;
 }
 function formatDuration(sec) {
   const m = Math.floor(sec / 60), s = sec % 60;
@@ -237,7 +320,7 @@ function formatDuration(sec) {
 // Écran d'appel entrant
 // ─────────────────────────────────────────────
 function IncomingCallScreen({ call, onAccept, onDecline, T }) {
-  useRingtone(true);
+  useRingtone('incoming');
   const callerName = call.state.createdBy?.name || 'Appel entrant';
   const callerImage = call.state.createdBy?.image;
   const isVideo = call.state.custom?.video !== false;
@@ -303,13 +386,14 @@ function MinimizedCallBubble({ onExpand, onEnd, T }) {
 // ─────────────────────────────────────────────
 function InCallScreen({ onEnd, onMinimize, T }) {
   const { useParticipants, useMicrophoneState, useCameraState, useCallCallingState } = useCallStateHooks();
+  const call = useCall();
   const participants = useParticipants();
   const { microphone, isMute: isMicMuted } = useMicrophoneState();
   const { camera, isMute: isCamMuted } = useCameraState();
   const callingState = useCallCallingState();
   const other = participants.find(p => !p.isLocalParticipant);
   const isRinging = !other && callingState !== CallingState.LEFT;
-  useRingtone(isRinging);
+  useRingtone(isRinging && call?.__outgoing ? 'outgoing' : null);
   useEffect(() => { if (callingState === CallingState.LEFT) onEnd(); }, [callingState]);
   const sec = useElapsedSeconds(!!other);
 
@@ -333,9 +417,15 @@ function InCallScreen({ onEnd, onMinimize, T }) {
       {isRinging ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '30px 24px 60px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, marginTop: 30 }}>
-            <div style={{ width: 110, height: 110, borderRadius: '50%', background: T.gradGold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, fontWeight: 700, color: '#000' }}>…</div>
+            {call?.state.custom?.video !== false && !isCamMuted ? (
+              <div style={{ width: 200, height: 270, borderRadius: 18, overflow: 'hidden', border: `2px solid ${T.gold}`, background: '#000' }}>
+                <VideoPreview />
+              </div>
+            ) : (
+              <div style={{ width: 110, height: 110, borderRadius: '50%', background: T.gradGold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, fontWeight: 700, color: '#000' }}>…</div>
+            )}
             <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, margin: 0 }}>Appel en cours…</p>
-            <p style={{ opacity: 0.55, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase', margin: 0 }}>En attente de réponse</p>
+            <p style={{ opacity: 0.55, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase', margin: 0 }}>{callingState === CallingState.JOINING ? 'Connexion…' : 'En attente de réponse'}</p>
           </div>
           <IconLabel onClick={onEnd} danger T={T} icon={<PhoneOff size={22} />} label="Annuler" />
         </div>
