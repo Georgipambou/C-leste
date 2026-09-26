@@ -1122,7 +1122,7 @@ export default function FeedViewer({
           const isConnected = myConnections?.includes(post.by);
           const isMe        = post.by === uid;
           const isLocked    = post.is_private && !isNative && !isMe;
-          const hasMarketplace = post.is_for_sale && (post.whatsapp_contact || post.contact_link);
+          const hasMarketplace = post.is_for_sale && (post.whatsapp_contact || post.contact_link || post.price > 0);
           const evDateParts = isEvent ? formatEventDate(post.eventDate) : null;
           const participating = participatingIds.has(post.id);
           const participantsCount = participantCountMap[post.id] ?? (post.participants || []).length;
@@ -1343,6 +1343,15 @@ export default function FeedViewer({
                         style={{ background: "rgba(74,144,217,0.9)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
                         🔗 Voir le lien
                       </a>
+                    )}
+                    {post.price > 0 && (post.stock ?? 0) > 0 && (
+                      <button onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_open_product", { detail: post })); }}
+                        style={{ background: "linear-gradient(135deg,#e0b84a,#a67c1e)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#000", fontWeight: 700, fontSize: 12, border: "none", cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
+                        🛍️ {post.deal_type === "sale" ? "Acheter" : "Réserver"} · {Math.round(post.price).toLocaleString("fr-FR")} F
+                      </button>
+                    )}
+                    {post.price > 0 && (post.stock ?? 0) <= 0 && (
+                      <span style={{ background: "rgba(255,255,255,0.14)", padding: "8px 14px", borderRadius: 20, color: "#fff", fontWeight: 700, fontSize: 12 }}>Épuisé</span>
                     )}
                   </div>
                 )}

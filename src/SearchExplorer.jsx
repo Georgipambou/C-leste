@@ -24,7 +24,7 @@ const postThumb = p => {
 };
 const postIsVideo = p => isVideoUrl(p.img) || (p.media_urls || []).some(isVideoUrl);
 
-const POSTS_SELECT = `id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`;
+const POSTS_SELECT = `id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_loc,pinned,profile_pinned,post_phase,text_background,is_for_sale,is_private,whatsapp_contact,contact_link,expires_at,visibility,phase_views,price,stock,deal_type,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),comments(id,text,created_at,author:profiles(id,prenom,nom,avatar_url),replies:comment_replies(id)),saved_posts(count)`;
 
 // ── Sous-composants hoistés hors du composant principal ────────────
 // (avant : redéfinis à chaque rendu de SearchExplorer, donc remontés en
@@ -76,6 +76,42 @@ function PostGrid({ list, list2, emptyLabel, T, onOpenPost }) {
   );
 }
 
+function MarketplaceGrid({ list, T, onOpenPost }) {
+  if (!list || list.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
+        <div style={{ fontSize: 30, marginBottom: 10, opacity: .3 }}>🛍️</div>
+        <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18 }}>Aucun article trouvé</p>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 2 }}>
+      {list.map(p => {
+        const thumb = postThumb(p);
+        const soldOut = (p.stock ?? 0) <= 0;
+        return (
+          <div key={p.id} onClick={() => onOpenPost(p, list)}
+            style={{ position: "relative", aspectRatio: "1", overflow: "hidden", background: T.bg3 || T.bg2, cursor: "pointer" }}>
+            {thumb ? (
+              <img src={thumb} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: soldOut ? 0.45 : 1 }} />
+            ) : (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
+                <p style={{ fontSize: 11, color: T.muted, textAlign: "center", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" }}>{p.text}</p>
+              </div>
+            )}
+            <div style={{ position: "absolute", left: 4, bottom: 4, right: 4, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
+              <span style={{ background: soldOut ? "rgba(0,0,0,0.6)" : "linear-gradient(135deg,#e0b84a,#a67c1e)", color: soldOut ? "#fff" : "#000", fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 8 }}>
+                {soldOut ? "Épuisé" : `${Math.round(p.price).toLocaleString("fr-FR")} F`}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function UserRow({ u, T, onClick }) {
   return (
     <div onClick={onClick}
@@ -114,6 +150,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
   const [tab, setTab] = useState("top"); // top | users | posts
   const [users, setUsers] = useState([]);
   const [postResults, setPostResults] = useState([]);
+  const [marketplaceResults, setMarketplaceResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const [pivotUser, setPivotUser] = useState(null); // profil normalisé
@@ -137,7 +174,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
   // normalizeSearch (minuscule + accents retirés) des deux côtés.
   useEffect(() => {
     const q = query.trim();
-    if (!q) { setUsers([]); setPostResults([]); setSounds([]); setCategoryAuthors([]); return; }
+    if (!q) { setUsers([]); setPostResults([]); setMarketplaceResults([]); setSounds([]); setCategoryAuthors([]); return; }
     const nq = normalizeSearch(q);
     // Catégories littérales : instantané, fonctionne même sans IA/sans crédit.
     const literalCategoryIds = CONTENT_CATEGORIES
@@ -234,6 +271,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
 
       setUsers(matchedUsers);
       setPostResults(matchedPosts);
+      setMarketplaceResults(matchedPosts.filter(p => p.is_for_sale && p.price > 0));
       setSounds(sData || []);
       setCategoryAuthors(matchedCategoryAuthors);
       setLoading(false);
@@ -327,6 +365,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
             <TabBtn T={T} label="Top" active={tab === "top"} onClick={() => setTab("top")} />
             <TabBtn T={T} label="Utilisateurs" active={tab === "users"} onClick={() => setTab("users")} />
             <TabBtn T={T} label="Publications" active={tab === "posts"} onClick={() => setTab("posts")} />
+            <TabBtn T={T} label={`Boutique${marketplaceResults.length ? ` (${marketplaceResults.length})` : ""}`} active={tab === "marketplace"} onClick={() => setTab("marketplace")} />
             <TabBtn T={T} label="Sons" active={tab === "sounds"} onClick={() => setTab("sounds")} />
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
@@ -369,6 +408,26 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
                     </div>
                   </div>
                 )}
+                {marketplaceResults.length > 0 && (
+                  <div style={{ padding: "14px 16px 4px" }}>
+                    <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Boutique</p>
+                    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 }}>
+                      {marketplaceResults.slice(0, 10).map(p => {
+                        const thumb = postThumb(p);
+                        const soldOut = (p.stock ?? 0) <= 0;
+                        return (
+                          <div key={p.id} onClick={() => onOpenPost(p, marketplaceResults)}
+                            style={{ position: "relative", width: 84, height: 84, borderRadius: 14, overflow: "hidden", background: T.bg3 || T.bg2, cursor: "pointer", flexShrink: 0 }}>
+                            {thumb && <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: soldOut ? 0.45 : 1 }} />}
+                            <span style={{ position: "absolute", left: 4, bottom: 4, background: soldOut ? "rgba(0,0,0,0.6)" : "linear-gradient(135deg,#e0b84a,#a67c1e)", color: soldOut ? "#fff" : "#000", fontSize: 9, fontWeight: 800, padding: "3px 6px", borderRadius: 8 }}>
+                              {soldOut ? "Épuisé" : `${Math.round(p.price).toLocaleString("fr-FR")} F`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div style={{ padding: "10px 16px 0" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Publications</p>
                 </div>
@@ -378,6 +437,8 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
               users.length > 0
                 ? <div style={{ paddingTop: 8 }}>{users.map(u => <UserRow key={u.id} u={u} T={T} onClick={() => openPivot(u)} />)}</div>
                 : <div style={{ textAlign: "center", padding: 60, color: T.muted }}>Aucun utilisateur trouvé</div>
+            ) : tab === "marketplace" ? (
+              <MarketplaceGrid T={T} onOpenPost={onOpenPost} list={marketplaceResults} />
             ) : tab === "sounds" ? (
               soundsLoading ? (
                 <div style={{ textAlign: "center", padding: 60, color: T.muted }}>Recherche…</div>

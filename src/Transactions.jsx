@@ -18,7 +18,7 @@
  * get_my_transaction_code.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, Package, Clock, CheckCircle2, XCircle, Eye, EyeOff, CalendarClock } from "lucide-react";
+import { X, Package, Clock, CheckCircle2, XCircle, Eye, EyeOff, CalendarClock, Pencil, Trash2 } from "lucide-react";
 
 const COLUMNS = "id,buyer_id,seller_id,post_id,quantity,amount,unit_price,commission_percent,commission_amount,seller_amount,status,tx_kind,deposit_amount,balance_due,scheduled_at,expires_at,settled_at,completed_at,created_at,post:posts(id,text,img_url,media_urls),buyer:profiles!transactions_buyer_id_fkey(id,prenom,nom,avatar_url),seller:profiles!transactions_seller_id_fkey(id,prenom,nom,avatar_url)";
 
@@ -138,6 +138,20 @@ function TransactionCard({ sb, T, Btn, tx, myId, notify, onChanged }) {
     }
   };
 
+    const report = async () => {
+    const reason = window.prompt("Explique ce qui s'est passé (visible par les admins) :");
+    if (!reason || reason.trim().length < 5) return;
+    setBusy(true);
+    try {
+      const { error } = await sb.rpc("report_transaction", { p_tx_id: tx.id, p_reason: reason.trim() });
+      if (error) throw error;
+      notify("Signalement envoyé ✦ Un admin va l'examiner");
+    } catch (e) {
+      notify(e.message || "Erreur");
+    } finally {
+      setBusy(false);
+    }
+  };
   const payBalance = async () => {
     setBusy(true);
     try {
@@ -172,7 +186,7 @@ function TransactionCard({ sb, T, Btn, tx, myId, notify, onChanged }) {
             <span style={{ fontSize: 11, fontWeight: 700, color: st.color }}>{st.label}</span>
           </div>
           <p style={{ margin: "2px 0", fontSize: 14, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {tx.post?.text || "Article supprimé"}
+            {tx.post ? (tx.post.text || "Article (sans description)") : "Article supprimé"}
           </p>
           <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
             {other ? `${other.prenom || ""} ${other.nom || ""}`.trim() : "—"} · {fmt(tx.amount)} F · x{tx.quantity}
@@ -221,23 +235,144 @@ function TransactionCard({ sb, T, Btn, tx, myId, notify, onChanged }) {
         <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted }}>En attente que le client paie le solde.</p>
       )}
 
-      {(tx.status === "reserved" || tx.status === "pending_delivery") && (
-        <button onClick={cancel} disabled={busy} style={{ width: "100%", background: "none", border: "none", color: T.err || "#e5484d", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 0" }}>
-          Annuler la transaction
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {(tx.status === "reserved" || tx.status === "pending_delivery") ? (
+          <button onClick={cancel} disabled={busy} style={{ background: "none", border: "none", color: T.err || "#e5484d", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 0" }}>
+            Annuler la transaction
+          </button>
+        ) : <span />}
+        <button onClick={report} disabled={busy} style={{ background: "none", border: "none", color: T.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 0" }}>
+          🚩 Signaler
         </button>
-      )}
+      </div>
+    </div>
+  );
+}
+function EditListingModal({ sb, T, Btn, post, onClose, notify, onSaved }) {
+  const [price, setPrice] = useState(String(post.price || ""));
+  const [unlimited, setUnlimited] = useState(!!post.stock_unlimited);
+  const [stock, setStock] = useState(String(post.stock ?? ""));
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const p = parseInt(price, 10);
+    if (!p || p < 1) return notify("Entre un prix valide");
+    if (!unlimited && (isNaN(parseInt(stock, 10)) || parseInt(stock, 10) < 0)) return notify("Entre un stock valide");
+    setSaving(true);
+    try {
+      const { error } = await sb.from("posts").update({
+        price: p,
+        stock_unlimited: unlimited,
+        stock: unlimited ? null : parseInt(stock, 10),
+      }).eq("id", post.id);
+      if (error) throw error;
+      notify("Annonce mise à jour ✦");
+      onSaved();
+      onClose();
+    } catch (e) {
+      notify(e.message || "Erreur");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", zIndex: 10150, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ width: "100%", maxWidth: 480, background: T.bg2, borderRadius: "28px 28px 0 0", padding: "24px 20px 40px" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontFamily: "'Cormorant Garamond',serif", fontSize: 20, color: T.text }}>Modifier l'annonce</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer" }}><X size={22} /></button>
+        </div>
+
+        <label style={{ fontSize: 12, color: T.muted, marginBottom: 6, display: "block" }}>Prix unitaire (F CFA)</label>
+        <input
+          type="number" min="1" value={price} onChange={e => setPrice(e.target.value)}
+          style={{ width: "100%", background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", color: T.text, fontSize: 15, outline: "none", marginBottom: 16, boxSizing: "border-box" }}
+        />
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: T.text, marginBottom: 12, cursor: "pointer" }}>
+          <input type="checkbox" checked={unlimited} onChange={e => setUnlimited(e.target.checked)} />
+          Stock illimité
+        </label>
+
+        {!unlimited && (
+          <>
+            <label style={{ fontSize: 12, color: T.muted, marginBottom: 6, display: "block" }}>Stock disponible</label>
+            <input
+              type="number" min="0" value={stock} onChange={e => setStock(e.target.value)}
+              style={{ width: "100%", background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", color: T.text, fontSize: 15, outline: "none", marginBottom: 20, boxSizing: "border-box" }}
+            />
+          </>
+        )}
+
+        <Btn onClick={save} disabled={saving} style={{ width: "100%", height: 50, borderRadius: 14, background: T.gradGold, color: "#000", fontWeight: 800, fontSize: 14 }}>
+          {saving ? "…" : "Enregistrer"}
+        </Btn>
+      </div>
     </div>
   );
 }
 
+function ListingCard({ sb, T, post, notify, onEdit, onChanged }) {
+  const img = post.img_url || post.media_urls?.[0];
+  const soldOut = !post.stock_unlimited && (post.stock ?? 0) <= 0;
+
+  const remove = async () => {
+    if (!window.confirm("Supprimer cette annonce ?")) return;
+    const { error } = await sb.from("posts").delete().eq("id", post.id);
+    if (error) { notify(error.message || "Suppression impossible"); return; }
+    notify("Annonce supprimée");
+    onChanged();
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "center", background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 18, padding: 14, marginBottom: 12 }}>
+      {img ? (
+        <img src={img} alt="" style={{ width: 56, height: 56, borderRadius: 12, objectFit: "cover", flexShrink: 0 }} />
+      ) : (
+        <div style={{ width: 56, height: 56, borderRadius: 12, background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Package size={22} color={T.muted} />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {post.text || "Article"}
+        </p>
+        <p style={{ margin: 0, fontSize: 12, color: soldOut ? (T.err || "#e5484d") : T.muted }}>
+          {fmt(post.price)} F · {post.stock_unlimited ? "Illimité" : soldOut ? "Épuisé" : `${post.stock} dispo.`}
+        </p>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <button onClick={() => onEdit(post)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: T.goldL, background: T.goldBg, border: `1px solid ${T.gold}44`, borderRadius: 10, padding: "6px 10px", cursor: "pointer" }}>
+          <Pencil size={12} /> Modifier
+        </button>
+        <button onClick={remove} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: T.err || "#e5484d", background: "none", border: `1px solid ${T.border}`, borderRadius: 10, padding: "6px 10px", cursor: "pointer" }}>
+          <Trash2 size={12} /> Supprimer
+        </button>
+      </div>
+    </div>
+  );
+}
 /* ---------------------------------------------------------------- */
 export default function TransactionsScreen({ sb, T, Btn, session, notify, onClose, pushNav, popNav }) {
   const [tab, setTab] = useState("active");
   const [rows, setRows] = useState(null);
+  const [editing, setEditing] = useState(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const load = useCallback(async () => {
+    if (tab === "listings") {
+      const { data, error } = await sb
+        .from("posts")
+        .select("id,text,img_url,media_urls,price,stock,stock_unlimited,deal_type,created_at")
+        .eq("author_id", session.user.id)
+        .eq("is_for_sale", true)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!error && mounted.current) setRows(data || []);
+      return;
+    }
     const statuses = tab === "active" ? ["reserved", "pending_delivery"] : ["completed", "cancelled"];
     const { data, error } = await sb
       .from("transactions")
@@ -246,8 +381,11 @@ export default function TransactionsScreen({ sb, T, Btn, session, notify, onClos
       .in("status", statuses)
       .order("created_at", { ascending: false })
       .limit(50);
-    if (!error && mounted.current) setRows(data || []);
-  }, [sb, session.user.id, tab]);
+    if (mounted.current) {
+      if (error) { notify(error.message || "Impossible de charger"); setRows([]); }
+      else setRows(data || []);
+    }
+  }, [sb, session.user.id, tab, notify]);
 
   useEffect(() => { setRows(null); load(); }, [load]);
 
@@ -267,7 +405,7 @@ export default function TransactionsScreen({ sb, T, Btn, session, notify, onClos
       </div>
 
       <div style={{ display: "flex", gap: 8, padding: "14px 18px 0" }}>
-        {[{ v: "active", l: "En cours" }, { v: "history", l: "Historique" }].map(t => (
+        {[{ v: "active", l: "En cours" }, { v: "history", l: "Historique" }, { v: "listings", l: "Mes annonces" }].map(t => (
           <button key={t.v} onClick={() => setTab(t.v)} style={{
             flex: 1, padding: "10px", borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: "pointer",
             border: `1px solid ${tab === t.v ? T.gold : T.border}`,
@@ -284,17 +422,25 @@ export default function TransactionsScreen({ sb, T, Btn, session, notify, onClos
           <p style={{ color: T.muted, fontSize: 13, textAlign: "center", marginTop: 40 }}>Chargement…</p>
         ) : rows.length === 0 ? (
           <div style={{ textAlign: "center", marginTop: 60 }}>
-            {tab === "active" ? <Clock size={32} color={T.muted} /> : <CheckCircle2 size={32} color={T.muted} />}
+            {tab === "active" ? <Clock size={32} color={T.muted} /> : tab === "listings" ? <Package size={32} color={T.muted} /> : <CheckCircle2 size={32} color={T.muted} />}
             <p style={{ color: T.muted, fontSize: 13, marginTop: 10 }}>
-              {tab === "active" ? "Aucune transaction en cours" : "Aucun historique pour l'instant"}
+              {tab === "active" ? "Aucune transaction en cours" : tab === "listings" ? "Aucune annonce en vente" : "Aucun historique pour l'instant"}
             </p>
           </div>
+        ) : tab === "listings" ? (
+          rows.map(post => (
+            <ListingCard key={post.id} sb={sb} T={T} post={post} notify={notify} onEdit={setEditing} onChanged={load} />
+          ))
         ) : (
           rows.map(tx => (
             <TransactionCard key={tx.id} sb={sb} T={T} Btn={Btn} tx={tx} myId={session.user.id} notify={notify} onChanged={load} />
           ))
         )}
       </div>
+
+      {editing && (
+        <EditListingModal sb={sb} T={T} Btn={Btn} post={editing} notify={notify} onClose={() => setEditing(null)} onSaved={load} />
+      )}
     </div>
   );
 }

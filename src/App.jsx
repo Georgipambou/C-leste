@@ -10035,13 +10035,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
  const [showFollowing,setShowFollowing]=useState(false);
 const [showWallet,setShowWallet]=useState(false);
 const [showDeposit,setShowDeposit]=useState(false);
-const [buyingPost,setBuyingPost]=useState(null);
 const [showTransactions,setShowTransactions]=useState(false);
-useEffect(()=>{
-  const h=e=>{pushNav(()=>setBuyingPost(null));setBuyingPost(e.detail);};
-  window.addEventListener("celeste_open_product",h);
-  return()=>window.removeEventListener("celeste_open_product",h);
-},[pushNav]);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
   const avRef=useRef(); const cvRef=useRef();
@@ -10197,7 +10191,7 @@ const localToggleParticipate=async pid=>{
     <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
       {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} pushNav={pushNav} popNav={popNav}/>}
 {showDeposit&&<DepositScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowDeposit(false);}} pushNav={pushNav} popNav={popNav}/>}
-{buyingPost&&<ProductBuyModal sb={sb} T={T} Btn={Btn} post={buyingPost} notify={notify} onClose={()=>{popNav();setBuyingPost(null);}} onDone={()=>{}}/>}
+
 {showTransactions&&<TransactionsScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowTransactions(false);}} pushNav={pushNav} popNav={popNav}/>}
       <input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"avatar_url")}/>
       <input type="file" ref={cvRef} accept="image/*" style={{display:"none"}} onChange={e=>uploadImg(e,"cover_url")}/>
@@ -10729,7 +10723,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
   const [deletingReportId,setDeletingReportId]=useState(null);
   const [permsOpenFor,setPermsOpenFor]=useState(null);
   const [pendingScopes,setPendingScopes]=useState([]);
-  const [pendingIsAdmin,setPendingIsAdmin]=useState(false);
+    const [txReports,setTxReports]=useState([]);
 
   const ADMIN_SCOPE_LABELS={pending:"En attente",members:"Membres",suspended:"Suspendus",reports:"Signalements",stickers:"Sons & Stickers",finance:"Finance (retraits, pool, plaintes)"};
   const myScopes=myProfile?.is_super_admin?["pending","members","suspended","reports","stickers","finance"]:(myProfile?.admin_scopes||[]);
@@ -10747,6 +10741,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
     sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
     sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom),post:posts(id,text,media_urls,img_url),sticker:stickers(id,name,url,type,added_by_admin,author_id)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
     sb.from("posts").select(`*,author:profiles(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
+    sb.from("transaction_reports").select(`*,reporter:profiles!transaction_reports_reporter_id_fkey(prenom,nom),reported:profiles!transaction_reports_reported_user_id_fkey(prenom,nom),transaction:transactions(id,amount,quantity,status,unit_price,post:posts(text))`).eq("status","pending").order("created_at",{ascending:false}).then(({data})=>setTxReports(data||[]));
   },[]);
 
   const approve=async(id)=>{
@@ -10765,13 +10760,29 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
   };
   const suspend=async(id,status)=>{
     const ns=status==="suspended"?"active":"suspended";
-    const{error}=await sb.from("profiles").update({status:ns}).eq("id",id);
+
+    if(ns==="active"){
+      const{error}=await sb.from("profiles").update({status:ns,marketplace_blocked:false}).eq("id",id);
+      if(error){notify("Erreur : "+error.message);return;}
+      const{data}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+      if(data)setList(data.map(normProfile));
+      reload?.();
+      notify("✓ Réactivé avec succès");
+      return;
+    }
+
+    const tierChoice=window.prompt("Amende à appliquer :\n1 = Mineur (2 000 F)\n2 = Modéré (5 000 F)\n3 = Grave (15 000 F)\n4 = Très grave (30 000 F)\n0 = Aucune amende\n\nTape un chiffre :");
+    if(tierChoice===null)return;
+    const TIERS={"1":2000,"2":5000,"3":15000,"4":30000};
+    const fineAmount=TIERS[tierChoice.trim()]||null;
+    const reason=window.prompt("Raison de la suspension (visible par l'utilisateur) :")||null;
+
+    const{error}=await sb.rpc("admin_suspend_with_fine",{p_user_id:id,p_fine_amount:fineAmount,p_reason:reason});
     if(error){notify("Erreur : "+error.message);return;}
-    // Recharge la liste depuis Supabase pour refléter l'état réel
     const{data}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
-if(data)setList(data.map(normProfile));
+    if(data)setList(data.map(normProfile));
     reload?.();
-    notify(ns==="suspended"?"🚫 Suspendu":"✓ Réactivé avec succès");
+    notify(fineAmount?`🚫 Suspendu — amende de ${fineAmount} F CFA requise`:"🚫 Suspendu");
   };
  const chBadge=async(id,badge)=>{
   const{error}=await sb.from("profiles").update({badge}).eq("id",id);
@@ -10784,6 +10795,30 @@ if(data)setList(data.map(normProfile));
     if(error){notify("Erreur : "+error.message);console.error(error);return;}
     setAllPosts(p=>p.map(x=>x.id===pid?{...x,pinned:!pinned}:x));
     reloadPosts?.();notify(pinned?"Désépinglé":"Épinglé ✦");
+  };
+   const resolveTxReport=async(id,action)=>{
+    let fineAmount=null,notes=null;
+    if(action==="ban"){
+      const tierChoice=window.prompt("Amende à appliquer :\n1 = Mineur (2 000 F)\n2 = Modéré (5 000 F)\n3 = Grave (15 000 F)\n4 = Très grave (30 000 F)\n\nTape un chiffre :");
+      if(tierChoice===null)return;
+      const TIERS={"1":2000,"2":5000,"3":15000,"4":30000};
+      fineAmount=TIERS[tierChoice.trim()];
+      if(!fineAmount){notify("Choix invalide");return;}
+      notes=window.prompt("Raison (visible par l'utilisateur) :");
+    }else if(action==="warn"||action==="block"){
+      notes=window.prompt(action==="warn"?"Message d'avertissement :":"Raison du blocage (optionnel) :");
+      if(action==="warn"&&!notes?.trim())return;
+    }
+    const{error}=await sb.rpc("resolve_report",{p_report_id:id,p_verdict:"confirmed",p_admin_notes:notes,p_action:action,p_fine_amount:fineAmount});
+    if(error){notify("Erreur : "+error.message);return;}
+    setTxReports(p=>p.filter(x=>x.id!==id));
+    notify(action==="warn"?"Avertissement envoyé":action==="block"?"Compte bloqué du marketplace":"Compte suspendu, amende créée");
+  };
+  const clearTxReport=async(id)=>{
+    const{error}=await sb.rpc("resolve_report",{p_report_id:id,p_verdict:"cleared"});
+    if(error){notify("Erreur : "+error.message);return;}
+    setTxReports(p=>p.filter(x=>x.id!==id));
+    notify("Compte innocenté, retraits débloqués ✦");
   };
 
   const norm=s=>(s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -10812,7 +10847,7 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
           <Btn onMouseDown={e=>e.preventDefault()} onClick={onClose} style={{color:T.muted,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.04)",borderRadius:"50%",border:`1px solid ${T.border}`}}><X size={16}/></Btn>
         </div>
         <div style={{display:"flex",gap:4,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:"auto"}}>
-          {[{id:"pending",l:`En attente (${pending.length})`,scope:"pending"},{id:"all",l:"Tous",scope:"members"},{id:"suspended",l:`Suspendus (${suspended.length})`,scope:"suspended"},{id:"reports",l:`Signalements (${otherReports.length})`,scope:"reports"},{id:"sticker_reports",l:`Stickers signalés (${stickerReports.length})`,scope:"stickers"},{id:"sons",l:"Sons",scope:"stickers"},{id:"stickers",l:"Stickers",scope:"stickers"}].filter(f=>hasScope(f.scope)).map(f=>(
+          {[{id:"pending",l:`En attente (${pending.length})`,scope:"pending"},{id:"all",l:"Tous",scope:"members"},{id:"suspended",l:`Suspendus (${suspended.length})`,scope:"suspended"},{id:"reports",l:`Signalements (${otherReports.length})`,scope:"reports"},{id:"tx_reports",l:`Litiges transactions (${txReports.length})`,scope:"finance"},{id:"sticker_reports",l:`Stickers signalés (${stickerReports.length})`,scope:"stickers"},{id:"sons",l:"Sons",scope:"stickers"},{id:"stickers",l:"Stickers",scope:"stickers"}].filter(f=>hasScope(f.scope)).map(f=>(
 
           <Btn key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"7px 14px",borderRadius:20,background:filter===f.id?T.goldBg:"rgba(255,255,255,0.03)",border:`1px solid ${filter===f.id?T.gold+"44":T.border}`,color:filter===f.id?T.goldL:T.muted,fontSize:12,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
               {f.l}
@@ -10867,6 +10902,33 @@ const otherReports=(allReports||[]).filter(r=>!r.sticker_id);
                   ):(
                     <p style={{margin:0,fontSize:11,color:T.muted,fontStyle:"italic"}}>Sticker déjà supprimé</p>
                   )}
+                </div>
+              ))}
+            </div>
+            :filter==="tx_reports"
+            ?<div>
+  {(txReports||[]).length===0&&<p style={{textAlign:"center",padding:30,color:T.muted,fontStyle:"italic"}}>Aucun litige en attente</p>}
+  {(txReports||[]).map(r=>(
+                <div key={r.id} style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,background:"rgba(200,64,64,0.03)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <span style={{fontSize:10,background:"rgba(200,64,64,0.12)",color:T.err,padding:"2px 8px",borderRadius:20,fontWeight:700}}>🚩 LITIGE TRANSACTION</span>
+                    <span style={{fontSize:10,color:T.muted}}>{new Date(r.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p style={{margin:"0 0 3px",fontSize:13,color:T.text}}><strong>Signalé :</strong> {r.reported?.prenom} {r.reported?.nom}</p>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.muted}}><strong>Par :</strong> {r.reporter?.prenom} {r.reporter?.nom}</p>
+                  <p style={{margin:"0 0 3px",fontSize:12,color:T.goldL}}><strong>Raison :</strong> {r.reason}</p>
+                  {r.transaction&&(
+                    <div style={{marginTop:6,padding:"8px 10px",background:"rgba(255,255,255,0.04)",borderRadius:10,borderLeft:`3px solid ${T.err}`}}>
+                      <p style={{margin:0,fontSize:10,fontWeight:700,color:T.err}}>📦 Transaction concernée</p>
+                      <p style={{margin:"3px 0 0",fontSize:11,color:T.sub}}>{r.transaction.post?.text||"Article"} · {r.transaction.amount} F · statut : {r.transaction.status}</p>
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                    <Btn onClick={()=>clearTxReport(r.id)} style={{fontSize:11,color:T.ok,fontWeight:700,padding:"6px 12px",border:`1px solid ${T.ok}55`,borderRadius:8}}>✓ Innocenter</Btn>
+                    <Btn onClick={()=>resolveTxReport(r.id,"warn")} style={{fontSize:11,color:"#e0b84a",fontWeight:700,padding:"6px 12px",border:"1px solid #e0b84a55",borderRadius:8}}>⚠ Avertir</Btn>
+                    <Btn onClick={()=>resolveTxReport(r.id,"block")} style={{fontSize:11,color:T.err,fontWeight:700,padding:"6px 12px",border:`1px solid ${T.err}55`,borderRadius:8}}>🔒 Bloquer</Btn>
+                    <Btn onClick={()=>resolveTxReport(r.id,"ban")} style={{fontSize:11,color:"#fff",fontWeight:700,padding:"6px 12px",background:T.err,borderRadius:8}}>⛔ Bannir + amende</Btn>
+                  </div>
                 </div>
               ))}
             </div>
@@ -11555,6 +11617,12 @@ const pushNav = useCallback((closeFn) => {
   navStack.current.push(closeFn);
   if(!isNative){ try{ window.history.pushState({celesteModal:true}, ""); }catch(e){} }
 }, []);
+const [buyingPost,setBuyingPost]=useState(null);
+useEffect(()=>{
+  const h=e=>{pushNav(()=>setBuyingPost(null));setBuyingPost(e.detail);};
+  window.addEventListener("celeste_open_product",h);
+  return()=>window.removeEventListener("celeste_open_product",h);
+},[pushNav]);
 useEffect(()=>{
   window.__celesteOpenAdmin=(section)=>{
     pushNav(()=>setShowAdmin(false));
@@ -12261,6 +12329,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
             </div>
         </div>
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
+        {buyingPost&&<ProductBuyModal sb={sb} T={T} Btn={Btn} post={buyingPost} notify={notify} onClose={()=>{popNav();setBuyingPost(null);}} onDone={()=>{}}/>}
 {globalViewerPost&&(
   <FeedViewer
     onOpenComments={(p,cb)=>{pushNav(()=>{setGlobalCommentPost(null);setGlobalCloseCallback(null);});setGlobalCommentPost(p);setGlobalCloseCallback(()=>cb);}}
