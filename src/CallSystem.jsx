@@ -145,7 +145,25 @@ export function CallProvider({ sb, currentUser, T, children }) {
       return;
     }
     try {
-        useEffect(() => {
+      const c = StreamVideoClient.getOrCreateInstance({
+        apiKey: STREAM_API_KEY,
+        user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
+        tokenProvider: async () => {
+          const { data, error } = await sb.functions.invoke('stream-token');
+          if (error || !data?.token) throw new Error('stream-token indisponible');
+          return data.token;
+        },
+        options: { timeout: 20000 },
+      });
+      clientRef.current = c;
+      setClient(c);
+    } catch (e) {
+      console.error('[Call] Init Stream impossible:', e);
+      setCallError("Impossible de se connecter au service d'appel.");
+    }
+  }, [currentUser?.id, sb]);
+
+  useEffect(() => {
     if (!client) return;
     const handleSignal = async (e) => {
       const { callId, action } = e.detail || {};
@@ -177,23 +195,6 @@ export function CallProvider({ sb, currentUser, T, children }) {
     window.addEventListener('celeste-call-signal', handleSignal);
     return () => window.removeEventListener('celeste-call-signal', handleSignal);
   }, [client]);
-      const c = StreamVideoClient.getOrCreateInstance({
-        apiKey: STREAM_API_KEY,
-        user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
-        tokenProvider: async () => {
-          const { data, error } = await sb.functions.invoke('stream-token');
-          if (error || !data?.token) throw new Error('stream-token indisponible');
-          return data.token;
-        },
-        options: { timeout: 20000 },
-      });
-      clientRef.current = c;
-      setClient(c);
-    } catch (e) {
-      console.error('[Call] Init Stream impossible:', e);
-      setCallError("Impossible de se connecter au service d'appel.");
-    }
-  }, [currentUser?.id, sb]);
 
   const startCall = useCallback(async (targetUserId, { video = true } = {}) => {
     if (!client || !sb) {
