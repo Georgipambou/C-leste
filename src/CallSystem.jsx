@@ -149,6 +149,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
         apiKey: STREAM_API_KEY,
         user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
         tokenProvider: async () => {
+          try { await sb.auth.getSession(); } catch (e) {} // force le rafraîchissement si le jeton est périmé
           const { data, error } = await sb.functions.invoke('stream-token');
           if (error || !data?.token) throw new Error('stream-token indisponible');
           return data.token;
