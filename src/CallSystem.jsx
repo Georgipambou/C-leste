@@ -73,10 +73,14 @@ function useRingtone(kind) {
     if (kind === 'incoming') {
       const audio = new Audio(RINGTONE_FILE);
       audio.loop = true;
-      let stopped = false;
-      let stopFallback = null;
-      audio.play().catch(() => { if (!stopped) stopFallback = startRingtone('incoming'); });
-      return () => { stopped = true; audio.pause(); audio.src = ''; stopFallback?.(); };
+      const tryPlay = () => audio.play().catch(() => {});
+      tryPlay();
+      document.addEventListener('pointerdown', tryPlay, { once: true });
+      return () => {
+        document.removeEventListener('pointerdown', tryPlay);
+        audio.pause();
+        audio.src = '';
+      };
     }
     return startRingtone(kind);
   }, [kind]);
@@ -94,6 +98,24 @@ function ensureStreamUsers(sb, ids) {
     p.catch(() => missing.forEach(id => ensuredUsers.delete(id)));
   }
   return Promise.all(ids.filter(Boolean).map(id => ensuredUsers.get(id)));
+}
+async function logCallMessage(sb, { meId, otherId, status, video, durationSec }) {
+  try {
+    const { data: existing } = await sb.from('conversations').select('id')
+      .or(`and(user1_id.eq.${meId},user2_id.eq.${otherId}),and(user1_id.eq.${otherId},user2_id.eq.${meId})`)
+      .maybeSingle();
+    let convId = existing?.id;
+    if (!convId) {
+      const { data: created } = await sb.from('conversations').insert({ user1_id: meId, user2_id: otherId }).select().single();
+      convId = created?.id;
+    }
+    if (convId) {
+      await sb.from('messages').insert({
+        conv_id: convId, sender_id: meId, type: 'call', text: '',
+        call_status: status, call_video: video, call_duration: durationSec || 0,
+      });
+    }
+  } catch (e) { console.warn('[Call] log message:', e); }
 }
 
 // Interrupteur global : passe à false pour désactiver la fonctionnalité.
@@ -123,6 +145,38 @@ export function CallProvider({ sb, currentUser, T, children }) {
       return;
     }
     try {
+        useEffect(() => {
+    if (!client) return;
+    const handleSignal = async (e) => {
+      const { callId, action } = e.detail || {};
+      if (!callId) return;
+      const [type, id] = callId.includes(':') ? callId.split(':') : ['default', callId];
+      const call = client.call(type, id);
+      try {
+        if (action === 'accept') {
+          setMinimized(false);
+          setActiveCall(call);
+          try { await call.microphone.enable(); } catch (err) {}
+          try {
+            const isVideo = call.state.custom?.video !== false;
+            if (isVideo) await call.camera.enable(); else await call.camera.disable();
+          } catch (err) {}
+          await call.join({ joinResponseTimeout: 20000, rpcRequestTimeout: 15000 });
+        } else if (action === 'decline') {
+          await call.leave({ reject: true });
+        }
+      } catch (err) {
+        console.error('[Call] signal natif:', err);
+        setCallError("Impossible de rejoindre l'appel depuis l'écran natif.");
+      }
+    };
+    if (window.__celesteIncomingCallSignal) {
+      handleSignal({ detail: window.__celesteIncomingCallSignal });
+      window.__celesteIncomingCallSignal = null;
+    }
+    window.addEventListener('celeste-call-signal', handleSignal);
+    return () => window.removeEventListener('celeste-call-signal', handleSignal);
+  }, [client]);
       const c = StreamVideoClient.getOrCreateInstance({
         apiKey: STREAM_API_KEY,
         user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
@@ -151,8 +205,15 @@ export function CallProvider({ sb, currentUser, T, children }) {
     setCallError(null);
     setConnecting(true);
     try {
+      const { data: targetProfile } = await sb.from('profiles').select('no_calls').eq('id', targetUserId).maybeSingle();
+      if (targetProfile?.no_calls) {
+        setCallError("Cette personne n'accepte pas les appels pour le moment.");
+        setConnecting(false);
+        return;
+      }
       const call = client.call('default', crypto.randomUUID());
       call.__outgoing = true;
+      call.__otherUserId = targetUserId;
       setMinimized(false);
       setActiveCall(call);
       await ensureStreamUsers(sb, [currentUser.id, targetUserId]);
@@ -167,6 +228,9 @@ export function CallProvider({ sb, currentUser, T, children }) {
         data: {
           members: [{ user_id: currentUser.id }, { user_id: targetUserId }],
           custom: { video },
+          settings_override: {
+            ring: { auto_cancel_timeout_ms: 45000, incoming_call_timeout_ms: 45000 },
+          },
         },
       });
     } catch (e) {
@@ -221,6 +285,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
           <IncomingCallHandler T={theme} onAccepted={(c) => { setMinimized(false); setActiveCall(c); }} onError={setCallError} />
           {activeCall && (
             <StreamCall call={activeCall}>
+              <CallOutcomeLogger sb={sb} meId={currentUser.id} otherId={activeCall.__otherUserId || activeCall.state.createdBy?.id} />
               {minimized
                 ? <MinimizedCallBubble onExpand={() => setMinimized(false)} onEnd={endCall} T={theme} />
                 : <InCallScreen onEnd={endCall} onMinimize={() => setMinimized(true)} T={theme} />}
@@ -265,6 +330,7 @@ function IncomingCallGate({ call, T, onAccepted, onError }) {
   const [answered, setAnswered] = useState(false);
   if (callingState !== CallingState.RINGING || answered) return null;
 
+  const otherUserId = call.state.createdBy?.id;
   const accept = async () => {
     setAnswered(true);
     onAccepted(call);
@@ -285,6 +351,36 @@ function IncomingCallGate({ call, T, onAccepted, onError }) {
   return <IncomingCallScreen call={call} onAccept={accept} onDecline={decline} T={T} />;
 }
 
+// Ne s'exécute que côté appelant : évite un doublon dans la conversation
+function CallOutcomeLogger({ sb, meId, otherId }) {
+  const call = useCall();
+  const { useCallCallingState } = useCallStateHooks();
+  const callingState = useCallCallingState();
+  const loggedRef = useRef(false);
+
+  useEffect(() => {
+    if (!call?.isCreatedByMe) return;
+    return call.on('call.rejected', () => { call.__rejected = true; });
+  }, [call]);
+
+  useEffect(() => {
+    if (!call?.isCreatedByMe || loggedRef.current) return;
+    if (callingState !== CallingState.LEFT) return;
+    loggedRef.current = true;
+    const video = call.state.custom?.video !== false;
+    const connectedAt = call.__connectedAt;
+    const status = connectedAt ? 'completed' : (call.__rejected ? 'declined' : 'missed');
+    const durationSec = connectedAt ? Math.floor((Date.now() - connectedAt) / 1000) : 0;
+    logCallMessage(sb, { meId, otherId, status, video, durationSec });
+    if (status === 'missed') {
+      sb.functions.invoke('send-push', {
+        body: { targetUserId: otherId, title: '📵 Appel manqué', body: `${call.state.createdBy?.name || 'Quelqu\u2019un'} a essayé de t'appeler` },
+      }).catch(() => {});
+    }
+  }, [callingState, call, sb, meId, otherId]);
+
+  return null;
+}
 function IconLabel({ onClick, active, danger, T, icon, label }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
@@ -300,6 +396,7 @@ function IconLabel({ onClick, active, danger, T, icon, label }) {
     </div>
   );
 }
+
 
 // Chrono basé sur l'heure de connexion de l'appel : ne repart pas à zéro quand on réduit/agrandit l'écran
 function useElapsedSeconds(active) {
@@ -394,7 +491,12 @@ function InCallScreen({ onEnd, onMinimize, T }) {
   const { camera, isMute: isCamMuted } = useCameraState();
   const callingState = useCallCallingState();
   const other = participants.find(p => !p.isLocalParticipant);
-  const isRinging = !other && callingState !== CallingState.LEFT;
+  const wasConnected = useRef(false);
+  if (other) wasConnected.current = true;
+  useEffect(() => {
+    if (wasConnected.current && !other) onEnd();
+  }, [other]);
+  const isRinging = !wasConnected.current && !other && callingState !== CallingState.LEFT;
   useRingtone(isRinging && call?.__outgoing ? 'outgoing' : null);
   useEffect(() => { if (callingState === CallingState.LEFT) onEnd(); }, [callingState]);
   const sec = useElapsedSeconds(!!other);

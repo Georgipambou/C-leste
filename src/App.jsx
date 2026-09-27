@@ -61,7 +61,10 @@ import {
 import { ProfileViewsCard, DiscoverPeopleSection, logProfileView, ProfileHeader } from "./ProfileDashboard";
 import { DuoButton, DuoBadge, DuoPrivacySetting, saveDuoCollaborators } from "./Duo";
 import DepositScreen from "./DepositScreen";
-import { MarketplaceFields, ForSaleButton, ProductBuyModal } from "./Marketplace";
+import SaleAlertOverlay from "./SaleAlertOverlay";
+import FinePaymentScreen from "./FinePaymentScreen";
+import JobSeekerQuizScreen from "./JobSeekerQuizScreen";
+import { MarketplaceFields, ForSaleButton, ProductBuyModal, SellerRatingStars } from "./Marketplace";
 import TransactionsScreen from "./Transactions";
 import { CallProvider, CallButton } from "./CallSystem";
 import { createClient } from "@supabase/supabase-js";
@@ -3605,7 +3608,8 @@ async function runPublish(payload,{onProgress}={}){
     whatsapp_contact:isForSale&&contactType==="whatsapp"?(whatsappNum.trim()?`${whatsappIndicatif}${whatsappNum.trim()}`:null):null,
     contact_link:isForSale&&contactType==="link"?(contactLink.trim()||null):null,
     price:isForSale?(Number(price)||null):null,
-    stock:isForSale?(Number(stock)||null):null,
+    stock:isForSale?(stockUnlimited?null:(Number(stock)||null)):null,
+    stock_unlimited:isForSale?stockUnlimited:false,
     deal_type:isForSale?(dealType||"sale"):null,
     expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
     poll_multiple:type==="poll"?pollMultiple:false,
@@ -3841,6 +3845,7 @@ try {
 const [saleExpiry,setSaleExpiry]=useState("30");
 const [price,setPrice]=useState("");
 const [stock,setStock]=useState("");
+const [stockUnlimited,setStockUnlimited]=useState(false);
 const [dealType,setDealType]=useState("sale");
 const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:type==="poll"?(text.trim().length>0&&pollOptions.filter(o=>o.trim()).length>=2):evTitle.trim().length>0;
 
@@ -3952,7 +3957,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
                 </div>
               </div>
             )}
-            {isForSale&&<MarketplaceFields T={T} myProfile={myProfile} price={price} setPrice={setPrice} stock={stock} setStock={setStock} dealType={dealType} setDealType={setDealType}/>}
+            {isForSale&&<MarketplaceFields T={T} myProfile={myProfile} price={price} setPrice={setPrice} stock={stock} setStock={setStock} stockUnlimited={stockUnlimited} setStockUnlimited={setStockUnlimited} dealType={dealType} setDealType={setDealType}/>}
             {/* Option contenu généré par IA (photo/vidéo uniquement) */}
             {type==="photo"&&(
               <div onClick={()=>setIsAiGenerated(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
@@ -8116,6 +8121,15 @@ const handleFile=async(e,isImg)=>{
                         )
                       : ((m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>)
                   )}
+                  {m.type==="call"&&(()=>{
+  const label=m.call_status==="completed"
+    ?`${m.call_video?"🎥 Appel vidéo":"📞 Appel audio"} · ${Math.floor((m.call_duration||0)/60)}:${String((m.call_duration||0)%60).padStart(2,"0")}`
+    :m.call_status==="declined"?`📵 Appel ${m.call_video?"vidéo":"audio"} refusé`
+    :`📵 Appel ${m.call_video?"vidéo":"audio"} manqué`;
+  return <div style={{display:"flex",alignItems:"center",gap:8,padding:"4px 2px",color:mine?"rgba(0,0,0,0.65)":T.text}}>
+    <Phone size={16}/><span style={{fontSize:13,fontWeight:600}}>{label}</span>
+  </div>;
+})()}
                   {(m.text||(m.type==="text"&&m.view_once))&&(
                     m.type==="text"&&m.view_once
                       ? (mine
@@ -8626,6 +8640,7 @@ if(user?.status==="suspended") return(
               :part
           )}</p>}
           <LinksRow links={user.links}/>
+          <SellerRatingStars T={T} sb={sb} sellerId={user.id} pushNav={pushNav} popNav={popNav}/>
         </>}
         stats={[
           {l:"POSTS",v:uPosts.length,icon:<Grid size={14}/>},
@@ -8905,6 +8920,7 @@ if(blocked||blockedByOther) return(
           {user.bio&&<p style={{margin:"0 0 10px",fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio)}</p>}
           {user.org_desc&&<p style={{margin:"0 0 4px",fontSize:13,color:T.muted,lineHeight:1.6,fontStyle:"italic"}}>{user.org_desc}</p>}
           <LinksRow links={user.links}/>
+          <SellerRatingStars T={T} sb={sb} sellerId={user.id} pushNav={pushNav} popNav={popNav}/>
         </>}
         stats={[
           {l:"PUBLICATIONS",v:uPosts.length,icon:<Grid size={14}/>},
@@ -9148,6 +9164,7 @@ function ParametresModal({myProfile,onLogout,notify,navTheme,onChooseNavTheme,pu
   const [open,setOpen]=useState(false);
   const [section,setSection]=useState(null);
   const [dnd,setDnd]=useState(false);
+  const [noCalls,setNoCalls]=useState(false);
   const [discoverable,setDiscoverable]=useState(true);
 const [hideOnline,setHideOnline]=useState(false);
 const [screenshotProtection,setScreenshotProtection]=useState(false);
@@ -9155,6 +9172,7 @@ const [duoPermission,setDuoPermission]=useState("everyone");
 const [groupInvitePermission,setGroupInvitePermission]=useState("everyone");
   const [mode,setMode]=useState(()=>localStorage.getItem("celeste_theme")||"dark");
 const [showBugReport,setShowBugReport]=useState(false);
+const [showJobQuiz,setShowJobQuiz]=useState(false);
 const [showMutedBlocked,setShowMutedBlocked]=useState(false);
 const [bugText,setBugText]=useState("");
     useEffect(()=>{
@@ -9165,11 +9183,11 @@ const [bugText,setBugText]=useState("");
 
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
-    sb.from("profiles").select("no_messages,is_discoverable,hide_online,screenshot_protection,badge_payment_ref,badge,badge_expires_at")
+    sb.from("profiles").select("no_messages,no_calls,is_discoverable,hide_online,screenshot_protection,badge_payment_ref,badge,badge_expires_at")
       .eq("id",session.user.id)
       .maybeSingle()
       .then(async({data})=>{
-        if(data){setDnd(!!data.no_messages);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);}
+        if(data){setDnd(!!data.no_messages);setNoCalls(!!data.no_calls);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);}
         sb.from("profiles").select("duo_permission").eq("id",session.user.id).maybeSingle().then(({data:d})=>{if(d?.duo_permission)setDuoPermission(d.duo_permission);});
         if(data?.badge_payment_ref&&!data?.badge){
           try{
@@ -9188,8 +9206,15 @@ const [bugText,setBugText]=useState("");
     await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
     setMyProfile(p=>p&&({...p,no_messages:next}));
     notify(next?"🔕 Messages bloqués":"✅ Messages activés");
-  };
 
+  };
+const toggleNoCalls=async()=>{
+  const next=!noCalls;
+  setNoCalls(next);
+  await sb.from("profiles").update({no_calls:next}).eq("id",session.user.id);
+  setMyProfile(p=>p&&({...p,no_calls:next}));
+  notify(next?"📵 Appels bloqués":"✅ Appels autorisés");
+};
   const toggleDiscoverable=async()=>{
     const next=!discoverable;
     setDiscoverable(next);
@@ -9277,6 +9302,15 @@ const NAV_THEMES=[
                 <ChevronRight size={16} color={T.muted}/>
               </Btn>
             ))}
+            <Btn onClick={()=>{pushNav(()=>setShowJobQuiz(false));setShowJobQuiz(true);}}
+              style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.gold}44`,borderRadius:14,display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+              <span style={{fontSize:18}}>💼</span>
+              <div style={{flex:1,textAlign:"left"}}>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Chercher du travail</p>
+                <p style={{margin:0,fontSize:11,color:T.muted}}>Quiz, CV, préférences</p>
+              </div>
+              <ChevronRight size={16} color={T.muted}/>
+            </Btn>
             <div style={{height:1,background:T.border,margin:"16px 0"}}/>
             <Btn onClick={()=>{pushNav(()=>setShowBugReport(false));setShowBugReport(true);}} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
               <span>🐛</span>Signaler un bug
@@ -9287,6 +9321,7 @@ const NAV_THEMES=[
             </Btn>
           </>
         )}
+        {showJobQuiz&&<JobSeekerQuizScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowJobQuiz(false);}} pushNav={pushNav} popNav={popNav}/>}
         {showBugReport&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>{popNav();setShowBugReport(false);}}>
   <div style={{background:"#1a1a1a",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:500,marginBottom:"var(--kb-height,0px)"}} onClick={e=>e.stopPropagation()}>
     <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#fff",textAlign:"center"}}>🐛 Signaler un bug</p>
@@ -9339,7 +9374,16 @@ const NAV_THEMES=[
       </div>
       <Toggle active={dnd}/>
     </Btn>
-
+{/* Bloquer les appels */}
+<Btn onClick={toggleNoCalls}
+  style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
+  <span style={{fontSize:20}}>📵</span>
+  <div style={{flex:1,textAlign:"left"}}>
+    <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Bloquer les appels</p>
+    <p style={{margin:0,fontSize:11,color:T.muted}}>{noCalls?"Personne ne peut vous appeler":"Tout le monde peut vous appeler"}</p>
+  </div>
+  <Toggle active={noCalls}/>
+</Btn>
     {/* Masquer présence en ligne */}
     <Btn onClick={toggleHideOnline}
       style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
@@ -9662,7 +9706,7 @@ if(checkoutUrl){
   );
 }
 
-function WalletScreen({session,myProfile,notify,onClose,onOpenDeposit,pushNav,popNav}){
+function WalletScreen({session,myProfile,notify,onClose,onOpenDeposit,onOpenTransactions,pushNav,popNav}){
   const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
   const [wallet,setWallet]=useState(null);
   const [transactions,setTransactions]=useState([]);
@@ -9785,6 +9829,9 @@ if(wErr){setLoading(false);return notify(wErr.message||"Erreur, réessaie");}
               </button>
             </div>
           </div>
+          <button onClick={onOpenTransactions} style={{width:"100%",marginTop:14,background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontSize:12,fontWeight:600,textAlign:"center",cursor:"pointer",padding:"6px 0"}}>
+            📦 Voir mes achats et ventes →
+          </button>
         </div>
 {/* Stats du mois — discret */}
 {hasBadge&&(
@@ -10189,7 +10236,7 @@ const localToggleParticipate=async pid=>{
   return(
     
     <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
-      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} pushNav={pushNav} popNav={popNav}/>}
+      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} onOpenTransactions={()=>{pushNav(()=>setShowTransactions(false));setShowTransactions(true);}} pushNav={pushNav} popNav={popNav}/>}
 {showDeposit&&<DepositScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowDeposit(false);}} pushNav={pushNav} popNav={popNav}/>}
 
 {showTransactions&&<TransactionsScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowTransactions(false);}} pushNav={pushNav} popNav={popNav}/>}
@@ -10269,9 +10316,6 @@ const localToggleParticipate=async pid=>{
   <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
   💰 Portefeuille
 </button>
-<button onClick={()=>{pushNav(()=>setShowTransactions(false));setShowTransactions(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.glass,border:`1px solid ${T.border}`,borderRadius:14,color:T.text,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-  📦 Achats/Ventes
-</button>
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
     <Settings size={18} color={T.gold}/>
   </Btn>
@@ -10303,6 +10347,7 @@ const localToggleParticipate=async pid=>{
 </div>
             <p style={{margin:"0 0 6px",fontSize:13,color:T.muted,display:"flex",alignItems:"center",gap:3}}><MapPin size={13}/>{myProfile?.paroisse}</p>
            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio)}</p>}
+           <SellerRatingStars T={T} sb={sb} sellerId={session.user.id} pushNav={pushNav} popNav={popNav}/>
             {myProfile?.shop_link&&(
               <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
                 🛍️ Ma boutique
@@ -12152,16 +12197,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   if(!session) return(<><style>{getGS()}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}} pushNav={pushNav} popNav={popNav}/></>);
 
   if(myProfile?.status==="suspended") return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
-      <style>{getGS()}</style>
-      <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp .5s ease"}}>
-        <div style={{fontSize:60,marginBottom:20}}>
-          🚫</div>
-        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.err,marginBottom:12}}>Compte suspendu</h2>
-        <p style={{color:T.sub,fontSize:14,lineHeight:1.8,marginBottom:28}}>Votre compte a été suspendu par un administrateur.<br/>Pour toute question, contactez le support de la communauté.</p>
-        <Btn onClick={async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))sb.auth.signOut();}} style={{padding:"13px 30px",background:"rgba(200,64,64,0.08)",border:`1px solid ${T.err}44`,borderRadius:14,color:T.err,fontSize:14,fontWeight:600}}>Se déconnecter</Btn>
-      </div>
-    </div>
+    <FinePaymentScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onLogout={async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))sb.auth.signOut();}}/>
   );
 
   if(isPending) return(
@@ -12330,6 +12366,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
         </div>
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
         {buyingPost&&<ProductBuyModal sb={sb} T={T} Btn={Btn} post={buyingPost} notify={notify} onClose={()=>{popNav();setBuyingPost(null);}} onDone={()=>{}}/>}
+        <SaleAlertOverlay sb={sb} T={T} Btn={Btn} session={session}/>
 {globalViewerPost&&(
   <FeedViewer
     onOpenComments={(p,cb)=>{pushNav(()=>{setGlobalCommentPost(null);setGlobalCloseCallback(null);});setGlobalCommentPost(p);setGlobalCloseCallback(()=>cb);}}

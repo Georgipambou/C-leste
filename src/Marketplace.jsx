@@ -17,8 +17,8 @@
  * les colonnes price / stock / deal_type soient ajoutées aux select() des
  * posts pour que ces composants reçoivent des données (patch à part).
  */
-import { useState, useMemo } from "react";
-import { X, Minus, Plus, ShoppingBag, CalendarClock, ShieldCheck } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { X, Minus, Plus, ShoppingBag, CalendarClock, ShieldCheck, Star } from "lucide-react";
 
 const DEAL_TYPES = [
   { value: "sale", label: "Vente directe", hint: "Paiement complet, remise contre code" },
@@ -33,7 +33,7 @@ function fmt(n) {
 /* ---------------------------------------------------------------- */
 /* Champs à insérer dans le formulaire de post (NewPostModal)        */
 /* ---------------------------------------------------------------- */
-export function MarketplaceFields({ T, myProfile, price, setPrice, stock, setStock, dealType, setDealType }) {
+export function MarketplaceFields({ T, myProfile, price, setPrice, stock, setStock, stockUnlimited, setStockUnlimited, dealType, setDealType }) {
   const hasBadge = myProfile?.badge === "confirmed" || myProfile?.badge === "friend";
 
   if (!hasBadge) {
@@ -76,12 +76,18 @@ export function MarketplaceFields({ T, myProfile, price, setPrice, stock, setSto
           onChange={e => setPrice(e.target.value)}
           style={{ flex: 1, background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", color: T.text, fontSize: 14, outline: "none" }}
         />
-        <input
-          type="number" min="1" placeholder={dealType === "sale" ? "Stock" : "Places dispo."} value={stock}
-          onChange={e => setStock(e.target.value)}
-          style={{ width: 130, background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", color: T.text, fontSize: 14, outline: "none" }}
-        />
+        {!stockUnlimited && (
+          <input
+            type="number" min="1" placeholder={dealType === "sale" ? "Stock" : "Places dispo."} value={stock}
+            onChange={e => setStock(e.target.value)}
+            style={{ width: 130, background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", color: T.text, fontSize: 14, outline: "none" }}
+          />
+        )}
       </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.sub, cursor: "pointer" }}>
+        <input type="checkbox" checked={stockUnlimited} onChange={e => setStockUnlimited(e.target.checked)} />
+        Stock illimité {dealType !== "sale" ? "(pas de limite de créneaux)" : "(pas de limite de quantité)"}
+      </label>
     </div>
   );
 }
@@ -239,6 +245,98 @@ export function ProductBuyModal({ sb, T, Btn, post, onClose, notify, onDone }) {
               </Btn>
             </div>
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+/* ---------------------------------------------------------------- */
+/* Étoiles de réputation + panneau des avis                          */
+/* ---------------------------------------------------------------- */
+export function SellerRatingStars({ T, sb, sellerId, pushNav, popNav, size = 12 }) {
+  const [open, setOpen] = useState(false);
+  const [seller, setSeller] = useState(null);
+
+  useEffect(() => {
+    sb.from("profiles").select("id,prenom,nom,avatar_url,seller_rating_avg,seller_rating_count").eq("id", sellerId).maybeSingle().then(({ data }) => setSeller(data));
+  }, [sb, sellerId]);
+
+  if (!seller || !seller.seller_rating_count) return null;
+  const avg = seller.seller_rating_avg || 0;
+
+  const openPanel = (e) => { e.stopPropagation(); pushNav(() => setOpen(false)); setOpen(true); };
+  const closePanel = () => { popNav(); setOpen(false); };
+
+  return (
+    <>
+      <button onClick={openPanel} style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 4 }}>
+        {[1, 2, 3, 4, 5].map(n => (
+          <Star key={n} size={size} fill={n <= Math.round(avg) ? "#e0b84a" : "none"} color="#e0b84a" />
+        ))}
+        <span style={{ fontSize: size, color: T.muted, marginLeft: 2 }}>({seller.seller_rating_count})</span>
+      </button>
+      {open && <SellerReviewsPanel sb={sb} T={T} sellerId={sellerId} seller={seller} onClose={closePanel} />}
+    </>
+  );
+}
+
+function SellerReviewsPanel({ sb, T, sellerId, seller, onClose }) {
+  const [reviews, setReviews] = useState(null);
+
+  useEffect(() => {
+    sb.from("seller_ratings")
+      .select("id,rating,comment,created_at,buyer:profiles!seller_ratings_buyer_id_fkey(id,prenom,nom,avatar_url)")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setReviews(data || []));
+  }, [sb, sellerId]);
+
+  const openBuyer = (uid) => {
+    if (!uid) return;
+    onClose();
+    window.dispatchEvent(new CustomEvent("celeste_open_user", { detail: { uid } }));
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", zIndex: 10120, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ width: "100%", maxWidth: 480, maxHeight: "80vh", overflowY: "auto", background: T.bg2, borderRadius: "28px 28px 0 0", padding: "20px 18px 30px" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontFamily: "'Cormorant Garamond',serif", fontSize: 19, color: T.text }}>
+            Avis · {(seller?.seller_rating_avg || 0).toFixed(1)} ★ ({seller?.seller_rating_count || 0})
+          </h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer" }}><X size={22} /></button>
+        </div>
+
+        {reviews === null ? (
+          <p style={{ textAlign: "center", color: T.muted, fontSize: 13, marginTop: 30 }}>Chargement…</p>
+        ) : reviews.length === 0 ? (
+          <p style={{ textAlign: "center", color: T.muted, fontSize: 13, marginTop: 30 }}>Aucun avis pour l'instant.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {reviews.map(r => (
+              <div key={r.id} style={{ display: "flex", gap: 10, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+                {r.buyer?.avatar_url ? (
+                  <img src={r.buyer.avatar_url} onClick={() => openBuyer(r.buyer?.id)} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", cursor: "pointer", flexShrink: 0 }} alt="" />
+                ) : (
+                  <div onClick={() => openBuyer(r.buyer?.id)} style={{ width: 38, height: 38, borderRadius: "50%", background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: T.muted, cursor: "pointer", flexShrink: 0 }}>
+                    {(r.buyer?.prenom || "?")[0]}
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span onClick={() => openBuyer(r.buyer?.id)} style={{ fontSize: 13, fontWeight: 700, color: T.text, cursor: "pointer" }}>
+                      {r.buyer?.prenom} {r.buyer?.nom}
+                    </span>
+                    <span style={{ fontSize: 11, color: T.muted }}>{new Date(r.created_at).toLocaleDateString("fr-FR")}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 1, margin: "3px 0" }}>
+                    {[1, 2, 3, 4, 5].map(n => (<Star key={n} size={12} fill={n <= r.rating ? "#e0b84a" : "none"} color="#e0b84a" />))}
+                  </div>
+                  {r.comment && <p style={{ margin: 0, fontSize: 13, color: T.sub, lineHeight: 1.5 }}>{r.comment}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

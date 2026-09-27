@@ -20,7 +20,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, Package, Clock, CheckCircle2, XCircle, Eye, EyeOff, CalendarClock, Pencil, Trash2 } from "lucide-react";
 
-const COLUMNS = "id,buyer_id,seller_id,post_id,quantity,amount,unit_price,commission_percent,commission_amount,seller_amount,status,tx_kind,deposit_amount,balance_due,scheduled_at,expires_at,settled_at,completed_at,created_at,post:posts(id,text,img_url,media_urls),buyer:profiles!transactions_buyer_id_fkey(id,prenom,nom,avatar_url),seller:profiles!transactions_seller_id_fkey(id,prenom,nom,avatar_url)";
+const COLUMNS = "id,buyer_id,seller_id,post_id,quantity,amount,unit_price,commission_percent,commission_amount,seller_amount,status,tx_kind,deposit_amount,balance_due,scheduled_at,expires_at,settled_at,completed_at,created_at,post:posts(id,text,img_url,media_urls),buyer:profiles!transactions_buyer_id_fkey(id,prenom,nom,avatar_url),seller:profiles!transactions_seller_id_fkey(id,prenom,nom,avatar_url),rating:seller_ratings(id,rating)";
 
 function fmt(n) { return Math.round(n || 0).toLocaleString("fr-FR"); }
 function fmtDate(d) { return d ? new Date(d).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null; }
@@ -100,7 +100,38 @@ function ValidateCodeRow({ sb, T, Btn, tx, notify, onChanged }) {
     </div>
   );
 }
+function RateSellerRow({ sb, T, Btn, tx, notify, onChanged }) {
+  const [stars, setStars] = useState(0);
+  const [sending, setSending] = useState(false);
 
+  const submit = async () => {
+    if (!stars) return;
+    setSending(true);
+    try {
+      const { error } = await sb.rpc("rate_seller", { p_tx_id: tx.id, p_rating: stars });
+      if (error) throw error;
+      notify("Merci pour ton avis ✦");
+      onChanged();
+    } catch (e) {
+      notify(e.message || "Erreur");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: T.bg3, borderRadius: 12, padding: "10px 12px", marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 2 }}>
+        {[1, 2, 3, 4, 5].map(n => (
+          <button key={n} onClick={() => setStars(n)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: n <= stars ? T.goldL : T.border, padding: 0 }}>★</button>
+        ))}
+      </div>
+      <Btn onClick={submit} disabled={!stars || sending} style={{ padding: "6px 14px", borderRadius: 10, background: T.gradGold, color: "#000", fontWeight: 700, fontSize: 12, opacity: !stars || sending ? 0.5 : 1 }}>
+        {sending ? "…" : "Envoyer"}
+      </Btn>
+    </div>
+  );
+}
 /* ---------------------------------------------------------------- */
 function TransactionCard({ sb, T, Btn, tx, myId, notify, onChanged }) {
   const isSeller = tx.seller_id === myId;
@@ -233,6 +264,10 @@ function TransactionCard({ sb, T, Btn, tx, myId, notify, onChanged }) {
 
       {tx.status === "reserved" && isSeller && (
         <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted }}>En attente que le client paie le solde.</p>
+      )}
+
+      {tx.status === "completed" && !isSeller && (!tx.rating || tx.rating.length === 0) && (
+        <RateSellerRow sb={sb} T={T} Btn={Btn} tx={tx} notify={notify} onChanged={onChanged} />
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
