@@ -1,10 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Briefcase, Upload, Loader2 } from "lucide-react";
 
-const CATEGORIES = ["Vente/Commerce","Service client","Informatique/Tech","Design/Créatif","Marketing/Communication","Éducation/Formation","Restauration/Hôtellerie","Transport/Livraison","Bâtiment/Artisanat","Santé","Administration/Bureau","Autre"];
-const EDUCATION = ["Aucun","Primaire","Secondaire","Bac","Licence","Master ou plus","Formation professionnelle"];
-const EXPERIENCE = ["Débutant","Moins d'1 an","1-3 ans","3-5 ans","5 ans et plus"];
-const CONTRACTS = [["cdi","CDI"],["cdd","CDD"],["stage","Stage"],["temps_partiel","Temps partiel"],["mission","Mission ponctuelle"],["peu_importe","Peu importe"]];
+import { JOB_CATEGORIES as CATEGORIES, JOB_EDUCATION as EDUCATION, JOB_EXPERIENCE as EXPERIENCE, JOB_CONTRACTS as CONTRACTS } from "./JobFields";
 const AVAILABILITY = ["Immédiate","Dans 1 mois","Dans 3 mois","Je regarde juste"];
 
 function Chip({ active, onClick, children }) {
@@ -35,7 +32,29 @@ export default function JobSeekerQuizScreen({ sb, T, Btn, session, notify, onClo
   const [contactPref, setContactPref] = useState("celeste");
   const [contactValue, setContactValue] = useState("");
   const [active, setActive] = useState(true);
+  const [uploadingCv, setUploadingCv] = useState(false);
+  const initialCvRef = useRef(null);
+  const CV_TYPES = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/png"];
 
+  const pickCv = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!CV_TYPES.includes(file.type)) { notify("Format accepté : PDF, Word, JPG ou PNG"); return; }
+    if (file.size > 5 * 1024 * 1024) { notify("Fichier trop lourd (5 Mo maximum)"); return; }
+    setUploadingCv(true);
+    try {
+      const ext = (file.name.split(".").pop() || "pdf").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const path = `${session.user.id}/cv-${Date.now()}.${ext}`;
+      const { error } = await sb.storage.from("cvs").upload(path, file, { contentType: file.type, upsert: false });
+      if (error) throw error;
+      setCvUrl(path);
+    } catch (err) {
+      notify(err.message || "Échec de l'envoi du CV");
+    } finally {
+      setUploadingCv(false);
+    }
+  };
   useEffect(() => {
     sb.from("job_seeker_profiles").select("*").eq("user_id", session.user.id).maybeSingle().then(({ data }) => {
       if (data) {
@@ -50,6 +69,7 @@ export default function JobSeekerQuizScreen({ sb, T, Btn, session, notify, onClo
         setSalaryMin(data.salary_min || "");
         setSalaryMax(data.salary_max || "");
         setCvUrl(data.cv_url || null);
+        initialCvRef.current = data.cv_url || null;
         setContactPref(data.contact_pref || "celeste");
         setContactValue(data.contact_value || "");
         setActive(data.active !== false);
@@ -72,6 +92,7 @@ export default function JobSeekerQuizScreen({ sb, T, Btn, session, notify, onClo
         p_cv_url: cvUrl, p_contact_pref: contactPref, p_contact_value: contactValue || null, p_active: active,
       });
       if (error) throw error;
+      if (initialCvRef.current && initialCvRef.current !== cvUrl) sb.storage.from("cvs").remove([initialCvRef.current]);
       notify("Profil emploi enregistré ✦");
       popNav(); onClose();
     } catch (e) {
@@ -178,9 +199,14 @@ export default function JobSeekerQuizScreen({ sb, T, Btn, session, notify, onClo
               <button onClick={() => setCvUrl(null)} style={{ background: "none", border: "none", color: T.err || "#e5484d", fontSize: 12, cursor: "pointer" }}>Retirer</button>
             </div>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: T.bg3, borderRadius: 12, padding: "12px 14px", color: T.muted, fontSize: 13 }}>
-              <Upload size={16} /> À brancher — dis-moi comment tu gères déjà l'upload de fichiers ailleurs dans l'app
-            </div>
+            <>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, background: T.bg3, border: `1px dashed ${T.border}`, borderRadius: 12, padding: "14px", color: T.text, fontSize: 13, cursor: uploadingCv ? "default" : "pointer" }}>
+                {uploadingCv ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={16} />}
+                {uploadingCv ? "Envoi en cours…" : "Ajouter mon CV (PDF, Word, JPG, PNG — 5 Mo max)"}
+                <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={pickCv} disabled={uploadingCv} style={{ display: "none" }} />
+              </label>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: T.muted }}>Ton CV reste privé : seules les entreprises auxquelles tu postules pourront le voir.</p>
+            </>
           )}
         </div>
 

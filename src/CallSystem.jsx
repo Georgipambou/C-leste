@@ -99,7 +99,7 @@ function ensureStreamUsers(sb, ids) {
   }
   return Promise.all(ids.filter(Boolean).map(id => ensuredUsers.get(id)));
 }
-async function logCallMessage(sb, { meId, otherId, status, video, durationSec }) {
+async function logCallMessage(sb, { meId, otherId, status, video, durationSec, cid }) {
   try {
     const { data: existing } = await sb.from('conversations').select('id')
       .or(`and(user1_id.eq.${meId},user2_id.eq.${otherId}),and(user1_id.eq.${otherId},user2_id.eq.${meId})`)
@@ -110,10 +110,10 @@ async function logCallMessage(sb, { meId, otherId, status, video, durationSec })
       convId = created?.id;
     }
     if (convId) {
-      await sb.from('messages').insert({
+      await sb.from('messages').upsert({
         conv_id: convId, sender_id: meId, type: 'call', text: '',
-        call_status: status, call_video: video, call_duration: durationSec || 0,
-      });
+        call_status: status, call_video: video, call_duration: durationSec || 0, call_cid: cid,
+      }, { onConflict: 'call_cid', ignoreDuplicates: true });
     }
   } catch (e) { console.warn('[Call] log message:', e); }
 }
@@ -131,6 +131,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
   const [callError, setCallError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [minimized, setMinimized] = useState(false);
+    const [pendingCall, setPendingCall] = useState(null); // { targetUserId, video } en attente de confirmation
   const theme = T || DEFAULT_T;
   const clientRef = useRef(null);
 
@@ -197,7 +198,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
     return () => window.removeEventListener('celeste-call-signal', handleSignal);
   }, [client]);
 
-  const startCall = useCallback(async (targetUserId, { video = true } = {}) => {
+   const reallyStartCall = useCallback(async (targetUserId, { video = true } = {}) => {
     if (!client || !sb) {
       console.error('[Call] startCall appelé sans client Stream prêt.');
       setCallError("Le service d'appel n'est pas encore prêt, réessaie dans un instant.");
@@ -207,7 +208,7 @@ export function CallProvider({ sb, currentUser, T, children }) {
     setCallError(null);
     setConnecting(true);
     try {
-      const { data: targetProfile } = await sb.from('profiles').select('no_calls').eq('id', targetUserId).maybeSingle();
+      const { data: targetProfile } = await sb.from('profiles').select('no_calls,last_seen,hide_online').eq('id', targetUserId).maybeSingle();
       if (targetProfile?.no_calls) {
         setCallError("Cette personne n'accepte pas les appels pour le moment.");
         setConnecting(false);
@@ -244,6 +245,20 @@ export function CallProvider({ sb, currentUser, T, children }) {
     }
   }, [client, sb, currentUser?.id, connecting, activeCall]);
 
+  const startCall = useCallback(async (targetUserId, { video = true } = {}) => {
+    if (!client || !sb) {
+      setCallError("Le service d'appel n'est pas encore prêt, réessaie dans un instant.");
+      return;
+    }
+    const { data: targetProfile } = await sb.from('profiles').select('last_seen,hide_online').eq('id', targetUserId).maybeSingle();
+    const seenRecently = targetProfile?.last_seen && !targetProfile.hide_online
+      && (Date.now() - new Date(targetProfile.last_seen).getTime()) < 5 * 60 * 1000;
+    if (!seenRecently) {
+      setPendingCall({ targetUserId, video });
+      return;
+    }
+    reallyStartCall(targetUserId, { video });
+  }, [client, sb, reallyStartCall]);
   // Prépare l'utilisateur ciblé côté Stream dès l'affichage du bouton d'appel
   const prepareCall = useCallback((targetUserId) => {
     if (client && sb && currentUser?.id && targetUserId) {
@@ -251,12 +266,23 @@ export function CallProvider({ sb, currentUser, T, children }) {
     }
   }, [client, sb, currentUser?.id]);
 
-  const endCall = useCallback(async () => {
+    const endCall = useCallback(async () => {
     const c = activeCall;
     setActiveCall(null);
     setMinimized(false);
+    if (c?.isCreatedByMe && c.__otherUserId) {
+      const connectedAt = c.__connectedAt;
+      logCallMessage(sb, {
+        meId: currentUser.id,
+        otherId: c.__otherUserId,
+        status: connectedAt ? 'completed' : (c.__rejected ? 'declined' : 'missed'),
+        video: c.state.custom?.video !== false,
+        durationSec: connectedAt ? Math.floor((Date.now() - connectedAt) / 1000) : 0,
+        cid: c.cid,
+      });
+    }
     try { await c?.leave(); } catch (e) {}
-  }, [activeCall]);
+  }, [activeCall, sb, currentUser?.id]);
 
   const showComingSoon = useCallback(() => {
     setNotice('📞 Les appels arrivent dans une prochaine mise à jour !');
@@ -294,6 +320,20 @@ export function CallProvider({ sb, currentUser, T, children }) {
             </StreamCall>
           )}
         </StreamVideo>
+      )}
+
+      {pendingCall && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999998, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: theme.bg2, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, maxWidth: 320, textAlign: 'center', fontFamily: "'DM Sans',sans-serif" }}>
+            <p style={{ color: theme.text, fontSize: 14, margin: '0 0 18px' }}>
+              📵 Cette personne ne semble pas connectée en ce moment. Lancer l'appel quand même ?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={() => setPendingCall(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.muted }}>Annuler</button>
+              <button onClick={() => { const p = pendingCall; setPendingCall(null); reallyStartCall(p.targetUserId, { video: p.video }); }} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: theme.gradGold, color: '#000', fontWeight: 600 }}>Appeler quand même</button>
+            </div>
+          </div>
+        </div>
       )}
     </CallContext.Provider>
   );
@@ -365,22 +405,7 @@ function CallOutcomeLogger({ sb, meId, otherId }) {
     return call.on('call.rejected', () => { call.__rejected = true; });
   }, [call]);
 
-  useEffect(() => {
-    if (!call?.isCreatedByMe || loggedRef.current) return;
-    if (callingState !== CallingState.LEFT) return;
-    loggedRef.current = true;
-    const video = call.state.custom?.video !== false;
-    const connectedAt = call.__connectedAt;
-    const status = connectedAt ? 'completed' : (call.__rejected ? 'declined' : 'missed');
-    const durationSec = connectedAt ? Math.floor((Date.now() - connectedAt) / 1000) : 0;
-    logCallMessage(sb, { meId, otherId, status, video, durationSec });
-    if (status === 'missed') {
-      sb.functions.invoke('send-push', {
-        body: { targetUserId: otherId, title: '📵 Appel manqué', body: `${call.state.createdBy?.name || 'Quelqu\u2019un'} a essayé de t'appeler` },
-      }).catch(() => {});
-    }
-  }, [callingState, call, sb, meId, otherId]);
-
+  
   return null;
 }
 function IconLabel({ onClick, active, danger, T, icon, label }) {
@@ -495,8 +520,16 @@ function InCallScreen({ onEnd, onMinimize, T }) {
   const other = participants.find(p => !p.isLocalParticipant);
   const wasConnected = useRef(false);
   if (other) wasConnected.current = true;
+  const otherPoorConnection = other?.connectionQuality === 1; // 1 = POOR (enum ConnectionQuality du SDK Stream)
+  const [connectionLost, setConnectionLost] = useState(false);
   useEffect(() => {
-    if (wasConnected.current && !other) onEnd();
+    if (!wasConnected.current) return;
+    if (!other) {
+      setConnectionLost(true);
+      const id = setTimeout(onEnd, 6000); // laisse une chance à une reconnexion brève avant de raccrocher
+      return () => clearTimeout(id);
+    }
+    setConnectionLost(false);
   }, [other]);
   const isRinging = !wasConnected.current && !other && callingState !== CallingState.LEFT;
   useRingtone(isRinging && call?.__outgoing ? 'outgoing' : null);
@@ -510,15 +543,27 @@ function InCallScreen({ onEnd, onMinimize, T }) {
       display: 'flex', flexDirection: 'column', color: T.text, fontFamily: "'DM Sans',sans-serif",
     }}>
       {/* Barre du haut : réduire + statut connexion */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '16px 16px 0' }}>
         <button onClick={onMinimize} style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ChevronDown size={18} />
         </button>
-        {callingState === 'reconnecting' && (
-          <span style={{ background: T.err, color: '#fff', fontSize: 11, padding: '4px 10px', borderRadius: 10 }}>Connexion instable…</span>
-        )}
-        <div style={{ width: 36 }} />
       </div>
+
+      {(callingState === 'reconnecting' || otherPoorConnection || connectionLost) && (
+        <div style={{
+          margin: '10px 16px 0', padding: '9px 14px', borderRadius: 12,
+          background: connectionLost ? T.err : 'rgba(212,168,67,0.16)',
+          border: `1px solid ${connectionLost ? T.err : T.gold}55`,
+          color: connectionLost ? '#fff' : T.goldL,
+          fontSize: 12.5, textAlign: 'center', fontFamily: "'DM Sans',sans-serif",
+        }}>
+          {connectionLost
+            ? "Connexion perdue — l'appel va se terminer…"
+            : callingState === 'reconnecting'
+              ? 'Reconnexion en cours…'
+              : "Connexion instable de l'autre côté…"}
+        </div>
+      )}
 
       {isRinging ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '30px 24px 60px' }}>

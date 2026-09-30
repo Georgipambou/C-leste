@@ -89,7 +89,7 @@ function MarketplaceGrid({ list, T, onOpenPost }) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 2 }}>
       {list.map(p => {
         const thumb = postThumb(p);
-        const soldOut = (p.stock ?? 0) <= 0;
+        const soldOut = p.stock !== null && p.stock !== undefined && p.stock <= 0;
         return (
           <div key={p.id} onClick={() => onOpenPost(p, list)}
             style={{ position: "relative", aspectRatio: "1", overflow: "hidden", background: T.bg3 || T.bg2, cursor: "pointer" }}>
@@ -414,7 +414,7 @@ export default function SearchExplorer({ sb, T, myProfile, onClose, onOpenPost, 
                     <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 }}>
                       {marketplaceResults.slice(0, 10).map(p => {
                         const thumb = postThumb(p);
-                        const soldOut = (p.stock ?? 0) <= 0;
+                        const soldOut = p.stock !== null && p.stock !== undefined && p.stock <= 0;
                         return (
                           <div key={p.id} onClick={() => onOpenPost(p, marketplaceResults)}
                             style={{ position: "relative", width: 84, height: 84, borderRadius: 14, overflow: "hidden", background: T.bg3 || T.bg2, cursor: "pointer", flexShrink: 0 }}>

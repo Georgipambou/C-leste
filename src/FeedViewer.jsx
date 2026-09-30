@@ -613,12 +613,16 @@ export default function FeedViewer({
   // useFeedIntersection.js pour le détail et le pourquoi.
   const { registerItem } = useFeedIntersection(displayPosts, setActiveIdx, () => setExpandedCaption(false));
 
+  const feedActiveRef = useRef(feedActive);
+  useEffect(() => { feedActiveRef.current = feedActive; }, [feedActive]);
+
   // ── Fonction unique pour démarrer la lecture d'une vidéo : mute-d'abord
   // puis restauration du son, avec verification que l'index est toujours
   // actif au moment ou play() se resout — evite le son "en desordre"
   // quand plusieurs declencheurs (swipe, fermeture des commentaires,
   // chargement termine) tentent de lancer la lecture en meme temps ──
   const playActiveVideo = useCallback((idx) => {
+    if (!feedActiveRef.current) return;
     const v = videoRefs.current[idx];
     if (!v) return;
     pauseOtherVideos(v);
@@ -703,11 +707,18 @@ export default function FeedViewer({
     releaseWakeLock();
   }, [feedActive]);
 
+  useEffect(() => {
+    if (!feedActive) return;
+    const v = videoRefs.current[activeIdx];
+    if (v && !pausedMap[activeIdx]) playActiveVideo(activeIdx);
+  }, [feedActive]);
+
   // ── Lecture du son attaché à un post non-vidéo actif ────────────
   useEffect(() => {
     const post = displayPosts[activeIdx];
     const a = soundAudioRef.current;
     if (!a) return;
+    if (!feedActive) { a.pause(); return; }
     a.muted = muted;
     if (post && kindOf(post) !== "video" && post.sound?.url) {
       if (a.src !== post.sound.url) { a.src = post.sound.url; a.currentTime = 0; }
@@ -717,7 +728,7 @@ export default function FeedViewer({
       a.pause();
     }
     return () => a.pause();
-  }, [activeIdx, displayPosts, muted]);
+  }, [activeIdx, displayPosts, muted, feedActive]);
 
   // ── Préchargement en arrière-plan du carrousel vidéo actif ──────
   useEffect(() => {
@@ -1344,13 +1355,13 @@ export default function FeedViewer({
                         🔗 Voir le lien
                       </a>
                     )}
-                    {post.price > 0 && (post.stock ?? 0) > 0 && (
+                    {post.price > 0 && ((post.stock ?? null) === null || post.stock > 0) && (
                       <button onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_open_product", { detail: post })); }}
                         style={{ background: "linear-gradient(135deg,#e0b84a,#a67c1e)", padding: "8px 14px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 6, color: "#000", fontWeight: 700, fontSize: 12, border: "none", cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }}>
                         🛍️ {post.deal_type === "sale" ? "Acheter" : "Réserver"} · {Math.round(post.price).toLocaleString("fr-FR")} F
                       </button>
                     )}
-                    {post.price > 0 && (post.stock ?? 0) <= 0 && (
+                    {post.price > 0 && post.stock !== null && post.stock !== undefined && post.stock <= 0 && (
                       <span style={{ background: "rgba(255,255,255,0.14)", padding: "8px 14px", borderRadius: 20, color: "#fff", fontWeight: 700, fontSize: 12 }}>Épuisé</span>
                     )}
                   </div>

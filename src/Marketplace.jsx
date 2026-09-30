@@ -97,7 +97,7 @@ export function MarketplaceFields({ T, myProfile, price, setPrice, stock, setSto
 /* ---------------------------------------------------------------- */
 export function ForSaleButton({ T, post }) {
   if (!post?.is_for_sale || !post?.price) return null;
-  const soldOut = (post.stock ?? 0) <= 0;
+  const soldOut = post.stock !== null && post.stock !== undefined && post.stock <= 0;
   const label = soldOut ? "Épuisé" : post.deal_type === "sale" ? "Acheter" : "Réserver";
 
   return (
@@ -127,7 +127,8 @@ export function ProductBuyModal({ sb, T, Btn, post, onClose, notify, onDone }) {
   const [loading, setLoading] = useState(false);
 
   const isReservation = post.deal_type === "reservation" || post.deal_type === "service";
-  const stock = post.stock ?? 0;
+  const isUnlimited = post.stock === null || post.stock === undefined;
+  const stock = isUnlimited ? 100 : post.stock;
   const total = useMemo(() => Math.round((post.price || 0) * qty), [post.price, qty]);
   const deposit = useMemo(() => Math.round(total * 0.5), [total]);
 
@@ -174,7 +175,7 @@ export function ProductBuyModal({ sb, T, Btn, post, onClose, notify, onDone }) {
         )}
 
         <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: T.text }}>{post.text || "Article"}</p>
-        <p style={{ margin: "0 0 16px", fontSize: 13, color: T.muted }}>{fmt(post.price)} F CFA / unité · {stock} disponible{stock > 1 ? "s" : ""}</p>
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: T.muted }}>{fmt(post.price)} F CFA / unité · {isUnlimited ? "stock illimité" : `${stock} disponible${stock > 1 ? "s" : ""}`}</p>
 
         {!confirming ? (
           <>

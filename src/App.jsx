@@ -64,9 +64,11 @@ import DepositScreen from "./DepositScreen";
 import SaleAlertOverlay from "./SaleAlertOverlay";
 import FinePaymentScreen from "./FinePaymentScreen";
 import JobSeekerQuizScreen from "./JobSeekerQuizScreen";
+import SendMoneyScreen from "./SendMoneyScreen";
 import { MarketplaceFields, ForSaleButton, ProductBuyModal, SellerRatingStars } from "./Marketplace";
 import TransactionsScreen from "./Transactions";
 import { CallProvider, CallButton } from "./CallSystem";
+import { JobOffersWidget, JobApplicationsWidget } from "./JobBoard";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react"; 
@@ -89,6 +91,7 @@ import { setNativeBackground } from "./nativeBackground";
 import { confirmAction, resolveConfirmAction } from "./confirmAction";
 import FeedViewer from "./FeedViewer";
 import SearchExplorer from "./SearchExplorer";
+import { JobFields, JOB_DEFAULTS } from "./JobFields";
 import CameraStudioModal from "./CameraStudioModal";
 import SharePostModal from "./SharePostModal";
 import ContentQuizModal from "./components/ContentQuizModal";
@@ -140,6 +143,7 @@ const safeAuthStorage={
   removeItem:(k)=>{try{localStorage.removeItem(k);}catch(e){delete memoryAuthStore[k];}}
 };
 const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"",{auth:{storage:safeAuthStorage}});
+if(import.meta.env.DEV)window.sb=sb;
 const haptic=async(style="light")=>{
   try{
     if(Capacitor.isNativePlatform()){
@@ -167,6 +171,8 @@ const playLikeSound=()=>{try{const ctx=new(window.AudioContext||window.webkitAud
 const isNative=Capacitor.isNativePlatform();
 const enableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.enable();}catch(e){}};
 const disableScreenProtection=async()=>{if(!isNative)return;try{await PrivacyScreen.disable();}catch(e){}};
+window.enableScreenProtection=enableScreenProtection;
+window.disableScreenProtection=disableScreenProtection;
 
 // ── CONTEXTE GLOBAL ───────────────────────────────────────
 const AppContext = createContext(null);
@@ -3583,7 +3589,7 @@ async function runPublish(payload,{onProgress}={}){
     uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,textFont,
     isForSale,isAiGenerated,isPrivate,commentsDisabled,
     contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
-    price,stock,dealType,
+    price,stock,stockUnlimited,dealType,isJob,job,jobCountry,
     pollExpiresAt,pollMultiple,pollOptions,
     selectedCategories,duoCollaborators,selectedSound,lastVideoFile,
     mentions,mentionedIds,authorName,
@@ -3611,7 +3617,22 @@ async function runPublish(payload,{onProgress}={}){
     stock:isForSale?(stockUnlimited?null:(Number(stock)||null)):null,
     stock_unlimited:isForSale?stockUnlimited:false,
     deal_type:isForSale?(dealType||"sale"):null,
-    expires_at:type==="poll"?pollExpiresAt:(isForSale&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
+    is_job:isJob||false,
+    job_title:isJob?(job.title.trim()||null):null,
+    job_category:isJob?(job.category||null):null,
+    job_contract_type:isJob?(job.contract||null):null,
+    job_education_min:isJob?(job.educationMin||null):null,
+    job_experience_min:isJob?(job.experienceMin||null):null,
+    job_age_min:isJob?(Number(job.ageMin)||null):null,
+    job_age_max:isJob?(Number(job.ageMax)||null):null,
+    job_city:isJob?(job.city.trim()||null):null,
+    job_country:isJob?(jobCountry||null):null,
+    job_remote:isJob?job.remote:null,
+    job_travel_covered:isJob&&job.remote!=="yes"?job.travel:null,
+    job_salary_min:isJob?(Number(job.salaryMin)||null):null,
+    job_salary_max:isJob?(Number(job.salaryMax)||null):null,
+    job_skills:isJob?job.skills.split(",").map(s=>s.trim()).filter(Boolean):null,
+    expires_at:type==="poll"?pollExpiresAt:((isForSale||isJob)&&saleExpiry!=="0"?(new Date(Date.now()+parseInt(saleExpiry)*24*60*60*1000).toISOString()):null),
     poll_multiple:type==="poll"?pollMultiple:false,
     mentions
   }).select("id").single();
@@ -3821,7 +3842,7 @@ try {
       uid,type,text,mediaUrls,evImgUrl,evTitle,evDate,evTime,evLoc,textBg,textFont,
       isForSale,isAiGenerated,isPrivate,commentsDisabled,
       contactType,whatsappIndicatif,whatsappNum,contactLink,saleExpiry,
-      price,stock,dealType,
+      price,stock,stockUnlimited,dealType,isJob,job,jobCountry:myProfile?.org_country||myProfile?.country||null,
       pollExpiresAt,pollMultiple,pollOptions,
       selectedCategories,duoCollaborators,selectedSound,
       lastVideoFile:lastVideoFileRef.current,
@@ -3847,7 +3868,10 @@ const [price,setPrice]=useState("");
 const [stock,setStock]=useState("");
 const [stockUnlimited,setStockUnlimited]=useState(false);
 const [dealType,setDealType]=useState("sale");
-const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:type==="poll"?(text.trim().length>0&&pollOptions.filter(o=>o.trim()).length>=2):evTitle.trim().length>0;
+const [isJob,setIsJob]=useState(false);
+const [job,setJob]=useState(JOB_DEFAULTS);
+const okBase=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:type==="poll"?(text.trim().length>0&&pollOptions.filter(o=>o.trim()).length>=2):evTitle.trim().length>0;
+const ok=okBase&&(!isJob||(job.title.trim().length>0&&!!job.category));
 
   return(
     <>
@@ -3949,7 +3973,7 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
 
             {/* Option vente (badge doré + Congo uniquement) */}
             {canSell&&(
-              <div onClick={()=>setIsForSale(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
+              <div onClick={()=>{setIsForSale(s=>!s);setIsJob(false);}} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
                 <ShoppingBag size={14} color={isForSale?T.goldL:T.muted}/>
                 <span style={{fontSize:12,color:isForSale?T.goldL:T.muted,flex:1}}>Article à vendre</span>
                 <div style={{width:28,height:16,borderRadius:8,background:isForSale?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
@@ -3958,6 +3982,16 @@ const ok=type==="text"?text.trim().length>0:type==="photo"?mediaUrls.length>0:ty
               </div>
             )}
             {isForSale&&<MarketplaceFields T={T} myProfile={myProfile} price={price} setPrice={setPrice} stock={stock} setStock={setStock} stockUnlimited={stockUnlimited} setStockUnlimited={setStockUnlimited} dealType={dealType} setDealType={setDealType}/>}
+            {myProfile?.account_type==="organisation"&&(
+              <div onClick={()=>{setIsJob(s=>!s);setIsForSale(false);}} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
+                <span style={{fontSize:14}}>💼</span>
+                <span style={{fontSize:12,color:isJob?T.goldL:T.muted,flex:1}}>Offre d'emploi</span>
+                <div style={{width:28,height:16,borderRadius:8,background:isJob?T.gold:(isLightBg(T.bg)?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.1)"),position:"relative",transition:"background .3s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:2,left:isJob?12:2,width:12,height:12,borderRadius:"50%",background:"#fff",transition:"left .3s",boxShadow:"0 1px 3px rgba(0,0,0,0.35)"}}/>
+                </div>
+              </div>
+            )}
+            {isJob&&<JobFields T={T} job={job} setJob={setJob}/>}
             {/* Option contenu généré par IA (photo/vidéo uniquement) */}
             {type==="photo"&&(
               <div onClick={()=>setIsAiGenerated(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
@@ -5470,8 +5504,12 @@ else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
-      {myProfile?.account_type!=="organisation"&&(
-        <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting} blockedUserIds={blockedUserIds}
+      {myProfile?.account_type==="organisation"?(
+        <JobApplicationsWidget sb={sb} T={T} Btn={Btn} session={session} notify={notify} onUser={onUser} openChat={openChat}/>
+      ):(
+      <>
+      <JobOffersWidget sb={sb} T={T} Btn={Btn} session={session} notify={notify}/>
+      <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting} blockedUserIds={blockedUserIds}
           onChat={async(uid,msg)=>{
             const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
             let convId=existing?.id;
@@ -5482,6 +5520,7 @@ else filtered=active;
             }
           }}
         />
+      </>
       )}
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,display:matchWriting?"none":"block",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
@@ -9706,7 +9745,7 @@ if(checkoutUrl){
   );
 }
 
-function WalletScreen({session,myProfile,notify,onClose,onOpenDeposit,onOpenTransactions,pushNav,popNav}){
+function WalletScreen({session,myProfile,notify,onClose,onOpenDeposit,onOpenTransactions,onOpenSend,pushNav,popNav}){
   const hasBadge=myProfile?.badge==="confirmed"||myProfile?.badge==="friend";
   const [wallet,setWallet]=useState(null);
   const [transactions,setTransactions]=useState([]);
@@ -9820,9 +9859,12 @@ if(wErr){setLoading(false);return notify(wErr.message||"Erreur, réessaie");}
               <p style={{margin:0,fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(wallet?.total_earned||0).toLocaleString("fr-FR")} F</p>
             </div>
             ):<div/>}
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={onOpenDeposit} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 Déposer
+              </button>
+              <button onClick={onOpenSend} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Envoyer
               </button>
               <button onClick={()=>{pushNav(()=>setShowWithdraw(false));setShowWithdraw(true);}} style={{background:"rgba(255,255,255,0.15)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"10px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 Retirer
@@ -10082,6 +10124,7 @@ function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,my
  const [showFollowing,setShowFollowing]=useState(false);
 const [showWallet,setShowWallet]=useState(false);
 const [showDeposit,setShowDeposit]=useState(false);
+const [showSend,setShowSend]=useState(false);
 const [showTransactions,setShowTransactions]=useState(false);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
@@ -10236,7 +10279,8 @@ const localToggleParticipate=async pid=>{
   return(
     
     <div style={{flex:1,overflowY:"auto",background:T.bg,WebkitOverflowScrolling:"touch",overscrollBehaviorY:"contain",scrollBehavior:"smooth"}}>
-      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} onOpenTransactions={()=>{pushNav(()=>setShowTransactions(false));setShowTransactions(true);}} pushNav={pushNav} popNav={popNav}/>}
+      {showWallet&&<WalletScreen session={session} myProfile={myProfile} notify={notify} onClose={()=>{popNav();setShowWallet(false);}} onOpenDeposit={()=>{pushNav(()=>setShowDeposit(false));setShowDeposit(true);}} onOpenTransactions={()=>{pushNav(()=>setShowTransactions(false));setShowTransactions(true);}} onOpenSend={()=>{pushNav(()=>setShowSend(false));setShowSend(true);}} pushNav={pushNav} popNav={popNav}/>}
+      {showSend&&<SendMoneyScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowSend(false);}} pushNav={pushNav} popNav={popNav}/>}
 {showDeposit&&<DepositScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowDeposit(false);}} pushNav={pushNav} popNav={popNav}/>}
 
 {showTransactions&&<TransactionsScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onClose={()=>{popNav();setShowTransactions(false);}} pushNav={pushNav} popNav={popNav}/>}
@@ -12197,7 +12241,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   if(!session) return(<><style>{getGS()}</style><AuthScreen mode={authMode} setMode={setAuthMode} onSuccess={state=>{if(state==="pending")setIsPending(true);}} pushNav={pushNav} popNav={popNav}/></>);
 
   if(myProfile?.status==="suspended") return(
-    <FinePaymentScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onLogout={async()=>{if(await confirmAction("Se déconnecter ?",{confirmLabel:"Se déconnecter"}))sb.auth.signOut();}}/>
+    <FinePaymentScreen sb={sb} T={T} Btn={Btn} session={session} notify={notify} onLogout={()=>{if(window.confirm("Se déconnecter ?"))sb.auth.signOut();}}/>
   );
 
   if(isPending) return(
