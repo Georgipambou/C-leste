@@ -1,5 +1,8 @@
-const PRESIGN_URL = "https://ebmijlgkztggcduemeoi.supabase.co/functions/v1/presign-upload";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON;
+// App.jsx fournit la fonction qui lit le jeton de session (évite un 2e client Supabase)
+let getToken = async () => null;
+export function setUploadTokenGetter(fn) { getToken = fn; }
+
+const UPLOAD_URL = "https://upload.celesteapp.social/upload";
 
 export async function uploadToR2(file, folder = "media", onProgress = null) {
   const MAX_RETRIES = 3;
@@ -8,24 +11,18 @@ export async function uploadToR2(file, folder = "media", onProgress = null) {
   while (attempt < MAX_RETRIES) {
     attempt++;
     try {
-      // 1) Demande une URL signée (aucun transfert de fichier à cette étape — quasi instantané)
-      const presignRes = await fetch(PRESIGN_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ folder, fileName: file.name, fileSize: file.size }),
-      });
-      const presignData = await presignRes.json().catch(() => null);
-      if (!presignRes.ok || !presignData?.uploadUrl) {
-        throw new Error(presignData?.error || "Erreur de préparation de l'upload");
-      }
+      // 1) Jeton de session (le Worker vérifie l'utilisateur)
+      const accessToken = await getToken();
+      if (!accessToken) throw new Error("Session expirée, reconnecte-toi");
+      const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const target = `${UPLOAD_URL}?folder=${encodeURIComponent(folder)}&ext=${ext}`;
 
       // 2) Upload direct du fichier vers R2 (un seul saut réseau)
       const publicUrl = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", presignData.uploadUrl);
+        xhr.open("PUT", target);
+        xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
         xhr.timeout = 300000; // 5 minutes max
 
         xhr.upload.onprogress = (e) => {
@@ -38,7 +35,8 @@ export async function uploadToR2(file, folder = "media", onProgress = null) {
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             onProgress?.(100);
-            resolve(presignData.publicUrl);
+            try { resolve(JSON.parse(xhr.responseText).publicUrl); }
+            catch { reject(new Error("Réponse upload invalide")); }
           } else {
             reject(new Error("Erreur upload (" + xhr.status + ")"));
           }

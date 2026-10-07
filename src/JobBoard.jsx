@@ -10,14 +10,17 @@ export function JobOffersWidget({ sb, T, Btn, session, notify }) {
   const [offers, setOffers] = useState(null);
   const [applying, setApplying] = useState(null);
   const [msg, setMsg] = useState("");
+  const [mode] = useState(() => ["affinity", "popular", "recent"][Math.floor(Math.random() * 3)]);
 
   const load = useCallback(() => {
-    sb.rpc("get_job_offers_for_me", { p_limit: 20 }).then(({ data }) => setOffers(data || []));
-  }, [sb]);
+    sb.rpc("get_job_offers_for_me", { p_limit: 20, p_mode: mode }).then(({ data }) => setOffers(data || []));
+  }, [sb, mode]);
 
   useEffect(() => { load(); }, [load]);
 
   if (offers === null || offers.length === 0) return null;
+
+  const title = mode === "popular" ? "Les plus demandées" : mode === "recent" ? "Nouvelles offres" : "Offres d'emploi";
 
   const apply = async (post_id) => {
     try {
@@ -33,7 +36,7 @@ export function JobOffersWidget({ sb, T, Btn, session, notify }) {
     <div style={{ padding: "16px 16px 4px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <span style={{ fontSize: 18 }}>💼</span>
-        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, color: T.text, fontWeight: 400 }}>Offres d'emploi</span>
+        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, color: T.text, fontWeight: 400 }}>{title}</span>
         <span style={{ fontSize: 10, color: T.goldL, fontWeight: 700, background: T.goldBg2, padding: "2px 8px", borderRadius: 20, border: `1px solid ${T.gold}33` }}>{offers.length}</span>
       </div>
 
@@ -135,7 +138,7 @@ export function JobApplicationsWidget({ sb, T, Btn, session, notify, onUser, ope
 /* ---------------------------------------------------------------- */
 /* Détail d'une candidature — quiz, CV protégé, contact               */
 /* ---------------------------------------------------------------- */
-function ApplicationDetailPanel({ sb, T, Btn, applicationId, notify, onUser, openChat, onClose }) {
+export function ApplicationDetailPanel({ sb, T, Btn, applicationId, notify, onUser, openChat, onClose }) {
   const [data, setData] = useState(null);
   const [cvUrl, setCvUrl] = useState(null);
 
@@ -219,6 +222,101 @@ function ApplicationDetailPanel({ sb, T, Btn, applicationId, notify, onUser, ope
             </a>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+export function ProductsDiscoveryWidget({ sb, T, Btn, notify }) {
+  const [mode] = useState(() => ["featured", "sales", "likes"][Math.floor(Math.random() * 3)]);
+  const [products, setProducts] = useState(null);
+
+  useEffect(() => {
+    sb.rpc("get_featured_products", { p_mode: mode, p_limit: 15 }).then(({ data }) => setProducts(data || []));
+  }, [sb, mode]);
+
+  if (products === null || products.length === 0) return null;
+
+  const title = mode === "sales" ? "Les plus achetés" : mode === "likes" ? "Les plus populaires" : "En vedette";
+
+  return (
+    <div style={{ padding: "16px 16px 4px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 18 }}>🛍️</span>
+        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, color: T.text, fontWeight: 400 }}>{title}</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}>
+        {products.map(p => (
+          <div key={p.post_id}
+            onClick={() => window.dispatchEvent(new CustomEvent("celeste_open_product", { detail: p }))}
+            style={{ cursor: "pointer", background: "rgba(255,255,255,0.03)", border: `1.5px solid ${T.border}`, borderRadius: 20, overflow: "hidden", flexShrink: 0, width: 170, scrollSnapAlign: "start" }}>
+            {p.image_url ? (
+              <img src={p.image_url} alt="" style={{ width: "100%", height: 140, objectFit: "cover" }} />
+            ) : (
+              <div style={{ width: "100%", height: 140, background: T.bg3 }} />
+            )}
+            <div style={{ padding: "10px 12px" }}>
+              <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {p.text || "Article"}
+              </p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: T.goldL }}>
+                {Math.round(p.price).toLocaleString("fr-FR")} F
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                <span style={{ fontSize: 10, color: T.muted }}>{p.author_name}</span>
+                {p.sales_count > 0 && <span style={{ fontSize: 10, color: T.muted }}>· {p.sales_count} vendu{p.sales_count > 1 ? "s" : ""}</span>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+export function DailyPickCard({ sb, T, Btn, notify, onUser }) {
+  const [pick, setPick] = useState(null);
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    sb.rpc("get_daily_pick").then(({ data }) => setPick(data));
+  }, [sb]);
+
+  if (!pick) return null;
+
+  const openProduct = async () => {
+    const { data: post, error } = await sb.from("posts").select("*,author:profiles!posts_author_id_fkey(id,prenom,nom,avatar_url)").eq("id", pick.id).maybeSingle();
+    if (error) { notify("Erreur : " + error.message); return; }
+    if (!post) { notify("Cet article n'est plus disponible"); return; }
+    window.dispatchEvent(new CustomEvent("celeste_open_product", { detail: post }));
+  };
+
+  const applyJob = async () => {
+    const msg = window.prompt("Un petit mot pour ta candidature (optionnel) :");
+    setApplying(true);
+    try {
+      const { data, error } = await sb.rpc("apply_to_job", { p_post_id: pick.id, p_message: msg?.trim() || null });
+      if (error) throw error;
+      notify(`Candidature envoyée ✦ ${data.affinity}% d'affinité`);
+      setPick(null);
+    } catch (e) { notify(e.message || "Erreur"); } finally { setApplying(false); }
+  };
+
+  const label = pick.kind === "person" ? "✨ Suggestion du jour" : pick.kind === "product" ? "🛍️ Coup de cœur du jour" : "💼 Offre du jour";
+  const sub = pick.kind === "person" ? "Découvre ce profil" : pick.kind === "product" ? `${Math.round(pick.price).toLocaleString("fr-FR")} F · ${pick.author}` : `${pick.org} · ${pick.affinity}% d'affinité`;
+
+  return (
+    <div style={{ margin: "16px 16px 4px", borderRadius: 22, overflow: "hidden", position: "relative", border: `1.5px solid ${T.gold}55`, background: "rgba(224,184,74,0.05)" }}>
+      {pick.image && <img src={pick.image} alt="" style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} />}
+      <div style={{ padding: 14 }}>
+        <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: T.goldL, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</p>
+        <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: T.text }}>{pick.title}</p>
+        <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted }}>{sub}</p>
+        <Btn
+          onClick={pick.kind === "person" ? () => onUser(pick.id) : pick.kind === "product" ? openProduct : applyJob}
+          disabled={applying}
+          style={{ padding: "8px 18px", borderRadius: 20, background: T.gradGold, color: "#000", fontWeight: 700, fontSize: 12 }}>
+          {pick.kind === "person" ? "Voir le profil" : pick.kind === "product" ? "Voir l'article" : applying ? "…" : "Postuler"}
+        </Btn>
       </div>
     </div>
   );

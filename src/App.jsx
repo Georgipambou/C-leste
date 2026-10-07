@@ -66,14 +66,15 @@ import FinePaymentScreen from "./FinePaymentScreen";
 import JobSeekerQuizScreen from "./JobSeekerQuizScreen";
 import SendMoneyScreen from "./SendMoneyScreen";
 import { MarketplaceFields, ForSaleButton, ProductBuyModal, SellerRatingStars } from "./Marketplace";
+import { JobApplyButton, JobApplyModal, JobCandidatesModal } from "./JobApply";
 import TransactionsScreen from "./Transactions";
 import { CallProvider, CallButton } from "./CallSystem";
-import { JobOffersWidget, JobApplicationsWidget } from "./JobBoard";
+import { JobOffersWidget, JobApplicationsWidget, ProductsDiscoveryWidget, DailyPickCard } from "./JobBoard";
 import { createClient } from "@supabase/supabase-js";
 import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react"; 
 import emailjs from "@emailjs/browser";
-import { uploadToR2 } from "./uploadMedia";
+import { uploadToR2, setUploadTokenGetter } from "./uploadMedia";
 import { autoExtractAndAttachSound } from "./lib/soundExtraction";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Filesystem, Directory } from "@capacitor/filesystem";
@@ -144,6 +145,8 @@ const safeAuthStorage={
 };
 const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"",{auth:{storage:safeAuthStorage}});
 if(import.meta.env.DEV)window.sb=sb;
+setUploadTokenGetter(async()=>(await sb.auth.getSession()).data.session?.access_token||null);
+setUploadTokenGetter(async()=>(await sb.auth.getSession()).data.session?.access_token||null);
 const haptic=async(style="light")=>{
   try{
     if(Capacitor.isNativePlatform()){
@@ -659,7 +662,7 @@ longitude:p.longitude||null,
 });
 
 function mapDbPost(p, followedIds) {
-  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,text_background:p.text_background||null,text_font:p.text_font||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],price:p.price||null,stock:p.stock??null,deal_type:p.deal_type||null,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
+  return {id:p.id,by:p.author_id,author:normProfile(p.author||{}),type:p.type,text:p.text||"",img:p.img_url||null,media_urls:p.media_urls||[],title:p.event_title||null,eventDate:p.event_date||null,eventTime:p.event_time||null,eventLoc:p.event_loc||null,likes:(p.likes||[]).map(l=>l.user_id),participants:(p.event_participants||[]).map(x=>x.user_id),comments:(p.comments?.[0]?.count!==undefined?[]:(p.comments||[]).map(c=>({id:c.id,by:c.author?.id,author:normProfile(c.author||{}),text:c.text,ts:new Date(c.created_at).getTime(),repliesCount:(c.replies||[]).length}))),commentsCount:p.comments?.[0]?.count!==undefined?(p.comments[0].count||0):(p.comments||[]).reduce((a,c)=>a+1+(c.replies?.length||0),0),saved:[],savesCount:p.saved_posts?.[0]?.count||0,ts:new Date(p.created_at).getTime(),isFollowed:followedIds.has(p.author_id),pinned:p.pinned||false,profile_pinned:p.profile_pinned||false,post_phase:p.post_phase||1,is_job:p.is_job||false,job_title:p.job_title||null,job_category:p.job_category||null,job_contract_type:p.job_contract_type||null,job_city:p.job_city||null,job_remote:p.job_remote||null,job_salary_min:p.job_salary_min||null,job_salary_max:p.job_salary_max||null,job_country:p.job_country||null,job_travel_covered:p.job_travel_covered||null,job_education_min:p.job_education_min||null,job_experience_min:p.job_experience_min||null,job_age_min:p.job_age_min||null,job_age_max:p.job_age_max||null,job_skills:p.job_skills||[],text_background:p.text_background||null,text_font:p.text_font||null,is_for_sale:p.is_for_sale||false,is_ai_generated:p.is_ai_generated||false,is_private:p.is_private||false,comments_disabled:p.comments_disabled||false,whatsapp_contact:p.whatsapp_contact||null,contact_link:p.contact_link||null,expires_at:p.expires_at||null,phase_views:p.phase_views||0,poll_multiple:p.poll_multiple||false,poll_options:p.poll_options||[],poll_votes:p.poll_votes||[],price:p.price||null,stock:p.stock??null,deal_type:p.deal_type||null,sound:p.sound?{id:p.sound.id,title:p.sound.title,url:p.sound.url,owner_avatar:p.sound.owner?.avatar_url||null}:null};
 }
 
 // Recherche intelligente : insensible à la casse et aux accents, partout dans le texte
@@ -5472,6 +5475,7 @@ function DiscoverTab({members,myProfile,session,onUser,notify,myConnections,myFo
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("tous");
   const [matchWriting,setMatchWriting]=useState(false);
+  const [discoverOrder]=useState(()=>["match","jobs","products"].sort(()=>Math.random()-0.5));
 
   const toggle=async id=>{
     if((myConnections||[]).includes(id)){
@@ -5504,23 +5508,30 @@ else filtered=active;
 
   return(
     <div style={{flex:1,overflowY:"auto",background:T.bg}}>
+      <DailyPickCard sb={sb} T={T} Btn={Btn} notify={notify} onUser={onUser}/>
       {myProfile?.account_type==="organisation"?(
+        <>
         <JobApplicationsWidget sb={sb} T={T} Btn={Btn} session={session} notify={notify} onUser={onUser} openChat={openChat}/>
+        <ProductsDiscoveryWidget sb={sb} T={T} Btn={Btn} notify={notify}/>
+        </>
       ):(
-      <>
-      <JobOffersWidget sb={sb} T={T} Btn={Btn} session={session} notify={notify}/>
-      <MatchSuggestions myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting} blockedUserIds={blockedUserIds}
-          onChat={async(uid,msg)=>{
-            const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
-            let convId=existing?.id;
-            if(!convId){const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:uid}).select().single();convId=created?.id;}
-            if(convId){
-              await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"text",text:msg});
-              if(openChat)openChat(uid);
-            }
-          }}
-        />
-      </>
+        discoverOrder.map(key=>{
+          if(key==="jobs") return <JobOffersWidget key="jobs" sb={sb} T={T} Btn={Btn} session={session} notify={notify}/>;
+          if(key==="products") return <ProductsDiscoveryWidget key="products" sb={sb} T={T} Btn={Btn} notify={notify}/>;
+          return (
+            <MatchSuggestions key="match" myProfile={myProfile} session={session} members={members} onUser={onUser} notify={notify} onWriteOpen={setMatchWriting} blockedUserIds={blockedUserIds}
+              onChat={async(uid,msg)=>{
+                const{data:existing}=await sb.from("conversations").select("id").or(`and(user1_id.eq.${session?.user?.id},user2_id.eq.${uid}),and(user1_id.eq.${uid},user2_id.eq.${session?.user?.id})`).maybeSingle();
+                let convId=existing?.id;
+                if(!convId){const{data:created}=await sb.from("conversations").insert({user1_id:session?.user?.id,user2_id:uid}).select().single();convId=created?.id;}
+                if(convId){
+                  await sb.from("messages").insert({conv_id:convId,sender_id:session?.user?.id,type:"text",text:msg});
+                  if(openChat)openChat(uid);
+                }
+              }}
+            />
+          );
+        })
       )}
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,display:matchWriting?"none":"block",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
@@ -6692,6 +6703,7 @@ onMuteAuthor?.(post.by);
               En savoir plus
             </a>
           )}
+{post.is_job&&<JobApplyButton T={T} sb={sb} post={post} session={session}/>}
 {post.is_for_sale&&post.price&&(
   <div style={{marginBottom:8}}><ForSaleButton T={T} post={post}/></div>
 )}
@@ -9341,15 +9353,17 @@ const NAV_THEMES=[
                 <ChevronRight size={16} color={T.muted}/>
               </Btn>
             ))}
-            <Btn onClick={()=>{pushNav(()=>setShowJobQuiz(false));setShowJobQuiz(true);}}
-              style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.gold}44`,borderRadius:14,display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-              <span style={{fontSize:18}}>💼</span>
-              <div style={{flex:1,textAlign:"left"}}>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Chercher du travail</p>
-                <p style={{margin:0,fontSize:11,color:T.muted}}>Quiz, CV, préférences</p>
-              </div>
-              <ChevronRight size={16} color={T.muted}/>
-            </Btn>
+            {myProfile?.account_type!=="organisation"&&(
+              <Btn onClick={()=>{pushNav(()=>setShowJobQuiz(false));setShowJobQuiz(true);}}
+                style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.gold}44`,borderRadius:14,display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                <span style={{fontSize:18}}>💼</span>
+                <div style={{flex:1,textAlign:"left"}}>
+                  <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Chercher du travail</p>
+                  <p style={{margin:0,fontSize:11,color:T.muted}}>Quiz, CV, préférences</p>
+                </div>
+                <ChevronRight size={16} color={T.muted}/>
+              </Btn>
+            )}
             <div style={{height:1,background:T.border,margin:"16px 0"}}/>
             <Btn onClick={()=>{pushNav(()=>setShowBugReport(false));setShowBugReport(true);}} style={{width:"100%",padding:"14px",background:"rgba(255,100,50,0.06)",border:"1px solid rgba(255,100,50,0.2)",borderRadius:14,color:"#FF6432",fontSize:14,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
               <span>🐛</span>Signaler un bug
@@ -10829,7 +10843,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
   useEffect(()=>{
     sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
     sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom),post:posts(id,text,media_urls,img_url),sticker:stickers(id,name,url,type,added_by_admin,author_id)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
-    sb.from("posts").select(`*,author:profiles(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
+    sb.from("posts").select(`*,author:profiles!posts_author_id_fkey(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
     sb.from("transaction_reports").select(`*,reporter:profiles!transaction_reports_reporter_id_fkey(prenom,nom),reported:profiles!transaction_reports_reported_user_id_fkey(prenom,nom),transaction:transactions(id,amount,quantity,status,unit_price,post:posts(text))`).eq("status","pending").order("created_at",{ascending:false}).then(({data})=>setTxReports(data||[]));
   },[]);
 
@@ -11707,6 +11721,18 @@ const pushNav = useCallback((closeFn) => {
   if(!isNative){ try{ window.history.pushState({celesteModal:true}, ""); }catch(e){} }
 }, []);
 const [buyingPost,setBuyingPost]=useState(null);
+const [jobPost,setJobPost]=useState(null);
+const [candPost,setCandPost]=useState(null);
+useEffect(()=>{
+  const h=e=>{pushNav(()=>setCandPost(null));setCandPost(e.detail);};
+  window.addEventListener("celeste_open_job_candidates",h);
+  return()=>window.removeEventListener("celeste_open_job_candidates",h);
+},[pushNav]);
+useEffect(()=>{
+  const h=e=>{pushNav(()=>setJobPost(null));setJobPost(e.detail);};
+  window.addEventListener("celeste_open_job",h);
+  return()=>window.removeEventListener("celeste_open_job",h);
+},[pushNav]);
 useEffect(()=>{
   const h=e=>{pushNav(()=>setBuyingPost(null));setBuyingPost(e.detail);};
   window.addEventListener("celeste_open_product",h);
@@ -11894,7 +11920,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
   const sessionAffinityRef=useRef(createSessionAffinity()); // signal d'affinité "chaud" côté client, voir sessionAffinity.js — reset() au login, jamais recréé sinon
  const loadPosts=useCallback(async(page=1,overrideBlockedIds=null)=>{
   if(page===1)lastPostCursorRef.current=null;
-  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,price,stock,deal_type,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
+  let postsQuery=sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,price,stock,deal_type,is_job,job_title,job_category,job_contract_type,job_city,job_remote,job_salary_min,job_salary_max,job_country,job_travel_covered,job_education_min,job_experience_min,job_age_min,job_age_max,job_skills,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).or("expires_at.is.null,expires_at.gt."+new Date().toISOString())
 .or("visibility.is.null,visibility.in.(testing,phase2,phase3,viral,background)")
 .not("visibility","eq","hidden").order("created_at",{ascending:false}).order("id",{ascending:false});
   if(lastPostCursorRef.current){
@@ -11908,7 +11934,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
     const followedIds=new Set(myConnections||[]);
    const mapped=data.map(p=>mapDbPost(p,followedIds));
    if(page===1){
-     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,price,stock,deal_type,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
+     const{data:pinnedData}=await sb.from("posts").select(`id,author_id,type,text,mentions,img_url,media_urls,event_title,event_date,event_time,event_loc,pinned,profile_pinned,post_phase,text_background,text_font,is_for_sale,is_ai_generated,is_private,comments_disabled,whatsapp_contact,contact_link,expires_at,visibility,phase_views,poll_multiple,price,stock,deal_type,is_job,job_title,job_category,job_contract_type,job_city,job_remote,job_salary_min,job_salary_max,created_at,sound_id,sound:sounds!posts_sound_id_fkey(id,title,url,created_by,owner:profiles!created_by(avatar_url)),author:profiles!posts_author_id_fkey(id,prenom,nom,badge,avatar_url,paroisse,status,screenshot_protection,latitude,longitude),likes(user_id),event_participants(user_id),poll_options(id,label,position),poll_votes(option_id,voter_id),comments(count),saved_posts(count)`).eq("pinned",true).or("expires_at.is.null,expires_at.gt."+new Date().toISOString()).not("visibility","eq","hidden").order("created_at",{ascending:false}).limit(20);
      const existingIds=new Set(mapped.map(p=>p.id));
      (pinnedData||[]).forEach(p=>{if(!existingIds.has(p.id))mapped.push(mapDbPost(p,followedIds));});
    }
@@ -12409,6 +12435,8 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
             </div>
         </div>
         {detailPost&&<PostDetailModal post={detailPost} myProfile={myProfile} session={session} getM={getM} onClose={()=>{popNav();setDetailPost(null);}} onLike={async pid=>{await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onParticipate={async pid=>{const uid=session?.user?.id;const participating=(detailPost.participants||[]).includes(uid);if(participating)await sb.from("event_participants").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("event_participants").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
+        {candPost&&<JobCandidatesModal sb={sb} T={T} Btn={Btn} post={candPost} notify={notify} onUser={id=>{setCandPost(null);pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} openChat={openChat} onClose={()=>{popNav();setCandPost(null);}}/>}
+        {jobPost&&<JobApplyModal sb={sb} T={T} Btn={Btn} post={jobPost} session={session} notify={notify} onClose={()=>{popNav();setJobPost(null);}}/>}
         {buyingPost&&<ProductBuyModal sb={sb} T={T} Btn={Btn} post={buyingPost} notify={notify} onClose={()=>{popNav();setBuyingPost(null);}} onDone={()=>{}}/>}
         <SaleAlertOverlay sb={sb} T={T} Btn={Btn} session={session}/>
 {globalViewerPost&&(

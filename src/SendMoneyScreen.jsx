@@ -4,7 +4,16 @@ import { X, Send, Loader2, AlertTriangle, Gift } from "lucide-react";
 function fmt(n) { return (n || 0).toLocaleString("fr-FR"); }
 
 export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, pushNav, popNav }) {
-  const [step, setStep] = useState("form"); // form | confirm
+  const [step, setStep] = useState("form"); // check | setup | form | confirm
+  const [hasPin, setHasPin] = useState(null);
+  const [pinA, setPinA] = useState("");
+    const [forgotStep, setForgotStep] = useState("none"); // none | password | newpin
+  const [password, setPassword] = useState("");
+  const [newPinA, setNewPinA] = useState("");
+  const [newPinB, setNewPinB] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [pinB, setPinB] = useState("");
+  const [pin, setPin] = useState("");
   const [celesteId, setCelesteId] = useState("");
   const [amount, setAmount] = useState("");
   const [message, setMessage] = useState("");
@@ -26,6 +35,43 @@ export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, 
   }, [sb, session.user.id]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
+    useEffect(() => {
+    sb.rpc("has_wallet_pin").then(({ data }) => { setHasPin(!!data); if (!data) setStep("setup"); });
+  }, [sb]);
+  const verifyPassword = async () => {
+    if (!password) return notify("Entre ton mot de passe");
+    setVerifying(true);
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: session.user.email, password });
+      if (error) throw error;
+      setForgotStep("newpin"); setPassword("");
+    } catch (e) {
+      notify("Mot de passe incorrect");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const resetPin = async () => {
+    if (!/^[0-9]{4,6}$/.test(newPinA)) return notify("4 à 6 chiffres");
+    if (newPinA !== newPinB) return notify("Les deux codes ne correspondent pas");
+    try {
+      const { error } = await sb.rpc("force_reset_wallet_pin", { p_new_pin: newPinA });
+      if (error) throw error;
+      notify("Code PIN réinitialisé ✦");
+      setPin(newPinA); setForgotStep("none"); setNewPinA(""); setNewPinB("");
+    } catch (e) { notify(e.message || "Erreur"); }
+  };
+  const savePin = async () => {
+    if (!/^[0-9]{4,6}$/.test(pinA)) return notify("4 à 6 chiffres");
+    if (pinA !== pinB) return notify("Les deux codes ne correspondent pas");
+    try {
+      const { error } = await sb.rpc("set_wallet_pin", { p_new_pin: pinA });
+      if (error) throw error;
+      notify("Code PIN configuré ✦");
+      setHasPin(true); setStep("form"); setPinA(""); setPinB("");
+    } catch (e) { notify(e.message || "Erreur"); }
+  };
 
   const search = async () => {
     if (!celesteId.trim()) return notify("Entre un identifiant Céleste");
@@ -46,10 +92,10 @@ export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, 
   const send = async () => {
     setSending(true);
     try {
-      const { data, error } = await sb.rpc("send_money", { p_celeste_id: celesteId.trim(), p_amount: Number(amount), p_message: message.trim() || null });
+      const { data, error } = await sb.rpc("send_money", { p_celeste_id: celesteId.trim(), p_amount: Number(amount), p_pin: pin, p_message: message.trim() || null });
       if (error) throw error;
       notify(`${fmt(amount)} F envoyés à ${data.recipient_name} ✦`);
-      setStep("form"); setCelesteId(""); setAmount(""); setMessage(""); setRecipient(null);
+      setStep("form"); setCelesteId(""); setAmount(""); setMessage(""); setRecipient(null); setPin("");
       loadHistory();
     } catch (e) {
       notify(e.message || "Erreur");
@@ -81,7 +127,14 @@ export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, 
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
-        {step === "form" ? (
+                        {step === "setup" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>Choisis un code à 4-6 chiffres, demandé avant chaque envoi.</p>
+            <input type="password" inputMode="numeric" style={input} value={pinA} onChange={e => setPinA(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Nouveau code" />
+            <input type="password" inputMode="numeric" style={input} value={pinB} onChange={e => setPinB(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Confirme le code" />
+            <Btn onClick={savePin} style={{ height: 50, borderRadius: 14, background: T.gradGold, color: "#000", fontWeight: 800, fontSize: 14 }}>Valider</Btn>
+          </div>
+        ) : step === "form" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
               <label style={{ fontSize: 12, color: T.muted, marginBottom: 6, display: "block" }}>Identifiant Céleste du destinataire</label>
@@ -108,13 +161,39 @@ export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, 
             )}
             <p style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: T.text }}>{recipient?.name}</p>
             <p style={{ margin: "0 0 24px", fontSize: 12, color: T.muted }}>ID {recipient?.celeste_id}</p>
-            <p style={{ margin: "0 0 28px", fontSize: 32, fontWeight: 800, color: T.goldL }}>{fmt(amount)} F</p>
+            <p style={{ margin: "0 0 20px", fontSize: 32, fontWeight: 800, color: T.goldL }}>{fmt(amount)} F</p>
+
+            {forgotStep === "none" && (
+              <>
+                <input type="password" inputMode="numeric" style={{ ...input, textAlign: "center", letterSpacing: 6, marginBottom: 8 }} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Code PIN" />
+                <button onClick={() => setForgotStep("password")} style={{ background: "none", border: "none", color: T.muted, fontSize: 12, cursor: "pointer", marginBottom: 20, textDecoration: "underline" }}>Code oublié ?</button>
+              </>
+            )}
+
+            {forgotStep === "password" && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 12, color: T.muted, marginBottom: 8 }}>Entre ton mot de passe Céleste pour réinitialiser ton code</p>
+                <input type="password" style={{ ...input, marginBottom: 10 }} value={password} onChange={e => setPassword(e.target.value)} placeholder="Mot de passe" />
+                <Btn onClick={verifyPassword} disabled={verifying} style={{ width: "100%", height: 44, borderRadius: 12, background: T.gradGold, color: "#000", fontWeight: 700, fontSize: 13 }}>
+                  {verifying ? "…" : "Vérifier"}
+                </Btn>
+              </div>
+            )}
+
+            {forgotStep === "newpin" && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 12, color: T.muted, marginBottom: 8 }}>Choisis ton nouveau code</p>
+                <input type="password" inputMode="numeric" style={{ ...input, marginBottom: 8 }} value={newPinA} onChange={e => setNewPinA(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Nouveau code" />
+                <input type="password" inputMode="numeric" style={{ ...input, marginBottom: 10 }} value={newPinB} onChange={e => setNewPinB(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Confirme le code" />
+                <Btn onClick={resetPin} style={{ width: "100%", height: 44, borderRadius: 12, background: T.gradGold, color: "#000", fontWeight: 700, fontSize: 13 }}>Valider</Btn>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10 }}>
               <Btn onClick={() => setStep("form")} disabled={sending} style={{ flex: 1, height: 50, borderRadius: 14, background: T.bg3, border: `1px solid ${T.border}`, color: T.text, fontWeight: 700 }}>
                 Retour
               </Btn>
-              <Btn onClick={send} disabled={sending} style={{ flex: 1, height: 50, borderRadius: 14, background: T.gradGold, color: "#000", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Btn onClick={send} disabled={sending || pin.length < 4} style={{ flex: 1, height: 50, borderRadius: 14, background: T.gradGold, color: "#000", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: sending || pin.length < 4 ? 0.5 : 1 }}>
                 {sending ? "…" : <><Send size={15} /> Envoyer</>}
               </Btn>
             </div>
