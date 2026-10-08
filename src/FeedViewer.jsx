@@ -20,6 +20,7 @@ import { SOUND_MATCH_BONUS } from "./lib/recommendation/useFeedRanking";
 import SoundBadge from "./components/SoundBadge";
 import SoundDiscBadge from "./components/SoundDiscBadge";
 import { DuoBadge } from "./Duo";
+import { JobApplyButton } from "./JobApply";
 
 // ── Utilitaires écran ─────────────────────────────────────────────
 import { Capacitor } from "@capacitor/core";
@@ -1339,6 +1340,11 @@ export default function FeedViewer({
                 {post.sound?.title && (
                   <div style={{ marginTop: 8, pointerEvents: "auto", width: "fit-content" }} onClick={() => onOpenSound?.(post.sound.id)}>
                     <SoundBadge title={post.sound.title} playing={isActive && (isVideo ? !pausedMap[idx] : true)} />
+                  </div>
+                )}
+                {post.is_job && (
+                  <div style={{ marginTop: 8, pointerEvents: "auto" }}>
+                    <JobApplyButton T={T} sb={sb} post={post} session={session} />
                   </div>
                 )}
                 {hasMarketplace && (
