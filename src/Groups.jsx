@@ -11,6 +11,7 @@ import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
 import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage, trackGroupFileSend, updateGroupFileSend, removeGroupFileSend, getGroupFileSendsForConv, subscribeGroupFileSends } from "./lib/groupMessageQueue";
 import StickerPicker from "./components/StickerPicker";
+import { computeWaveform, fallbackBars } from "./lib/waveform";
 import { Capacitor } from "@capacitor/core";
 import { PrivacyScreen } from "@capacitor-community/privacy-screen";
 import previewDark from "./assets/preview.webp";
@@ -367,6 +368,13 @@ export function CreateGroupModal({ sb, T, Av, Btn, session, members, myConnectio
   const [photoFile, setPhotoFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [ownedCount, setOwnedCount] = useState(null); // null = en cours de vérification
+  const stepRef = useRef(1);
+  stepRef.current = step;
+  useEffect(() => {
+    const onBack = e => { if (stepRef.current === 2) { e.preventDefault(); setStep(1); } };
+    window.addEventListener("celeste_create_group_back", onBack);
+    return () => window.removeEventListener("celeste_create_group_back", onBack);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -433,7 +441,7 @@ export function CreateGroupModal({ sb, T, Av, Btn, session, members, myConnectio
         paddingTop: "calc(10px + env(safe-area-inset-top,0px))",
         borderBottom: `1px solid ${T.border}`
       }}>
-        <Btn onClick={onClose} style={{ color: T.muted }}><X size={22} /></Btn>
+        <Btn onClick={step === 2 ? () => setStep(1) : onClose} style={{ color: T.muted }}>{step === 2 ? <ChevronLeft size={22} /> : <X size={22} />}</Btn>
         <p style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 700, color: T.text }}>
           {step === 1 ? "Nouveau groupe" : "Détails du groupe"}
         </p>
@@ -849,18 +857,20 @@ export async function editGroupMessage(sb, msgId, newText) {
   return sb.from("group_messages").update({ text: newText, edited_at: new Date().toISOString() }).eq("id", msgId);
 }
 
-function GroupVoicePlayer({ src, mine, T }) {
+function GroupVoicePlayer({ src, mine, T, wf }) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(wf?.d || 0);
   const [speed, setSpeed] = useState(1);
-  const [bars, setBars] = useState(null);
+  const [bars, setBars] = useState(wf?.p ? wf.p.map(v => v / 100) : null);
   const audioRef = useRef(null);
   const barsRef = useRef(null);
   const draggingRef = useRef(false);
   const fmt = s => { if (!s || !isFinite(s) || isNaN(s)) return "0:00"; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; };
   useEffect(() => {
-    const a = new Audio(src);
+    const a = new Audio();
+    a.preload = "metadata";
+    a.src = src;
     a.playbackRate = speed;
     audioRef.current = a;
     a.onloadedmetadata = () => { if (isFinite(a.duration)) setDuration(a.duration); };
@@ -869,32 +879,8 @@ function GroupVoicePlayer({ src, mine, T }) {
     return () => { a.pause(); a.src = ""; };
   }, [src]);
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) throw new Error("no AudioContext");
-        const res = await fetch(src);
-        const buf = await res.arrayBuffer();
-        const ctx = new AudioCtx();
-        const decoded = await ctx.decodeAudioData(buf);
-        const raw = decoded.getChannelData(0);
-        const barCount = 32;
-        const step = Math.floor(raw.length / barCount) || 1;
-        const peaks = [];
-        for (let i = 0; i < barCount; i++) {
-          let max = 0;
-          for (let j = i * step; j < Math.min((i + 1) * step, raw.length); j++) { const v = Math.abs(raw[j]); if (v > max) max = v; }
-          peaks.push(max);
-        }
-        const maxPeak = Math.max(...peaks, 0.01);
-        if (!cancelled) { setBars(peaks.map(p => Math.max(0.15, p / maxPeak))); if (isFinite(decoded.duration)) setDuration(decoded.duration); }
-        ctx.close();
-      } catch { if (!cancelled) setBars(Array.from({ length: 32 }, () => 0.4)); }
-    })();
-    return () => { cancelled = true; };
-  }, [src]);
+  
+    
   const toggle = () => {
     const a = audioRef.current; if (!a) return;
     if (playing) { a.pause(); setPlaying(false); } else { a.play(); setPlaying(true); }
@@ -910,7 +896,7 @@ function GroupVoicePlayer({ src, mine, T }) {
   const onPointerDown = e => { draggingRef.current = true; seekAtClientX(e.touches ? e.touches[0].clientX : e.clientX); };
   const onPointerMove = e => { if (!draggingRef.current) return; seekAtClientX(e.touches ? e.touches[0].clientX : e.clientX); };
   const onPointerUp = () => { draggingRef.current = false; };
-  const displayBars = bars || Array.from({ length: 32 }, () => 0.4);
+  const displayBars = bars || fallbackBars(src);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 220, padding: "4px 0" }}>
       <button onClick={toggle} style={{ width: 36, height: 36, borderRadius: "50%", background: mine ? "rgba(0,0,0,0.15)" : "rgba(201,149,42,0.15)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: mine ? "#000" : T.goldL }}>
@@ -1023,14 +1009,14 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                 ? (mine
                     ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: mine ? "rgba(0,0,0,0.55)" : T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vocal vue unique envoyé</span></div>
                     : (revealedOnce?.has(m.id)
-                        ? <GroupVoicePlayer src={viewOnceUrls?.[m.id]} mine={mine} T={T} />
+                        ? <GroupVoicePlayer src={viewOnceUrls?.[m.id]} mine={mine} T={T} wf={m.waveform} />
                         : (viewedByMeIds?.has(m.id)
                             ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", color: T.muted }}><EyeOff size={16} /><span style={{ fontSize: 12, fontWeight: 600 }}>Vocal vue unique consulté</span></div>
                             : <Btn onClick={e => { e.stopPropagation(); onRevealOnce?.(m.id); }} disabled={revealingOnce?.has(m.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px", color: T.text, opacity: revealingOnce?.has(m.id) ? 0.6 : 1 }}><Eye size={18} /><span style={{ fontSize: 13, fontWeight: 600 }}>{revealingOnce?.has(m.id) ? "Ouverture…" : "Appuyer pour écouter · vue unique"}</span></Btn>
                           )
                       )
                   )
-                : (m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} />)
+                : (m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} wf={m.waveform} />)
             )}
              {m.type === "sticker" && <img src={m.file_url} style={{ width: 100, height: 100, objectFit: "contain", display: "block" }} />}
             {m.type === "post_share" && (
@@ -1234,11 +1220,21 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     return () => { startedHandle?.remove(); stoppedHandle?.remove(); screenshotHandle?.remove(); };
   }, [group.id, myId, revealedOnce, sb, session]);
 
-
+  useEffect(() => {
+    const ch = sb.channel(`group_deleted:${group.id}`)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "groups" }, (payload) => {
+        if (payload.old?.id !== group.id) return;
+        if (window.__celesteGroupDeletedByMe === group.id) return;
+        notify?.(`Le groupe "${group.name}" a été supprimé`);
+        onBack();
+      })
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [sb, group.id]);
   const load = useCallback(async () => {
     const { data } = await sb
       .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,waveform,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
       .eq("group_id", group.id)
       .order("created_at", { ascending: true })
       .limit(300);
@@ -1258,7 +1254,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const fetchMessageById = useCallback(async id => {
     const { data } = await sb
       .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,waveform,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
       .eq("id", id)
       .single();
     return data;
@@ -1474,13 +1470,14 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
         const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
         const audioFile = new File([blob], `voice_group_${Date.now()}.${ext}`, { type: mimeType });
+        const waveform = await computeWaveform(blob);
         const tempId = "tmp_gvoice_" + Date.now();
         trackGroupFileSend(tempId, group.id, { fileType: "voice", fileName: null });
         const attempt = async (tries = 0) => {
           try {
             const url = await uploadToR2(audioFile, "group_messages", pct => updateGroupFileSend(tempId, { pct }));
            
-            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce, ...replyPayload });
+            const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce, waveform, ...replyPayload });
             if (error) throw error;
             removeGroupFileSend(tempId);
             load();
@@ -1633,6 +1630,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       <div style={{ display: "flex", gap: 8, padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom,0px) + var(--kb-height,0px))", borderTop: `1px solid ${T.border}`, position: "relative" }}>
         <input type="file" accept="image/*,video/*" ref={iRef} style={{ display: "none" }} onChange={e => handleFile(e, true)} />
         <input type="file" accept="*/*" ref={fRef} style={{ display: "none" }} onChange={e => handleFile(e, false)} />
+        {!recording && (<>
         <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Camera size={20} />
         </Btn>
@@ -1650,8 +1648,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
             <StickerPicker sb={sb} userId={myId} T={T} onClose={() => { popNav(); setShowStickerPicker(false); }} onSelect={sendSticker} />
           </div>
         )}
+        </>)}
         {recording ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(200,64,64,0.08)", border: `1px solid ${T.err || "#c84040"}44`, borderRadius: 20, padding: "10px 16px", flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(200,64,64,0.08)", border: `1px solid ${T.err || "#c84040"}44`, borderRadius: 20, padding: "10px 12px", flex: 1, minWidth: 0 }}>
             <span style={{ flex: 1, color: T.err || "#c84040", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.err || "#c84040", display: "inline-block" }} />
               {recInitializing ? "Connexion micro…" : `${recordSecs}s${recPaused ? " (pause)" : ""}`}
@@ -1848,7 +1847,12 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [showTheme, setShowTheme] = useState(false);
   const [showMedia, setShowMedia] = useState(false);
   const myId = session?.user?.id;
-  const isCreator = group.created_by === myId;
+  const [createdBy, setCreatedBy] = useState(group.created_by || null);
+  useEffect(() => {
+    sb.from("groups").select("created_by").eq("id", group.id).maybeSingle()
+      .then(({ data }) => { if (data?.created_by) setCreatedBy(data.created_by); });
+  }, [sb, group.id]);
+  const isCreator = createdBy === myId;
   const myMembership = members.find(m => m.user_id === myId);
   const isAdmin = isCreator || myMembership?.role === "admin";
 
@@ -1902,17 +1906,34 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     onLeftGroup?.();
   };
 
-  const remove = async () => {
+    const remove = async () => {
     popNav();
     setConfirmDelete(false);
-    const { error } = await sb.from("groups").delete().eq("id", group.id);
-    if (error) { notify?.("Impossible de supprimer le groupe"); console.error("Erreur remove:", error); return; }
+    const { data: others } = await sb.from("group_members").select("user_id").eq("group_id", group.id).neq("user_id", myId);
+    const targetIds = (others || []).map(r => r.user_id);
+    window.__celesteGroupDeletedByMe = group.id;
+    const { data: deleted, error } = await sb.from("groups").delete().eq("id", group.id).select("id");
+    if (error || !deleted?.length) {
+      window.__celesteGroupDeletedByMe = null;
+      notify?.("Impossible de supprimer le groupe");
+      console.error("Erreur remove:", error || "aucune ligne supprimée (RLS ?)");
+      return;
+    }
+    if (targetIds.length) {
+      const { error: nErr } = await sb.from("notifications").insert(
+        targetIds.map(uid => ({ user_id: uid, from_id: myId, type: "group_deleted", text: group.name, read: false }))
+      );
+      if (nErr) console.error("Notif suppression non envoyée:", nErr);
+      targetIds.forEach(uid => {
+        sb.functions.invoke("send-push", { body: { targetUserId: uid, title: "Groupe supprimé", body: `Le groupe "${group.name}" a été supprimé` } });
+      });
+    }
     notify?.("Groupe supprimé");
     onDeletedGroup?.();
   };
 
   const submitReport = async (reason) => {
-    await sb.from("reports").insert({ reporter_id: myId, reported_id: group.created_by, group_id: group.id, reason });
+    await sb.from("reports").insert({ reporter_id: myId, reported_id: createdBy, group_id: group.id, reason });
     popNav();
     setShowReport(false);
     notify?.("Signalement envoyé ✦");

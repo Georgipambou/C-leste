@@ -76,6 +76,7 @@ import React from "react";
 import emailjs from "@emailjs/browser";
 import { uploadToR2, setUploadTokenGetter } from "./uploadMedia";
 import { autoExtractAndAttachSound } from "./lib/soundExtraction";
+import { computeWaveform, fallbackBars } from "./lib/waveform";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -1083,8 +1084,8 @@ function NoteComposerModal({sb,userId,existingText,onClose,onSaved,onDeleted,not
     onDeleted();onClose();
   };
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none",marginBottom:"var(--kb-height,0px)"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1400,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:"20px 20px calc(20px + env(safe-area-inset-bottom,0px))",border:`1px solid ${T.border}`,borderBottom:"none",marginBottom:"var(--kb-height,0px)"}}>
        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
           <p style={{margin:0,fontSize:15,fontWeight:700,color:T.text}}>Ta note</p>
           <Btn onClick={onClose} style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:T.muted}}><X size={14}/></Btn>
@@ -1133,8 +1134,8 @@ function NoteReplyModal({sb,session,note,onClose,notify}){
     finally{setSending(false);}
   };
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:20,border:`1px solid ${T.border}`,borderBottom:"none",marginBottom:"var(--kb-height,0px)"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1400,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg,width:"100%",borderRadius:"20px 20px 0 0",padding:"20px 20px calc(20px + env(safe-area-inset-bottom,0px))",border:`1px solid ${T.border}`,borderBottom:"none",marginBottom:"var(--kb-height,0px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
           <Av u={note.author} size={36} noStatus/>
           <div style={{background:"rgba(255,255,255,0.06)",borderRadius:14,padding:"8px 12px",fontSize:13,color:T.text,flex:1}}>{renderTextWithMentions(note.text)}</div>
@@ -1176,7 +1177,7 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify,pushNav
   return(
     <>
     <div style={{display:"flex",gap:10,overflowX:"auto",padding:"48px 16px 6px",scrollbarWidth:"none"}}>
-      <div onClick={()=>setShowComposer(true)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
+      <div onClick={()=>{pushNav(()=>setShowComposer(false));setShowComposer(true);}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,cursor:"pointer"}}>
         <div style={{position:"relative"}}>
           {myNote&&<div style={bubbleStyle}>{renderTextWithMentions(myNote.text)}</div>}
           <Av u={myProfile} size={40} noStatus/>
@@ -1197,7 +1198,7 @@ function NotesBar({sb,session,myProfile,myConnections,myFollowers,notify,pushNav
       ))}
     </div>
     {showComposer&&<NoteComposerModal sb={sb} userId={session.user.id} existingText={myNote?.text} notify={notify}
-      onClose={()=>setShowComposer(false)}
+      onClose={()=>{popNav();setShowComposer(false);}}
       onSaved={t=>{
         const isNewNote=!myNote;
         setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}));
@@ -2095,6 +2096,7 @@ function NotifsScreen({myProfile,session,members}){
     status_view:"a vu ton statut",
     group_invite:`t'a invité${n.text?` dans "${n.text}"`:" dans un groupe"}`,
     group_invite_declined:`a refusé de rejoindre${n.text?` "${n.text}"`:" ton groupe"}`,
+    group_deleted:`a supprimé le groupe${n.text?` "${n.text}"`:""}`,
     post_deleted:n.text||"Une de tes publications a été supprimée",
     warning:n.text||"Avertissement de l'équipe Céleste",
     approved:"Ton compte a été validé ✦",
@@ -2125,6 +2127,7 @@ function NotifsScreen({myProfile,session,members}){
     friend_online:"🟢",
     group_invite:"👥",
     group_invite_declined:"🚫",
+    group_deleted:"🗑️",
   }[n.type]||"🔔");
 
   const SYSTEM_TYPES=["post_deleted","warning","approved","earning","poll_ended","broadcast","withdrawal_request"];
@@ -5543,9 +5546,7 @@ else filtered=active;
             <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher…" style={{flex:1,minWidth:0,width:"100%",background:"none",border:"none",color:T.text,fontSize:13,outline:"none"}}/>
             {q&&<Btn onClick={()=>setQ("")} style={{color:T.muted,display:"flex",alignItems:"center"}}><X size={14}/></Btn>}
           </div>
-          <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-          </div>
+          
         </div>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto"}}>
@@ -7108,9 +7109,10 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <h2 style={{margin:0,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",fontSize:34,fontWeight:800,letterSpacing:-0.5,color:T.text,flex:1}}>Discussions</h2>
-          <div style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.06)",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-          </div>
+          <button onClick={onCreateGroup} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:20,border:`1px solid ${T.gold}`,background:T.goldBg,color:T.goldL,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            <Plus size={15}/>Groupe
+          </button>
+          
         </div>
         {/* Recherche */}
         <div style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${T.border}`,borderRadius:20,padding:"9px 14px",display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
@@ -7126,11 +7128,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
               {f.k==="nonlus"&&(sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))||(groups||[]).some(g=>g.unreadCount>0))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
             </button>
           ))}
-          {filter==="groupes"&&(
-            <button onClick={onCreateGroup} title="Nouveau groupe" style={{flexShrink:0,marginLeft:"auto",width:32,height:32,borderRadius:"50%",border:`1px solid ${T.gold}`,background:"transparent",color:T.goldL,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-              <Plus size={16}/>
-            </button>
-          )}
+          
         </div>
       </div>
 
@@ -7152,6 +7150,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
             {visibleGroups.length===0&&(
               <div style={{textAlign:"center",padding:"60px 20px",color:T.muted}}>
                 <p style={{fontSize:13}}>{q?"Aucun groupe ne correspond à ta recherche":"Tu n'as encore aucun groupe"}</p>
+                {!q&&<button onClick={onCreateGroup} style={{marginTop:14,padding:"11px 22px",borderRadius:14,border:"none",background:T.gradGold,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer"}}>Créer un groupe ✦</button>}
               </div>
             )}
             {[...visibleGroups].sort((a,b)=>(isGroupPinned(b.id)?1:0)-(isGroupPinned(a.id)?1:0)).map(g=>(
@@ -7339,18 +7338,20 @@ async function fixWebmDuration(blob,durationSeconds){
   }catch(_){}
   return blob;
 }
-function VoicePlayer({src,mine,T}){
+function VoicePlayer({src,mine,T,wf}){
   const [playing,setPlaying]=useState(false);
   const [progress,setProgress]=useState(0);
-  const [duration,setDuration]=useState(0);
+  const [duration,setDuration]=useState(wf?.d||0);
   const [speed,setSpeed]=useState(1);
-  const [bars,setBars]=useState(null);
+  const [bars,setBars]=useState(wf?.p?wf.p.map(v=>v/100):null);
   const audioRef=useRef(null);
   const barsRef=useRef(null);
   const draggingRef=useRef(false);
   const fmt=s=>{if(!s||!isFinite(s)||isNaN(s))return"0:00";const m=Math.floor(s/60),sec=Math.floor(s%60);return`${m}:${sec.toString().padStart(2,"0")}`;};
   useEffect(()=>{
-    const a=new Audio(src);
+    const a=new Audio();
+    a.preload="metadata";
+    a.src=src;
     a.playbackRate=speed;
     audioRef.current=a;
     a.onloadedmetadata=()=>{if(isFinite(a.duration))setDuration(a.duration);};
@@ -7359,32 +7360,8 @@ function VoicePlayer({src,mine,T}){
     return()=>{a.pause();a.src="";};
   },[src]);
   useEffect(()=>{if(audioRef.current)audioRef.current.playbackRate=speed;},[speed]);
-  useEffect(()=>{
-    let cancelled=false;
-    (async()=>{
-      try{
-        const AudioCtx=window.AudioContext||window.webkitAudioContext;
-        if(!AudioCtx)throw new Error("no AudioContext");
-        const res=await fetch(src);
-        const buf=await res.arrayBuffer();
-        const ctx=new AudioCtx();
-        const decoded=await ctx.decodeAudioData(buf);
-        const raw=decoded.getChannelData(0);
-        const barCount=32;
-        const step=Math.floor(raw.length/barCount)||1;
-        const peaks=[];
-        for(let i=0;i<barCount;i++){
-          let max=0;
-          for(let j=i*step;j<Math.min((i+1)*step,raw.length);j++){const v=Math.abs(raw[j]);if(v>max)max=v;}
-          peaks.push(max);
-        }
-               const maxPeak=Math.max(...peaks,0.01);
-        if(!cancelled){setBars(peaks.map(p=>Math.max(0.15,p/maxPeak)));if(isFinite(decoded.duration))setDuration(decoded.duration);}
-        ctx.close();
-      }catch{ if(!cancelled)setBars(Array.from({length:32},()=>0.4)); }
-    })();
-    return()=>{cancelled=true;};
-  },[src]);
+  
+    
   const toggle=()=>{
     const a=audioRef.current;if(!a)return;
     if(playing){a.pause();setPlaying(false);}
@@ -7404,7 +7381,7 @@ function VoicePlayer({src,mine,T}){
   const onPointerDown=e=>{draggingRef.current=true;seekAtClientX(e.touches?e.touches[0].clientX:e.clientX);};
   const onPointerMove=e=>{if(!draggingRef.current)return;seekAtClientX(e.touches?e.touches[0].clientX:e.clientX);};
   const onPointerUp=()=>{draggingRef.current=false;};
-  const displayBars=bars||Array.from({length:32},()=>0.4);
+  const displayBars=bars||fallbackBars(src);
   return(
     <div style={{display:"flex",alignItems:"center",gap:10,minWidth:200,padding:"4px 0"}}>
       <button onClick={toggle} style={{width:36,height:36,borderRadius:"50%",background:mine?"rgba(0,0,0,0.15)":"rgba(201,149,42,0.15)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,color:mine?"#000":T.goldL}}>
@@ -7553,7 +7530,7 @@ const wipeQueueRef=useRef(new Set());
           if(patchConv){
             patchConv(conv.id,msgs=>{
               if(msgs.some(m=>m.id===nm.id))return msgs;
-              const mapped={id:nm.id,f:nm.sender_id===session?.user?.id?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:typeof nm.reply_metadata==="string"?JSON.parse(nm.reply_metadata):nm.reply_metadata||null,reply_to_id:nm.reply_to_id||null,reply_to_text:nm.reply_to_text||null,reply_to_author:nm.reply_to_author||null,reactions:nm.reactions||null,edited_at:nm.edited_at||null,sticker_id:nm.sticker_id||null,shared_post_id:nm.shared_post_id||null,view_once:!!nm.view_once,viewed_at:nm.viewed_at||null};
+              const mapped={id:nm.id,f:nm.sender_id===session?.user?.id?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:typeof nm.reply_metadata==="string"?JSON.parse(nm.reply_metadata):nm.reply_metadata||null,reply_to_id:nm.reply_to_id||null,reply_to_text:nm.reply_to_text||null,reply_to_author:nm.reply_to_author||null,reactions:nm.reactions||null,edited_at:nm.edited_at||null,sticker_id:nm.sticker_id||null,shared_post_id:nm.shared_post_id||null,view_once:!!nm.view_once,viewed_at:nm.viewed_at||null,waveform:nm.waveform||null};
               return [...msgs,mapped].sort((a,b)=>a.ts-b.ts);
             });
           }else{reload();}
@@ -7690,7 +7667,20 @@ const wipeQueueRef=useRef(new Set());
     sb.from("blocks").select("blocker_id,blocked_id").or(`and(blocker_id.eq.${session?.user?.id},blocked_id.eq.${conv.uid}),and(blocker_id.eq.${conv.uid},blocked_id.eq.${session?.user?.id})`)
       .then(({data})=>setIsBlocked(!!(data&&data.length>0)));
   },[conv.uid,session?.user?.id]);
-
+  const noMsgRef=useRef(false);
+  useEffect(()=>{
+    if(!conv.uid||!session?.user?.id)return;
+    let alive=true;
+    (async()=>{
+      const{data:tp}=await sb.from("profiles").select("no_messages,screenshot_protection").eq("id",conv.uid).single();
+      if(!alive)return;
+      if(tp?.screenshot_protection)enableScreenProtection();else disableScreenProtection();
+      let blocked=!!tp?.no_messages;
+      if(blocked){const{data:me}=await sb.from("profiles").select("is_admin").eq("id",session.user.id).single();if(me?.is_admin)blocked=false;}
+      if(alive)noMsgRef.current=blocked;
+    })();
+    return()=>{alive=false;};
+  },[conv.uid]);
   const ensureConv=async()=>{
     if(isBlocked){notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><Ban size={14}/>Impossible d'envoyer ce message</span>);return null;}
     const{data:targetProfile}=await sb.from("profiles").select("no_messages,badge,screenshot_protection").eq("id",conv.uid).single();
@@ -7714,8 +7704,9 @@ if(targetProfile?.screenshot_protection)enableScreenProtection();else disableScr
 
   const sendMsg=async payload=>{
   if(isBlocked){notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><Ban size={14}/>Impossible d'envoyer ce message</span>);return;}
+  if(noMsgRef.current){notify(<span style={{display:"inline-flex",alignItems:"center",gap:6}}><BellOff size={14}/>Cette personne ne souhaite pas recevoir de messages</span>);return;}
   let convId=conv.id;
-  if(navigator.onLine){
+  if(!convId&&navigator.onLine){
     try{
       const ensured=await ensureConv();
       if(ensured===null)return;
@@ -7897,6 +7888,7 @@ const handleFile=async(e,isImg)=>{
           const realDuration=(Date.now()-recStartedAt)/1000;
           blob=await fixWebmDuration(blob,realDuration);
         }
+        const waveform=await computeWaveform(blob);
         const tempId="tmp_voice_"+Date.now();
         trackFileSend(tempId,conv.id,{fileType:"voice",fileName:null});
         const convId=await ensureConv();
@@ -7907,7 +7899,7 @@ const handleFile=async(e,isImg)=>{
             const ext=mimeType.includes("mp4")?"m4a":mimeType.includes("ogg")?"ogg":"webm";
             const audioFile=new File([blob],`voice_${Date.now()}.${ext}`,{type:mimeType});
             const publicUrl=await uploadToR2(audioFile,"messages",pct=>updateFileSend(tempId,{pct}));
-           const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce,...replyPayload});
+           const{error}=await sb.from("messages").insert({conv_id:convId,sender_id:senderUid,type:"voice",file_url:publicUrl,text:"",view_once:wantViewOnce,waveform,...replyPayload});
             if(error)throw error;
             removeFileSend(tempId);
             playChatSound("send");
@@ -8148,14 +8140,14 @@ const handleFile=async(e,isImg)=>{
                       ? (mine
                           ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:"rgba(0,0,0,0.55)"}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vocal vue unique envoyé</span></div>
                           : (revealedOnce.has(m.id)
-                              ? <VoicePlayer src={viewOnceUrls[m.id]} mine={mine} T={T}/>
+                              ? <VoicePlayer src={viewOnceUrls[m.id]} mine={mine} T={T} wf={m.waveform}/>
                               : (m.viewed_at
                                   ? <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",color:T.muted}}><EyeOff size={16}/><span style={{fontSize:12,fontWeight:600}}>Vocal vue unique consulté</span></div>
                                   : <Btn onClick={()=>revealOnce(m)} disabled={revealingOnce.has(m.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:T.glassMid,borderRadius:10,color:T.text,opacity:revealingOnce.has(m.id)?0.6:1}}><Eye size={18}/><span style={{fontSize:13,fontWeight:600}}>{revealingOnce.has(m.id)?"Ouverture…":"Appuyer pour écouter · vue unique"}</span></Btn>
                                 )
                             )
                         )
-                      : ((m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T}/>)
+                      : ((m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T} wf={m.waveform}/>)
                   )}
 {m.type==="video"&&(
                     m.view_once
@@ -11474,21 +11466,40 @@ function CelesteApp(){
   },[]);
 
   useEffect(()=>{
-    document.documentElement.style.setProperty("--kb-height","0px");
+    const root=document.documentElement;
+    const setKb=px=>root.style.setProperty("--kb-height",`${px}px`);
+    const syncVh=()=>root.style.setProperty("--app-vh",`${window.innerHeight*0.01}px`);
+    setKb(0);
     if(Capacitor.isNativePlatform()){
-      let showSub,hideSub;
+      const isAndroid=Capacitor.getPlatform()==="android";
+      let closedH=window.innerHeight;
+      const timers=[],subs=[];
+      const later=(fn,ms)=>timers.push(setTimeout(fn,ms));
       Keyboard.addListener("keyboardWillShow",info=>{
-        document.documentElement.style.setProperty("--kb-height",`${info?.keyboardHeight||0}px`);
-      }).then(h=>{showSub=h;});
-      Keyboard.addListener("keyboardWillHide",()=>{
-        document.documentElement.style.setProperty("--kb-height","0px");
-      }).then(h=>{hideSub=h;});
-      return()=>{showSub?.remove();hideSub?.remove();};
+        if(!isAndroid)setKb(info?.keyboardHeight||0);
+      }).then(h=>subs.push(h));
+      Keyboard.addListener("keyboardDidShow",info=>{
+        const kb=info?.keyboardHeight||0;
+        later(()=>{
+          syncVh();
+          // Android : si la WebView a déjà rétréci nativement, ne pas recompter le clavier
+          const shrunk=closedH-window.innerHeight;
+          setKb(isAndroid&&shrunk>=kb*0.6?0:kb);
+        },80);
+      }).then(h=>subs.push(h));
+      Keyboard.addListener("keyboardWillHide",()=>setKb(0)).then(h=>subs.push(h));
+      Keyboard.addListener("keyboardDidHide",()=>{
+        setKb(0);
+        const settle=()=>{syncVh();closedH=window.innerHeight;};
+        later(settle,150);
+        later(settle,450);
+      }).then(h=>subs.push(h));
+      return()=>{timers.forEach(clearTimeout);subs.forEach(h=>h?.remove());};
     }else if(window.visualViewport){
       const vv=window.visualViewport;
       const onVvResize=()=>{
         const inset=Math.max(0,window.innerHeight-vv.height-vv.offsetTop);
-        document.documentElement.style.setProperty("--kb-height",`${inset}px`);
+        setKb(inset);
       };
       vv.addEventListener("resize",onVvResize);
       return()=>vv.removeEventListener("resize",onVvResize);
@@ -11753,6 +11764,15 @@ useEffect(()=>{
   window.addEventListener("celeste_open_admin_withdrawals",h);
   return()=>window.removeEventListener("celeste_open_admin_withdrawals",h);
 },[]);
+const openCreateGroup=useCallback(()=>{
+  const closeFn=()=>{
+    const ev=new CustomEvent("celeste_create_group_back",{cancelable:true});
+    if(!window.dispatchEvent(ev)){pushNav(closeFn);}
+    else setShowCreateGroup(false);
+  };
+  pushNav(closeFn);
+  setShowCreateGroup(true);
+},[pushNav]);
 const popNav = useCallback(() => {
   navStack.current.pop();
   if(!isNative){ ignoreNextPopRef.current = true; try{ window.history.back(); }catch(e){} }
@@ -12067,8 +12087,8 @@ return updated;
   },[]);
 
   const MSG_PAGE_SIZE=60;
-  const mapMsgRow=(m,myId)=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null,view_once:!!m.view_once,viewed_at:m.viewed_at||null});
-  const MSG_COLUMNS="id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id,view_once,viewed_at";
+  const mapMsgRow=(m,myId)=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null,view_once:!!m.view_once,viewed_at:m.viewed_at||null,waveform:m.waveform||null});
+  const MSG_COLUMNS="id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id,view_once,viewed_at,waveform";
   const loadConvs=useCallback(async myId=>{
     if(!myId)return;
     const[{data},{data:blockedData},{data:blockedMeData}]=await Promise.all([
@@ -12150,7 +12170,7 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           if(cv.id!==nm.conv_id)return cv;
           const alreadyExists=(cv.msgs||[]).some(m=>m.id===nm.id);
           if(alreadyExists)return cv;
-          const newMsg={id:nm.id,f:nm.sender_id===myId?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:typeof nm.reply_metadata==="string"?JSON.parse(nm.reply_metadata):nm.reply_metadata||null,reply_to_id:nm.reply_to_id||null,reply_to_text:nm.reply_to_text||null,reply_to_author:nm.reply_to_author||null,reactions:nm.reactions||null,edited_at:nm.edited_at||null,sticker_id:nm.sticker_id||null,shared_post_id:nm.shared_post_id||null,view_once:!!nm.view_once,viewed_at:nm.viewed_at||null};
+          const newMsg={id:nm.id,f:nm.sender_id===myId?"me":nm.sender_id,type:nm.type,text:nm.text||"",img:nm.file_url,fileName:nm.file_name,read:nm.is_read,ts:new Date(nm.created_at).getTime(),reply_metadata:typeof nm.reply_metadata==="string"?JSON.parse(nm.reply_metadata):nm.reply_metadata||null,reply_to_id:nm.reply_to_id||null,reply_to_text:nm.reply_to_text||null,reply_to_author:nm.reply_to_author||null,reactions:nm.reactions||null,edited_at:nm.edited_at||null,sticker_id:nm.sticker_id||null,shared_post_id:nm.shared_post_id||null,view_once:!!nm.view_once,viewed_at:nm.viewed_at||null,waveform:nm.waveform||null};
           return{...cv,msgs:[...(cv.msgs||[]),newMsg]};
         }));
         if(nm.sender_id===myId)return;
@@ -12392,7 +12412,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               myId={session?.user?.id}
               onBack={()=>{popNav();setOpenConvInfoUid(null);}}
               onOpenProfile={uid=>{setOpenConvInfoUid(null);setOpenConvId(null);pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
-              onCreateGroup={()=>{setOpenConvInfoUid(null);pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}}
+              onCreateGroup={()=>{setOpenConvInfoUid(null);openCreateGroup();}}
               notify={notify}
               reload={()=>loadConvs(session?.user?.id)}
             />
@@ -12430,7 +12450,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
               </div>
               {tab==="discover"&&<DiscoverTab members={members} myProfile={myProfile} session={session} onUser={id=>{pushNav(()=>setOpenUserId(null));setOpenUserId(id);}} notify={notify} myConnections={myConnections} myFollowers={myFollowers} onConnectionChange={()=>loadConnections(session?.user?.id)} openChat={openChat} blockedUserIds={blockedUserIds}/>}
               <div style={{display:tab==="messages"?"flex":"none",flexDirection:"column",flex:1,minHeight:0}}>
-                <MsgsTab convs={convs} getM={getM} session={session} sb={sb} T={T} Av={Av} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={()=>{pushNav(()=>setShowCreateGroup(false));setShowCreateGroup(true);}} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}} pushNav={pushNav} popNav={popNav}/>
+                <MsgsTab convs={convs} getM={getM} session={session} sb={sb} T={T} Av={Av} members={members} notify={notify} myProfile={myProfile} myConnections={myConnections} myFollowers={myFollowers} onOpen={openConvChecked} onDeleteConv={async id=>{await sb.from("messages").delete().eq("conv_id",id);await sb.from("conversations").delete().eq("id",id);setConvs(p=>(p||[]).filter(c=>c.id!==id));}} onOpenCeleste={()=>{pushNav(()=>setOpenCeleste(false));setOpenCeleste(true);}} onCreateGroup={openCreateGroup} onOpenGroup={g=>{pushNav(()=>setOpenGroup(null));setOpenGroup(g);}} pushNav={pushNav} popNav={popNav}/>
               </div>
              {tab==="profile"&&<ProfileTab myProfile={myProfile} session={session} posts={posts} onNewPost={()=>{pushNav(()=>setShowNewPost(false));setShowNewPost(true);}} userPostsVersion={userPostsVersion} notify={notify} onLogout={()=>sb.auth.signOut()} reload={()=>{loadPosts(1);loadMyProfile(session?.user?.id);}} myConnections={myConnections} myFollowers={myFollowers} onImageView={setViewImg} getM={getM} toggleLike={async pid=>{const uid=session?.user?.id;const{data:ex}=await sb.from("likes").select("user_id").eq("post_id",pid).eq("user_id",uid).maybeSingle();if(ex)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",uid);else await sb.from("likes").upsert({post_id:pid,user_id:uid},{onConflict:"post_id,user_id",ignoreDuplicates:true});}} toggleSave={async pid=>{const{data:ex}=await sb.from("saved_posts").select("id").eq("post_id",pid).eq("user_id",session?.user?.id).maybeSingle();if(ex)await sb.from("saved_posts").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("saved_posts").insert({post_id:pid,user_id:session?.user?.id});}} onConnect={async id=>{await sb.from("connections").insert({from_id:session.user.id,to_id:id});loadConnections(session.user.id);notify("Connecté ✦");}} pushNav={pushNav} popNav={popNav}/>}
 <ParametresModal myProfile={myProfile} session={session} onLogout={()=>sb.auth.signOut()} notify={notify} navTheme={navTheme} onChooseNavTheme={chooseNavTheme} pushNav={pushNav} popNav={popNav}/>
@@ -12482,7 +12502,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
   />
 )}
 {/* Bottom nav premium */}
-       {!openConvId&&!openUserId&&!openGroup&&!hideNav&&(
+       {!openConvId&&!openUserId&&!openGroup&&!showCreateGroup&&!hideNav&&(
           <div style={{...(tab==="home"?{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box",transform:feedNavVisible?"translateY(0)":"translateY(100%)",transition:"transform .25s ease"}:{height:"calc(66px + max(env(safe-area-inset-bottom,0px), 4px))",paddingBottom:"max(env(safe-area-inset-bottom,0px), 4px)",position:"fixed",left:0,right:0,bottom:0,overflow:"hidden",zIndex:1350,boxSizing:"border-box"}),display:openCeleste?"none":undefined}}>
             <NavScenery theme={navTheme}/>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.78) 100%)",pointerEvents:"none"}}/>
