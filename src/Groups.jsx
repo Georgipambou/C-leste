@@ -20,7 +20,7 @@ import {
   groupMessagesByDay, DayDivider, QUICK_REACTIONS, ReactionBar, InlineReactionPicker,
   useLongPress, useDoubleTap, HeartBurst, ReplyComposerBar, MessageReplyQuote,
   useTypingIndicator, TypingIndicator, EditedBadge, SwipeToReply,
-  ChatPersonalizationScreen
+  ChatPersonalizationScreen, readGroupStyle
 } from "./ChatExtras";
 
 // Dupliqué depuis App.jsx (pas de dépendance inverse possible, voir en-tête du fichier)
@@ -235,6 +235,7 @@ export function useMyGroups(sb, userId) {
     const ch = sb.channel(`my_groups_${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "group_members", filter: `user_id=eq.${userId}` }, () => load())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages" }, () => load())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "group_members" }, p => { if (p.old?.user_id === userId) load(); })
       .subscribe();
     return () => { sb.removeChannel(ch); };
   }, [sb, userId, load]);
@@ -1106,16 +1107,22 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       if (ids.length) sb.from("group_messages").update({ file_url: null, text: "" }).in("id", ids).catch(() => {});
     };
   }, [group.id, sb]);
-  const [bubbleColor, setBubbleColor] = useState(() => { try { return localStorage.getItem(`chat_color_${group.id}`) || null; } catch { return null; } });
-  const [fontSizeKey, setFontSizeKey] = useState(() => { try { return localStorage.getItem(`chat_fontsize_${group.id}`) || "normal"; } catch { return "normal"; } });
+  const groupStyleRef = useRef({ bubble_color: group.bubble_color, font_size: group.font_size });
+  const [bubbleColor, setBubbleColor] = useState(() => readGroupStyle(group.id, groupStyleRef.current).color);
+  const [fontSizeKey, setFontSizeKey] = useState(() => readGroupStyle(group.id, groupStyleRef.current).font);
   useEffect(() => {
     const h = e => {
       if (e.detail?.convId !== group.id) return;
-      try { setBubbleColor(localStorage.getItem(`chat_color_${group.id}`) || null); setFontSizeKey(localStorage.getItem(`chat_fontsize_${group.id}`) || "normal"); } catch {}
+      const s = readGroupStyle(group.id, groupStyleRef.current); setBubbleColor(s.color); setFontSizeKey(s.font);
     };
     window.addEventListener("celeste_chat_style_change", h);
     return () => window.removeEventListener("celeste_chat_style_change", h);
   }, [group.id]);
+  useEffect(() => {
+    groupStyleRef.current = { bubble_color: groupOverride?.bubble_color ?? group.bubble_color, font_size: groupOverride?.font_size ?? group.font_size };
+    const s = readGroupStyle(group.id, groupStyleRef.current);
+    setBubbleColor(s.color); setFontSizeKey(s.font);
+  }, [group.id, groupOverride?.bubble_color, groupOverride?.font_size]);
   const displayGroup = groupOverride ? { ...group, ...groupOverride } : group;
   const canWrite = !displayGroup.announce_only || isGroupAdmin;
   const bottomRef = useRef(null);
@@ -1180,8 +1187,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
 
   useEffect(() => {
     if (!group?.id || !myId) return;
-    sb.from("groups").select("announce_only,secure_mode,ephemeral_ttl_seconds").eq("id", group.id).maybeSingle()
-      .then(({ data }) => { if (data) setGroupOverride(prev => ({ ...(prev || {}), announce_only: !!data.announce_only, secure_mode: !!data.secure_mode, ephemeral_ttl_seconds: data.ephemeral_ttl_seconds || null })); });
+    sb.from("groups").select("announce_only,secure_mode,ephemeral_ttl_seconds,bubble_color,font_size").eq("id", group.id).maybeSingle()
+      .then(({ data }) => { if (data) setGroupOverride(prev => ({ ...(prev || {}), announce_only: !!data.announce_only, secure_mode: !!data.secure_mode, ephemeral_ttl_seconds: data.ephemeral_ttl_seconds || null, bubble_color: data.bubble_color || null, font_size: data.font_size || null })); });
     sb.from("group_members").select("role").eq("group_id", group.id).eq("user_id", myId).eq("status", "accepted").maybeSingle()
       .then(({ data }) => setIsGroupAdmin(data?.role === "admin" || group.created_by === myId));
     sb.from("blocks").select("blocked_id").eq("blocker_id", myId)
@@ -1231,6 +1238,26 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       .subscribe();
     return () => { sb.removeChannel(ch); };
   }, [sb, group.id]);
+    useEffect(() => {
+    const goneRef = { current: false };
+    const ch = sb.channel(`group_live:${group.id}`)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "groups" }, p => { if (p.old?.id === group.id) goneRef.current = true; })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "group_members" }, p => {
+        if (p.old?.group_id !== group.id || p.old?.user_id !== myId) return;
+        if (window.__celesteLeftGroup === group.id || window.__celesteGroupDeletedByMe === group.id) return;
+        setTimeout(() => {
+          if (goneRef.current) return;
+          notify?.(`Tu as été exclu du groupe "${group.name}"`);
+          onBack();
+        }, 1200);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "groups", filter: `id=eq.${group.id}` }, p => {
+        setGroupOverride(prev => ({ ...(prev || {}), bubble_color: p.new.bubble_color || null, font_size: p.new.font_size || null }));
+      })
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [sb, group.id, myId]);
+
   const load = useCallback(async () => {
     const { data } = await sb
       .from("group_messages")
@@ -1761,12 +1788,13 @@ function ReportSheet({ T, reasons, onClose, onSubmit }) {
   );
 }
 
-function MemberActionSheet({ T, member, onPromote, onDemote, onKick, onClose }) {
+function MemberActionSheet({ T, member, onPromote, onDemote, onKick, onProfile, onClose }) {
   const memberIsAdmin = member.role === "admin";
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 290, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={onClose}>
       <div style={{ width: "100%", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "20px 0 30px" }} onClick={e => e.stopPropagation()}>
         <p style={{ margin: "0 20px 14px", fontSize: 16, fontWeight: 700, color: T.text }}>{member.profiles?.prenom} {member.profiles?.nom}</p>
+        <div onClick={onProfile} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Voir le profil</div>
         <div onClick={memberIsAdmin ? onDemote : onPromote} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>
           {memberIsAdmin ? "Retirer le rôle admin" : "Promouvoir admin"}
         </div>
@@ -1848,9 +1876,10 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [showMedia, setShowMedia] = useState(false);
   const myId = session?.user?.id;
   const [createdBy, setCreatedBy] = useState(group.created_by || null);
+  const [groupStyle, setGroupStyle] = useState({ bubble_color: group.bubble_color || null, font_size: group.font_size || null });
   useEffect(() => {
-    sb.from("groups").select("created_by").eq("id", group.id).maybeSingle()
-      .then(({ data }) => { if (data?.created_by) setCreatedBy(data.created_by); });
+    sb.from("groups").select("created_by,bubble_color,font_size").eq("id", group.id).maybeSingle()
+      .then(({ data }) => { if (data?.created_by) setCreatedBy(data.created_by); if (data) setGroupStyle({ bubble_color: data.bubble_color || null, font_size: data.font_size || null }); });
   }, [sb, group.id]);
   const isCreator = createdBy === myId;
   const myMembership = members.find(m => m.user_id === myId);
@@ -1882,14 +1911,18 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     if (targetName) postSystemMessage(sb, group.id, myId, `a retiré le rôle admin à ${targetName}`);
     loadMembers();
   };
-  const kick = async (uid) => {
+    const kick = async (uid) => {
     const tp = members.find(m => m.user_id === uid)?.profiles;
     const targetName = tp ? `${tp.prenom || ""} ${tp.nom || ""}`.trim() : "";
-    await sb.from("group_members").delete().eq("group_id", group.id).eq("user_id", uid);
+    const { data: removed, error } = await sb.from("group_members").delete().eq("group_id", group.id).eq("user_id", uid).select("user_id");
     popNav();
     setActionMember(null);
+    if (error || !removed?.length) { notify?.("Impossible d'exclure ce membre"); console.error("Erreur kick:", error); return; }
     notify?.("Membre exclu du groupe");
     if (targetName) postSystemMessage(sb, group.id, myId, `a exclu ${targetName} du groupe`);
+    sb.from("notifications").insert({ user_id: uid, from_id: myId, type: "group_removed", text: group.name, read: false })
+      .then(({ error: nErr }) => { if (nErr) console.error("Notif exclusion non envoyée:", nErr); });
+    sb.functions.invoke("send-push", { body: { targetUserId: uid, title: "Retiré du groupe", body: `Tu as été exclu du groupe "${group.name}"` } });
     loadMembers();
   };
 
@@ -1900,6 +1933,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     // group_members supprimée, la policy RLS sur group_messages (réservée aux
     // membres acceptés) bloque l'insertion et personne n'est prévenu.
     await postSystemMessage(sb, group.id, myId, "a quitté le groupe");
+    window.__celesteLeftGroup = group.id;
     const { error } = await sb.from("group_members").delete().eq("group_id", group.id).eq("user_id", myId);
     if (error) { notify?.("Impossible de quitter le groupe"); console.error("Erreur leave:", error); return; }
     notify?.("Tu as quitté le groupe");
@@ -1939,7 +1973,9 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
     notify?.("Signalement envoyé ✦");
   };
 
-  if (showTheme) return <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} onBack={() => { popNav(); setShowTheme(false); }} />;
+  if (showTheme) return <ChatPersonalizationScreen T={T} Btn={Btn} conv={group} groupDefault={groupStyle}
+    onSaveDefault={isAdmin ? (patch) => { setGroupStyle(p => ({ ...p, ...patch })); sb.from("groups").update(patch).eq("id", group.id).then(({ error }) => { if (error) { console.error("Style groupe non enregistré:", error); notify?.("Impossible d'enregistrer le style du groupe"); } }); } : undefined}
+    onBack={() => { popNav(); setShowTheme(false); }} />;
   if (showMedia) return <GroupSharedMediaScreen T={T} Btn={Btn} group={group} sb={sb} onBack={() => { popNav(); setShowMedia(false); }} />;
 
   return (
@@ -2010,8 +2046,8 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
             return (
               <div key={m.user_id} onClick={() => { if (!canManage) return; pushNav(() => setActionMember(null)); setActionMember(m); }}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", cursor: canManage ? "pointer" : "default" }}>
-                <Av u={m.profiles} size={40} onClick={e => { e.stopPropagation(); onOpenProfile?.(m.user_id); }} />
-                <p onClick={e => { e.stopPropagation(); onOpenProfile?.(m.user_id); }}
+                <Av u={m.profiles} size={40} onClick={canManage ? undefined : (e => { e.stopPropagation(); onOpenProfile?.(m.user_id); })} />
+                <p onClick={canManage ? undefined : (e => { e.stopPropagation(); onOpenProfile?.(m.user_id); })}
                   style={{ margin: 0, fontSize: 14, color: T.text, flex: 1, cursor: "pointer" }}>{m.profiles?.prenom} {m.profiles?.nom}</p>
                 {m.role === "admin" && <span style={{ fontSize: 11, color: T.goldL, marginRight: canManage ? 4 : 0 }}>Admin</span>}
                 {canManage && <ChevronRight size={14} color={T.muted} />}
@@ -2059,6 +2095,7 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
           onPromote={() => promote(actionMember.user_id)}
           onDemote={() => demote(actionMember.user_id)}
           onKick={() => kick(actionMember.user_id)}
+          onProfile={() => { const uid = actionMember.user_id; popNav(); setActionMember(null); onOpenProfile?.(uid); }}
         />
       )}
       {showAddMembers && (

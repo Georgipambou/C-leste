@@ -1,0 +1,45 @@
+PATCH edge function view-once-media (3 remplacements, à faire dans l'éditeur Supabase)
+Supabase > Edge Functions > view-once-media > Code (index.ts)
+
+══ 1/3 ══ REMPLACE cette ligne :
+    if (!msg.file_url) return json({ error: "Média déjà consulté" }, 410);
+
+PAR :
+    // L'URL du média est dans message_media_secrets (illisible côté client).
+    // Récupération atomique : un seul appel peut l'obtenir.
+    let fileUrl: string | null = null;
+    {
+      const { data: claimed, error: claimErr } = await admin
+        .from("message_media_secrets")
+        .delete()
+        .eq("message_id", message_id)
+        .select("file_url")
+        .maybeSingle();
+      if (!claimErr && claimed?.file_url) fileUrl = claimed.file_url;
+    }
+    // Ancien format (avant migration) : URL encore dans messages.file_url
+    if (!fileUrl && msg.file_url) {
+      const { data: legacy } = await admin
+        .from("messages")
+        .update({ file_url: null })
+        .eq("id", message_id)
+        .not("file_url", "is", null)
+        .select("file_url")
+        .maybeSingle();
+      if (legacy?.file_url) fileUrl = legacy.file_url;
+    }
+    if (!fileUrl) return json({ error: "Média déjà consulté" }, 410);
+
+══ 2/3 ══ REMPLACE cette ligne :
+    const objectKey = extractObjectKey(msg.file_url);
+
+PAR :
+    const objectKey = extractObjectKey(fileUrl);
+
+══ 3/3 ══ REMPLACE cette ligne :
+      await new Promise(r => setTimeout(r, 90000));
+
+PAR :
+      await new Promise(r => setTimeout(r, 140000));
+
+(La marge avant suppression du fichier R2 passe de 90 s à 140 s pour les vidéos longues sur réseau lent.)

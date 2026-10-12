@@ -720,18 +720,35 @@ const BUBBLE_COLORS = [
 ];
 const FONT_SIZE_OPTIONS = [{ key: "small", label: "Petit" }, { key: "normal", label: "Normal" }, { key: "large", label: "Grand" }];
 
-export function ChatPersonalizationScreen({ T, Btn, conv, onBack }) {
-  const [color, setColor] = useState(() => { try { return localStorage.getItem(`chat_color_${conv.id}`) || null; } catch { return null; } });
-  const [fontSizeKey, setFontSizeKeyState] = useState(() => { try { return localStorage.getItem(`chat_fontsize_${conv.id}`) || "normal"; } catch { return "normal"; } });
+export function readGroupStyle(groupId, groupDefault) {
+  try {
+    const c = localStorage.getItem(`chat_color_${groupId}`);
+    const colorSet = c || localStorage.getItem(`chat_color_set_${groupId}`);
+    const f = localStorage.getItem(`chat_fontsize_${groupId}`);
+    return { color: colorSet ? (c || null) : (groupDefault?.bubble_color || null), font: f || groupDefault?.font_size || "normal" };
+  } catch { return { color: groupDefault?.bubble_color || null, font: groupDefault?.font_size || "normal" }; }
+}
+
+export function ChatPersonalizationScreen({ T, Btn, conv, onBack, groupDefault, onSaveDefault }) {
+  const [color, setColor] = useState(() => readGroupStyle(conv.id, groupDefault).color);
+  const [fontSizeKey, setFontSizeKeyState] = useState(() => readGroupStyle(conv.id, groupDefault).font);
 
   const applyColor = (value) => {
     setColor(value);
-    try { if (value) localStorage.setItem(`chat_color_${conv.id}`, value); else localStorage.removeItem(`chat_color_${conv.id}`); } catch {}
+    try { localStorage.setItem(`chat_color_set_${conv.id}`, "1"); if (value) localStorage.setItem(`chat_color_${conv.id}`, value); else localStorage.removeItem(`chat_color_${conv.id}`); } catch {}
+    onSaveDefault?.({ bubble_color: value });
+    window.dispatchEvent(new CustomEvent("celeste_chat_style_change", { detail: { convId: conv.id } }));
+  };
+  const resetToGroup = () => {
+    try { localStorage.removeItem(`chat_color_${conv.id}`); localStorage.removeItem(`chat_color_set_${conv.id}`); localStorage.removeItem(`chat_fontsize_${conv.id}`); } catch {}
+    const s = readGroupStyle(conv.id, groupDefault);
+    setColor(s.color); setFontSizeKeyState(s.font);
     window.dispatchEvent(new CustomEvent("celeste_chat_style_change", { detail: { convId: conv.id } }));
   };
   const applyFontSize = (key) => {
     setFontSizeKeyState(key);
     try { localStorage.setItem(`chat_fontsize_${conv.id}`, key); } catch {}
+    onSaveDefault?.({ font_size: key });
     window.dispatchEvent(new CustomEvent("celeste_chat_style_change", { detail: { convId: conv.id } }));
   };
 
@@ -760,7 +777,8 @@ export function ChatPersonalizationScreen({ T, Btn, conv, onBack }) {
           ))}
         </div>
         <p style={{ margin: "16px 4px 0", fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
-          Ce réglage n'est visible que sur cet appareil, comme le fond d'écran de la discussion.
+          {onSaveDefault ? "En tant qu'admin, ce réglage devient le style par défaut du groupe pour tous les membres qui n'ont encore rien personnalisé." : groupDefault ? "Ton réglage reste personnel. Sans réglage de ta part, tu vois le style choisi par l'admin." : "Ce réglage n'est visible que sur cet appareil, comme le fond d'écran de la discussion."}
+          {groupDefault && !onSaveDefault && <span onClick={resetToGroup} style={{ display: "block", marginTop: 10, color: T.goldL, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Revenir au style du groupe</span>}
         </p>
       </div>
     </div>
