@@ -5,13 +5,14 @@
 // branchée dans une prochaine étape, une fois cette brique validée.
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon, Eye, EyeOff, Sparkles, Grid } from "lucide-react";
+import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send, Smile, UserPlus, Flag, LogOut, Trash2, Paperclip, FileText, Pin, BellOff, Bell, Mic, Pause, Play, Image as ImageIcon, Eye, EyeOff, Sparkles, Grid, Reply } from "lucide-react";
 import EasyCrop from "react-easy-crop";
 import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
 import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage, trackGroupFileSend, updateGroupFileSend, removeGroupFileSend, getGroupFileSendsForConv, subscribeGroupFileSends } from "./lib/groupMessageQueue";
 import StickerPicker from "./components/StickerPicker";
 import { computeWaveform, fallbackBars } from "./lib/waveform";
+import StickerDetailModal from "./components/StickerDetailModal";
 import { Capacitor } from "@capacitor/core";
 import { PrivacyScreen } from "@capacitor-community/privacy-screen";
 import previewDark from "./assets/preview.webp";
@@ -194,7 +195,16 @@ function writeGroupsCache(userId, groups) {
   try { localStorage.setItem(groupsCacheKey(userId), JSON.stringify(groups)); } catch {}
 }
 
+// ── Brouillons des groupes (gardés même si on quitte l'écran ou l'app) ──
+let _draftUid = "";
+const groupDraftKey = id => `celeste_draft_g_${_draftUid}_${id}`;
+export function readGroupDraft(id) { try { return localStorage.getItem(groupDraftKey(id)) || ""; } catch (e) { return ""; } }
+function writeGroupDraft(id, t) {
+  try { if (t && t.trim()) localStorage.setItem(groupDraftKey(id), t); else localStorage.removeItem(groupDraftKey(id)); } catch (e) { /* stockage indisponible */ }
+}
+
 export function useMyGroups(sb, userId) {
+  _draftUid = userId || "";
   // Démarre avec la dernière liste connue en local (téléphone) pour un affichage
   // immédiat même hors-ligne, exactement comme les conversations normales.
   const [groups, setGroups] = useState(() => (userId ? readGroupsCache(userId) : []));
@@ -232,18 +242,26 @@ export function useMyGroups(sb, userId) {
   }, [userId, load]);
   useEffect(() => {
     if (!userId) return;
+    let reloadTimer = null;
+    const reloadSoon = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(load, 1500); };
     const ch = sb.channel(`my_groups_${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_members", filter: `user_id=eq.${userId}` }, () => load())
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages" }, () => load())
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "group_members" }, p => { if (p.old?.user_id === userId) load(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members", filter: `user_id=eq.${userId}` }, () => reloadSoon())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages" }, () => reloadSoon())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "group_members" }, p => { if (p.old?.user_id === userId) reloadSoon(); })
       .subscribe();
-    return () => { sb.removeChannel(ch); };
+    return () => { clearTimeout(reloadTimer); sb.removeChannel(ch); };
   }, [sb, userId, load]);
+  useEffect(() => {
+    if (!userId || !groups.length) return;
+    const t = setTimeout(() => prefetchGroupRooms(sb, userId, groups), 1200);
+    return () => clearTimeout(t);
+  }, [sb, userId, groups]);
   return { groups, reloadGroups: load };
 }
 
 export function GroupRow({ g, T, Av, onOpen, onLongPress }) {
-  const hasLast = !!g.lastMessageAt;
+    const hasLast = !!g.lastMessageAt;
+  const draft = readGroupDraft(g.id).trim();
   const previewBody = g.lastMessageType === "photo" ? "📷 Photo"
     : g.lastMessageType === "video" ? "🎥 Vidéo"
     : g.lastMessageType === "file" ? "📎 Fichier"
@@ -274,18 +292,16 @@ export function GroupRow({ g, T, Av, onOpen, onLongPress }) {
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</span>
           {fav && <span style={{ fontSize: 12, flexShrink: 0 }}>⭐</span>}
         </p>
-        <p style={{ margin: 0, fontSize: 12, color: unread ? T.text : T.muted, fontWeight: unread ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview}</p>
+        <p style={{ margin: 0, fontSize: 12, color: unread ? T.text : T.muted, fontWeight: unread ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{draft ? <><span style={{ color: "#22c55e", fontWeight: 600 }}>Brouillon :</span> {draft}</> : preview}</p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
         {hasLast && <span style={{ fontSize: 11, color: unread ? T.goldL : T.muted, fontWeight: unread ? 700 : 400 }}>{formatGroupTime(g.lastMessageAt)}</span>}
-        {muted
-          ? <BellOff size={14} color={T.muted} />
-          : (unread && (
-              <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: T.gradGold, color: "#000", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {g.unreadCount > 99 ? "99+" : g.unreadCount}
-              </span>
-            ))
-        }
+        {unread && (
+          <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: muted ? (isLightBg(T.bg) ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.22)") : T.gradGold, color: muted ? T.text : "#000", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {g.unreadCount > 99 ? "99+" : g.unreadCount}
+          </span>
+        )}
+        {muted && <BellOff size={14} color={T.muted} />}
       </div>
     </div>
   );
@@ -845,6 +861,88 @@ function ImageCropModal({ imageSrc, onClose, onDone }) {
   );
 }
 
+const END_PAGE = 300;  // fin de discussion (et groupes classiques) : les 300 derniers messages
+const READ_PAGE = 60;  // lecture d'un salon de thème : par paquets de 60
+const MSG_SELECT = "id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,waveform,anon_alias,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)";
+const mapMsgRow = m => ({ ...m, ts: new Date(m.created_at).getTime(), authorName: m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.trim() : (m.anon_alias || "") });
+
+// ── Cache des salons : affichage instantané + préchargement en arrière-plan ──
+const ROOM_CACHE = new Map();
+const roomLSKey = id => `celeste_room_v1_${id}`;
+function getRoomCache(id) {
+  const m = ROOM_CACHE.get(id);
+  if (m) return m;
+  try {
+    const r = JSON.parse(localStorage.getItem(roomLSKey(id)) || "null");
+    if (r && Array.isArray(r.msgs) && r.room) return r;
+  } catch (e) { /* stockage indisponible */ }
+  return null;
+}
+function saveRoomCache(id, snap) {
+  const s = { ...snap, at: Date.now() };
+  ROOM_CACHE.set(id, s);
+  if (s.room?.isTheme) {
+    try { localStorage.setItem(roomLSKey(id), JSON.stringify({ ...s, msgs: s.msgs.slice(0, READ_PAGE) })); } catch (e) { /* plein ou bloqué */ }
+  }
+}
+export function clearRoomCaches() {
+  ROOM_CACHE.clear();
+  try { Object.keys(localStorage).filter(k => k.startsWith("celeste_room_v1_")).forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
+}
+async function fetchRoomSnapshot(sb, groupId, myId) {
+  const [{ data: g }, { data: me }] = await Promise.all([
+    sb.from("groups").select("theme_id,theme_started_at").eq("id", groupId).maybeSingle(),
+    sb.from("group_members").select("read_cursor_at").eq("group_id", groupId).eq("user_id", myId).maybeSingle(),
+  ]);
+  const isTheme = !!(g?.theme_id && g.theme_started_at);
+  const cursor = isTheme ? (me?.read_cursor_at || null) : null;
+  let from = null, hasBefore = false;
+  if (isTheme) {
+    from = g.theme_started_at;
+    if (cursor) {
+      const { data: ctx } = await sb.from("group_messages").select("created_at").eq("group_id", groupId)
+        .gte("created_at", g.theme_started_at).lte("created_at", cursor).order("created_at", { ascending: false }).limit(3);
+      if (ctx?.length) from = ctx[ctx.length - 1].created_at;
+      hasBefore = new Date(from) > new Date(g.theme_started_at);
+    }
+  }
+  const base = sb.from("group_messages").select(MSG_SELECT).eq("group_id", groupId);
+  const msgQ = isTheme
+    ? base.gte("created_at", from).order("created_at", { ascending: true }).limit(READ_PAGE + 1)
+    : base.order("created_at", { ascending: false }).limit(END_PAGE);
+  const [msgRes, infoRes, anonRes] = await Promise.all([
+    msgQ,
+    isTheme ? sb.rpc("get_current_theme_info") : Promise.resolve({ data: null }),
+    isTheme ? sb.from("group_message_authors").select("message_id").eq("group_id", groupId) : Promise.resolve({ data: null }),
+  ]);
+  if (msgRes.error) throw msgRes.error;
+  let rows = msgRes.data || [];
+  let hasAfter = false;
+  if (isTheme) { hasAfter = rows.length > READ_PAGE; if (hasAfter) rows = rows.slice(0, READ_PAGE); }
+  else rows = rows.slice().reverse();
+  return {
+    room: { isTheme, startedAt: isTheme ? g.theme_started_at : null },
+    win: { mode: isTheme ? "reading" : "end", from, hasAfter, hasBefore },
+    cursorMs: cursor ? new Date(cursor).getTime() : 0,
+    msgs: rows.map(mapMsgRow),
+    themeInfo: infoRes.data || null,
+    anonIds: (anonRes.data || []).map(r => r.message_id),
+  };
+}
+let prefetchBusy = false;
+export async function prefetchGroupRooms(sb, myId, groups) {
+  if (prefetchBusy || !myId) return;
+  prefetchBusy = true;
+  try {
+    const top = [...groups].sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0)).slice(0, 6);
+    for (const g of top) {
+      const c = ROOM_CACHE.get(g.id);
+      if (c && Date.now() - c.at < 90000) continue;
+      try { saveRoomCache(g.id, await fetchRoomSnapshot(sb, g.id, myId)); } catch (e) { /* hors-ligne : on garde l'ancien */ }
+    }
+  } finally { prefetchBusy = false; }
+}
+
 export async function toggleGroupReaction(sb, msgId, userId, emoji, currentReactions) {
   const { data: fresh } = await sb.from("group_messages").select("reactions").eq("id", msgId).single();
   const reactions = { ...(fresh?.reactions || currentReactions || {}) };
@@ -870,7 +968,7 @@ function GroupVoicePlayer({ src, mine, T, wf }) {
   const fmt = s => { if (!s || !isFinite(s) || isNaN(s)) return "0:00"; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; };
   useEffect(() => {
     const a = new Audio();
-    a.preload = "metadata";
+    a.preload = "auto";
     a.src = src;
     a.playbackRate = speed;
     audioRef.current = a;
@@ -932,7 +1030,7 @@ const mediaReplyLabel = (type, fileName) => {
   return null;
 };
 
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce }) {
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, replyBtn, onOpenSticker, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce }) {
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
@@ -948,13 +1046,13 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
       <div ref={registerRef} style={{ display: "flex", gap: 8, marginTop: showHeader ? 10 : 1, flexDirection: mine ? "row-reverse" : "row", borderRadius: 14, transition: "background .6s", background: highlighted ? "rgba(201,149,42,0.18)" : "transparent" }}>
         {!mine && (
           <div style={{ width: 28, flexShrink: 0 }}>
-            {showHeader && <Av u={m.sender} size={28} onClick={() => onOpenProfile?.(m.sender_id)} />}
+            {showHeader && <Av u={m.sender || { name: m.anon_alias || "?", initials: "?", color: "#777" }} size={28} onClick={() => m.sender_id && onOpenProfile?.(m.sender_id)} />}
           </div>
         )}
         <div style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", maxWidth: "75%", position: "relative" }}>
           {!mine && showHeader && (
-            <span onClick={() => onOpenProfile?.(m.sender_id)} style={{ fontSize: 11, fontWeight: 600, color: T.goldL, marginBottom: 2, cursor: "pointer" }}>
-              {m.sender?.prenom} {m.sender?.nom}
+            <span onClick={() => m.sender_id && onOpenProfile?.(m.sender_id)} style={{ fontSize: 11, fontWeight: 600, color: T.goldL, marginBottom: 2, cursor: "pointer" }}>
+              {m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}` : (m.anon_alias || "")}
             </span>
           )}
           <div
@@ -967,6 +1065,9 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
             }}
           >
             <HeartBurst show={burstOn} />
+            {replyBtn && !m.sending && (
+              <span onClick={e => { e.stopPropagation(); onReply?.(m); }} style={{ position: "absolute", top: "50%", [mine ? "left" : "right"]: -30, transform: "translateY(-50%)", width: 24, height: 24, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted, opacity: 0.7, cursor: "pointer" }}><Reply size={15} /></span>
+            )}
             <MessageReplyQuote message={m} mine={mine} T={T} onClick={() => m.reply_to_id && onScrollToReply?.(m.reply_to_id)} />
             {m.type === "photo" && (
               m.view_once
@@ -1019,7 +1120,12 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                   )
                 : (m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} wf={m.waveform} />)
             )}
-             {m.type === "sticker" && <img src={m.file_url} style={{ width: 100, height: 100, objectFit: "contain", display: "block" }} />}
+             {m.type === "sticker" && <img src={m.file_url} alt="" onClick={e => {
+              e.stopPropagation();
+              const sid = m.sticker_id;
+              e.currentTarget.animate([{ transform: "scale(1)" }, { transform: "scale(1.3) rotate(-8deg)" }, { transform: "scale(1)" }], { duration: 320, easing: "ease-out" });
+              if (sid) setTimeout(() => onOpenSticker?.(sid), 200);
+            }} style={{ width: 100, height: 100, objectFit: "contain", display: "block", cursor: m.sticker_id ? "pointer" : "default" }} />}
             {m.type === "post_share" && (
               <div onClick={e => { e.stopPropagation(); m.shared_post_id && window.dispatchEvent(new CustomEvent("celeste_open_post", { detail: { postId: m.shared_post_id } })); }}
                 style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "8px 10px", cursor: m.shared_post_id ? "pointer" : "default", maxWidth: 240, width: "100%", boxSizing: "border-box" }}>
@@ -1071,19 +1177,129 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
             {m.error && !m.tempId && <span style={{ fontSize: 10, color: "#e05252", fontWeight: 600 }}>⚠️ Échec — réessaie</span>}
           </div>
           <ReactionBar reactions={m.reactions} T={T} myId={myId} mine={mine} onPress={() => onLongPress(m)} />
-          {m.ts && <span style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>{hm(m.ts)}</span>}
+          {m.ts && <span style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>{hm(m.ts)}{mine && m.anon_alias ? " · envoyé en anonyme" : ""}</span>}
         </div>
       </div>
     </SwipeToReply>
   );
 }
 
+function ThemeBanner({ sb, info, T, onAnswer }) {
+  const [open, setOpen] = useState(false);
+  const [remind, setRemind] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve(sb.rpc("get_theme_reminder")).then(r => { if (alive && r) setRemind(!!r.data); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const toggleRemind = async () => {
+    const next = !remind;
+    setRemind(next);
+    try { await sb.rpc("set_theme_reminder", { p_enabled: next }); } catch (e) { setRemind(!next); }
+  };
+  if (!info) return null;
+  const va = info.votes_a, vb = info.votes_b;
+  const total = (va || 0) + (vb || 0);
+  const pct = n => (total > 0 ? Math.round(((n || 0) / total) * 100) : 0);
+  const decided = info.my_answer === "a" || info.my_answer === "b";
+  const rows = [{ k: "a", label: info.option_a, v: va }, { k: "b", label: info.option_b, v: vb }];
+  return (
+    <div style={{ position: "relative", overflow: "hidden", borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: "#0b0b0b" }}>
+      {info.cover_url && <img src={info.cover_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(0,0,0,0.82),rgba(0,0,0,0.45))" }} />
+      <div style={{ position: "relative", padding: "10px 14px" }}>
+        <div onClick={() => info.question && setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: info.question ? "pointer" : "default" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "inline-block", fontSize: 9, fontWeight: 800, letterSpacing: 1.2, color: T.goldL, border: `1px solid ${T.gold}88`, borderRadius: 10, padding: "2px 8px", marginBottom: 4 }}>THÈME DE LA SEMAINE</span>
+            <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{info.emoji ? `${info.emoji} ` : ""}{info.title}</p>
+          </div>
+          {info.question && <ChevronRight size={18} color="#fff" style={{ transform: open ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s", flexShrink: 0 }} />}
+        </div>
+        {open && info.question && (
+          <div style={{ marginTop: 10 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 14, color: "#fff", fontWeight: 600 }}>{info.question}</p>
+            {rows.map(r => {
+              const mine = info.my_answer === r.k;
+              const showPct = va != null;
+              return (
+                <div key={r.k} onClick={() => !decided && onAnswer(r.k)} style={{ position: "relative", overflow: "hidden", marginBottom: 6, padding: "10px 12px", borderRadius: 12, border: `1px solid ${mine ? T.gold : "rgba(255,255,255,0.18)"}`, background: "rgba(255,255,255,0.06)", cursor: decided ? "default" : "pointer" }}>
+                  {showPct && <div style={{ position: "absolute", inset: 0, width: `${pct(r.v)}%`, background: mine ? "rgba(212,168,67,0.35)" : "rgba(255,255,255,0.12)" }} />}
+                  <div style={{ position: "relative", display: "flex", justifyContent: "space-between", fontSize: 13, color: "#fff", fontWeight: mine ? 700 : 500 }}>
+                    <span>{r.label}{mine ? " ✓" : ""}</span>
+                    {showPct && <span>{pct(r.v)}% <span style={{ opacity: 0.6, fontSize: 11 }}>({r.v || 0})</span></span>}
+                  </div>
+                </div>
+              );
+            })}
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+              {total} vote{total > 1 ? "s" : ""}{info.my_answer === "c" ? " · tu n'as pas encore choisi, touche une réponse" : " · ta réponse reste privée"}
+            </p>
+            {remind !== null && (
+              <div onClick={toggleRemind} style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 14, border: `1px solid ${remind ? T.gold : "rgba(255,255,255,0.25)"}`, background: remind ? "rgba(212,168,67,0.18)" : "transparent", color: "#fff", fontSize: 12, cursor: "pointer" }}>
+                <span>{remind ? "🔔" : "🔕"}</span><span>{remind ? "Rappel de nouveau thème activé" : "Me rappeler chaque nouveau thème"}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack, onOpenProfile, members, myConnections, myFollowers, pushNav, popNav }) {
-  const [msgs, setMsgs] = useState([]);
-  const [text, setText] = useState("");
+  const [msgs, setMsgs] = useState(() => getRoomCache(group.id)?.msgs || []);
+  const roomRef = useRef({ isTheme: false, startedAt: null });
+  const roomReadyRef = useRef(false);
+  const winRef = useRef({ mode: "end", from: null, hasAfter: false, hasBefore: false });
+  const loadedCountRef = useRef(0);
+  const msgsRef = useRef([]);
+  const suppressAutoScrollRef = useRef(false);
+  const nextBusyRef = useRef(false);
+  const olderBusyRef = useRef(false);
+  const cursorSentRef = useRef(0);
+  const cursorPendingRef = useRef(0);
+  const cursorTimerRef = useRef(null);
+  const scrollTickRef = useRef(null);
+  const [roomReady, setRoomReady] = useState(() => !!getRoomCache(group.id));
+   const skipNextLoadRef = useRef(false);
+  const loadRef = useRef(null);
+  const [hasBeforeState, setHasBeforeState] = useState(false);
+  const [showJump, setShowJump] = useState(false);
+  const [behind, setBehind] = useState(0);
+  const [themeInfo, setThemeInfo] = useState(null);
+  const [anonNext, setAnonNext] = useState(false);
+    const [reportMsg, setReportMsg] = useState(null);
+  const [stickerDetailId, setStickerDetailId] = useState(null);
+  const [reporting, setReporting] = useState(false);
+  const sendReport = async reason => {
+    if (!reportMsg || reporting) return;
+    setReporting(true);
+    const { error } = await sb.rpc("report_group_message", { p_message_id: reportMsg.id, p_reason: reason, p_details: null });
+    setReporting(false);
+    popNav(); setReportMsg(null);
+    notify?.(error ? (error.message || "Signalement non envoyé") : "Merci, l'équipe de modération va regarder ce message");
+  };
+  const [myAnonIds, setMyAnonIds] = useState(() => new Set());
+  const answerTheme = async k => {
+    const { data, error } = await sb.rpc("answer_current_theme", { p_answer: k });
+    if (error) { notify?.(error.message || "Réponse non enregistrée"); return; }
+    if (data) setThemeInfo(data);
+  };
+  useEffect(() => { msgsRef.current = msgs; }, [msgs]);
+    const [text, setText] = useState(() => readGroupDraft(group.id));
+  const textRef = useRef(text);
+  textRef.current = text;
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
-  const [editingMsg, setEditingMsg] = useState(null);
+    const [editingMsg, setEditingMsg] = useState(null);
+  const editingRef = useRef(null);
+  editingRef.current = editingMsg;
+  useEffect(() => {
+    if (editingMsg) return;
+    const t = setTimeout(() => writeGroupDraft(group.id, text), 300);
+    return () => clearTimeout(t);
+  }, [text, group.id, editingMsg]);
+  useEffect(() => () => { if (!editingRef.current) writeGroupDraft(group.id, textRef.current); }, [group.id]);
   const [actionMsg, setActionMsg] = useState(null);
   const [showReactionPicker, setShowReactionPicker] = useState(null);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
@@ -1131,13 +1347,29 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const fRef = useRef(null);
   const msgRefs = useRef({});
   const [highlightMsgId, setHighlightMsgId] = useState(null);
-  const scrollToMessage = useCallback(id => {
-    const el = msgRefs.current[id];
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setHighlightMsgId(id);
-    setTimeout(() => setHighlightMsgId(h => (h === id ? null : h)), 1500);
-  }, []);
+  const scrollToMessage = useCallback(async id => {
+    const show = () => {
+      const el = msgRefs.current[id];
+      if (!el) return false;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightMsgId(id);
+      setTimeout(() => setHighlightMsgId(h => (h === id ? null : h)), 1500);
+      return true;
+    };
+    if (show()) return;
+    // Le message cité est hors de la fenêtre chargée : on se place juste avant lui
+    const { data: target } = await sb.from("group_messages").select("created_at").eq("id", id).maybeSingle();
+    if (!target) { notify?.("Message d'origine introuvable"); return; }
+    suppressAutoScrollRef.current = true;
+    const { data: ctx } = await sb.from("group_messages").select("created_at").eq("group_id", group.id)
+      .lte("created_at", target.created_at).order("created_at", { ascending: false }).limit(4);
+    const from = ctx?.length ? ctx[ctx.length - 1].created_at : target.created_at;
+    winRef.current = { mode: "reading", from, hasAfter: false, hasBefore: true };
+    loadedCountRef.current = 0;
+    setHasBeforeState(true);
+    await loadRef.current?.();
+    setTimeout(() => { if (!show()) notify?.("Message d'origine introuvable"); }, 150);
+  }, [sb, group.id, notify]);
   const [cropSrc, setCropSrc] = useState(null);
   const [cropResolve, setCropResolve] = useState(null);
   const [videoTrimSrc, setVideoTrimSrc] = useState(null);
@@ -1258,42 +1490,209 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     return () => { sb.removeChannel(ch); };
   }, [sb, group.id, myId]);
 
+  // ── Ouverture : affichage immédiat depuis le cache, puis mise à jour en arrière-plan ──
+  useEffect(() => {
+    let alive = true;
+    const apply = snap => {
+      roomRef.current = snap.room;
+      winRef.current = { ...snap.win };
+      cursorSentRef.current = snap.cursorMs || 0;
+      cursorPendingRef.current = Math.max(cursorPendingRef.current, snap.cursorMs || 0);
+      loadedCountRef.current = snap.msgs.length;
+      setHasBeforeState(!!snap.win.hasBefore);
+      setThemeInfo(snap.themeInfo || null);
+      setMyAnonIds(new Set(snap.anonIds || []));
+      setMsgs(snap.msgs);
+      setShowJump(!!snap.room.isTheme && !!snap.win.hasAfter);
+    };
+    const cached = getRoomCache(group.id);
+    if (cached) { apply(cached); roomReadyRef.current = true; setRoomReady(true); }
+    (async () => {
+      try {
+        const snap = await fetchRoomSnapshot(sb, group.id, myId);
+        if (!alive) return;
+        saveRoomCache(group.id, snap);
+        if (!cached) { skipNextLoadRef.current = true; apply(snap); roomReadyRef.current = true; setRoomReady(true); }
+        else { setThemeInfo(snap.themeInfo || null); setMyAnonIds(new Set(snap.anonIds || [])); }
+      } catch (e) {
+        console.error("Init salon:", e);
+        if (alive && !cached) { roomReadyRef.current = true; setRoomReady(true); }
+      }
+    })();
+    return () => {
+      alive = false;
+      // À la fermeture : on reprépare la position de reprise pour la prochaine ouverture
+      setTimeout(() => { fetchRoomSnapshot(sb, group.id, myId).then(s => saveRoomCache(group.id, s)).catch(() => {}); }, 2000);
+    };
+  }, [sb, group.id, myId]);
+
   const load = useCallback(async () => {
-    const { data } = await sb
-      .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,waveform,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
-      .eq("group_id", group.id)
-      .order("created_at", { ascending: true })
-      .limit(300);
-    const mapped = (data || []).map(m => ({ ...m, ts: new Date(m.created_at).getTime(), authorName: m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.trim() : "" }));
+    if (!roomReadyRef.current) return null;
+    const r = roomRef.current;
+    const w = winRef.current;
+    let rows;
+    if (r.isTheme && w.mode === "reading") {
+      const keep = Math.max(READ_PAGE, loadedCountRef.current);
+      const { data, error } = await sb.from("group_messages").select(MSG_SELECT).eq("group_id", group.id)
+        .gte("created_at", w.from).order("created_at", { ascending: true }).limit(keep + 1);
+      if (error) return null;
+      rows = data || [];
+      w.hasAfter = rows.length > keep;
+      if (w.hasAfter) rows = rows.slice(0, keep);
+    } else {
+      const keepEnd = Math.max(END_PAGE, loadedCountRef.current);
+      const { data, error } = await sb.from("group_messages").select(MSG_SELECT).eq("group_id", group.id)
+        .order("created_at", { ascending: false }).limit(keepEnd);
+      if (error) return null;
+      rows = (data || []).reverse();
+      w.hasAfter = false;
+    }
+    const mapped = rows.map(mapMsgRow);
+    loadedCountRef.current = mapped.length;
     setMsgs(mapped);
+    if (r.isTheme) setShowJump(w.hasAfter);
     const voIds = mapped.filter(m => m.view_once && m.sender_id !== myId).map(m => m.id);
     if (voIds.length) {
       const { data: views } = await sb.from("group_message_views").select("message_id").eq("viewer_id", myId).in("message_id", voIds);
       if (views?.length) setViewedByMeIds(prev => new Set([...prev, ...views.map(v => v.message_id)]));
     }
+    if (!r.isTheme) saveRoomCache(group.id, { ...(ROOM_CACHE.get(group.id) || {}), room: r, win: { ...w }, cursorMs: 0, msgs: mapped });
+    return mapped;
   }, [sb, group.id, myId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!roomReady) return;
+    if (skipNextLoadRef.current) { skipNextLoadRef.current = false; return; }
+    load();
+  }, [load, roomReady]);
+
+  // Position de lecture : envoyée au serveur, jamais en arrière
+  const flushCursor = useCallback(() => {
+    const ts = cursorPendingRef.current;
+    if (!roomRef.current.isTheme || !ts || ts <= cursorSentRef.current) return;
+    cursorSentRef.current = ts;
+    Promise.resolve(sb.rpc("set_room_read_cursor", { p_group_id: group.id, p_at: new Date(ts + 1).toISOString() })).catch(() => {});
+  }, [sb, group.id]);
+  useEffect(() => () => { clearTimeout(cursorTimerRef.current); clearTimeout(scrollTickRef.current); flushCursor(); }, [flushCursor]);
+
+  // Bouton « Aller à la fin »
+    loadRef.current = load;
+  const jumpToEnd = useCallback(async () => {
+    winRef.current = { mode: "end", from: null, hasAfter: false, hasBefore: true };
+    setHasBeforeState(roomRef.current.isTheme);
+    setBehind(0);
+    const rows = await load();
+    setShowJump(false);
+    requestAnimationFrame(() => { bottomRef.current?.scrollIntoView({ block: "end" }); });
+    const last = rows && rows[rows.length - 1];
+    if (last) { cursorPendingRef.current = Math.max(cursorPendingRef.current, last.ts); flushCursor(); }
+  }, [load, flushCursor]);
+
+  // Suite de la lecture (vers le bas)
+  const loadNext = useCallback(async () => {
+    const w = winRef.current;
+    const last = msgsRef.current[msgsRef.current.length - 1];
+    if (!w.hasAfter || !last || nextBusyRef.current) return;
+    nextBusyRef.current = true;
+    const { data, error } = await sb.from("group_messages").select(MSG_SELECT).eq("group_id", group.id)
+      .gt("created_at", last.created_at).order("created_at", { ascending: true }).limit(READ_PAGE + 1);
+    if (!error) {
+      const rows = data || [];
+      w.hasAfter = rows.length > READ_PAGE;
+      const more = rows.slice(0, READ_PAGE).map(mapMsgRow);
+      if (more.length) {
+        suppressAutoScrollRef.current = true;
+        loadedCountRef.current += more.length;
+        setMsgs(prev => { const seen = new Set(prev.map(m => m.id)); return [...prev, ...more.filter(m => !seen.has(m.id))]; });
+      }
+      if (!w.hasAfter) { setBehind(0); setShowJump(false); }
+    }
+    nextBusyRef.current = false;
+  }, [sb, group.id]);
+
+  // Messages précédents (vers le haut), limités au thème en cours
+  const loadOlder = useCallback(async () => {
+    const first = msgsRef.current[0];
+    if (!first || olderBusyRef.current) return;
+    olderBusyRef.current = true;
+    const el = msgsScrollRef.current;
+    const prevH = el ? el.scrollHeight : 0;
+    const prevTop = el ? el.scrollTop : 0;
+    let q = sb.from("group_messages").select(MSG_SELECT).eq("group_id", group.id).lt("created_at", first.created_at);
+    if (roomRef.current.startedAt) q = q.gte("created_at", roomRef.current.startedAt);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(READ_PAGE + 1);
+    if (!error) {
+      const rows = data || [];
+      winRef.current.hasBefore = rows.length > READ_PAGE;
+      setHasBeforeState(winRef.current.hasBefore);
+      const older = rows.slice(0, READ_PAGE).reverse().map(mapMsgRow);
+      if (older.length) {
+        if (winRef.current.mode === "reading") winRef.current.from = older[0].created_at;
+        suppressAutoScrollRef.current = true;
+        loadedCountRef.current += older.length;
+        setMsgs(prev => [...older, ...prev]);
+        requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - prevH + prevTop; });
+      }
+    }
+    olderBusyRef.current = false;
+  }, [sb, group.id]);
+
+  // Mesure ce que la personne a réellement vu à l'écran
+  const measureSeen = useCallback(() => {
+    if (!roomRef.current.isTheme) return;
+    const el = msgsScrollRef.current;
+    if (!el) return;
+    const limit = el.getBoundingClientRect().bottom + 4;
+    let seen = cursorPendingRef.current;
+    for (const m of msgsRef.current) {
+      const node = msgRefs.current[m.id];
+      if (!node) continue;
+      if (node.getBoundingClientRect().bottom > limit) break;
+      if (m.ts > seen) seen = m.ts;
+    }
+    if (seen > cursorPendingRef.current) {
+      cursorPendingRef.current = seen;
+      clearTimeout(cursorTimerRef.current);
+      cursorTimerRef.current = setTimeout(flushCursor, 1500);
+    }
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJump(winRef.current.hasAfter || distance > 600);
+    if (winRef.current.hasAfter && distance < 500) loadNext();
+  }, [flushCursor, loadNext]);
+
+  const handleScroll = () => {
+    if (!roomRef.current.isTheme || scrollTickRef.current) return;
+    scrollTickRef.current = setTimeout(() => { scrollTickRef.current = null; measureSeen(); }, 250);
+  };
+  useEffect(() => {
+    if (!roomRef.current.isTheme || !msgs.length) return;
+    const t = setTimeout(measureSeen, 700);
+    return () => clearTimeout(t);
+  }, [msgs.length, measureSeen]);
 
   // Récupère UN message avec son auteur joint (même select que load(), mais pour un seul id) —
   // évite de recharger les 300 derniers messages à chaque réaction/édition/nouveau message.
   const fetchMessageById = useCallback(async id => {
     const { data } = await sb
       .from("group_messages")
-      .select("id,sender_id,text,type,file_url,file_name,sticker_id,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,created_at,view_once,shared_post_id,reply_metadata,waveform,sender:profiles!group_messages_sender_id_fkey(id,prenom,nom,avatar_url)")
+      .select(MSG_SELECT)
       .eq("id", id)
       .single();
     return data;
   }, [sb]);
 
   useEffect(() => {
-    const mapOne = full => ({ ...full, ts: new Date(full.created_at).getTime(), authorName: full.sender ? `${full.sender.prenom || ""} ${full.sender.nom || ""}`.trim() : "" });
+    const mapOne = mapMsgRow;
     const ch = sb.channel(`group_messages:${group.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, async payload => {
         const full = await fetchMessageById(payload.new.id);
         if (!full) return;
         const mapped = mapOne(full);
+        if (roomRef.current.isTheme && winRef.current.hasAfter) {
+          if (mapped.sender_id === myId) jumpToEnd(); else setBehind(n => n + 1);
+          return;
+        }
+        loadedCountRef.current += 1;
         setMsgs(prev => prev.some(m => m.id === mapped.id) ? prev : [...prev, mapped]);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, async payload => {
@@ -1307,18 +1706,19 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       })
       .subscribe();
     return () => { sb.removeChannel(ch); };
-  }, [sb, group.id, fetchMessageById]);
+  }, [sb, group.id, fetchMessageById, jumpToEnd, myId]);
 
   const [lastReadAt, setLastReadAt] = useState(undefined); // undefined = pas encore chargé, null = jamais lu
   const initialScrollRef = useRef(false);
   useEffect(() => {
-    if (!group?.id || !myId) return;
-    sb.from("group_members").select("last_read_at").eq("group_id", group.id).eq("user_id", myId).maybeSingle()
+    if (!group?.id || !myId || !roomReady) return;
+    sb.from("group_members").select("last_read_at,read_cursor_at").eq("group_id", group.id).eq("user_id", myId).maybeSingle()
       .then(({ data }) => {
+        if (roomRef.current.isTheme) { setLastReadAt(data?.read_cursor_at || null); return; }
         setLastReadAt(data?.last_read_at || null);
         Promise.resolve(sb.rpc("mark_group_read", { p_group_id: group.id })).catch(() => {});
       });
-  }, [sb, group?.id, myId]);
+  }, [sb, group?.id, myId, roomReady]);
 
   useEffect(() => {
     processGroupQueue(sb, notify).then(load);
@@ -1331,6 +1731,10 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     if (!msgs.length || lastReadAt === undefined) return;
     if (!initialScrollRef.current) {
       initialScrollRef.current = true;
+      if (roomRef.current.isTheme && !lastReadAt) {
+        if (msgsScrollRef.current) msgsScrollRef.current.scrollTop = 0;
+        return;
+      }
       const firstUnread = lastReadAt
         ? msgs.find(m => m.sender_id !== myId && new Date(m.created_at) > new Date(lastReadAt))
         : null;
@@ -1344,6 +1748,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       }
       return;
     }
+    if (suppressAutoScrollRef.current) { suppressAutoScrollRef.current = false; return; }
+    if (roomRef.current.isTheme && winRef.current.hasAfter) return;
     const lastMsg = msgs[msgs.length - 1];
     const isMine = lastMsg && lastMsg.sender_id === myId;
     const el = msgsScrollRef.current;
@@ -1415,6 +1821,21 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     }
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
     setReplyTo(null);
+    if (anonNext && roomRef.current.isTheme) {
+      setAnonNext(false);
+      if (winRef.current.hasAfter) await jumpToEnd();
+      const { data: newId, error } = await sb.rpc("send_anonymous_group_message", {
+        p_group_id: group.id, p_text: t,
+        p_reply_to_id: replyPayload.reply_to_id || null,
+        p_reply_to_text: replyPayload.reply_to_text || null,
+        p_reply_to_author: replyPayload.reply_to_author || null,
+      });
+      if (error) { notify?.(error.message || "Message anonyme non envoyé"); setText(t); return; }
+      if (newId) setMyAnonIds(prev => new Set([...prev, newId]));
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
+      return;
+    }
+    if (roomRef.current.isTheme && winRef.current.hasAfter) jumpToEnd();
     if (wantViewOnce) { sendViewOnceGroupText(t, replyPayload); return; }
     enqueueGroupMessage(group.id, myId, { type: "text", text: t, view_once: false, ...replyPayload });
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
@@ -1425,6 +1846,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const cropImage = src => new Promise(resolve => { setCropSrc(src); setCropResolve({ fn: resolve }); });
 
   const handleFile = async (e, isMedia) => {
+    if (anonNext && roomRef.current.isTheme) { notify?.("Mode anonyme : texte uniquement"); if (e.target) e.target.value = ""; return; }
     let f = e.target.files?.[0];
     if (!f) return;
     const input = e.target;
@@ -1470,6 +1892,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const sendSticker = (sticker) => {
+    if (anonNext && roomRef.current.isTheme) { notify?.("Mode anonyme : texte uniquement"); return; }
     popNav();
     setShowStickerPicker(false);
     const replyPayload = replyTo ? { reply_to_id: replyTo.id, reply_to_text: replyTo.text || "", reply_to_author: replyTo.authorName || "" } : {};
@@ -1481,6 +1904,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   };
 
   const startRecording = async () => {
+    if (anonNext && roomRef.current.isTheme) { notify?.("Mode anonyme : texte uniquement"); return; }
     cancelledInitRef.current = false;
     const wantViewOnce = viewOnceNext;
     setViewOnceNext(false);
@@ -1489,7 +1913,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 } });
       if (cancelledInitRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       const mimeType = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-      const rec = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 });
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
       const chunks = [];
       rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       rec.onstop = async () => {
@@ -1497,12 +1921,13 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
         const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
         const audioFile = new File([blob], `voice_group_${Date.now()}.${ext}`, { type: mimeType });
-        const waveform = await computeWaveform(blob);
+       const waveformP = computeWaveform(blob).catch(() => null);
         const tempId = "tmp_gvoice_" + Date.now();
         trackGroupFileSend(tempId, group.id, { fileType: "voice", fileName: null });
         const attempt = async (tries = 0) => {
           try {
-            const url = await uploadToR2(audioFile, "group_messages", pct => updateGroupFileSend(tempId, { pct }));
+                        const url = await uploadToR2(audioFile, "group_messages", pct => updateGroupFileSend(tempId, { pct }));
+            const waveform = await waveformP;
            
             const { error } = await sb.from("group_messages").insert({ group_id: group.id, sender_id: myId, type: "voice", file_url: url, text: "", view_once: wantViewOnce, waveform, ...replyPayload });
             if (error) throw error;
@@ -1562,8 +1987,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     const mapped = withDividers.map(item => {
       if (item._divider) { lastSender = null; return item; }
       if (item.type === "system") { lastSender = null; return { ...item, showHeader: false }; }
-      const showHeader = lastSender !== item.sender_id;
-      lastSender = item.sender_id;
+      const senderKey = item.sender_id || item.anon_alias || null;
+      const showHeader = lastSender !== senderKey;
+      lastSender = senderKey;
       return { ...item, showHeader };
     });
     return [...mapped, ...sendingMsgs.map(m => ({ ...m, showHeader: true })), ...sendingFiles.map(f => ({ ...f, showHeader: true }))];
@@ -1620,13 +2046,19 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <Btn onClick={() => bgRef.current?.click()} style={{ color: T.muted, padding: "6px", display: "flex", alignItems: "center" }}><ImageIcon size={18} /></Btn>
       </div>
 
-      <div ref={msgsScrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+      {themeInfo && <ThemeBanner sb={sb} info={themeInfo} T={T} onAnswer={answerTheme} />}
+      <div ref={msgsScrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+        {hasBeforeState && (
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+            <Btn onClick={loadOlder} style={{ padding: "7px 14px", borderRadius: 14, background: T.glassMid, border: `1px solid ${T.border}`, color: T.goldL, fontSize: 12, fontWeight: 600 }}>Voir les messages précédents</Btn>
+          </div>
+        )}
         {displayList.map(item =>
           item._divider
             ? <DayDivider key={item.key} label={item.label} T={T} />
             : (
               <GroupMessageBubble
-                key={item.id} m={item} mine={item.sender_id === myId} T={T} Av={Av} Btn={Btn} myId={myId}
+                key={item.id} m={item} mine={item.sender_id === myId || myAnonIds.has(item.id)} T={T} Av={Av} Btn={Btn} myId={myId}
                 showHeader={item.showHeader} onOpenProfile={onOpenProfile}
                 onReply={m => setReplyTo({ ...m, text: m.text || mediaReplyLabel(m.type, m.file_name) || "" })}
                 onLongPress={m => { pushNav(() => setActionMsg(null)); setActionMsg(m); }}
@@ -1634,6 +2066,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 burstOn={burstMsgId === item.id}
                 onRetry={retryOwnMessage}
                 onScrollToReply={scrollToMessage}
+                             replyBtn={roomRef.current.isTheme}
+                onOpenSticker={setStickerDetailId}
                 registerRef={el => { if (el) msgRefs.current[item.id] = el; }}
                 highlighted={highlightMsgId === item.id}
                 revealedOnce={revealedOnce}
@@ -1650,21 +2084,37 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         <div ref={bottomRef} />
       </div>
 
+      {showJump && (
+        <Btn onClick={jumpToEnd} style={{ position: "fixed", right: 14, bottom: "calc(86px + env(safe-area-inset-bottom,0px) + var(--kb-height,0px))", zIndex: 255, display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 22, background: T.gradGold, color: "#000", fontSize: 12, fontWeight: 700, boxShadow: "0 6px 20px rgba(0,0,0,0.45)" }}>
+          <ChevronRight size={15} style={{ transform: "rotate(90deg)" }} />
+          Aller à la fin{behind > 0 ? ` (+${behind})` : ""}
+        </Btn>
+      )}
       {peerTyping && <TypingIndicator T={T} userName="Quelqu'un" />}
       <ReplyComposerBar replyTo={replyTo} T={T} onCancel={() => setReplyTo(null)} />
 
+      {anonNext && (
+        <div style={{ padding: "6px 14px", background: "rgba(212,168,67,0.12)", borderTop: `1px solid ${T.border}`, fontSize: 12, color: T.goldL, textAlign: "center" }}>
+          Mode anonyme : ton nom est caché aux autres membres (l'équipe de modération peut le retrouver)
+        </div>
+      )}
       {canWrite ? (
       <div style={{ display: "flex", gap: 8, padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom,0px) + var(--kb-height,0px))", borderTop: `1px solid ${T.border}`, position: "relative" }}>
         <input type="file" accept="image/*,video/*" ref={iRef} style={{ display: "none" }} onChange={e => handleFile(e, true)} />
         <input type="file" accept="*/*" ref={fRef} style={{ display: "none" }} onChange={e => handleFile(e, false)} />
         {!recording && (<>
-        <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+        <Btn onClick={() => iRef.current?.click()} style={{ width: 38, height: 38, display: roomRef.current.isTheme ? "none" : "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Camera size={20} />
         </Btn>
-        <Btn onClick={() => notify("Vue unique indisponible pour le moment (en travaux)")} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+        <Btn onClick={() => notify("Vue unique indisponible pour le moment (en travaux)")} style={{ width: 38, height: 38, display: roomRef.current.isTheme ? "none" : "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Eye size={20} />
         </Btn>
-        <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+        {roomRef.current.isTheme && (
+          <Btn onClick={() => setAnonNext(v => !v)} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: anonNext ? T.goldL : T.muted }}>
+            <EyeOff size={20} />
+          </Btn>
+        )}
+        <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: roomRef.current.isTheme ? "none" : "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Paperclip size={20} />
         </Btn>
         <Btn onClick={() => { if (showStickerPicker) { popNav(); setShowStickerPicker(false); } else { pushNav(() => setShowStickerPicker(false)); setShowStickerPicker(true); } }} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: showStickerPicker ? T.goldL : T.muted }}>
@@ -1724,6 +2174,22 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       </div>
       )}
 
+      {stickerDetailId && (
+        <StickerDetailModal sb={sb} T={T} Av={Av} stickerId={stickerDetailId} userId={myId} notify={notify} onClose={() => setStickerDetailId(null)} />
+      )}
+
+      {reportMsg && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 270, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={() => { popNav(); setReportMsg(null); }}>
+          <div style={{ width: "100%", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 0 24px" }} onClick={e => e.stopPropagation()}>
+            <p style={{ margin: "0 20px 8px", fontSize: 13, fontWeight: 700, color: T.sub }}>Pourquoi signales-tu ce message ?</p>
+            {["Harcèlement ou insultes", "Contenu choquant ou inapproprié", "Spam ou publicité", "Fausse information dangereuse", "Autre"].map(r => (
+              <div key={r} onClick={() => sendReport(r)} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer", opacity: reporting ? 0.5 : 1 }}>{r}</div>
+            ))}
+            <p style={{ margin: "6px 20px 0", fontSize: 11, color: T.muted }}>Le message reste anonyme pour l'équipe tant qu'elle n'a pas à intervenir.</p>
+          </div>
+        </div>
+      )}
+
       {actionMsg && (
         <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={() => { popNav(); setActionMsg(null); }}>
           <div style={{ width: "100%", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 0 24px" }} onClick={e => e.stopPropagation()}>
@@ -1733,10 +2199,13 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
               ))}
             </div>
             <div onClick={() => { setReplyTo(actionMsg ? { ...actionMsg, text: actionMsg.text || mediaReplyLabel(actionMsg.type, actionMsg.file_name) || "" } : null); popNav(); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
+            {actionMsg.sender_id !== myId && !myAnonIds.has(actionMsg.id) && actionMsg.type !== "system" && (
+              <div onClick={() => { popNav(); setActionMsg(null); pushNav(() => setReportMsg(null)); setReportMsg(actionMsg); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Signaler</div>
+            )}
             {actionMsg.sender_id === myId && actionMsg.type === "text" && (
               <div onClick={() => { setEditingMsg(actionMsg); setText(actionMsg.text); popNav(); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Modifier</div>
             )}
-            {actionMsg.sender_id === myId && (
+            {(actionMsg.sender_id === myId || myAnonIds.has(actionMsg.id) || isGroupAdmin) && (
               <div onClick={async () => { await sb.from("group_messages").delete().eq("id", actionMsg.id); popNav(); setActionMsg(null); load(); }} style={{ padding: "14px 20px", fontSize: 15, color: T.err || "#c84040", cursor: "pointer" }}>Supprimer</div>
             )}
           </div>
@@ -1870,7 +2339,13 @@ export function GroupInfoScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const [actionMember, setActionMember] = useState(null);
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [showEditGroup, setShowEditGroup] = useState(false);
-  const [muted, setMuted] = useState(() => isGroupMuted(group.id));
+  const [muted, setMuted] = useState(() => group.muted ?? isGroupMuted(group.id));
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    sb.from("group_members").select("muted").eq("group_id", group.id).eq("user_id", uid).maybeSingle()
+      .then(({ data }) => { if (data) setMuted(!!data.muted); });
+  }, [sb, group.id, session?.user?.id]);
   const [pinned, setPinned] = useState(() => isGroupPinned(group.id));
   const [showTheme, setShowTheme] = useState(false);
   const [showMedia, setShowMedia] = useState(false);
