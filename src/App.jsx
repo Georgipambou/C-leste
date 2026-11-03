@@ -93,6 +93,8 @@ import EasyCrop from "react-easy-crop";
 import { setNativeBackground } from "./nativeBackground";
 import { confirmAction, resolveConfirmAction } from "./confirmAction";
 import FeedViewer from "./FeedViewer";
+import AnonInbox from "./AnonInbox";
+import AnonPublicPage from "./AnonPublicPage";
 import SearchExplorer from "./SearchExplorer";
 import { JobFields, JOB_DEFAULTS } from "./JobFields";
 import CameraStudioModal from "./CameraStudioModal";
@@ -636,6 +638,13 @@ const extractMentions=(text,nameMap)=>{
   }
   return found;
 };
+const safeUrl=u=>{
+  try{
+    const s=(u||"").trim(); if(!s)return null;
+    const x=new URL(/^https?:\/\//i.test(s)?s:"https://"+s);
+    return /^https?:$/.test(x.protocol)?x.href:null;
+  }catch{return null;}
+};
 const normProfile = p => ({
   isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
 country:p.country||null,
@@ -655,6 +664,8 @@ longitude:p.longitude||null,
   is_super_admin:p.is_super_admin||false,
   admin_scopes:p.admin_scopes||[],
   is_discoverable:p.is_discoverable!==false,
+    hide_online:!!p.hide_online, no_messages:!!p.no_messages, no_calls:!!p.no_calls,
+  shop_link:p.shop_link||null, prenom:p.prenom||"", nom:p.nom||"",
   whatsapp:p.whatsapp||p.raw_user_meta_data?.whatsapp||null,
   account_type:p.account_type||"membre",screenshot_protection:p.screenshot_protection||false,
   org_name:p.org_name||null, org_type:p.org_type||null,
@@ -7339,7 +7350,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         </div>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto",alignItems:"center"}}>
-          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"}].map(f=>(
+          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"},{k:"anonyme",l:"Anonyme 🎭"}].map(f=>(
             <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
               {f.l}
               {f.k==="nonlus"&&(sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))||(groups||[]).some(g=>g.unreadCount>0))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
@@ -7360,6 +7371,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         </div>
       )}
 
+      {filter==="anonyme"&&<AnonInbox sb={sb} T={T} session={session} notify={notify}/>}
       {/* Liste conversations */}
       <div style={{maxWidth:640,margin:"0 auto",padding:"8px 0 80px"}}>
         {filter==="groupes"&&(
@@ -8503,14 +8515,14 @@ const LINK_ICON_MAP=[
 ];
 const getLinkIcon=url=>(LINK_ICON_MAP.find(({re})=>re.test(url||""))||{}).Icon||Globe;
 function LinksRow({links}){
-  const items=(links||[]).filter(l=>l?.url).slice(0,5);
+  const items=(links||[]).filter(l=>l?.url&&safeUrl(l.url)).slice(0,5);
   if(!items.length)return null;
   return(
     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
       {items.map((l,i)=>{
         const Icon=getLinkIcon(l.url);
         return(
-          <a key={i} href={l.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+          <a key={i} href={safeUrl(l.url)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
             style={{display:"inline-flex",alignItems:"center",gap:4,padding:"4px 9px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:10,fontWeight:600,textDecoration:"none",maxWidth:110,overflow:"hidden"}}>
             <Icon size={10}/>
             <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label||l.url.replace(/^https?:\/\//,"").replace(/\/$/,"")}</span>
@@ -8579,9 +8591,9 @@ function UserView({user,myProfile,session,posts,onBack,onChat,notify,myConnectio
     return()=>{sb.removeChannel(ch);disableScreenProtection();};
   },[user.id]);
 
-  useEffect(()=>{
-  if(session?.user?.id&&user?.id&&!myProfile?.hide_online)logProfileView(sb,session.user.id,user.id);
-},[user.id,session?.user?.id,myProfile?.hide_online]);
+    useEffect(()=>{
+    if(myProfile&&session?.user?.id&&user?.id&&!myProfile.hide_online)logProfileView(sb,session.user.id,user.id);
+  },[user.id,session?.user?.id,!!myProfile,myProfile?.hide_online]);
 
   useEffect(()=>{
     Promise.all([
@@ -9289,12 +9301,11 @@ const [bugText,setBugText]=useState("");
 
   useEffect(()=>{
     if(!open||!session?.user?.id)return;
-    sb.from("profiles").select("no_messages,no_calls,is_discoverable,hide_online,screenshot_protection,badge_payment_ref,badge,badge_expires_at")
+    sb.from("profiles").select("no_messages,no_calls,is_discoverable,hide_online,screenshot_protection,duo_permission,badge_payment_ref,badge,badge_expires_at")
       .eq("id",session.user.id)
       .maybeSingle()
       .then(async({data})=>{
-        if(data){setDnd(!!data.no_messages);setNoCalls(!!data.no_calls);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);}
-        sb.from("profiles").select("duo_permission").eq("id",session.user.id).maybeSingle().then(({data:d})=>{if(d?.duo_permission)setDuoPermission(d.duo_permission);});
+        if(data){setDnd(!!data.no_messages);setNoCalls(!!data.no_calls);setDiscoverable(data.is_discoverable!==false);setHideOnline(!!data.hide_online);setScreenshotProtection(!!data.screenshot_protection);if(data.duo_permission)setDuoPermission(data.duo_permission);}
         if(data?.badge_payment_ref&&!data?.badge){
           try{
             const{data:result}=await sb.functions.invoke("verify-badge-payment");
@@ -9306,35 +9317,18 @@ const [bugText,setBugText]=useState("");
       });
   },[open,session?.user?.id,notify]);
 
-  const toggleDnd=async()=>{
-    const next=!dnd;
-    setDnd(next);
-    await sb.from("profiles").update({no_messages:next}).eq("id",session.user.id);
-    setMyProfile(p=>p&&({...p,no_messages:next}));
-    notify(next?"🔕 Messages bloqués":"✅ Messages activés");
-
+  const saveFlag=async(field,next,setter,prev)=>{
+    setter(next);
+    const {error}=await sb.from("profiles").update({[field]:next}).eq("id",session.user.id);
+    if(error){setter(prev);notify("Erreur, réessaie");return false;}
+    setMyProfile(p=>p&&({...p,[field]:next}));
+    return true;
   };
-const toggleNoCalls=async()=>{
-  const next=!noCalls;
-  setNoCalls(next);
-  await sb.from("profiles").update({no_calls:next}).eq("id",session.user.id);
-  setMyProfile(p=>p&&({...p,no_calls:next}));
-  notify(next?"📵 Appels bloqués":"✅ Appels autorisés");
-};
-  const toggleDiscoverable=async()=>{
-    const next=!discoverable;
-    setDiscoverable(next);
-    await sb.from("profiles").update({is_discoverable:next}).eq("id",session.user.id);
-    setMyProfile(p=>p&&({...p,is_discoverable:next}));
-    notify(next?"Profil visible":"Profil masqué");
-  };
-  const toggleHideOnline=async()=>{
-    const next=!hideOnline;
-    setHideOnline(next);
-    await sb.from("profiles").update({hide_online:next}).eq("id",session.user.id);
-    setMyProfile(p=>p&&({...p,hide_online:next}));
-    notify(next?"Présence masquée":"Présence visible");
-  };
+  const toggleDnd=async()=>{const next=!dnd;if(await saveFlag("no_messages",next,setDnd,dnd))notify(next?"🔕 Messages bloqués":"✅ Messages activés");};
+  const toggleNoCalls=async()=>{const next=!noCalls;if(await saveFlag("no_calls",next,setNoCalls,noCalls))notify(next?"📵 Appels bloqués":"✅ Appels autorisés");};
+  const toggleDiscoverable=async()=>{const next=!discoverable;if(await saveFlag("is_discoverable",next,setDiscoverable,discoverable))notify(next?"Profil visible":"Profil masqué");};
+  const toggleHideOnline=async()=>{const next=!hideOnline;if(await saveFlag("hide_online",next,setHideOnline,hideOnline))notify(next?"Présence masquée":"Présence visible");};
+  const toggleScreenshot=async()=>{const next=!screenshotProtection;if(await saveFlag("screenshot_protection",next,setScreenshotProtection,screenshotProtection))notify(next?"🔒 Protection activée":"Protection désactivée");};
 const NAV_THEMES=[
   {id:"aucun",emoji:"◻️",label:"Aucun (défaut)",premium:false},
   {id:"etoiles_filantes",emoji:"🌠",label:"Étoiles filantes",premium:true},
@@ -9495,7 +9489,7 @@ const NAV_THEMES=[
     {/* Masquer présence en ligne */}
     <Btn onClick={toggleHideOnline}
       style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-      <Eye size={20} color={T.goldL}/>
+      <EyeOff size={20} color={T.goldL}/>
       <div style={{flex:1,textAlign:"left"}}>
         <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Masquer ma présence</p>
         <p style={{margin:0,fontSize:11,color:T.muted}}>{hideOnline?"Personne ne voit votre point vert":"Votre statut en ligne est visible"}</p>
@@ -9503,17 +9497,12 @@ const NAV_THEMES=[
       <Toggle active={hideOnline}/>
     </Btn>
 {/* Protection captures d'écran */}
-  <Btn onClick={async()=>{
-    const next=!screenshotProtection;
-    setScreenshotProtection(next);
-    await sb.from("profiles").update({screenshot_protection:next}).eq("id",session.user.id);
-    notify(next?"🔒 Captures bloquées pour ton contenu":"Captures autorisées");
-  }}
+  <Btn onClick={toggleScreenshot}
     style={{width:"100%",padding:"14px 16px",background:T.card,border:`1px solid ${T.border}`,borderRadius:14,display:"flex",alignItems:"center",gap:12}}>
-    <Eye size={20} color={T.goldL}/>
+    <Lock size={20} color={T.goldL}/>
     <div style={{flex:1,textAlign:"left"}}>
       <p style={{margin:0,fontSize:13,fontWeight:600,color:T.text}}>Protéger mon contenu ✦</p>
-      <p style={{margin:0,fontSize:11,color:T.muted}}>{screenshotProtection?"Captures bloquées sur ton profil/posts/messages":"Captures autorisées"}</p>
+      <p style={{margin:0,fontSize:11,color:T.muted}}>{screenshotProtection?"Captures bloquées là où l'appareil le permet":"Captures autorisées"}</p>
     </div>
     <Toggle active={screenshotProtection}/>
   </Btn>
@@ -10186,7 +10175,7 @@ function LikedPostsTab({session,notify,onImageView,myProfile,getM,myConnections,
 function ProfileTab({myProfile,session,posts,onNewPost,notify,onLogout,reload,myConnections,myFollowers,onImageView,getM,userPostsVersion=0,toggleLike,toggleSave,onConnect,pushNav,popNav}){
   const [tab,setTab]=useState("posts");
   const [editing,setEditing]=useState(false);
- const [form,setForm]=useState({prenom:myProfile?.fullName?.split(" ")[0]||"",nom:myProfile?.fullName?.split(" ").slice(1).join(" ")||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse||"",shop_link:myProfile?.shop_link||"",links:myProfile?.links?.length?myProfile.links:[{label:"",url:""}]});
+ const [form,setForm]=useState({prenom:myProfile?.prenom||"",nom:myProfile?.nom||"",bio:myProfile?.bio||"",paroisse:myProfile?.paroisse&&myProfile.paroisse!=="-"?myProfile.paroisse:"",shop_link:myProfile?.shop_link||"",links:myProfile?.links?.length?myProfile.links:[{label:"",url:""}]});
   const [saving,setSaving]=useState(false);
   const [unreadNotifs,setUnreadNotifs]=useState(0);
   const [showFollowers,setShowFollowers]=useState(false);
@@ -10200,6 +10189,13 @@ const [showTransactions,setShowTransactions]=useState(false);
   const avRef=useRef(); const cvRef=useRef();
   const [myNote,setMyNote]=useState(null);
   const [showNoteComposer,setShowNoteComposer]=useState(false);
+    useEffect(()=>{
+    if(!editing)return;
+    setForm({prenom:myProfile?.prenom||"",nom:myProfile?.nom||"",bio:myProfile?.bio||"",
+      paroisse:myProfile?.paroisse&&myProfile.paroisse!=="-"?myProfile.paroisse:"",
+      shop_link:myProfile?.shop_link||"",
+      links:myProfile?.links?.length?myProfile.links:[{label:"",url:""}]});
+  },[editing]);
   useEffect(()=>{
     if(!session?.user?.id)return;
     sb.from("notes").select("*").eq("user_id",session.user.id).gt("expires_at",new Date().toISOString()).maybeSingle()
@@ -10227,26 +10223,31 @@ const [showTransactions,setShowTransactions]=useState(false);
     setShowFollowing(true);
   };
 
-  const saveProfile=async()=>{
+    const saveProfile=async()=>{
+    if(!form.prenom.trim()){notify("Le prénom est obligatoire");return;}
+    const shop=form.shop_link?.trim()?safeUrl(form.shop_link):null;
+    if(form.shop_link?.trim()&&!shop){notify("Lien boutique invalide");return;}
     setSaving(true);
-   const cleanLinks=(form.links||[]).filter(l=>l.url?.trim()).slice(0,5).map(l=>({label:(l.label||"").trim().slice(0,20),url:l.url.trim()}));
-   await sb.from("profiles").update({prenom:form.prenom,nom:form.nom,bio:form.bio,paroisse:form.paroisse,shop_link:form.shop_link||null,links:cleanLinks,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
-    setSaving(false);setEditing(false);reload();notify("Profil mis à jour ✦");
+    const cleanLinks=(form.links||[]).filter(l=>l.url?.trim())
+      .map(l=>({label:(l.label||"").trim().slice(0,20),url:safeUrl(l.url)}))
+      .filter(l=>l.url).slice(0,5);
+    const {error}=await sb.from("profiles").update({prenom:form.prenom.trim(),nom:form.nom.trim(),bio:form.bio,paroisse:form.paroisse,shop_link:shop,links:cleanLinks,updated_at:new Date().toISOString()}).eq("id",session?.user?.id);
+    setSaving(false);
+    if(error){notify("Erreur : profil non enregistré");return;}
+    setEditing(false);reload();notify("Profil mis à jour ✦");
   };
 
-  const uploadImg=async(e,field)=>{
-  const f=e.target.files[0]; if(!f)return;
-  const compressed=field==="cover_url"?f:await compressImage(f);
-  const ext=f.name.split(".").pop()||"jpg";
-  const path=`${field}/${session?.user?.id}.${ext}`;
-    const contentType=field==="cover_url"?f.type:"image/jpeg";
-    try {
-  const url = await uploadToR2(compressed, field === "cover_url" ? "covers" : "avatars");
-  await sb.from("profiles").update({[field]:url}).eq("id",session?.user?.id);
-} catch(e) {
-  notify("Erreur upload");
-}
-    reload();notify("Photo mise à jour ✦");
+   const uploadImg=async(e,field)=>{
+    const input=e.target; const f=input.files[0]; if(!f)return;
+    try{
+      const compressed=field==="cover_url"?f:await compressImage(f);
+      const url=await uploadToR2(compressed, field==="cover_url"?"covers":"avatars");
+      const {error}=await sb.from("profiles").update({[field]:url}).eq("id",session?.user?.id);
+      if(error)throw error;
+      reload();notify("Photo mise à jour ✦");
+    }catch(err){
+      console.error("upload error:",err);notify("Erreur upload");
+    }finally{ input.value=""; }
   };
 
   const [myPosts,setMyPosts]=useState([]);
@@ -10424,10 +10425,10 @@ const localToggleParticipate=async pid=>{
 </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
   <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-    <Edit2 size={14}/>{editing?"Annuler":"Modifier"}
+    <Edit2 size={14}/>{editing?"Annuler":"Modif."}
   </Btn>
   <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-  💰 Portefeuille
+  💰 Poche
 </button>
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
     <Settings size={18} color={T.gold}/>
@@ -10462,7 +10463,7 @@ const localToggleParticipate=async pid=>{
            {myProfile?.bio&&<p style={{margin:0,fontSize:14,color:T.sub,lineHeight:1.7}}>{renderTextWithMentions(myProfile.bio)}</p>}
            <SellerRatingStars T={T} sb={sb} sellerId={session.user.id} pushNav={pushNav} popNav={popNav}/>
             {myProfile?.shop_link&&(
-              <a href={myProfile.shop_link} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
+              <a href={safeUrl(myProfile.shop_link)||undefined} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"8px 14px",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:20,color:T.goldL,fontSize:12,fontWeight:600,textDecoration:"none"}}>
                 🛍️ Ma boutique
               </a>
             )}
@@ -10862,6 +10863,13 @@ function WalletComplaints({notify}){
 
 // ── ADMIN PANEL ───────────────────────────────────────────
 function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initialFilter}){
+  // Les numéros (phone/whatsapp) vivent dans profile_contacts : lisibles par les admins ayant le droit "members"
+  const withContacts=async(rows)=>{
+    if(!rows)return rows;
+    const{data:cs}=await sb.from("profile_contacts").select("user_id,phone,whatsapp").limit(5000);
+    const m=new Map((cs||[]).map(c=>[c.user_id,c]));
+    return rows.map(r=>({...r,phone:m.get(r.id)?.phone||null,whatsapp:m.get(r.id)?.whatsapp||null}));
+  };
   const [list,setList]=useState([]);
   const [allReports,setAllReports]=useState([]);
   const [allPosts,setAllPosts]=useState([]);
@@ -10898,7 +10906,7 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
   };
 
   useEffect(()=>{
-    sb.from("profiles").select("*").then(({data})=>setList((data||[]).map(normProfile)));
+    sb.from("profiles").select("*").then(async({data})=>setList(((await withContacts(data))||[]).map(normProfile)));
     sb.from("reports").select(`*,reporter:profiles!reports_reporter_id_fkey(prenom,nom),reported:profiles!reports_reported_id_fkey(prenom,nom),post:posts(id,text,media_urls,img_url),sticker:stickers(id,name,url,type,added_by_admin,author_id)`).order("created_at",{ascending:false}).then(({data})=>setAllReports(data||[]));
     sb.from("posts").select(`*,author:profiles!posts_author_id_fkey(id,prenom,nom)`).order("created_at",{ascending:false}).limit(50).then(({data})=>setAllPosts(data||[]));
     sb.from("transaction_reports").select(`*,reporter:profiles!transaction_reports_reporter_id_fkey(prenom,nom),reported:profiles!transaction_reports_reported_user_id_fkey(prenom,nom),transaction:transactions(id,amount,quantity,status,unit_price,post:posts(text))`).eq("status","pending").order("created_at",{ascending:false}).then(({data})=>setTxReports(data||[]));
@@ -10924,7 +10932,8 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
     if(ns==="active"){
       const{error}=await sb.from("profiles").update({status:ns,marketplace_blocked:false}).eq("id",id);
       if(error){notify("Erreur : "+error.message);return;}
-      const{data}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+      const{data:rawData}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+      const data=await withContacts(rawData);
       if(data)setList(data.map(normProfile));
       reload?.();
       notify("✓ Réactivé avec succès");
@@ -10939,7 +10948,8 @@ function AdminPanel({onClose,notify,reload,reloadPosts,session,myProfile,initial
 
     const{error}=await sb.rpc("admin_suspend_with_fine",{p_user_id:id,p_fine_amount:fineAmount,p_reason:reason});
     if(error){notify("Erreur : "+error.message);return;}
-    const{data}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+    const{data:rawData}=await sb.from("profiles").select("*").order("joined_at",{ascending:false});
+    const data=await withContacts(rawData);
     if(data)setList(data.map(normProfile));
     reload?.();
     notify(fineAmount?`🚫 Suspendu - amende de ${fineAmount} F CFA requise`:"🚫 Suspendu");
@@ -11636,6 +11646,8 @@ function CelesteApp(){
   const [isPending,setIsPending]=useState(false);
   const [members,setMembers]=useState([]);
   const [posts,setPosts]=useState(()=>{try{const c=localStorage.getItem(celesteScopedKey("celeste_posts_cache"));return c?JSON.parse(c):[];}catch(e){return[];}});
+    const livePostsRef=useRef(posts);
+  useEffect(()=>{livePostsRef.current=posts;},[posts]);
   const [convs,setConvs]=useState(()=>{try{const c=localStorage.getItem(celesteScopedKey("celeste_convs_cache"));return c?JSON.parse(c):[];}catch(e){return[];}});
   const convsRef=useRef([]);
   useEffect(()=>{convsRef.current=convs;},[convs]);
@@ -12105,7 +12117,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
 
   // Statut en ligne en temps réel via Supabase Realtime Presence
   useEffect(()=>{
-    if(!session?.user?.id)return;
+        if(!session?.user?.id||!myProfile)return;
     const presenceChannel=sb.channel("online-users",{config:{presence:{key:session.user.id}}});
     presenceChannel.on("presence",{event:"sync"},()=>{
       const state=presenceChannel.presenceState();
@@ -12117,7 +12129,7 @@ sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",s.user.
       }
     });
     return()=>{sb.removeChannel(presenceChannel);};
-  },[session?.user?.id,myProfile?.hide_online]);
+  },[session?.user?.id,!!myProfile,myProfile?.hide_online]);
   useEffect(()=>{
     setMembers(prev=>prev.map(m=>({...m,isOnline:!m.hide_online&&onlinePresenceIds.has(m.id),online:!m.hide_online&&onlinePresenceIds.has(m.id)})));
   },[onlinePresenceIds]);
@@ -12393,12 +12405,13 @@ window.addEventListener("celeste_open_user",handleOpenUser);
           return{...cv,msgs:[...(cv.msgs||[]),newMsg]};
         }));
         if(nm.sender_id===myId)return;
-        const updated=await loadConvs(myId);
-        if(updated){
-          const totalNew=(updated||[]).reduce((a,c)=>a+(c.msgs||[]).filter(m=>m.f!=="me"&&!m.read).length,0);
-          if(totalNew>prevMsgCount.current){const conv=(updated||[]).find(c=>(c.msgs||[]).some(m=>m.id===nm.id));if(!conv||!isConvMuted(conv,myId)){const sender=(members||[]).find(m=>m.id===nm.sender_id);const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.text||"";addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(conv?.id){setOpenConvId(conv.id);}},100);});}}
-          prevMsgCount.current=totalNew;
-        }
+        let list=convsRef.current||[];
+        if(!list.some(c=>c.id===nm.conv_id)){const fresh=await loadConvs(myId);if(fresh)list=fresh;}
+        const conv=list.find(c=>c.id===nm.conv_id);
+        if(conv&&isConvMuted(conv,myId))return;
+        const sender=(members||[]).find(m=>m.id===nm.sender_id);
+        const preview=nm.type==="photo"?"📷 Photo":nm.type==="file"?"📎 Fichier":nm.type==="voice"?"🎤 Message vocal":nm.type==="sticker"?"Sticker":nm.text||"";
+        addInAppNotif("✉",sender?.name||"Message",preview,()=>{setTab("messages");setTimeout(()=>{if(nm.conv_id){setOpenConvId(nm.conv_id);}},100);});
       })
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},payload=>{
         const updated=payload.new;
@@ -12417,13 +12430,17 @@ window.addEventListener("celeste_open_user",handleOpenUser);
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"likes"},async payload=>{
         
         const pid=payload.new?.post_id;if(!pid)return;
-        const updated=await refreshPost(pid);
+        let updated=(livePostsRef.current||[]).find(p=>p.id===pid);
+        if(updated){updated=(await refreshPost(pid))||updated;}
+        else if(payload.new?.user_id!==myId){const{data:pr}=await sb.from("posts").select("author_id,text,event_title").eq("id",pid).maybeSingle();if(pr)updated={by:pr.author_id,text:pr.text,title:pr.event_title};}
         if(updated&&updated.by===myId&&payload.new?.user_id!==myId&&!isUserMuted(payload.new.user_id)){const liker=(members||[]).find(m=>m.id===payload.new.user_id);addInAppNotif("❤️",`${liker?.name||"Quelqu'un"} a aimé`,updated.text||updated.title||"ta publication",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:payload.new.post_id}})),300);});}
       })
-      .on("postgres_changes",{event:"DELETE",schema:"public",table:"likes"},payload=>{if(payload.old?.post_id)refreshPost(payload.old.post_id);})
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"likes"},payload=>{if(payload.old?.post_id&&(livePostsRef.current||[]).some(p=>p.id===payload.old.post_id))refreshPost(payload.old.post_id);})
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments"},async payload=>{
         const cmt=payload.new;if(!cmt?.post_id)return;
-        const updated=await refreshPost(cmt.post_id);
+        let updated=(livePostsRef.current||[]).find(p=>p.id===cmt.post_id);
+        if(updated){updated=(await refreshPost(cmt.post_id))||updated;}
+        else if(cmt.author_id!==myId){const{data:pr}=await sb.from("posts").select("author_id,text,event_title").eq("id",cmt.post_id).maybeSingle();if(pr)updated={by:pr.author_id,text:pr.text,title:pr.event_title};}
        if(updated&&updated.by===myId&&cmt.author_id!==myId&&!isUserMuted(cmt.author_id)){const commenter=(members||[]).find(m=>m.id===cmt.author_id);addInAppNotif("💬",`${commenter?.name||"Quelqu'un"} a commenté`,cmt.text||"…",()=>{setTab("home");setTimeout(()=>window.dispatchEvent(new CustomEvent("celeste_open_post",{detail:{postId:cmt.post_id}})),300);});}
       })
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"comment_likes"},async payload=>{
@@ -12774,5 +12791,8 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 }
 
 export default function App(){
+  if(typeof window!=="undefined"&&/^\/a\/[a-f0-9]{10}\/?$/.test(window.location.pathname)){
+    return(<AnonPublicPage/>);
+  }
   return(<ErrorBoundary><CelesteApp/></ErrorBoundary>);
 }

@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    { "source": "/a/:slug", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/ffmpeg-core.js",

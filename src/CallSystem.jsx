@@ -150,10 +150,21 @@ export function CallProvider({ sb, currentUser, T, children }) {
         apiKey: STREAM_API_KEY,
         user: { id: currentUser.id, name: currentUser.name, image: currentUser.avatar_url },
         tokenProvider: async () => {
-          try { await sb.auth.getSession(); } catch (e) {} // force le rafraîchissement si le jeton est périmé
-          const { data, error } = await sb.functions.invoke('stream-token');
-          if (error || !data?.token) throw new Error('stream-token indisponible');
-          return data.token;
+          const fetchToken = async () => {
+            const { data, error } = await sb.functions.invoke('stream-token');
+            if (error || !data?.token) throw new Error('stream-token indisponible');
+            return data.token;
+          };
+          try { await sb.auth.getSession(); } catch (e) {} // rafraîchit le jeton s'il est périmé
+          try { return await fetchToken(); } catch (e1) {
+            // Jeton de connexion expiré ou réseau qui se réveille : on renouvelle la session puis on réessaie
+            try { await sb.auth.refreshSession(); } catch (e) {}
+            await new Promise(r => setTimeout(r, 600));
+            try { return await fetchToken(); } catch (e2) {
+              await new Promise(r => setTimeout(r, 1500));
+              return await fetchToken();
+            }
+          }
         },
         options: { timeout: 20000 },
       });
@@ -239,7 +250,9 @@ export function CallProvider({ sb, currentUser, T, children }) {
     } catch (e) {
       console.error('[Call] Échec du démarrage de l\'appel:', e);
       setActiveCall(null);
-      setCallError("L'appel n'a pas pu démarrer : " + (e?.message || 'erreur inconnue'));
+      setCallError(/tokenProvider|stream-token/i.test(e?.message || '')
+        ? "Connexion au service d'appel impossible. Vérifie ta connexion internet et réessaie."
+        : "L'appel n'a pas pu démarrer : " + (e?.message || 'erreur inconnue'));
     } finally {
       setConnecting(false);
     }

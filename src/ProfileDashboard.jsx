@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Eye, ChevronRight, X, BarChart3 } from "lucide-react";
 
 // Mélange pseudo-aléatoire déterministe : mêmes suggestions toute la journée,
@@ -20,6 +20,9 @@ function seededShuffle(arr, seedStr) {
 export async function logProfileView(sb, viewerId, viewedId) {
   if (!sb || !viewerId || !viewedId || viewerId === viewedId) return;
   try {
+    const { error } = await sb.rpc("log_profile_view", { p_viewed: viewedId });
+    if (!error) return;
+    // Repli tant que la fonction SQL log_profile_view n'est pas installée
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: existing } = await sb.from("profile_views").select("id")
       .eq("viewer_id", viewerId).eq("viewed_id", viewedId).gte("created_at", since).limit(1);
@@ -38,28 +41,43 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session, pus
 
   useEffect(() => {
     if (!session?.user?.id) return;
-    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    sb.from("profile_views").select("viewer_id")
-      .eq("viewed_id", session.user.id).gte("created_at", since)
-      .then(({ data }) => {
-        const rows = data || [];
-        setCount(rows.length);
-        setUniqueCount(new Set(rows.map(r => r.viewer_id)).size);
-      });
+    let alive = true;
+    (async () => {
+      const { data, error } = await sb.rpc("profile_views_stats", { p_days: 30 });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!error && row) {
+        if (alive) { setCount(Number(row.total) || 0); setUniqueCount(Number(row.uniques) || 0); }
+        return;
+      }
+      // Repli tant que la fonction SQL profile_views_stats n'est pas installée
+      const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const { data: rows } = await sb.from("profile_views").select("viewer_id")
+        .eq("viewed_id", session.user.id).gte("created_at", since);
+      if (!alive) return;
+      const list = rows || [];
+      setCount(list.length);
+      setUniqueCount(new Set(list.map(r => r.viewer_id)).size);
+    })();
+    return () => { alive = false; };
   }, [session?.user?.id]);
 
   const openViewers = async () => {
     pushNav(() => setShowViewers(false));
     setShowViewers(true); setLoadingViewers(true);
-    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    const { data: rows, error } = await sb.from("profile_views")
-      .select("viewer_id,created_at")
-      .eq("viewed_id", session?.user?.id).gte("created_at", since)
-      .order("created_at", { ascending: false }).limit(100);
-    if (error) console.error("profile_views error:", error);
-
     const countsMap = new Map();
-    (rows || []).forEach(r => countsMap.set(r.viewer_id, (countsMap.get(r.viewer_id) || 0) + 1));
+    const { data: vrows, error: vErr } = await sb.rpc("profile_viewers", { p_days: 30, p_limit: 100 });
+    if (!vErr && Array.isArray(vrows)) {
+      vrows.forEach(r => countsMap.set(r.viewer_id, Number(r.visit_count) || 1));
+    } else {
+      // Repli tant que la fonction SQL profile_viewers n'est pas installée
+      const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const { data: rows, error } = await sb.from("profile_views")
+        .select("viewer_id,created_at")
+        .eq("viewed_id", session?.user?.id).gte("created_at", since)
+        .order("created_at", { ascending: false }).limit(100);
+      if (error) console.error("profile_views error:", error);
+      (rows || []).forEach(r => countsMap.set(r.viewer_id, (countsMap.get(r.viewer_id) || 0) + 1));
+    }
     const uniqueIds = [...countsMap.keys()];
     if (uniqueIds.length === 0) { setViewers([]); setLoadingViewers(false); return; }
 
@@ -128,10 +146,11 @@ export function ProfileViewsCard({ sb, T, Btn, Av, Badge, fmtCount, session, pus
 export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, computeMatchScore, onUser, onConnectionChange }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const scoreRef = useRef(computeMatchScore);
+  scoreRef.current = computeMatchScore;
 
   const build = useCallback(async () => {
     if (!session?.user?.id) return;
-    setLoading(true);
     const myId = session.user.id;
 
     const { data: myConns } = await sb.from("connections").select("to_id").eq("from_id", myId);
@@ -153,7 +172,7 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
         const { data: others } = await sb.from("match_profiles").select("*").eq("is_active", true).neq("user_id", myId);
         (others || []).forEach(op => {
           if (excludeIds.has(op.user_id) || pool.has(op.user_id)) return;
-          const score = computeMatchScore ? computeMatchScore(myMatch, op) : 0;
+          const score = scoreRef.current ? scoreRef.current(myMatch, op) : 0;
           if (score >= 50) pool.set(op.user_id, { id: op.user_id, reason: "match" });
         });
       }
@@ -174,33 +193,40 @@ export function DiscoverPeopleSection({ sb, T, Btn, Av, Badge, session, notify, 
     // des profils découvrables au hasard pour que le carrousel ne soit jamais vide/pauvre.
     const need = 12 - pool.size;
     if (need > 0) {
-      const excludeAndPoolIds = [...excludeIds, ...pool.keys()];
-      let q = sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse,is_discoverable").eq("status", "active").neq("is_discoverable", false).limit(need * 5);
-      if (excludeAndPoolIds.length > 0) q = q.not("id", "in", `(${excludeAndPoolIds.join(",")})`);
-      const { data: extra } = await q;
-      const shuffledExtra = (extra || []).sort(() => Math.random() - 0.5).slice(0, need);
-      shuffledExtra.forEach(p => { if (!pool.has(p.id)) pool.set(p.id, { id: p.id, reason: "discover" }); });
+      const taken = [...excludeIds, ...pool.keys()];
+      const { data: extraIds, error: rpcErr } = await sb.rpc("discover_candidates", { p_exclude: taken, p_limit: need });
+      if (!rpcErr && Array.isArray(extraIds)) {
+        extraIds.forEach(pid => { if (typeof pid === "string" && !pool.has(pid)) pool.set(pid, { id: pid, reason: "discover" }); });
+      } else {
+        // Repli tant que la fonction SQL discover_candidates n'est pas installée
+        const takenSet = new Set(taken);
+        const { data: extra } = await sb.from("profiles").select("id").eq("status", "active")
+          .neq("is_discoverable", false).order("joined_at", { ascending: false }).limit(200);
+        seededShuffle((extra || []).filter(p => !takenSet.has(p.id)), `${myId}_extra_${new Date().toISOString().slice(0, 10)}`)
+          .slice(0, need).forEach(p => pool.set(p.id, { id: p.id, reason: "discover" }));
+      }
     }
 
     const candidateIds = [...pool.keys()];
     if (candidateIds.length === 0) { setSuggestions([]); setLoading(false); return; }
 
-    const { data: profiles } = await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse").eq("status", "active").in("id", candidateIds);
+    const { data: profiles } = await sb.from("profiles").select("id,prenom,nom,avatar_url,badge,paroisse").eq("status", "active").neq("is_discoverable", false).in("id", candidateIds);
     const merged = (profiles || []).map(p => ({ ...pool.get(p.id), ...p }));
     const today = new Date().toISOString().slice(0, 10);
     setSuggestions(seededShuffle(merged, `${myId}_${today}`).slice(0, 12));
     setLoading(false);
-  }, [session?.user?.id, computeMatchScore]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     build();
     // Se rafraîchit tout seul toutes les 5 minutes (nouvelles connexions/matches sans recharger la page)
-    const interval = setInterval(build, 5 * 60 * 1000);
+    const interval = setInterval(() => { if (!document.hidden) build(); }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [build]);
 
   const follow = async id => {
-    await sb.from("connections").insert({ from_id: session?.user?.id, to_id: id });
+    const { error } = await sb.from("connections").insert({ from_id: session?.user?.id, to_id: id });
+    if (error && error.code !== "23505") { notify?.("Erreur, réessaie"); return; }
     notify?.("Connecté ✦");
     onConnectionChange?.();
     setSuggestions(s => s.filter(u => u.id !== id));
