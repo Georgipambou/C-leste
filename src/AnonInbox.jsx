@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Share } from "@capacitor/share";
 import { Copy, Share2, Flag, RefreshCw, Trash2 } from "lucide-react";
+import { shareAnonCard } from "./anonCard";
 
 const BASE = "https://celesteapp.social/a/";
 
@@ -33,6 +34,13 @@ export default function AnonInbox({ sb, T, session, notify }) {
   }, [sb, uid]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === "visible") load(); };
+    const t = setInterval(onVis, 20000);
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVis); };
+  }, [load]);
 
   useEffect(() => {
     if (!uid) return;
@@ -85,6 +93,11 @@ export default function AnonInbox({ sb, T, session, notify }) {
     if (!error) setMsgs(p => p.filter(x => x.id !== m.id));
   };
 
+  const shareCard = async (m) => {
+    try { await shareAnonCard({ text: m.content, link }); }
+    catch (e) { notify("Partage impossible, réessaie"); }
+  };
+
   const ghost = { background: "none", border: "none", color: T.muted, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, padding: 0 };
   const pill = { flex: 1, padding: "10px 12px", borderRadius: 14, border: `1px solid ${T.gold}`, background: T.goldBg, color: T.goldL, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
 
@@ -118,18 +131,25 @@ export default function AnonInbox({ sb, T, session, notify }) {
         <p style={{ textAlign: "center", color: T.muted, fontSize: 13, padding: "30px 20px" }}>Aucun message pour l'instant. Partage ton lien !</p>
       )}
 
-      {msgs.map(m => (
-        <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "0 16px 14px" }}>
-          <span style={{ fontSize: 11, color: T.muted, marginBottom: 3, marginLeft: 6 }}>
-            Anonyme · {timeAgo(m.created_at)}
-            {!m.read_at && <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#4A90D9", marginLeft: 6 }} />}
-          </span>
-          <div style={{ maxWidth: "85%", padding: "10px 14px", borderRadius: "18px 18px 18px 6px", background: "rgba(255,255,255,0.07)", color: T.text, fontSize: 14.5, lineHeight: 1.4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-            {m.content}
-          </div>
-          <div style={{ display: "flex", gap: 14, marginTop: 5, marginLeft: 6 }}>
-            <button onClick={() => report(m)} style={ghost}><Flag size={12} />Signaler</button>
-            <button onClick={() => remove(m)} style={ghost}><Trash2 size={12} />Supprimer</button>
+            {msgs.map(m => (
+        <div key={m.id} style={{ margin: "0 16px 16px", borderRadius: 22, overflow: "hidden", border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.04)" }}>
+          <div style={{ height: 5, background: T.gradGold }} />
+          <div style={{ padding: "14px 16px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.goldL, letterSpacing: 0.3 }}>🎭 Message anonyme</span>
+              <span style={{ fontSize: 11, color: T.muted }}>
+                {timeAgo(m.created_at)}
+                {!m.read_at && <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#4A90D9", marginLeft: 6 }} />}
+              </span>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 600, lineHeight: 1.4, color: T.text, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</p>
+            <button onClick={() => shareCard(m)} style={{ width: "100%", padding: "11px 14px", borderRadius: 14, border: "none", background: T.gradGold, color: "#000", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <Share2 size={15} />Partager en statut
+            </button>
+            <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
+              <button onClick={() => report(m)} style={ghost}><Flag size={12} />Signaler</button>
+              <button onClick={() => remove(m)} style={ghost}><Trash2 size={12} />Supprimer</button>
+            </div>
           </div>
         </div>
       ))}
