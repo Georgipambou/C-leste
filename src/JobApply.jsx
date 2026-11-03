@@ -27,6 +27,7 @@ export function JobApplyModal({ sb, T, Btn, post, session, notify, onClose }) {
   const [loading, setLoading] = useState(false);
   const [affinity, setAffinity] = useState(null);
   const [applied, setApplied] = useState(false);
+  
 
   useEffect(() => {
     sb.rpc("job_affinity", { p_seeker_id: session.user.id, p_post_id: post.id })
