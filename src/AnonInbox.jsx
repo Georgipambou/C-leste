@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Share } from "@capacitor/share";
 import { Copy, Share2, Flag, RefreshCw, Trash2 } from "lucide-react";
-import { shareAnonCard } from "./anonCard";
+import { shareAnonCard, makeAnonCardImage } from "./anonCard";
 
 const BASE = "https://celesteapp.social/a/";
 
@@ -19,6 +19,8 @@ export default function AnonInbox({ sb, T, session, notify }) {
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [preview, setPreview] = useState(null);
   const link = slug ? BASE + slug : "";
 
   const load = useCallback(async () => {
@@ -94,42 +96,53 @@ export default function AnonInbox({ sb, T, session, notify }) {
   };
 
   const shareCard = async (m) => {
-    try { await shareAnonCard({ text: m.content, link }); }
+    try {
+      const blob = await makeAnonCardImage({ text: m.content, link });
+      setPreview({ m, url: URL.createObjectURL(blob) });
+    } catch (e) { notify("Aperçu impossible"); }
+  };
+  const closePreview = () => {
+    if (preview) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  };
+  const doShare = async () => {
+    try { await shareAnonCard({ text: preview.m.content, link }); }
     catch (e) { notify("Partage impossible, réessaie"); }
   };
 
   const ghost = { background: "none", border: "none", color: T.muted, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, padding: 0 };
+  const iconBtn = { background: "none", border: "none", color: T.goldL, cursor: "pointer", padding: 6, display: "flex", alignItems: "center", fontSize: 18, lineHeight: 1 };
+
   const pill = { flex: 1, padding: "10px 12px", borderRadius: 14, border: `1px solid ${T.gold}`, background: T.goldBg, color: T.goldL, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "8px 0 80px" }}>
-      <div style={{ margin: "8px 16px 16px", padding: 16, borderRadius: 18, border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.03)" }}>
-        <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.text }}>🎭 Messages anonymes</p>
-        <p style={{ margin: "4px 0 12px", fontSize: 12.5, color: T.muted }}>
-          Partage ton lien en statut WhatsApp ou Instagram. Tout le monde peut t'écrire sans compte, et tu ne sauras jamais qui c'est.
-        </p>
+            <div style={{ margin: "6px 16px 12px", padding: "10px 12px", borderRadius: 16, border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.03)" }}>
         {slug ? (
           <>
-            <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.05)", color: T.sub, fontSize: 12.5, wordBreak: "break-all", marginBottom: 10 }}>{link}</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <button onClick={copy} style={pill}><Copy size={14} />Copier</button>
-              <button onClick={share} style={pill}><Share2 size={14} />Partager</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 16 }}>🎭</span>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: T.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{link.replace("https://", "")}</div>
+              <button onClick={copy} style={iconBtn} aria-label="Copier"><Copy size={15} /></button>
+              <button onClick={share} style={iconBtn} aria-label="Partager"><Share2 size={15} /></button>
+              <button onClick={() => setMenu(v => !v)} style={iconBtn} aria-label="Plus">⋯</button>
             </div>
-            <div style={{ display: "flex", gap: 16 }}>
-              <button onClick={regen} disabled={busy} style={ghost}><RefreshCw size={12} />Nouveau lien</button>
-              <button onClick={disable} disabled={busy} style={ghost}>Désactiver</button>
-            </div>
+            {menu && (
+              <div style={{ display: "flex", gap: 16, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+                <button onClick={regen} disabled={busy} style={ghost}><RefreshCw size={12} />Nouveau lien</button>
+                <button onClick={disable} disabled={busy} style={ghost}>Désactiver</button>
+              </div>
+            )}
           </>
         ) : (
-          <button onClick={create} disabled={busy} style={{ ...pill, flex: "none", width: "100%", background: T.gradGold, color: "#000", border: "none" }}>
-            {busy ? "…" : "Générer mon lien ✦"}
-          </button>
+          <>
+            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: T.muted }}>🎭 Reçois des messages anonymes, sans que personne n'ait besoin de compte.</p>
+            <button onClick={create} disabled={busy} style={{ ...pill, flex: "none", width: "100%", background: T.gradGold, color: "#000", border: "none" }}>
+              {busy ? "…" : "Générer mon lien ✦"}
+            </button>
+          </>
         )}
       </div>
-
-      {!loading && slug && msgs.length === 0 && (
-        <p style={{ textAlign: "center", color: T.muted, fontSize: 13, padding: "30px 20px" }}>Aucun message pour l'instant. Partage ton lien !</p>
-      )}
 
             {msgs.map(m => (
         <div key={m.id} style={{ margin: "0 16px 16px", borderRadius: 22, overflow: "hidden", border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.04)" }}>
@@ -151,8 +164,19 @@ export default function AnonInbox({ sb, T, session, notify }) {
               <button onClick={() => remove(m)} style={ghost}><Trash2 size={12} />Supprimer</button>
             </div>
           </div>
+                {preview && (
+        <div onClick={closePreview} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.88)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <img src={preview.url} alt="Aperçu" onClick={e => e.stopPropagation()} style={{ maxHeight: "72vh", maxWidth: "100%", borderRadius: 16, boxShadow: "0 10px 40px rgba(0,0,0,0.6)" }} />
+          <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 10, marginTop: 16, width: "100%", maxWidth: 360 }}>
+            <button onClick={closePreview} style={{ ...pill, color: T.text, border: `1px solid ${T.border}`, background: "transparent" }}>Fermer</button>
+            <button onClick={doShare} style={{ ...pill, background: T.gradGold, color: "#000", border: "none" }}><Share2 size={14} />Partager</button>
+          </div>
         </div>
+      )}
+        </div>
+
       ))}
+      
     </div>
   );
 }
