@@ -34,7 +34,7 @@ import {
   useTypingIndicator, TypingIndicator,
   useTypingIndicatorForConvs,
   editMessage, EditedBadge,
-  ChatSearchBar, filterMessagesByQuery,
+    ChatSearchBar, ChatSearchResults, filterMessagesByQuery,
   SwipeToReply, useLongPress, InlineReactionPicker,
   ConversationInfoScreen, ConvPinGateScreen, isConvLocked, removeConvLock,
   isConvMuted
@@ -76,6 +76,7 @@ import { subscribePush, sendPushToUser } from "./usePush";
 import React from "react"; 
 import emailjs from "@emailjs/browser";
 import { uploadToR2, setUploadTokenGetter } from "./uploadMedia";
+import { setMediaClient, useSignedMediaList } from "./privateMedia";
 import { autoExtractAndAttachSound } from "./lib/soundExtraction";
 import { computeWaveform, fallbackBars } from "./lib/waveform";
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
@@ -148,6 +149,7 @@ const safeAuthStorage={
   removeItem:(k)=>{try{localStorage.removeItem(k);}catch(e){delete memoryAuthStore[k];}}
 };
 const sb = createClient(SUPABASE_URL||"",SUPABASE_ANON||"",{auth:{storage:safeAuthStorage}});
+setMediaClient(sb);
 if(import.meta.env.DEV)window.sb=sb;
 setUploadTokenGetter(async()=>(await sb.auth.getSession()).data.session?.access_token||null);
 setUploadTokenGetter(async()=>(await sb.auth.getSession()).data.session?.access_token||null);
@@ -2083,6 +2085,7 @@ function NotifsScreen({myProfile,session,members}){
     status_view:"a vu ton statut",
     group_invite:`t'a invité${n.text?` dans "${n.text}"`:" dans un groupe"}`,
     group_invite_declined:`a refusé de rejoindre${n.text?` "${n.text}"`:" ton groupe"}`,
+    group_mention:`t'a mentionné${n.text?` dans "${n.text}"`:" dans un groupe"}`,
     group_deleted:`a supprimé le groupe${n.text?` "${n.text}"`:""}`,
     group_removed:`t'a exclu du groupe${n.text?` "${n.text}"`:""}`,
     post_deleted:n.text||"Une de tes publications a été supprimée",
@@ -2114,6 +2117,7 @@ function NotifsScreen({myProfile,session,members}){
     new_note:"📝",
     friend_online:"🟢",
     group_invite:"👥",
+    group_mention:"@",
     group_invite_declined:"🚫",
     group_deleted:"🗑️",
     group_removed:"🚪",
@@ -2135,7 +2139,7 @@ function NotifsScreen({myProfile,session,members}){
 
   const filtered=notifs.filter(n=>{
     if(filter==="tous")return true;
-    if(filter==="mentions")return n.type==="mention";
+    if(filter==="mentions")return n.type==="mention"||n.type==="group_mention";
     if(filter==="likes")return n.type==="like"||n.type==="comment_like"||n.type==="status_like";
     if(filter==="commentaires")return n.type==="comment"||n.type==="reply";
     if(filter==="abonnements")return n.type==="follow";
@@ -2229,6 +2233,11 @@ function NotifsScreen({myProfile,session,members}){
                     if(n.type==="group_invite"){
                       window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
                       window.__celesteSetTab?.("messages",()=>window.dispatchEvent(new CustomEvent("celeste_open_groups_tab",{})));
+                      return;
+                    }
+                                        if(n.type==="group_mention"){
+                      window.dispatchEvent(new CustomEvent("celeste_close_notifs",{}));
+                      window.__celesteSetTab?.("messages",()=>window.dispatchEvent(new CustomEvent("celeste_open_group_by_id",{detail:{groupId:n.group_id}})));
                       return;
                     }
                     if(n.type==="new_note"){
@@ -7637,7 +7646,8 @@ function VoicePlayer({src,mine,T,wf}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated,pushNav,popNav}){
+function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,onLoadUntil,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated,pushNav,popNav}){
+ const msgSrc=useSignedMediaList("dm",conv.msgs,m=>m.img||m.file_url); 
 const [selectedMsg,setSelectedMsg]=useState(null);
 
 const [cropSrc,setCropSrc]=useState(null);
@@ -7729,6 +7739,14 @@ const scrollToMessage=useCallback(id=>{
   setHighlightMsgId(id);
   setTimeout(()=>setHighlightMsgId(h=>h===id?null:h),1500);
 },[]);
+const jumpToSearchResult=useCallback(async row=>{
+  setSearchOpen(false);setSearchQuery("");
+  const show=()=>{const el=msgRefs.current[row.id];if(!el)return false;el.scrollIntoView({behavior:"smooth",block:"center"});setHighlightMsgId(row.id);setTimeout(()=>setHighlightMsgId(h=>h===row.id?null:h),1500);return true;};
+  if((conv.msgs||[]).some(m=>m.id===row.id)){setTimeout(show,100);return;}
+  const ok=onLoadUntil?await onLoadUntil(row.created_at):false;
+  if(!ok){notify?.("Message trop ancien pour être affiché");return;}
+  setTimeout(()=>{if(!show())setTimeout(show,300);},150);
+},[conv.msgs,onLoadUntil,notify]);
 const [showReactionPicker,setShowReactionPicker]=useState(null); // id du message ciblé
 const [inlinePickerMsgId,setInlinePickerMsgId]=useState(null);  // picker maintien direct
 const [burstMsgId,setBurstMsgId]=useState(null);
@@ -8193,7 +8211,9 @@ const handleFile=async(e,isImg)=>{
   <Btn onClick={()=>setSearchOpen(s=>!s)} style={{color:T.muted,padding:"6px",display:"flex",alignItems:"center"}}><Search size={20}/></Btn>
 </div>
 
-{searchOpen&&<ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={()=>{setSearchOpen(false);setSearchQuery("");}} resultCount={filterMessagesByQuery(conv.msgs,searchQuery).length}/>}
+{searchOpen&&<ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={()=>{setSearchOpen(false);setSearchQuery("");}}>
+  <ChatSearchResults T={T} query={searchQuery} fetcher={q=>sb.rpc("search_conv_messages",{p_conv:conv.id,p_q:q,p_limit:40}).then(r=>r.data||[])} labelFor={r=>r.sender_id===session?.user?.id?"Moi":(user?.name||"")} onPick={jumpToSearchResult}/>
+</ChatSearchBar>}
 
       {/* Messages */}
       <div ref={msgsScrollRef} style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
@@ -8204,7 +8224,7 @@ const handleFile=async(e,isImg)=>{
             <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,textAlign:"center",color:T.sub}}>Démarrez la conversation<br/>avec {user.name}</p>
           </div>
         )}
-        {groupMessagesByDay(filterMessagesByQuery([...(conv.msgs||[]),...sendingMsgs],searchQuery)).map(m=>{
+        {groupMessagesByDay([...(conv.msgs||[]),...sendingMsgs]).map(m=>{
   if(m._divider) return <DayDivider key={m.key} label={m.label} T={T}/>;
           const mine=m.f==="me"||m.f===session?.user?.id;
           const isSending=!!m.sending;
@@ -8292,22 +8312,22 @@ const handleFile=async(e,isImg)=>{
                   {(m.type==="photo"||m.type==="image")&&(
                     m.view_once
                       ? <ViewOnceBubble m={m} mine={mine} vo={vo} T={T}/>
-                      : ((m.img||m.file_url)&&<MediaPlayer url={m.img||m.file_url} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>)
+                      : (msgSrc(m)&&<MediaPlayer url={msgSrc(m)} style={{borderRadius:10,maxHeight:200}} onImageClick={onImageView}/>)
                   )}
                   {m.type==="sticker"&&(m.img||m.file_url)&&<img src={m.img||m.file_url} alt="" onClick={e=>{e.stopPropagation();m.sticker_id&&setOpenStickerDetail(m.sticker_id);}} style={{width:100,height:100,objectFit:"contain",display:"block",cursor:m.sticker_id?"pointer":"default"}}/>}
-                  {m.type==="file"&&(m.img||m.file_url)&&<Btn onClick={()=>window.open(m.img||m.file_url,"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
+                  {m.type==="file"&&msgSrc(m)&&<Btn onClick={()=>window.open(msgSrc(m),"_blank")} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                     <span style={{display:"flex",flexShrink:0}}>{(m.fileName||"").match(/\.pdf$/i)?<FileText size={22} color={T.goldL}/>:(m.fileName||"").match(/\.(doc|docx)$/i)?<FileText size={22} color={T.goldL}/>:<Paperclip size={22} color={T.goldL}/>}</span>
                     <span style={{fontSize:12,fontWeight:600,color:mine?"#000":T.text,wordBreak:"break-all"}}>{m.fileName||"Fichier"}</span>
                   </Btn>}
                   {m.type==="voice"&&(
                     m.view_once
                       ? <ViewOnceBubble m={m} mine={mine} vo={vo} T={T}/>
-                      : ((m.img||m.file_url)&&<VoicePlayer src={m.img||m.file_url} mine={mine} T={T} wf={m.waveform}/>)
+                      : (msgSrc(m)&&<VoicePlayer src={msgSrc(m)} mine={mine} T={T} wf={m.waveform}/>)
                   )}
 {m.type==="video"&&(
                     m.view_once
                       ? <ViewOnceBubble m={m} mine={mine} vo={vo} T={T}/>
-                      : ((m.img||m.file_url)&&<video src={m.img||m.file_url} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>)
+                      : (msgSrc(m)&&<video src={msgSrc(m)} controls playsInline style={{borderRadius:10,maxWidth:"100%",maxHeight:220,display:"block",background:"#000"}}/>)
                   )}
                   {m.type==="call"&&(()=>{
   const label=m.call_status==="completed"
@@ -12008,7 +12028,17 @@ const popNav = useCallback(() => {
   navStack.current.pop();
   if(!isNative){ ignoreNextPopRef.current = true; try{ window.history.back(); }catch(e){} }
 }, []);
-
+useEffect(()=>{
+  const h=async e=>{
+    const gid=e.detail?.groupId;if(!gid)return;
+    const{data}=await sb.rpc("get_my_groups_summary");
+    let g=(data||[]).find(x=>x.id===gid);
+    if(!g){const r=await sb.from("groups").select("*").eq("id",gid).maybeSingle();g=r.data;}
+    if(g){pushNav(()=>setOpenGroup(null));setOpenGroup(g);}
+  };
+  window.addEventListener("celeste_open_group_by_id",h);
+  return()=>window.removeEventListener("celeste_open_group_by_id",h);
+},[pushNav]);
 const closeTopNav = useCallback(() => {
   if (viewImg) { setViewImg(null); return true; }
   if (navStack.current.length > 0) {
@@ -12319,6 +12349,18 @@ return updated;
 
   const MSG_PAGE_SIZE=60;
   const mapMsgRow=(m,myId)=>({id:m.id,f:m.sender_id===myId?"me":m.sender_id,type:m.type,text:m.text||"",img:m.file_url,fileName:m.file_name,read:m.is_read,ts:new Date(m.created_at).getTime(),reply_metadata:typeof m.reply_metadata==="string"?JSON.parse(m.reply_metadata):m.reply_metadata||null,reply_to_id:m.reply_to_id||null,reply_to_text:m.reply_to_text||null,reply_to_author:m.reply_to_author||null,reactions:m.reactions||null,edited_at:m.edited_at||null,sticker_id:m.sticker_id||null,shared_post_id:m.shared_post_id||null,view_once:!!m.view_once,viewed_at:m.viewed_at||null,waveform:m.waveform||null});
+    const loadMessagesUntil=useCallback(async(convId,myId,iso)=>{
+    const conv=convsRef.current.find(c=>c.id===convId);
+    if(!conv||!conv.msgs?.length)return false;
+    const oldest=conv.msgs[0];
+    const target=new Date(iso).getTime();
+    if(target>=oldest.ts)return true;
+    const{data}=await sb.from("messages").select(MSG_COLUMNS).eq("conv_id",convId).gte("created_at",iso).lt("created_at",new Date(oldest.ts).toISOString()).order("created_at",{ascending:false}).limit(1000);
+    if(!data||!data.length)return false;
+    const older=data.map(m=>mapMsgRow(m,myId)).sort((a,b)=>a.ts-b.ts);
+    setConvs(prev=>prev.map(c=>c.id===convId?{...c,msgs:[...older,...c.msgs],hasMoreMsgs:true}:c));
+    return older[0].ts<=target;
+  },[]);
   const MSG_COLUMNS="id,sender_id,type,text,file_url,file_name,is_read,created_at,reply_metadata,reply_to_id,reply_to_text,reply_to_author,reactions,edited_at,sticker_id,shared_post_id,view_once,viewed_at,waveform";
   const loadConvs=useCallback(async myId=>{
     if(!myId)return;
@@ -12330,6 +12372,8 @@ return updated;
     if(data){
       const blocked=new Set([...(blockedData||[]).map(b=>b.blocked_id),...(blockedMeData||[]).map(b=>b.blocker_id)]);
        const mapped=data.map(c=>({id:c.id,uid:c.user1_id===myId?c.user2_id:c.user1_id,user1_id:c.user1_id,user2_id:c.user2_id,muted_by_user1:c.muted_by_user1,muted_by_user2:c.muted_by_user2,secure_mode:!!c.secure_mode,secure_mode_by:c.secure_mode_by||null,ephemeral_ttl_seconds:c.ephemeral_ttl_seconds||null,hasMoreMsgs:(c.messages||[]).length===MSG_PAGE_SIZE,msgs:(c.messages||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(m=>mapMsgRow(m,myId))}));
+
+
       const filtered=mapped.filter(c=>!blocked.has(c.uid));
       setConvs(filtered);
       try{localStorage.setItem(celesteScopedKey("celeste_convs_cache"),JSON.stringify(filtered));}catch(e){}
@@ -12640,7 +12684,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           )}
           {openConvId&&openConv&&(
 <div style={(openUserId||openConvInfoUid)?{height:0,overflow:"hidden",visibility:"hidden",flex:"none"}:{display:"contents"}}>
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}} pushNav={pushNav} popNav={popNav}/>
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} onLoadUntil={iso=>loadMessagesUntil(openConv?.id,session?.user?.id,iso)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}} pushNav={pushNav} popNav={popNav}/>
           </div>
           )}
           {openConvInfoUid&&(

@@ -5,6 +5,7 @@
 // => zéro risque de casser l'existant, simple import dans App.jsx.
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSignedMediaList } from "./privateMedia";
 import {
   ChevronLeft, User, Search, BellOff, Bell, MoreHorizontal,
   Sparkles, Edit2, Clock, Lock, Users, Flag, ChevronRight, Grid, Check, X
@@ -445,20 +446,81 @@ export function InlineReactionPicker({ T, onSelect, onClose, mine }) {
    7. RECHERCHE DANS LA CONVERSATION
    ============================================================ */
 
-export function ChatSearchBar({ T, value, onChange, onClose, resultCount }) {
+export function ChatSearchBar({ T, value, onChange, onClose, resultCount, children }) {
   return (
-    <div style={{
-      position: "relative", zIndex: 3, display: "flex", alignItems: "center", gap: 8,
-      padding: "8px 14px", background: "rgba(0,0,0,0.95)", borderBottom: `1px solid ${T.border}`
-    }}>
-      <input autoFocus value={value} onChange={e => onChange(e.target.value)}
-        placeholder="Rechercher dans la conversation…"
-        style={{
-          flex: 1, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`,
-          borderRadius: 14, padding: "8px 12px", color: T.text, fontSize: 13, outline: "none"
-        }} />
-      {value && <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{resultCount} résultat{resultCount !== 1 ? "s" : ""}</span>}
-      <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 16, cursor: "pointer" }}>✕</button>
+    <div style={{ position: "relative", zIndex: 3 }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 14px", background: "rgba(0,0,0,0.95)", borderBottom: `1px solid ${T.border}`
+      }}>
+        <input autoFocus value={value} onChange={e => onChange(e.target.value)}
+          placeholder="Rechercher dans la conversation…"
+          style={{
+            flex: 1, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`,
+            borderRadius: 14, padding: "8px 12px", color: T.text, fontSize: 13, outline: "none"
+          }} />
+        {value && resultCount !== undefined && <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{resultCount} résultat{resultCount !== 1 ? "s" : ""}</span>}
+        <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 16, cursor: "pointer" }}>✕</button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Comparaison sans accents ni majuscules, caractère par caractère (les positions restent alignées)
+const _normChar = c => { const n = c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); return n.length === 1 ? n : c.toLowerCase(); };
+const _norm = s => Array.from(String(s || "")).map(_normChar).join("");
+
+function SearchSnippet({ text, q, T }) {
+  const chars = Array.from(String(text || ""));
+  const hay = chars.map(_normChar).join("");
+  const needle = _norm(q.trim());
+  const idx = needle ? hay.indexOf(needle) : -1;
+  if (idx < 0) return <span>{chars.slice(0, 120).join("")}</span>;
+  const start = Math.max(0, idx - 30);
+  const end = Math.min(chars.length, idx + needle.length + 70);
+  return (
+    <span>
+      {start > 0 ? "…" : ""}{chars.slice(start, idx).join("")}
+      <span style={{ color: T.gold, fontWeight: 700 }}>{chars.slice(idx, idx + needle.length).join("")}</span>
+      {chars.slice(idx + needle.length, end).join("")}{end < chars.length ? "…" : ""}
+    </span>
+  );
+}
+
+// Résultats de recherche sur tout l'historique (appel serveur, avec délai de frappe)
+export function ChatSearchResults({ T, query, fetcher, onPick, labelFor }) {
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const q = (query || "").trim();
+  useEffect(() => {
+    if (q.length < 2) { setRows(null); setLoading(false); return; }
+    let alive = true;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try { const r = await fetcher(q); if (alive) setRows(r || []); }
+      catch (e) { if (alive) setRows([]); }
+      finally { if (alive) setLoading(false); }
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
+  if (q.length < 2) return null;
+  return (
+    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: "calc(100dvh - 150px)", overflowY: "auto", background: T.bg, borderBottom: `1px solid ${T.border}`, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>
+      {loading && rows === null && <p style={{ margin: 0, padding: 16, textAlign: "center", fontSize: 12, color: T.muted }}>Recherche…</p>}
+      {rows && rows.length === 0 && !loading && <p style={{ margin: 0, padding: 16, textAlign: "center", fontSize: 12, color: T.muted }}>Aucun message trouvé</p>}
+      {(rows || []).map(r => {
+        const label = r.text || (r.file_name ? "📎 " + r.file_name : r.type === "voice" ? "🎤 Message vocal" : "📷 Média");
+        return (
+          <div key={r.id} onClick={() => onPick(r)} style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border}`, cursor: "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.goldL, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labelFor ? labelFor(r) : ""}</span>
+              <span style={{ fontSize: 11, color: T.muted, flexShrink: 0 }}>{new Date(r.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}</span>
+            </div>
+            <div style={{ fontSize: 13, color: T.text, lineHeight: 1.35, wordBreak: "break-word" }}><SearchSnippet text={label} q={q} T={T} /></div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -786,6 +848,7 @@ export function ChatPersonalizationScreen({ T, Btn, conv, onBack, groupDefault, 
 }
 export function SharedMediaScreen({ T, Btn, conv, sb, onBack }) {
   const [items, setItems] = useState(null);
+    const src = useSignedMediaList("dm", items, it => it.file_url);
   const [playingVideo, setPlayingVideo] = useState(null);
 
   useEffect(() => {
@@ -813,11 +876,11 @@ export function SharedMediaScreen({ T, Btn, conv, sb, onBack }) {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
             {items.map(it => (
-              <div key={it.id} onClick={() => it.type === "video" ? setPlayingVideo(it.file_url) : window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: it.file_url } }))}
+              <div key={it.id} onClick={() => it.type === "video" ? setPlayingVideo(src(it)) : window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: src(it) } }))}
                 style={{ position: "relative", aspectRatio: "1", cursor: "pointer", background: T.glassMid }}>
                 {it.type === "video"
-                  ? <video src={it.file_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} muted />
-                  : <img src={it.file_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  ? <video src={src(it)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} muted />
+                  : <img src={src(it)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 }
                 {it.type === "video" && (
                   <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>

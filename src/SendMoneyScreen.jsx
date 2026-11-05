@@ -75,7 +75,7 @@ export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, 
 
   const search = async () => {
     if (!celesteId.trim()) return notify("Entre un identifiant Céleste");
-    if (!amount || Number(amount) < 50) return notify("Montant minimum : 50 F CFA");
+    if (!amount || !Number.isInteger(Number(amount)) || Number(amount) < 50) return notify("Montant minimum : 50 F CFA (nombre entier)");
     setLooking(true);
     try {
       const { data, error } = await sb.rpc("lookup_celeste_id", { p_celeste_id: celesteId.trim() });
@@ -94,6 +94,15 @@ export default function SendMoneyScreen({ sb, T, Btn, session, notify, onClose, 
     try {
       const { data, error } = await sb.rpc("send_money", { p_celeste_id: celesteId.trim(), p_amount: Number(amount), p_pin: pin, p_message: message.trim() || null });
       if (error) throw error;
+      if (!data?.success) {
+        // PIN refusé : le serveur répond normalement pour pouvoir compter les essais
+        const left = Number(data?.attempts_left);
+        notify(data?.code === "wrong_pin" && left > 0
+          ? `Code PIN incorrect — ${left} essai${left > 1 ? "s" : ""} restant${left > 1 ? "s" : ""}`
+          : (data?.error || "Erreur"));
+        setPin("");
+        return;
+      }
       notify(`${fmt(amount)} F envoyés à ${data.recipient_name} ✦`);
       setStep("form"); setCelesteId(""); setAmount(""); setMessage(""); setRecipient(null); setPin("");
       loadHistory();

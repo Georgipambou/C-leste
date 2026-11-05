@@ -9,6 +9,8 @@ import { X, Search, Check, Camera, Users, Lock, ChevronRight, ChevronLeft, Send,
 import EasyCrop from "react-easy-crop";
 import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
+import { useSignedMedia, useSignedMediaList } from "./privateMedia";
+import { ChatSearchBar, ChatSearchResults } from "./ChatExtras";
 import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage, trackGroupFileSend, updateGroupFileSend, removeGroupFileSend, getGroupFileSendsForConv, subscribeGroupFileSends } from "./lib/groupMessageQueue";
 import StickerPicker from "./components/StickerPicker";
 import { computeWaveform, fallbackBars } from "./lib/waveform";
@@ -1029,8 +1031,25 @@ const mediaReplyLabel = (type, fileName) => {
   if (type === "file") return "📎 " + (fileName || "Fichier");
   return null;
 };
-
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, replyBtn, onOpenSticker, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce }) {
+// Met en évidence les @mentions (celles qui me visent sont surlignées)
+function renderMentionText(text, re, myName, T) {
+  if (!re || !text || !text.includes("@")) return text;
+  const parts = [];
+  let last = 0, k = 0, mm;
+  re.lastIndex = 0;
+  while ((mm = re.exec(text)) !== null) {
+    const start = mm.index;
+    if (start > 0 && /[\p{L}\p{N}]/u.test(text[start - 1])) continue;
+    if (start > last) parts.push(text.slice(last, start));
+    const isMe = myName && mm[1].toLowerCase() === myName.toLowerCase();
+    parts.push(<span key={k++} style={{ color: T.goldL, fontWeight: 700, background: isMe ? "rgba(201,149,42,0.22)" : "transparent", borderRadius: 4, padding: isMe ? "0 3px" : 0 }}>{mm[0]}</span>);
+    last = start + mm[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length ? parts : text;
+}
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, replyBtn, onOpenSticker, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce, mentionRe, myName }) {
+    const mediaSrc = useSignedMedia("group", m.id, m.type === "sticker" ? null : m.file_url);
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
     return (
@@ -1081,8 +1100,8 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                           )
                       )
                   )
-                : (m.file_url && <img src={m.file_url} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
-                    onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: m.file_url } })); }} />)
+                : (mediaSrc && <img src={mediaSrc} style={{ maxWidth: 220, borderRadius: 14, display: "block" }}
+                    onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("celeste_view_img", { detail: { url: mediaSrc } })); }} />)
             )}
             {m.type === "video" && (
               m.view_once
@@ -1096,10 +1115,10 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                           )
                       )
                   )
-                : (m.file_url && <video src={m.file_url} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />)
+                : (mediaSrc && <video src={mediaSrc} controls playsInline style={{ maxWidth: 220, maxHeight: 260, borderRadius: 14, display: "block", background: "#000" }} />)
             )}
-            {m.type === "file" && m.file_url && (
-              <Btn onClick={() => window.open(m.file_url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+            {m.type === "file" && mediaSrc && (
+              <Btn onClick={() => window.open(mediaSrc, "_blank")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
                 <span style={{ display: "flex", flexShrink: 0 }}>
                   {(m.file_name || "").match(/\.(pdf|docx?)$/i) ? <FileText size={22} color={T.goldL} /> : <Paperclip size={22} color={T.goldL} />}
                 </span>
@@ -1118,7 +1137,7 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                           )
                       )
                   )
-                : (m.file_url && <GroupVoicePlayer src={m.file_url} mine={mine} T={T} wf={m.waveform} />)
+                : (mediaSrc && <GroupVoicePlayer src={mediaSrc} mine={mine} T={T} wf={m.waveform} />)
             )}
              {m.type === "sticker" && <img src={m.file_url} alt="" onClick={e => {
               e.stopPropagation();
@@ -1155,7 +1174,7 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
                         )
                     )
                 )
-              : <>{m.type === "text" && m.text}{m.type === "text" && <EditedBadge message={m} T={T} />}</>
+              : <>{m.type === "text" && renderMentionText(m.text, mentionRe, myName, T)}{m.type === "text" && <EditedBadge message={m} T={T} />}</>
             }
             {m.sending && (m.type === "photo" || m.type === "video" || m.type === "file" || m.type === "voice") && (
               <div style={{ marginTop: 6 }}>
@@ -1347,6 +1366,24 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   const fRef = useRef(null);
   const msgRefs = useRef({});
   const [highlightMsgId, setHighlightMsgId] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+    const [mentionMembers, setMentionMembers] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const t = setTimeout(() => {
+      sb.from("group_members").select("user_id,profiles:user_id(id,prenom,nom,avatar_url)").eq("group_id", group.id).eq("status", "accepted")
+        .then(({ data }) => {
+          if (!alive) return;
+          setMentionMembers((data || []).map(r => ({ id: r.user_id, name: `${r.profiles?.prenom || ""} ${r.profiles?.nom || ""}`.trim(), avatar_url: r.profiles?.avatar_url })).filter(x => x.name));
+        });
+    }, 800);
+    return () => { alive = false; clearTimeout(t); };
+  }, [sb, group.id]);
+  const mentionRe = useMemo(() => {
+    const names = mentionMembers.map(x => x.name).sort((a, b) => b.length - a.length).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    return names.length ? new RegExp("@(" + names.join("|") + ")(?![\\p{L}\\p{N}])", "giu") : null;
+  }, [mentionMembers]);
   const scrollToMessage = useCallback(async id => {
     const show = () => {
       const el = msgRefs.current[id];
@@ -1996,6 +2033,11 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   }, [msgs, blockedIds, sendingMsgs, sendingFiles]);
 
   if (displayGroup.secure_mode && !isNative && !isGroupAdmin) {
+      const mentionNorm = s => Array.from(String(s || "")).map(c => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join("");
+  const mentionQuery = (!editingMsg && !(anonNext && roomRef.current.isTheme)) ? (text.match(/(?:^|\s)@([\p{L}'’-]*)$/u)?.[1] ?? null) : null;
+  const mentionCandidates = mentionQuery === null ? [] : mentionMembers.filter(x => x.id !== myId && mentionNorm(x.name).split(/[\s-]+/).some(w => w.startsWith(mentionNorm(mentionQuery)))).slice(0, 6);
+  const pickMention = x => setText(t => t.replace(/@([\p{L}'’-]*)$/u, "@" + x.name + " "));
+  const myMentionName = mentionMembers.find(x => x.id === myId)?.name || "";
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "#000", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
@@ -2044,7 +2086,17 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         </div>
         <input ref={bgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleBgPhoto} />
         <Btn onClick={() => bgRef.current?.click()} style={{ color: T.muted, padding: "6px", display: "flex", alignItems: "center" }}><ImageIcon size={18} /></Btn>
+        <Btn onClick={() => setSearchOpen(s => !s)} style={{ color: T.muted, padding: "6px", display: "flex", alignItems: "center" }}><Search size={18} /></Btn>
       </div>
+
+      {searchOpen && (
+        <ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={() => { setSearchOpen(false); setSearchQuery(""); }}>
+          <ChatSearchResults T={T} query={searchQuery}
+            fetcher={q => sb.rpc("search_group_messages", { p_group: group.id, p_q: q, p_limit: 40 }).then(r => r.data || [])}
+            labelFor={r => r.sender_id === myId ? "Moi" : (r.author || "")}
+            onPick={r => { setSearchOpen(false); setSearchQuery(""); setTimeout(() => scrollToMessage(r.id), 80); }} />
+        </ChatSearchBar>
+      )}
 
       {themeInfo && <ThemeBanner sb={sb} info={themeInfo} T={T} onAnswer={answerTheme} />}
       <div ref={msgsScrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
@@ -2077,7 +2129,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 fontSizeKey={fontSizeKey}
                 viewOnceUrls={viewOnceUrls}
                 viewOnceTexts={viewOnceTexts}
-                revealingOnce={revealingOnce}
+                                revealingOnce={revealingOnce}
+                mentionRe={mentionRe}
+                myName={myMentionName}
               />
             )
         )}
@@ -2123,6 +2177,17 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
         {showStickerPicker && (
           <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, zIndex: 40 }}>
             <StickerPicker sb={sb} userId={myId} T={T} onClose={() => { popNav(); setShowStickerPicker(false); }} onSelect={sendSticker} />
+          </div>
+        )}
+                {mentionCandidates.length > 0 && (
+          <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, zIndex: 40, background: T.bg, borderTop: `1px solid ${T.border}`, boxShadow: "0 -8px 24px rgba(0,0,0,0.35)" }}>
+            {mentionCandidates.map(x => (
+              <div key={x.id} onMouseDown={e => e.preventDefault()} onClick={() => pickMention(x)}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", borderBottom: `1px solid ${T.border}` }}>
+                <Av u={{ name: x.name, avatar_url: x.avatar_url, initials: x.name.slice(0, 2).toUpperCase(), color: "#888" }} size={28} />
+                <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>{x.name}</span>
+              </div>
+            ))}
           </div>
         )}
         </>)}
@@ -2277,6 +2342,7 @@ function MemberActionSheet({ T, member, onPromote, onDemote, onKick, onProfile, 
 
 function GroupSharedMediaScreen({ T, Btn, group, sb, onBack }) {
   const [items, setItems] = useState(null);
+    const src = useSignedMediaList("group", items, it => it.file_url);
   const [playingVideo, setPlayingVideo] = useState(null);
 
   useEffect(() => {
