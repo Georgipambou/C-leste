@@ -84,7 +84,7 @@ export default function AnonPublicPage() {
       <p style={{ opacity: .55, fontSize: 13, margin: "0 0 16px" }}>100 % anonyme · pas besoin de compte</p>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
         {IDEAS.map(i => (
-          <button key={i} onClick={() => setText(i + " ")} style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.18)", background: "transparent", color: "#fff", fontSize: 12, cursor: "pointer" }}>{i}</button>
+          <span key={i} style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.8)", fontSize: 12, userSelect: "none" }}>{i}</span>
         ))}
       </div>
       <textarea value={text} onChange={e => setText(e.target.value.slice(0, 500))} rows={5} placeholder="Écris ton message…"
