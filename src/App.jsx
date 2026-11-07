@@ -34,7 +34,7 @@ import {
   useTypingIndicator, TypingIndicator,
   useTypingIndicatorForConvs,
   editMessage, EditedBadge,
-    ChatSearchBar, ChatSearchResults, filterMessagesByQuery,
+    ChatSearchBar, ChatSearchResults, filterMessagesByQuery, ForwardSheet, FORWARDABLE_TYPES, usePins, PinnedBar,
   SwipeToReply, useLongPress, InlineReactionPicker,
   ConversationInfoScreen, ConvPinGateScreen, isConvLocked, removeConvLock,
   isConvMuted
@@ -52,7 +52,7 @@ import {
   Send, X, Plus, Search, Settings,
   User, Users, ChevronLeft, ChevronRight, MoreVertical,
   Play, Pause, Volume2,  VolumeX, Maximize2, Minimize2, Zap, Star,
-  Bookmark, Share2, MoreHorizontal, Pin,
+  Bookmark, Share2, MoreHorizontal, Pin, HatGlasses ,
   Reply, ArrowLeft, Check, CheckCheck, Copy, ChevronDown,
   Eye, Paperclip, LogOut, Sparkles, FileText, ImagePlus, Download, Video, EyeOff, Square, Smartphone, ExternalLink, ShoppingBag, AlertTriangle, Wifi, WifiOff, MapPin, Languages, Flag, Lock, Ban, BellOff, XCircle, PartyPopper, Grid,  Music2, UserCheck, Calendar, Clock, UserPlus, BarChart3, CheckCircle2, Phone, MessageCircleOff,
   Globe
@@ -7359,7 +7359,7 @@ onTouchEnd={()=>clearTimeout(pressTimer.current)}>
         </div>
         {/* Filtres */}
         <div style={{display:"flex",gap:8,paddingBottom:12,overflowX:"auto",alignItems:"center"}}>
-          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"},{k:"anonyme",l:"Anonyme 🎭"}].map(f=>(
+          {[{k:"tous",l:"Tous"},{k:"nonlus",l:"Non lus"},{k:"favoris",l:"Favoris"},{k:"groupes",l:"Groupes"},{k:"anonyme",l:<span style={{display:"inline-flex",alignItems:"center",gap:5}}><HatGlasses size={13}/>Anonyme</span>}].map(f=>(
             <button key={f.k} onClick={()=>setFilter(f.k)} style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${filter===f.k?T.gold:T.border}`,background:"transparent",color:filter===f.k?T.goldL:T.muted,fontSize:13,fontWeight:filter===f.k?700:400,cursor:"pointer",transition:"all .2s"}}>
               {f.l}
               {f.k==="nonlus"&&(sorted.some(c=>(c.msgs||[]).some(m=>m.f!=="me"&&!m.read))||(groups||[]).some(g=>g.unreadCount>0))&&<span style={{width:7,height:7,borderRadius:"50%",background:"#4A90D9",display:"inline-block",marginLeft:5,verticalAlign:"middle"}}/>}
@@ -7646,9 +7646,11 @@ function VoicePlayer({src,mine,T,wf}){
   );
 }
 
-function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,onLoadUntil,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated,pushNav,popNav}){
+function ChatScreen({conv,myProfile,session,members,reload,patchConv,onLoadOlder,onLoadUntil,allConvs,notify,onImageView,onOpenProfile,onOpenConvInfo,onBack,onConvCreated,pushNav,popNav}){
  const msgSrc=useSignedMediaList("dm",conv.msgs,m=>m.img||m.file_url); 
+ const {pins,pin:pinMsg,unpin:unpinMsg}=usePins(sb,"dm",conv.id);
 const [selectedMsg,setSelectedMsg]=useState(null);
+const [forwardMsg,setForwardMsg]=useState(null);
 
 const [cropSrc,setCropSrc]=useState(null);
 const [cropResolve,setCropResolve]=useState(null);
@@ -8214,7 +8216,7 @@ const handleFile=async(e,isImg)=>{
 {searchOpen&&<ChatSearchBar T={T} value={searchQuery} onChange={setSearchQuery} onClose={()=>{setSearchOpen(false);setSearchQuery("");}}>
   <ChatSearchResults T={T} query={searchQuery} fetcher={q=>sb.rpc("search_conv_messages",{p_conv:conv.id,p_q:q,p_limit:40}).then(r=>r.data||[])} labelFor={r=>r.sender_id===session?.user?.id?"Moi":(user?.name||"")} onPick={jumpToSearchResult}/>
 </ChatSearchBar>}
-
+{pins.length>0&&<PinnedBar T={T} pins={pins} onJump={p=>jumpToSearchResult({id:p.message_id,created_at:p.message.created_at})}/>}
       {/* Messages */}
       <div ref={msgsScrollRef} style={{position:"relative",zIndex:1,flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
         {loadingOlder&&<div style={{textAlign:"center",padding:"8px 0",fontSize:11,color:T.muted}}>Chargement des messages précédents…</div>}
@@ -8251,6 +8253,7 @@ const handleFile=async(e,isImg)=>{
   boxShadow:m.type==="sticker"?"none":(mine?(bubbleColor?`0 4px 20px ${bubbleColor}40`:"0 4px 20px rgba(201,149,42,0.25)"):"0 2px 8px rgba(0,0,0,0.3)")
 }}>
                   <HeartBurst show={burstMsgId===m.id}/>
+                  {m.reply_metadata?.forwarded&&<p style={{margin:"0 0 4px",fontSize:11,fontStyle:"italic",opacity:0.7}}>↪ Transféré</p>}
                   <MessageReplyQuote message={m} mine={mine} T={T} onClick={()=>m.reply_to_id&&scrollToMessage(m.reply_to_id)}/>
                   {m.type==="status_reply"&&(
   <div style={{marginBottom:6}}>
@@ -8450,6 +8453,7 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
 
      
 
+      {forwardMsg&&<ForwardSheet T={T} Btn={Btn} Av={Av} sb={sb} myId={session?.user?.id} msg={forwardMsg} convs={allConvs} members={members} excludeConvId={conv.id} onClose={()=>{popNav();setForwardMsg(null);}} notify={notify}/>}
       {selectedMsg&&(
         <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",display:"flex",alignItems:"flex-end"}} onClick={()=>{popNav();setSelectedMsg(null);}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:"rgba(16,16,16,0.98)",borderRadius:"22px 22px 0 0",paddingBottom:"env(safe-area-inset-bottom,12px)",animation:"slideUp .2s ease"}}>
@@ -8467,7 +8471,16 @@ style={{width:"100%",background:"none",border:"none",color:T.text,fontSize:14,ou
             <Btn onClick={()=>{setReplyTo({id:selectedMsg.id,text:selectedMsg.text||mediaReplyLabel(selectedMsg.type,selectedMsg.fileName)||"",authorName:(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)?"Vous":user.name});popNav();setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <Reply size={18}/><span>Répondre</span>
             </Btn>
-            
+            {FORWARDABLE_TYPES.includes(selectedMsg.type)&&!selectedMsg.view_once&&(selectedMsg.text||selectedMsg.img||selectedMsg.type==="post_share")&&(
+              <Btn onClick={()=>{const sm=selectedMsg;popNav();setSelectedMsg(null);pushNav(()=>setForwardMsg(null));setForwardMsg({type:sm.type,text:sm.text||"",file_url:sm.img||null,file_name:sm.fileName||null,sticker_id:sm.sticker_id||null,waveform:sm.waveform||null,shared_post_id:sm.shared_post_id||null,reply_metadata:sm.type==="post_share"?(sm.reply_metadata||null):null});}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+                <span style={{width:18,textAlign:"center"}}>↪</span><span>Transférer</span>
+              </Btn>
+            )}
+                        {/^[0-9a-f-]{36}$/i.test(String(selectedMsg.id))&&!selectedMsg.view_once&&!["system","call","status_reply","note_reply"].includes(selectedMsg.type)&&(
+              <Btn onClick={()=>{const sm=selectedMsg;const isP=pins.some(p=>p.message_id===sm.id);popNav();setSelectedMsg(null);(isP?unpinMsg(sm.id):pinMsg(sm.id)).then(err=>notify(err?(err.message||"Action impossible"):(isP?"Message désépinglé":"Message épinglé 📌")));}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+                <span style={{width:18,textAlign:"center"}}>📌</span><span>{pins.some(p=>p.message_id===selectedMsg.id)?"Désépingler":"Épingler"}</span>
+              </Btn>
+            )}
             {(selectedMsg.f==="me"||selectedMsg.f===session?.user?.id)&&selectedMsg.text&&(
               <Btn onClick={()=>{setEditingMsg(selectedMsg);setInp(selectedMsg.text);popNav();setSelectedMsg(null);}} style={{width:"100%",padding:"15px 20px",fontSize:15,color:T.text,textAlign:"left",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                 <Edit2 size={18}/><span>Modifier</span>
@@ -12624,7 +12637,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
 {openGroup&&(
   <div style={openUserId?{visibility:"hidden",pointerEvents:"none"}:undefined}>
   <GroupChatScreen sb={sb} T={T} Av={Av} Btn={Btn} group={openGroup} session={session}
-    members={members} myConnections={myConnections} myFollowers={myFollowers}
+   members={members} myConnections={myConnections} myFollowers={myFollowers} allConvs={convs}
     notify={notify} onBack={()=>{popNav();setOpenGroup(null);}}
     onOpenProfile={uid=>{pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}}
     pushNav={pushNav} popNav={popNav}/>
@@ -12684,7 +12697,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
           )}
           {openConvId&&openConv&&(
 <div style={(openUserId||openConvInfoUid)?{height:0,overflow:"hidden",visibility:"hidden",flex:"none"}:{display:"contents"}}>
-            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} onLoadUntil={iso=>loadMessagesUntil(openConv?.id,session?.user?.id,iso)} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}} pushNav={pushNav} popNav={popNav}/>
+            <ChatScreen conv={openConv} myProfile={myProfile} session={session} members={members} reload={()=>loadConvs(session?.user?.id)} patchConv={patchConvMessages} onLoadOlder={()=>loadOlderMessages(openConv?.id,session?.user?.id)} onLoadUntil={iso=>loadMessagesUntil(openConv?.id,session?.user?.id,iso)} allConvs={convs} notify={notify} onImageView={setViewImg} onOpenProfile={uid=>{pushNav(()=>setOpenUserId(null));setOpenUserId(uid);}} onOpenConvInfo={uid=>{pushNav(()=>setOpenConvInfoUid(null));setOpenConvInfoUid(uid);}} onBack={()=>{popNav();setOpenConvId(null);}} onConvCreated={id=>{setConvs(p=>(p||[]).map(c=>c.id===openConv?.id?{...c,id}:c));setOpenConvId(id);}} pushNav={pushNav} popNav={popNav}/>
           </div>
           )}
           {openConvInfoUid&&(

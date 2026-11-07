@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
+import { HatGlasses, Lock, CheckCircle2, Send, EyeOff, Sparkles } from "lucide-react";
 
 const SB_URL = import.meta.env.VITE_SUPABASE_URL;
 const SB_ANON = import.meta.env.VITE_SUPABASE_ANON;
 const H = { "Content-Type": "application/json", apikey: SB_ANON, Authorization: "Bearer " + SB_ANON };
-const IDEAS = ["Dis-moi un secret 🤫", "Ce que tu n'as jamais osé me dire…", "Une qualité que tu vois en moi ✨"];
+const IDEAS = [
+  { t: "Dis-moi un secret", I: EyeOff },
+  { t: "Ce que tu n'as jamais osé me dire…", I: null },
+  { t: "Une qualité que tu vois en moi", I: Sparkles },
+];
 
 function deviceId() {
   try {
@@ -60,7 +65,7 @@ export default function AnonPublicPage() {
 
   if (state === "invalid") return (
     <div style={wrap}><div style={card}>
-      <p style={{ fontSize: 40, margin: 0 }}>🔒</p>
+      <div style={{ display: "flex", justifyContent: "center" }}><Lock size={44} color="#F5D76E" strokeWidth={1.6} /></div>
       <h2 style={{ margin: "10px 0 6px" }}>Ce lien n'est plus actif</h2>
       <p style={{ opacity: .6, fontSize: 14, marginBottom: 22 }}>La personne l'a désactivé ou en a créé un nouveau.</p>
       <a href="/" style={cta}>Découvrir Céleste ✦</a>
@@ -69,30 +74,35 @@ export default function AnonPublicPage() {
 
   if (state === "sent") return (
     <div style={wrap}><div style={card}>
-      <p style={{ fontSize: 44, margin: 0 }}>✨</p>
+      <div style={{ display: "flex", justifyContent: "center" }}><CheckCircle2 size={52} color="#F5D76E" strokeWidth={1.6} /></div>
       <h2 style={{ margin: "10px 0 6px" }}>Message envoyé !</h2>
       <p style={{ opacity: .6, fontSize: 14, marginBottom: 22 }}>{name ? name + " le recevra" : "Il sera reçu"} sans savoir que c'est toi.</p>
-      <a href="/" style={{ ...cta, marginBottom: 10 }}>Reçois toi aussi des messages anonymes 🎭</a>
+      <a href="/" style={{ ...cta, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><HatGlasses size={18} />Reçois toi aussi des messages anonymes</a>
       <button onClick={() => setState("ready")} style={{ background: "none", border: "none", color: "#fff", opacity: .6, fontSize: 13, cursor: "pointer" }}>Envoyer un autre message</button>
     </div></div>
   );
 
   return (
     <div style={wrap}><div style={card}>
-      <p style={{ fontSize: 40, margin: 0 }}>🎭</p>
+      <div style={{ display: "flex", justifyContent: "center" }}><HatGlasses size={52} color="#F5D76E" strokeWidth={1.6} /></div>
       <h2 style={{ margin: "10px 0 4px", fontSize: 22 }}>Envoie un message anonyme{name ? " à " + name : ""}</h2>
       <p style={{ opacity: .55, fontSize: 13, margin: "0 0 16px" }}>100 % anonyme · pas besoin de compte</p>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
-        {IDEAS.map(i => (
-          <span key={i} style={{ padding: "6px 12px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.8)", fontSize: 12, userSelect: "none" }}>{i}</span>
-        ))}
+        {IDEAS.map(idea => {
+          const Ico = idea.I;
+          return (
+            <span key={idea.t} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.8)", fontSize: 12, userSelect: "none" }}>
+              {Ico && <Ico size={13} />}{idea.t}
+            </span>
+          );
+        })}
       </div>
       <textarea value={text} onChange={e => setText(e.target.value.slice(0, 500))} rows={5} placeholder="Écris ton message…"
         style={{ width: "100%", boxSizing: "border-box", padding: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 15, resize: "none", outline: "none", fontFamily: "inherit" }} />
       <div style={{ textAlign: "right", fontSize: 11, opacity: .45, margin: "4px 4px 12px" }}>{text.length}/500</div>
       {err && <p style={{ color: "#ff7a7a", fontSize: 13, margin: "0 0 10px" }}>{err}</p>}
-      <button onClick={send} disabled={sending || !text.trim()} style={{ ...cta, opacity: sending || !text.trim() ? .5 : 1 }}>
-        {sending ? "Envoi…" : "Envoyer 🤫"}
+      <button onClick={send} disabled={sending || !text.trim()} style={{ ...cta, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: sending || !text.trim() ? .5 : 1 }}>
+        {sending ? "Envoi…" : <><Send size={17} />Envoyer</>}
       </button>
       <p style={{ opacity: .4, fontSize: 11, marginTop: 16 }}>Les messages blessants sont signalés et leur expéditeur est bloqué.</p>
     </div></div>

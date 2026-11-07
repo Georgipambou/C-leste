@@ -1028,3 +1028,257 @@ export function ConversationInfoScreen({ T, Av, Btn, user, conv, sb, myId, onBac
   40%{transform:scale(1.2);opacity:1;}
 }
 ============================================================ */
+
+/* ============================================================
+   TRANSFÉRER UN MESSAGE
+   ============================================================ */
+
+export const FORWARDABLE_TYPES = ["text", "photo", "image", "video", "voice", "file", "sticker", "post_share"];
+
+const fwNorm = s => Array.from(String(s || "")).map(c => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join("");
+
+export function ForwardSheet({ T, Btn, Av, sb, myId, msg, convs, members, excludeConvId, excludeGroupId, onClose, notify }) {
+  const [q, setQ] = useState("");
+  const [groups, setGroups] = useState([]);
+  const [sel, setSel] = useState([]);
+  const [sending, setSending] = useState(false);
+  const mediaType = !["text", "sticker", "voice"].includes(msg.type);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await sb.rpc("get_my_groups_summary");
+      const list = data || [];
+      let themeIds = new Set();
+      if (list.length) {
+        const { data: g } = await sb.from("groups").select("id,theme_id").in("id", list.map(x => x.id));
+        themeIds = new Set((g || []).filter(x => x.theme_id).map(x => x.id));
+      }
+      if (alive) setGroups(list.map(x => ({ ...x, isTheme: themeIds.has(x.id) })));
+    })();
+    return () => { alive = false; };
+  }, [sb]);
+
+  const needle = fwNorm(q.trim());
+  const dmRows = (convs || []).filter(c => c.id !== excludeConvId).map(c => {
+    const u = (members || []).find(m => m.id === c.uid);
+    return { kind: "dm", id: c.id, name: u?.name || "Conversation", u: u || { name: "?", initials: "?", color: "#888" } };
+  }).filter(r => !needle || fwNorm(r.name).includes(needle));
+  const groupRows = groups.filter(g => g.id !== excludeGroupId && !(g.isTheme && mediaType)).map(g => ({
+    kind: "group", id: g.id, name: g.name || "Groupe",
+    u: { name: g.name, avatar_url: g.photo_url, initials: (g.name || "?").slice(0, 2).toUpperCase(), color: "#888" }
+  })).filter(r => !needle || fwNorm(r.name).includes(needle));
+
+  const isSel = r => sel.some(s => s.kind === r.kind && s.id === r.id);
+  const toggle = r => setSel(prev => isSel(r)
+    ? prev.filter(s => !(s.kind === r.kind && s.id === r.id))
+    : (prev.length >= 5 ? (notify?.("5 destinataires maximum"), prev) : [...prev, { kind: r.kind, id: r.id }]));
+
+  const send = async () => {
+    if (!sel.length || sending) return;
+    setSending(true);
+    const base = { type: msg.type, text: msg.text || "", view_once: false, reply_metadata: { ...(msg.reply_metadata || {}), forwarded: true } };
+    if (msg.file_url) base.file_url = msg.file_url;
+    if (msg.file_name) base.file_name = msg.file_name;
+    if (msg.sticker_id) base.sticker_id = msg.sticker_id;
+    if (msg.waveform) base.waveform = msg.waveform;
+    if (msg.shared_post_id) base.shared_post_id = msg.shared_post_id;
+    const results = await Promise.all(sel.map(async t => {
+      const row = t.kind === "dm" ? { ...base, conv_id: t.id, sender_id: myId } : { ...base, group_id: t.id, sender_id: myId };
+      const { error } = await sb.from(t.kind === "dm" ? "messages" : "group_messages").insert(row);
+      return !error;
+    }));
+    setSending(false);
+    const ok = results.filter(Boolean).length;
+    notify?.(ok === results.length ? "Message transféré ✦" : ok ? `Transféré à ${ok} sur ${results.length}` : "Transfert impossible");
+    if (ok) onClose();
+  };
+
+  const preview = msg.text || (msg.type === "voice" ? "🎤 Message vocal" : msg.type === "sticker" ? "Sticker" : msg.type === "post_share" ? "Publication" : msg.file_name ? "📎 " + msg.file_name : "📷 Média");
+  const Row = ({ r }) => (
+    <div onClick={() => toggle(r)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 16px", cursor: "pointer" }}>
+      <Av u={r.u} size={38} />
+      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+      <span style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${isSel(r) ? T.gold : T.border}`, background: isSel(r) ? T.gold : "transparent", color: "#000", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{isSel(r) ? "✓" : ""}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 700, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxHeight: "82dvh", display: "flex", flexDirection: "column", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: "env(safe-area-inset-bottom,12px)" }}>
+        <div style={{ padding: "16px 16px 8px" }}>
+          <p style={{ margin: "0 0 2px", fontSize: 16, fontWeight: 700, color: T.text }}>Transférer à…</p>
+          <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview}</p>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher…"
+            style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "8px 12px", color: T.text, fontSize: 13, outline: "none" }} />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {dmRows.length > 0 && <p style={{ margin: "8px 16px 2px", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Conversations</p>}
+          {dmRows.map(r => <Row key={"d" + r.id} r={r} />)}
+          {groupRows.length > 0 && <p style={{ margin: "10px 16px 2px", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Groupes</p>}
+          {groupRows.map(r => <Row key={"g" + r.id} r={r} />)}
+          {dmRows.length === 0 && groupRows.length === 0 && <p style={{ textAlign: "center", color: T.muted, fontSize: 13, padding: 24 }}>Aucun résultat</p>}
+        </div>
+        <div style={{ padding: "10px 16px 0" }}>
+          <Btn onClick={send} disabled={!sel.length || sending} style={{ width: "100%", padding: "13px", borderRadius: 14, background: sel.length ? T.gradGold : "rgba(255,255,255,0.08)", color: sel.length ? "#000" : T.muted, fontSize: 15, fontWeight: 700 }}>
+            {sending ? "Envoi…" : sel.length ? `Envoyer (${sel.length})` : "Choisis un destinataire"}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+/* ============================================================
+   MESSAGES ÉPINGLÉS
+   ============================================================ */
+
+export function usePins(sb, kind, id) {
+  const [pins, setPins] = useState([]);
+  const table = kind === "dm" ? "conversation_pins" : "group_pins";
+  const col = kind === "dm" ? "conv_id" : "group_id";
+  const sel = kind === "dm"
+    ? "id,message_id,created_at,message:messages(id,type,text,file_name,sender_id,created_at)"
+    : "id,message_id,created_at,message:group_messages(id,type,text,file_name,sender_id,anon_alias,created_at)";
+  const refresh = useCallback(async () => {
+    if (!id) { setPins([]); return; }
+    const { data } = await sb.from(table).select(sel).eq(col, id).order("created_at", { ascending: false });
+    setPins((data || []).filter(p => p.message));
+  }, [sb, id]);
+  useEffect(() => {
+    refresh();
+    if (!id) return;
+    const ch = sb.channel(`pins-${kind}-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table }, () => refresh())
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [refresh]);
+  const run = async (fn, mid) => {
+    const { error } = await sb.rpc(fn, { p_message: mid });
+    if (!error) refresh();
+    return error || null;
+  };
+  const pin = mid => run(kind === "dm" ? "pin_conv_message" : "pin_group_message", mid);
+  const unpin = mid => run(kind === "dm" ? "unpin_conv_message" : "unpin_group_message", mid);
+  return { pins, pin, unpin, refresh };
+}
+
+export function PinnedBar({ T, pins, onJump }) {
+  const [idx, setIdx] = useState(0);
+  const n = (pins || []).length;
+  if (!n) return null;
+  const i = Math.min(idx, n - 1);
+  const m = pins[i].message || {};
+  const label = m.text || (m.type === "voice" ? "🎤 Message vocal" : m.type === "sticker" ? "Sticker" : m.type === "post_share" ? "Publication" : m.file_name ? "📎 " + m.file_name : "📷 Média");
+  return (
+    <div onClick={() => { onJump(pins[i]); setIdx((i + 1) % n); }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "rgba(255,255,255,0.05)", borderBottom: `1px solid ${T.border}`, cursor: "pointer", flexShrink: 0 }}>
+      <span style={{ fontSize: 16 }}>📌</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: T.goldL }}>Message épinglé{n > 1 ? ` · ${i + 1}/${n}` : ""}</p>
+        <p style={{ margin: 0, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</p>
+      </div>
+    </div>
+  );
+}
+/* ============================================================
+   SONDAGES RAPIDES (groupes et salons)
+   ============================================================ */
+
+export function usePollResults(sb, msgs) {
+  const [res, setRes] = useState({});
+  const ids = (msgs || []).filter(m => m.type === "poll" && /^[0-9a-f-]{36}$/i.test(String(m.id))).map(m => m.id);
+  const key = ids.join(",");
+  const refresh = useCallback(async () => {
+    if (!ids.length) return;
+    const { data } = await sb.rpc("get_poll_results", { p_messages: ids.slice(-100) });
+    if (data) setRes(prev => { const n = { ...prev }; data.forEach(r => { n[r.message_id] = r; }); return n; });
+  }, [key]);
+  useEffect(() => {
+    refresh();
+    if (!ids.length) return;
+    const t = setInterval(refresh, 20000);
+    return () => clearInterval(t);
+  }, [refresh]);
+  const vote = async (mid, idx) => {
+    const { error } = await sb.rpc("vote_group_poll", { p_message: mid, p_idx: idx });
+    await refresh();
+    return error || null;
+  };
+  return { res, vote, refresh };
+}
+
+export function PollCard({ T, question, data, mine, onVote }) {
+  const ink = mine ? "#000" : T.text;
+  const sub = mine ? "rgba(0,0,0,0.6)" : T.muted;
+  const track = mine ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.08)";
+  const fill = mine ? "rgba(0,0,0,0.22)" : "rgba(201,149,42,0.35)";
+  const closed = data ? new Date(data.closes_at).getTime() <= Date.now() : false;
+  const total = data ? data.total || 0 : 0;
+  let foot = "";
+  if (data) {
+    const left = new Date(data.closes_at).getTime() - Date.now();
+    const h = Math.ceil(left / 3600000);
+    foot = `${total} vote${total !== 1 ? "s" : ""} · ` + (closed ? "Sondage terminé" : h > 48 ? `reste ${Math.ceil(h / 24)} j` : h > 1 ? `reste ${h} h` : "se termine bientôt");
+  }
+  return (
+    <div style={{ width: 250, maxWidth: "100%" }}>
+      <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700, color: ink, wordBreak: "break-word" }}>📊 {question}</p>
+      {!data && <p style={{ margin: 0, fontSize: 12, color: sub }}>Chargement…</p>}
+      {data && (data.options || []).map((label, i) => {
+        const n = (data.counts || [])[i] || 0;
+        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+        const isMine = data.my_vote === i;
+        return (
+          <div key={i} onClick={e => { e.stopPropagation(); if (!closed) onVote(isMine ? null : i); }}
+            style={{ position: "relative", overflow: "hidden", borderRadius: 10, background: track, marginBottom: 6, cursor: closed ? "default" : "pointer", border: isMine ? `1.5px solid ${mine ? "rgba(0,0,0,0.55)" : T.gold}` : "1.5px solid transparent" }}>
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: pct + "%", background: fill, transition: "width .3s" }} />
+            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
+              <span style={{ flex: 1, fontSize: 13, color: ink, wordBreak: "break-word" }}>{isMine ? "✓ " : ""}{label}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: sub }}>{pct}%</span>
+            </div>
+          </div>
+        );
+      })}
+      {data && <p style={{ margin: "2px 0 0", fontSize: 11, color: sub }}>{foot}</p>}
+    </div>
+  );
+}
+
+export function PollComposerSheet({ T, Btn, onClose, onSubmit }) {
+  const [q, setQ] = useState("");
+  const [opts, setOpts] = useState(["", ""]);
+  const [hours, setHours] = useState(24);
+  const [busy, setBusy] = useState(false);
+  const filled = opts.map(o => o.trim()).filter(Boolean);
+  const ok = q.trim().length > 0 && filled.length >= 2;
+  const inputStyle = { width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, borderRadius: 12, padding: "9px 12px", color: T.text, fontSize: 14, outline: "none", marginBottom: 8 };
+  const submit = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    await onSubmit({ question: q.trim(), options: filled, hours });
+    setBusy(false);
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 700, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxHeight: "88dvh", overflowY: "auto", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "18px 16px", paddingBottom: "calc(18px + env(safe-area-inset-bottom,0px))" }}>
+        <p style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: T.text }}>📊 Nouveau sondage</p>
+        <input value={q} onChange={e => setQ(e.target.value.slice(0, 140))} placeholder="Ta question" style={inputStyle} />
+        {opts.map((o, i) => (
+          <input key={i} value={o} onChange={e => setOpts(prev => prev.map((x, j) => j === i ? e.target.value.slice(0, 60) : x))} placeholder={`Réponse ${i + 1}`} style={inputStyle} />
+        ))}
+        {opts.length < 4 && (
+          <p onClick={() => setOpts(prev => [...prev, ""])} style={{ margin: "0 0 12px", fontSize: 13, color: T.goldL, cursor: "pointer" }}>+ Ajouter une réponse</p>
+        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+          <span style={{ fontSize: 12, color: T.muted }}>Durée :</span>
+          {[[1, "1 h"], [24, "24 h"], [72, "3 j"], [168, "7 j"]].map(([h, l]) => (
+            <span key={h} onClick={() => setHours(h)} style={{ padding: "5px 12px", borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: "pointer", background: hours === h ? T.gold : "rgba(255,255,255,0.08)", color: hours === h ? "#000" : T.text }}>{l}</span>
+          ))}
+        </div>
+        <Btn onClick={submit} disabled={!ok || busy} style={{ width: "100%", padding: "13px", borderRadius: 14, background: ok ? T.gradGold : "rgba(255,255,255,0.08)", color: ok ? "#000" : T.muted, fontSize: 15, fontWeight: 700 }}>
+          {busy ? "Publication…" : "Publier le sondage"}
+        </Btn>
+      </div>
+    </div>
+  );
+}

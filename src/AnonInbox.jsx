@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Share } from "@capacitor/share";
-import { Copy, Share2, Flag, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, Share2, Flag, RefreshCw, Trash2, HatGlasses, MoreHorizontal, Sparkles } from "lucide-react";
 import { shareAnonCard, makeAnonCardImage } from "./anonCard";
 
 const BASE = "https://celesteapp.social/a/";
@@ -77,10 +77,10 @@ export default function AnonInbox({ sb, T, session, notify }) {
     setSlug(null); notify("Lien désactivé");
   };
   const copy = async () => {
-    try { await navigator.clipboard.writeText(link); notify("Lien copié ✓"); } catch (e) { notify(link); }
+    try { await navigator.clipboard.writeText(link); notify("Lien copié"); } catch (e) { notify(link); }
   };
   const share = async () => {
-    try { await Share.share({ title: "Messages anonymes", text: "Envoie-moi un message anonyme 🤫", url: link, dialogTitle: "Partager mon lien" }); }
+    try { await Share.share({ title: "Messages anonymes", text: "Envoie-moi un message anonyme", url: link, dialogTitle: "Partager mon lien" }); }
     catch (e) { if (!/cancel/i.test(String(e?.message || e))) copy(); }
   };
   const report = async (m) => {
@@ -121,11 +121,11 @@ export default function AnonInbox({ sb, T, session, notify }) {
         {slug ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 16 }}>🎭</span>
+              <HatGlasses size={18} color={T.goldL} style={{ flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: T.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{link.replace("https://", "")}</div>
               <button onClick={copy} style={iconBtn} aria-label="Copier"><Copy size={15} /></button>
               <button onClick={share} style={iconBtn} aria-label="Partager"><Share2 size={15} /></button>
-              <button onClick={() => setMenu(v => !v)} style={iconBtn} aria-label="Plus">⋯</button>
+              <button onClick={() => setMenu(v => !v)} style={iconBtn} aria-label="Plus"><MoreHorizontal size={16} /></button>
             </div>
             {menu && (
               <div style={{ display: "flex", gap: 16, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
@@ -136,9 +136,9 @@ export default function AnonInbox({ sb, T, session, notify }) {
           </>
         ) : (
           <>
-            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: T.muted }}>🎭 Reçois des messages anonymes, sans que personne n'ait besoin de compte.</p>
+            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: T.muted, display: "flex", alignItems: "center", gap: 6 }}><HatGlasses size={16} color={T.goldL} style={{ flexShrink: 0 }} />Reçois des messages anonymes, sans que personne n'ait besoin de compte.</p>
             <button onClick={create} disabled={busy} style={{ ...pill, flex: "none", width: "100%", background: T.gradGold, color: "#000", border: "none" }}>
-              {busy ? "…" : "Générer mon lien ✦"}
+              {busy ? "…" : <><Sparkles size={15} />Générer mon lien</>}
             </button>
           </>
         )}
@@ -149,7 +149,7 @@ export default function AnonInbox({ sb, T, session, notify }) {
           <div style={{ height: 5, background: T.gradGold }} />
           <div style={{ padding: "14px 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.goldL, letterSpacing: 0.3 }}>🎭 Message anonyme</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.goldL, letterSpacing: 0.3, display: "flex", alignItems: "center", gap: 6 }}><HatGlasses size={15} />Message anonyme</span>
               <span style={{ fontSize: 11, color: T.muted }}>
                 {timeAgo(m.created_at)}
                 {!m.read_at && <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#4A90D9", marginLeft: 6 }} />}

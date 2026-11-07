@@ -10,7 +10,7 @@ import EasyCrop from "react-easy-crop";
 import VideoTrimModal from "./components/VideoTrimModal";
 import { uploadToR2 } from "./uploadMedia";
 import { useSignedMedia, useSignedMediaList } from "./privateMedia";
-import { ChatSearchBar, ChatSearchResults } from "./ChatExtras";
+import { ChatSearchBar, ChatSearchResults, ForwardSheet, FORWARDABLE_TYPES, usePins, PinnedBar, usePollResults, PollCard, PollComposerSheet } from "./ChatExtras";
 import { enqueueGroupMessage, getQueueForGroup, subscribeGroupQueue, processGroupQueue, retryGroupMessage, trackGroupFileSend, updateGroupFileSend, removeGroupFileSend, getGroupFileSendsForConv, subscribeGroupFileSends } from "./lib/groupMessageQueue";
 import StickerPicker from "./components/StickerPicker";
 import { computeWaveform, fallbackBars } from "./lib/waveform";
@@ -1048,7 +1048,7 @@ function renderMentionText(text, re, myName, T) {
   if (last < text.length) parts.push(text.slice(last));
   return parts.length ? parts : text;
 }
-function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, replyBtn, onOpenSticker, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce, mentionRe, myName }) {
+function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfile, onReply, onLongPress, onDoubleTap, burstOn, onRetry, onScrollToReply, replyBtn, onOpenSticker, registerRef, highlighted, revealedOnce, viewedByMeIds, onRevealOnce, bubbleColor, fontSizeKey, viewOnceUrls, viewOnceTexts, revealingOnce, mentionRe, myName, pollData, onPollVote }) {
     const mediaSrc = useSignedMedia("group", m.id, m.type === "sticker" ? null : m.file_url);
   if (m.type === "system") {
     const senderName = m.sender ? `${m.sender.prenom || ""} ${m.sender.nom || ""}`.replace(/\s+/g, " ").trim() : "";
@@ -1087,6 +1087,7 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
             {replyBtn && !m.sending && (
               <span onClick={e => { e.stopPropagation(); onReply?.(m); }} style={{ position: "absolute", top: "50%", [mine ? "left" : "right"]: -30, transform: "translateY(-50%)", width: 24, height: 24, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted, opacity: 0.7, cursor: "pointer" }}><Reply size={15} /></span>
             )}
+            {m.reply_metadata?.forwarded && <p style={{ margin: "0 0 4px", fontSize: 11, fontStyle: "italic", opacity: 0.7 }}>↪ Transféré</p>}
             <MessageReplyQuote message={m} mine={mine} T={T} onClick={() => m.reply_to_id && onScrollToReply?.(m.reply_to_id)} />
             {m.type === "photo" && (
               m.view_once
@@ -1145,6 +1146,7 @@ function GroupMessageBubble({ m, mine, T, Av, Btn, myId, showHeader, onOpenProfi
               e.currentTarget.animate([{ transform: "scale(1)" }, { transform: "scale(1.3) rotate(-8deg)" }, { transform: "scale(1)" }], { duration: 320, easing: "ease-out" });
               if (sid) setTimeout(() => onOpenSticker?.(sid), 200);
             }} style={{ width: 100, height: 100, objectFit: "contain", display: "block", cursor: m.sticker_id ? "pointer" : "default" }} />}
+                        {m.type === "poll" && <PollCard T={T} question={m.text} data={pollData} mine={mine} onVote={idx => onPollVote?.(m.id, idx)} />}
             {m.type === "post_share" && (
               <div onClick={e => { e.stopPropagation(); m.shared_post_id && window.dispatchEvent(new CustomEvent("celeste_open_post", { detail: { postId: m.shared_post_id } })); }}
                 style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "8px 10px", cursor: m.shared_post_id ? "pointer" : "default", maxWidth: 240, width: "100%", boxSizing: "border-box" }}>
@@ -1265,7 +1267,7 @@ function ThemeBanner({ sb, info, T, onAnswer }) {
   );
 }
 
-export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack, onOpenProfile, members, myConnections, myFollowers, pushNav, popNav }) {
+export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack, onOpenProfile, members, myConnections, myFollowers, allConvs, pushNav, popNav }) {
   const [msgs, setMsgs] = useState(() => getRoomCache(group.id)?.msgs || []);
   const roomRef = useRef({ isTheme: false, startedAt: null });
   const roomReadyRef = useRef(false);
@@ -1319,7 +1321,11 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
     return () => clearTimeout(t);
   }, [text, group.id, editingMsg]);
   useEffect(() => () => { if (!editingRef.current) writeGroupDraft(group.id, textRef.current); }, [group.id]);
-  const [actionMsg, setActionMsg] = useState(null);
+    const [actionMsg, setActionMsg] = useState(null);
+  const [forwardMsg, setForwardMsg] = useState(null);
+    const { pins, pin: pinMsg, unpin: unpinMsg } = usePins(sb, "group", group.id);
+      const [showPoll, setShowPoll] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(null);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
@@ -2033,12 +2039,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
   }, [msgs, blockedIds, sendingMsgs, sendingFiles]);
 
   if (displayGroup.secure_mode && !isNative && !isGroupAdmin) {
-      const mentionNorm = s => Array.from(String(s || "")).map(c => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join("");
-  const mentionQuery = (!editingMsg && !(anonNext && roomRef.current.isTheme)) ? (text.match(/(?:^|\s)@([\p{L}'’-]*)$/u)?.[1] ?? null) : null;
-  const mentionCandidates = mentionQuery === null ? [] : mentionMembers.filter(x => x.id !== myId && mentionNorm(x.name).split(/[\s-]+/).some(w => w.startsWith(mentionNorm(mentionQuery)))).slice(0, 6);
-  const pickMention = x => setText(t => t.replace(/@([\p{L}'’-]*)$/u, "@" + x.name + " "));
-  const myMentionName = mentionMembers.find(x => x.id === myId)?.name || "";
-    return (
+      
+  return (
       <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "#000", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", paddingTop: "calc(10px + env(safe-area-inset-top,0px))", borderBottom: `1px solid ${T.border}` }}>
           <Btn onClick={onBack} style={{ color: T.gold }}><ChevronLeft size={22} /></Btn>
@@ -2051,7 +2053,18 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       </div>
     );
   }
-
+  const mentionNorm = s => Array.from(String(s || "")).map(c => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join("");
+  const mentionQuery = (!editingMsg && !(anonNext && roomRef.current.isTheme)) ? (text.match(/(?:^|\s)@([\p{L}'’-]*)$/u)?.[1] ?? null) : null;
+  const mentionCandidates = mentionQuery === null ? [] : mentionMembers.filter(x => x.id !== myId && mentionNorm(x.name).split(/[\s-]+/).some(w => w.startsWith(mentionNorm(mentionQuery)))).slice(0, 6);
+  const pickMention = x => setText(t => t.replace(/@([\p{L}'’-]*)$/u, "@" + x.name + " "));
+  const myMentionName = mentionMembers.find(x => x.id === myId)?.name || "";
+    const { res: pollRes, vote: votePollRaw } = usePollResults(sb, msgs);
+  const votePoll = async (mid, idx) => { const err = await votePollRaw(mid, idx); if (err) notify(err.message || "Vote impossible"); };
+  const createPoll = async ({ question, options, hours }) => {
+    const { error } = await sb.rpc("create_group_poll", { p_group: group.id, p_question: question, p_options: options, p_hours: hours });
+    if (error) { notify(error.message || "Sondage impossible"); return; }
+    popNav(); setShowPoll(false); load();
+  };
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 250, display: "flex", flexDirection: "column",
@@ -2099,6 +2112,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
       )}
 
       {themeInfo && <ThemeBanner sb={sb} info={themeInfo} T={T} onAnswer={answerTheme} />}
+            <PinnedBar T={T} pins={pins} onJump={p => scrollToMessage(p.message_id)} />
       <div ref={msgsScrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
         {hasBeforeState && (
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
@@ -2131,7 +2145,9 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
                 viewOnceTexts={viewOnceTexts}
                                 revealingOnce={revealingOnce}
                 mentionRe={mentionRe}
-                myName={myMentionName}
+                             myName={myMentionName}
+                pollData={pollRes[item.id]}
+                onPollVote={votePoll}
               />
             )
         )}
@@ -2168,7 +2184,7 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
             <EyeOff size={20} />
           </Btn>
         )}
-        <Btn onClick={() => fRef.current?.click()} style={{ width: 38, height: 38, display: roomRef.current.isTheme ? "none" : "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+                <Btn onClick={() => setShowAttachMenu(v => !v)} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
           <Paperclip size={20} />
         </Btn>
         <Btn onClick={() => { if (showStickerPicker) { popNav(); setShowStickerPicker(false); } else { pushNav(() => setShowStickerPicker(false)); setShowStickerPicker(true); } }} style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: showStickerPicker ? T.goldL : T.muted }}>
@@ -2179,7 +2195,19 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
             <StickerPicker sb={sb} userId={myId} T={T} onClose={() => { popNav(); setShowStickerPicker(false); }} onSelect={sendSticker} />
           </div>
         )}
+                {showAttachMenu && (
+          <>
+            <div onClick={() => setShowAttachMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 39 }} />
+            <div style={{ position: "absolute", bottom: "100%", left: 8, zIndex: 40, background: "#161616", border: `1px solid ${T.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.45)" }}>
+              {!roomRef.current.isTheme && (
+                <div onClick={() => { setShowAttachMenu(false); fRef.current?.click(); }} style={{ padding: "12px 18px", fontSize: 14, color: T.text, cursor: "pointer", borderBottom: `1px solid ${T.border}` }}>📎 Fichier</div>
+              )}
+              <div onClick={() => { setShowAttachMenu(false); pushNav(() => setShowPoll(false)); setShowPoll(true); }} style={{ padding: "12px 18px", fontSize: 14, color: T.text, cursor: "pointer" }}>📊 Sondage</div>
+            </div>
+          </>
+        )}
                 {mentionCandidates.length > 0 && (
+
           <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, zIndex: 40, background: T.bg, borderTop: `1px solid ${T.border}`, boxShadow: "0 -8px 24px rgba(0,0,0,0.35)" }}>
             {mentionCandidates.map(x => (
               <div key={x.id} onMouseDown={e => e.preventDefault()} onClick={() => pickMention(x)}
@@ -2254,7 +2282,8 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
           </div>
         </div>
       )}
-
+      {showPoll && <PollComposerSheet T={T} Btn={Btn} onClose={() => { popNav(); setShowPoll(false); }} onSubmit={createPoll} />}
+      {forwardMsg && <ForwardSheet T={T} Btn={Btn} Av={Av} sb={sb} myId={myId} msg={forwardMsg} convs={allConvs} members={members} excludeGroupId={group.id} onClose={() => { popNav(); setForwardMsg(null); }} notify={notify} />}
       {actionMsg && (
         <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end" }} onClick={() => { popNav(); setActionMsg(null); }}>
           <div style={{ width: "100%", background: "#111", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 0 24px" }} onClick={e => e.stopPropagation()}>
@@ -2264,6 +2293,12 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
               ))}
             </div>
             <div onClick={() => { setReplyTo(actionMsg ? { ...actionMsg, text: actionMsg.text || mediaReplyLabel(actionMsg.type, actionMsg.file_name) || "" } : null); popNav(); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
+                        {FORWARDABLE_TYPES.includes(actionMsg.type) && !actionMsg.view_once && (actionMsg.text || actionMsg.file_url || actionMsg.type === "post_share") && (
+              <div onClick={() => { const am = actionMsg; popNav(); setActionMsg(null); pushNav(() => setForwardMsg(null)); setForwardMsg({ type: am.type, text: am.text || "", file_url: am.file_url || null, file_name: am.file_name || null, sticker_id: am.sticker_id || null, waveform: am.waveform || null, shared_post_id: am.shared_post_id || null, reply_metadata: am.type === "post_share" ? (am.reply_metadata || null) : null }); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Transférer</div>
+            )}
+                        {isGroupAdmin && actionMsg.type !== "system" && !actionMsg.view_once && (
+              <div onClick={() => { const am = actionMsg; const isP = pins.some(p => p.message_id === am.id); popNav(); setActionMsg(null); (isP ? unpinMsg(am.id) : pinMsg(am.id)).then(err => notify(err ? (err.message || "Action impossible") : (isP ? "Message désépinglé" : "Message épinglé 📌"))); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>{pins.some(p => p.message_id === actionMsg.id) ? "Désépingler" : "Épingler"}</div>
+            )}
             {actionMsg.sender_id !== myId && !myAnonIds.has(actionMsg.id) && actionMsg.type !== "system" && (
               <div onClick={() => { popNav(); setActionMsg(null); pushNav(() => setReportMsg(null)); setReportMsg(actionMsg); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Signaler</div>
             )}

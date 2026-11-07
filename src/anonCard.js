@@ -36,6 +36,30 @@ function rr(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+const ICON_HAT = {
+  paths: ["M14 18a2 2 0 0 0-4 0", "m19 11-2.11-6.657a2 2 0 0 0-2.752-1.148l-1.276.61A2 2 0 0 1 12 4H8.5a2 2 0 0 0-1.925 1.456L5 11", "M2 11h20"],
+  circles: [[17, 18, 3], [7, 18, 3]],
+};
+const ICON_ARROW = { paths: ["M12 5v14", "m19 12-7 7-7-7"], circles: [] };
+const ICON_SPARKLES = {
+  paths: [
+    "M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z",
+    "M20 2v4",
+    "M22 4h-4",
+  ],
+  circles: [[4, 20, 2]],
+};
+
+function drawIcon(ctx, icon, x, y, size, color) {
+  const s = size / 24;
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s, s);
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  icon.paths.forEach(d => ctx.stroke(new Path2D(d)));
+  icon.circles.forEach(([cx, cy, r]) => { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); });
+  ctx.restore();
+}
+
 export async function makeAnonCardImage({ text, link }) {
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
@@ -50,7 +74,14 @@ export async function makeAnonCardImage({ text, link }) {
 
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#F5D76E"; ctx.font = "700 56px " + FONT;
-  ctx.fillText("🎭 Message anonyme", W / 2, 260);
+  const title = "Message anonyme";
+  const iconSize = 64, iconGap = 18;
+  const titleW = ctx.measureText(title).width;
+  const startX = (W - (iconSize + iconGap + titleW)) / 2;
+  ctx.textAlign = "left";
+  ctx.fillText(title, startX + iconSize + iconGap, 260);
+  drawIcon(ctx, ICON_HAT, startX, 206, iconSize, "#F5D76E");
+  ctx.textAlign = "center";
   ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "400 36px " + FONT;
   ctx.fillText("Quelqu'un m'a écrit…", W / 2, 322);
 
@@ -87,7 +118,13 @@ export async function makeAnonCardImage({ text, link }) {
 
   const yAfter = cardY + cardH;
   ctx.fillStyle = "#F5D76E"; ctx.font = "600 46px " + FONT;
-  ctx.fillText("Envoie-moi le tien 👇", W / 2, yAfter + 130);
+  const ctaText = "Envoie-moi le tien";
+  const ctaW = ctx.measureText(ctaText).width;
+  const ctaStart = (W - (ctaW + 16 + 48)) / 2;
+  ctx.textAlign = "left";
+  ctx.fillText(ctaText, ctaStart, yAfter + 130);
+  drawIcon(ctx, ICON_ARROW, ctaStart + ctaW + 16, yAfter + 130 - 38, 48, "#F5D76E");
+  ctx.textAlign = "center";
 
   if (link) {
     const label = link.replace(/^https?:\/\//, "");
@@ -101,14 +138,20 @@ export async function makeAnonCardImage({ text, link }) {
   }
 
   ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = "700 44px " + FONT;
-  ctx.fillText("✦ Céleste", W / 2, H - 130);
+  const brand = "Céleste";
+  const brandW = ctx.measureText(brand).width;
+  const brandStart = (W - (44 + 14 + brandW)) / 2;
+  ctx.textAlign = "left";
+  ctx.fillText(brand, brandStart + 44 + 14, H - 130);
+  drawIcon(ctx, ICON_SPARKLES, brandStart, H - 130 - 36, 44, "rgba(255,255,255,0.45)");
+  ctx.textAlign = "center";
 
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
 
 export async function shareAnonCard({ text, link }) {
   const blob = await makeAnonCardImage({ text, link });
-  const caption = "Envoie-moi un message anonyme 🤫" + (link ? " " + link : "");
+  const caption = "Envoie-moi un message anonyme" + (link ? " " + link : "");
 
   if (Capacitor.isNativePlatform()) {
     const base64 = await new Promise((res, rej) => {
