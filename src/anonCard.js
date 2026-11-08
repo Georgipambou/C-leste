@@ -149,7 +149,16 @@ export async function makeAnonCardImage({ text, link }) {
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
 
-export async function shareAnonCard({ text, link }) {
+export async function shareAnonCard({ text, link, onCopied }) {
+  const caption0 = "Envoie-moi un message anonyme" + (link ? " " + link : "");
+  try {
+    await navigator.clipboard.writeText(caption0);
+    if (onCopied) onCopied();
+  } catch (e) {}
+  await shareAnonCardInner({ text, link });
+}
+
+async function shareAnonCardInner({ text, link }) {
   const blob = await makeAnonCardImage({ text, link });
   const caption = "Envoie-moi un message anonyme" + (link ? " " + link : "");
 

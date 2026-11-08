@@ -106,8 +106,13 @@ export default function AnonInbox({ sb, T, session, notify }) {
     setPreview(null);
   };
   const doShare = async () => {
-    try { await shareAnonCard({ text: preview.m.content, link }); }
-    catch (e) { notify("Partage impossible, réessaie"); }
+    try {
+      await shareAnonCard({
+        text: preview.m.content,
+        link,
+        onCopied: () => notify("Légende copiée : colle-la avec l'image"),
+      });
+    } catch (e) { notify("Partage impossible, réessaie"); }
   };
 
   const ghost = { background: "none", border: "none", color: T.muted, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, padding: 0 };
