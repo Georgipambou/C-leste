@@ -2291,11 +2291,13 @@ export function GroupChatScreen({ sb, T, Av, Btn, group, session, notify, onBack
               {QUICK_REACTIONS.map(em => (
                 <span key={em} onClick={() => { toggleGroupReaction(sb, actionMsg.id, myId, em, actionMsg.reactions).then(load); popNav(); setActionMsg(null); }} style={{ fontSize: 24, cursor: "pointer" }}>{em}</span>
               ))}
+
             </div>
             <div onClick={() => { setReplyTo(actionMsg ? { ...actionMsg, text: actionMsg.text || mediaReplyLabel(actionMsg.type, actionMsg.file_name) || "" } : null); popNav(); setActionMsg(null); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Répondre</div>
                         {FORWARDABLE_TYPES.includes(actionMsg.type) && !actionMsg.view_once && (actionMsg.text || actionMsg.file_url || actionMsg.type === "post_share") && (
               <div onClick={() => { const am = actionMsg; popNav(); setActionMsg(null); pushNav(() => setForwardMsg(null)); setForwardMsg({ type: am.type, text: am.text || "", file_url: am.file_url || null, file_name: am.file_name || null, sticker_id: am.sticker_id || null, waveform: am.waveform || null, shared_post_id: am.shared_post_id || null, reply_metadata: am.type === "post_share" ? (am.reply_metadata || null) : null }); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>Transférer</div>
             )}
+            
                         {isGroupAdmin && actionMsg.type !== "system" && !actionMsg.view_once && (
               <div onClick={() => { const am = actionMsg; const isP = pins.some(p => p.message_id === am.id); popNav(); setActionMsg(null); (isP ? unpinMsg(am.id) : pinMsg(am.id)).then(err => notify(err ? (err.message || "Action impossible") : (isP ? "Message désépinglé" : "Message épinglé 📌"))); }} style={{ padding: "14px 20px", fontSize: 15, color: T.text, cursor: "pointer" }}>{pins.some(p => p.message_id === actionMsg.id) ? "Désépingler" : "Épingler"}</div>
             )}
