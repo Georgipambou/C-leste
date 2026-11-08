@@ -105,6 +105,19 @@ export default function AnonInbox({ sb, T, session, notify }) {
     if (preview) URL.revokeObjectURL(preview.url);
     setPreview(null);
   };
+  const postToStatus = async () => {
+    try {
+      const m = preview.m;
+      const blob = await makeAnonCardImage({ text: m.content, link });
+      const file = new File([blob], "anon-" + Date.now() + ".png", { type: "image/png" });
+      file.__noCrop = true;
+      window.__celesteStatusFile = file;
+      window.__celesteStatusText = "Envoie-moi un message anonyme" + (link ? " : " + link : "");
+      closePreview();
+      window.dispatchEvent(new CustomEvent("celeste:status-compose"));
+    } catch (e) { notify("Impossible d'ouvrir le statut"); }
+  };
+
   const doShare = async () => {
     try {
       await shareAnonCard({
@@ -172,7 +185,8 @@ export default function AnonInbox({ sb, T, session, notify }) {
                 {preview && (
         <div onClick={closePreview} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.88)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <img src={preview.url} alt="Aperçu" onClick={e => e.stopPropagation()} style={{ maxHeight: "72vh", maxWidth: "100%", borderRadius: 16, boxShadow: "0 10px 40px rgba(0,0,0,0.6)" }} />
-          <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 10, marginTop: 16, width: "100%", maxWidth: 360 }}>
+          <button onClick={e => { e.stopPropagation(); postToStatus(); }} style={{ ...pill, flex: "none", width: "100%", maxWidth: 360, marginTop: 14, color: T.text, border: `1px solid ${T.border}`, background: "transparent" }}><Sparkles size={14} />Publier en statut Céleste</button>
+          <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 10, marginTop: 10, width: "100%", maxWidth: 360 }}>
             <button onClick={closePreview} style={{ ...pill, color: T.text, border: `1px solid ${T.border}`, background: "transparent" }}>Fermer</button>
             <button onClick={doShare} style={{ ...pill, background: T.gradGold, color: "#000", border: "none" }}><Share2 size={14} />Partager</button>
           </div>

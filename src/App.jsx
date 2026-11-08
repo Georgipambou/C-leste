@@ -4238,9 +4238,20 @@ const fRef=useRef();
 const [showStatusCamera,setShowStatusCamera]=useState(false);
 const [selectedSound,setSelectedSound]=useState(null);
 useEffect(()=>{
-  if(window.__celesteStatusFile){
-    handlePick({target:{files:[window.__celesteStatusFile]}});
-    delete window.__celesteStatusFile;
+  const f=window.__celesteStatusFile;
+  if(!f)return;
+  delete window.__celesteStatusFile;
+  setType("photo");
+  if(window.__celesteStatusText){setText(window.__celesteStatusText);delete window.__celesteStatusText;}
+  if(f.__noCrop){
+    const r=new FileReader();r.onload=ev=>setPreview(ev.target.result);r.readAsDataURL(f);
+    setUploading(true);
+    uploadToR2(f,"statuses",pct=>setUploadPct(pct))
+      .then(url=>setMediaUrl(url))
+      .catch(e=>{console.error("Upload statut échoué:",e);setPreview(null);})
+      .finally(()=>{setUploading(false);setUploadPct(0);});
+  }else{
+    handlePick({target:{files:[f]}});
   }
 },[]);
 const vRef=useRef();
@@ -4678,6 +4689,7 @@ if(isMe){
   ):(
     <div style={{position:"absolute",bottom:160,left:16,right:16,zIndex:1,opacity:hideUI?0:1,transition:"opacity .2s",pointerEvents:hideUI?"none":"all"}}>
       <p style={{margin:"0 0 4px",fontSize:18,color:"#fff",lineHeight:1.6,fontFamily:"'Cormorant Garamond',serif",fontWeight:400,textShadow:"0 1px 8px rgba(0,0,0,0.8)",whiteSpace:"pre-wrap",wordBreak:"break-word",display:textExpanded?"block":"-webkit-box",WebkitLineClamp:textExpanded?"unset":3,WebkitBoxOrient:"vertical",overflow:textExpanded?"visible":"hidden"}}>{renderTextWithMentions(current.text)}</p>
+            {!isMe&&(()=>{const m=current.text&&current.text.match(/https:\/\/celesteapp\.social\/a\/[a-f0-9]{10}/);return m?(<button onClick={e=>{e.stopPropagation();Browser.open({url:m[0]});}} style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"9px 14px",borderRadius:14,border:"none",background:T.gradGold,color:"#000",fontSize:13,fontWeight:700,cursor:"pointer"}}><HatGlasses size={15}/>Écrire un message anonyme</button>):null;})()}
       {current.text?.length>90&&<button onClick={e=>{e.stopPropagation();setTextExpanded(x=>!x);}} style={{background:"none",border:"none",padding:0,color:"#fff",fontSize:13,fontWeight:700,textShadow:"0 1px 8px rgba(0,0,0,0.8)",cursor:"pointer"}}>{textExpanded?"Voir moins ▲":"Voir plus ▼"}</button>}
     </div>
   )
@@ -4808,6 +4820,11 @@ function StatusesTab({myProfile,session,members,myConnections,myFollowers,notify
   const [viewing,setViewing]=useState(null);
   const [viewingIdx,setViewingIdx]=useState(-1);
   const [creating,setCreating]=useState(false);
+  useEffect(()=>{
+    const h=()=>{pushNav(()=>setCreating(false));setCreating(true);};
+    window.addEventListener("celeste:status-compose",h);
+    return()=>window.removeEventListener("celeste:status-compose",h);
+  },[]);
 useEffect(()=>{
   if(window.__celesteOpenStatus&&window.__celesteSharedFile){
     const file=window.__celesteSharedFile;
@@ -11776,7 +11793,8 @@ function CelesteApp(){
 
   const [chatDrafts,setChatDrafts]=useState(()=>{try{return JSON.parse(localStorage.getItem(celesteScopedKey("celeste_drafts_dm"))||"{}");}catch(e){return{};}});
   useEffect(()=>{try{localStorage.setItem(celesteScopedKey("celeste_drafts_dm"),JSON.stringify(chatDrafts));}catch(e){}},[chatDrafts]);
-  const [tab,setTab]=useState("messages"); // ouverture par défaut sur la messagerie (feed encore en travaux)
+  const [tab,setTab]=useState("messages");
+  useEffect(()=>{const h=()=>setTab("statuses");window.addEventListener("celeste:status-compose",h);return()=>window.removeEventListener("celeste:status-compose",h);},[]); // ouverture par défaut sur la messagerie (feed encore en travaux)
   const tabHistoryRef=useRef([]);
   const prevTabRef=useRef("messages");
   const isBackNavRef=useRef(false);
