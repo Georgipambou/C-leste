@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
-import { HatGlasses, Lock, CheckCircle2, Send, EyeOff, Sparkles } from "lucide-react";
+import { HatGlasses, Lock, CheckCircle2, Send, EyeOff, Sparkles, Download } from "lucide-react";
 
 const SB_URL = import.meta.env.VITE_SUPABASE_URL;
 const SB_ANON = import.meta.env.VITE_SUPABASE_ANON;
 const H = { "Content-Type": "application/json", apikey: SB_ANON, Authorization: "Bearer " + SB_ANON };
+const PLAY_URL = "https://play.google.com/store/apps/details?id=social.celesteapp&referrer=utm_source%3Danon_message";
+const IS_ANDROID = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+const CTA_URL = IS_ANDROID ? PLAY_URL : "/";
+const CTA_LABEL = IS_ANDROID ? "Télécharger Céleste pour recevoir les tiens" : "Reçois toi aussi des messages anonymes";
 const IDEAS = [
   { t: "Dis-moi un secret", I: EyeOff },
   { t: "Ce que tu n'as jamais osé me dire…", I: null },
@@ -68,7 +72,7 @@ export default function AnonPublicPage() {
       <div style={{ display: "flex", justifyContent: "center" }}><Lock size={44} color="#F5D76E" strokeWidth={1.6} /></div>
       <h2 style={{ margin: "10px 0 6px" }}>Ce lien n'est plus actif</h2>
       <p style={{ opacity: .6, fontSize: 14, marginBottom: 22 }}>La personne l'a désactivé ou en a créé un nouveau.</p>
-      <a href="/" style={cta}>Découvrir Céleste ✦</a>
+      <a href={CTA_URL} style={{ ...cta, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{IS_ANDROID ? <Download size={18} /> : <HatGlasses size={18} />}{IS_ANDROID ? "Télécharger Céleste" : "Découvrir Céleste"}</a>
     </div></div>
   );
 
@@ -77,7 +81,7 @@ export default function AnonPublicPage() {
       <div style={{ display: "flex", justifyContent: "center" }}><CheckCircle2 size={52} color="#F5D76E" strokeWidth={1.6} /></div>
       <h2 style={{ margin: "10px 0 6px" }}>Message envoyé !</h2>
       <p style={{ opacity: .6, fontSize: 14, marginBottom: 22 }}>{name ? name + " le recevra" : "Il sera reçu"} sans savoir que c'est toi.</p>
-      <a href="/" style={{ ...cta, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><HatGlasses size={18} />Reçois toi aussi des messages anonymes</a>
+      <a href={CTA_URL} style={{ ...cta, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{IS_ANDROID ? <Download size={18} /> : <HatGlasses size={18} />}{CTA_LABEL}</a>
       <button onClick={() => setState("ready")} style={{ background: "none", border: "none", color: "#fff", opacity: .6, fontSize: 13, cursor: "pointer" }}>Envoyer un autre message</button>
     </div></div>
   );
@@ -105,6 +109,7 @@ export default function AnonPublicPage() {
         {sending ? "Envoi…" : <><Send size={17} />Envoyer</>}
       </button>
       <p style={{ opacity: .4, fontSize: 11, marginTop: 16 }}>Les messages blessants sont signalés et leur expéditeur est bloqué.</p>
+      <a href={CTA_URL} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 18, color: "#F5D76E", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>{IS_ANDROID ? <Download size={14} /> : <HatGlasses size={14} />}Reçois aussi des messages anonymes sur Céleste</a>
     </div></div>
   );
 }
