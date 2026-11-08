@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { compression } from 'vite-plugin-compression2'
 
+const BUILD_ID = String(Date.now());
+
 export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
@@ -23,6 +26,12 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'celeste-version-file',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ id: BUILD_ID }) });
+      }
+    },
     compression(),
     VitePWA({
       registerType: 'autoUpdate',

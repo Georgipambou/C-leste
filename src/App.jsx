@@ -95,6 +95,7 @@ import { setNativeBackground } from "./nativeBackground";
 import { confirmAction, resolveConfirmAction } from "./confirmAction";
 import FeedViewer from "./FeedViewer";
 import AnonInbox from "./AnonInbox";
+import UpdateBanner from "./UpdateBanner";
 import AnonPublicPage from "./AnonPublicPage";
 import SearchExplorer from "./SearchExplorer";
 import { JobFields, JOB_DEFAULTS } from "./JobFields";
@@ -12869,5 +12870,5 @@ export default function App(){
   if(typeof window!=="undefined"&&/^\/a\/[a-f0-9]{10}\/?$/.test(window.location.pathname)){
     return(<AnonPublicPage/>);
   }
-  return(<ErrorBoundary><CelesteApp/></ErrorBoundary>);
+  return(<ErrorBoundary><CelesteApp/><UpdateBanner/></ErrorBoundary>);
 }
