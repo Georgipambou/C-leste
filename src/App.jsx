@@ -5560,6 +5560,7 @@ else filtered=active;
           );
         })
       )}
+       </>)}
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:T.bg,display:matchWriting?"none":"block",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderBottom:`1px solid ${T.border}`,padding:"14px 16px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
@@ -5581,7 +5582,6 @@ else filtered=active;
         </div>
       </div>
 
-      </>)}
       {/* Grille */}
       <div style={{padding:"12px 12px 80px",display:matchWriting?"none":"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
         {filtered.length===0&&(
