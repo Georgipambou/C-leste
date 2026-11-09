@@ -272,7 +272,9 @@ export function ProfileHeader({T, Av, Badge, fmtCount, coverUrl, color, avatarSh
     <>
       <div style={{height:210,position:"relative",overflow:"hidden",background:coverUrl?undefined:`linear-gradient(150deg,${color}3a,${color}10,transparent)`}}>
         {coverUrl
-          ? <img src={coverUrl} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          ? (/\.(mp4|webm|mov)(\?|$)/i.test(coverUrl)
+    ? <video src={coverUrl} autoPlay loop muted playsInline style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+    : <img src={coverUrl} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover"}}/>)
           : <>
               <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(${color}22 1px,transparent 1px)`,backgroundSize:"26px 26px"}}/>
               <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.05,fontSize:150,fontFamily:"'Cormorant Garamond',serif",color}}>✦</div>

@@ -648,6 +648,10 @@ const safeUrl=u=>{
     return /^https?:$/.test(x.protocol)?x.href:null;
   }catch{return null;}
 };
+const isVideoUrl=u=>/\.(mp4|webm|mov)(\?|$)/i.test(u||"");
+const MediaFill=({url,style})=>isVideoUrl(url)
+  ?<video src={url} autoPlay loop muted playsInline style={style}/>
+  :<img src={url} alt="" style={style}/>;
 const normProfile = p => ({
   isOnline:p.last_seen&&!p.hide_online?((Date.now()-new Date(p.last_seen).getTime())<5*60*1000):false,
 country:p.country||null,
@@ -1058,7 +1062,9 @@ const Av = memo(function Av({u,size=40,online=false,ring=false,onClick,noStatus=
         </svg>
       )}
       {u?.avatar_url
-        ? <img src={u.avatar_url} loading="lazy"
+        ? isVideoUrl(u.avatar_url)
+  ? <video src={u.avatar_url} autoPlay loop muted playsInline style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${showRing?T.gold:T.border}`}}/>
+  : <img src={u.avatar_url} loading="lazy"
             style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block",border:`1.5px solid ${showRing?T.gold:T.border}`,cursor:"pointer"}}
             alt=""
             onClick={e=>{if(onClick)return;e.stopPropagation();window.dispatchEvent(new CustomEvent("celeste_view_img",{detail:{url:u.avatar_url}}));}}/>
@@ -10239,6 +10245,14 @@ const [showTransactions,setShowTransactions]=useState(false);
   const [followerProfiles,setFollowerProfiles]=useState([]);
   const [followingProfiles,setFollowingProfiles]=useState([]);
   const avRef=useRef(); const cvRef=useRef();
+  const [stickerTarget,setStickerTarget]=useState(null);
+const applySticker=async(sticker)=>{
+  const field=stickerTarget;
+  setStickerTarget(null);
+  const {error}=await sb.from("profiles").update({[field]:sticker.url}).eq("id",session?.user?.id);
+  if(error){notify("Erreur, réessaie");return;}
+  reload();notify("Mis à jour ✦");
+};
   const [myNote,setMyNote]=useState(null);
   const [showNoteComposer,setShowNoteComposer]=useState(false);
     useEffect(()=>{
@@ -10454,8 +10468,9 @@ const localToggleParticipate=async pid=>{
   onLike={async pid=>{const liked=(detailPost.likes||[]).includes(session?.user?.id);if(liked)await sb.from("likes").delete().eq("post_id",pid).eq("user_id",session?.user?.id);else await sb.from("likes").upsert({post_id:pid,user_id:session?.user?.id},{onConflict:"post_id,user_id",ignoreDuplicates:true});const u=await refreshPost(pid);if(u)setDetailPost(u);}} onComment={async()=>{const u=await refreshPost(detailPost.id);if(u)setDetailPost(u);}} notify={notify}/>}
       {/* Cover */}
       <div style={{height:160,background:`linear-gradient(135deg,${myProfile?.color||T.gold}22,${T.goldD}11)`,position:"relative",overflow:"hidden",cursor:"pointer"}} onClick={()=>cvRef.current.click()}>
-        {myProfile?.cover_url&&<img src={myProfile.cover_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+        {myProfile?.cover_url&&<MediaFill url={myProfile.cover_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(transparent,rgba(0,0,0,0.6))"}}/>
+        <div onClick={e=>{e.stopPropagation();setStickerTarget("cover_url");}} style={{position:"absolute",bottom:12,left:12,background:"rgba(0,0,0,0.6)",borderRadius:10,padding:"5px 10px",fontSize:11,color:"#fff",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"center",gap:5}}><StickerIcon size={12}/>Sticker animé</div>
         <div style={{position:"absolute",bottom:12,right:12,background:"rgba(0,0,0,0.6)",borderRadius:10,padding:"5px 10px",fontSize:11,color:"#fff",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",display:"flex",alignItems:"center",gap:5}}><Camera size={12}/>Changer</div>
       </div>
 
@@ -10479,7 +10494,9 @@ const localToggleParticipate=async pid=>{
   <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
     <Edit2 size={14}/>{editing?"Annuler":"Modif."}
   </Btn>
+  <Btn onClick={()=>setStickerTarget("avatar_url")} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}><StickerIcon size={18} color={T.gold}/></Btn>
   <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+     
   💰 Poche
 </button>
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
@@ -10755,6 +10772,13 @@ const localToggleParticipate=async pid=>{
         )}
         <div style={{height:80}}/>
       </div>
+      {stickerTarget&&(
+  <div style={{position:"fixed",inset:0,zIndex:1500,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setStickerTarget(null)}>
+    <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:400,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+      <StickerPicker sb={sb} userId={session?.user?.id} T={T} onClose={()=>setStickerTarget(null)} onSelect={applySticker}/>
+    </div>
+  </div>
+)}
       {showNoteComposer&&<NoteComposerModal sb={sb} T={T} Av={Av} userId={session.user.id} existingText={myNote?.text} notify={notify}
         onClose={()=>{popNav();setShowNoteComposer(false);}} onSaved={t=>setMyNote(p=>({...(p||{user_id:session.user.id}),text:t}))} onDeleted={()=>setMyNote(null)}/>}
     </div>
