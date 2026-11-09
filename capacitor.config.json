@@ -2,7 +2,13 @@
   "appId": "social.celesteapp",
   "appName": "Céleste",
   "webDir": "dist",
-  "plugins": {
+    "plugins": {
+    "LiveUpdate": {
+      "appId": "c83e8ee5-3a9c-4623-a665-2c121b3dac33",
+      "autoUpdateStrategy": "background",
+      "autoBlockRolledBackBundles": true,
+      "readyTimeout": 10000
+    },
     "PrivacyScreen": {
       "enable": true,
       "preventScreenshots": true

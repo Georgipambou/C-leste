@@ -1912,16 +1912,17 @@ function AuthScreen({mode,setMode,onSuccess,pushNav,popNav}){
     setBusy(true);
     try{
       if(mode==="login"){
-        let loginEmail=email.trim();
-        if(/^\d{8}$/.test(loginEmail)){
-          const{data,error:resolveErr}=await sb.functions.invoke("resolve-celeste-login",{body:{celeste_id:loginEmail}});
-          if(resolveErr||!data?.email)throw new Error("Identifiant ou mot de passe incorrect");
-          loginEmail=data.email;
+        const loginId=email.trim();
+        if(/^\d{8}$/.test(loginId)){
+          // Connexion par identifiant : faite côté serveur, l'email n'est jamais renvoyé au navigateur
+          const{data,error:resolveErr}=await sb.functions.invoke("resolve-celeste-login",{body:{celeste_id:loginId,password:pw}});
+          if(resolveErr||!data?.access_token||!data?.refresh_token)throw new Error("Identifiant ou mot de passe incorrect");
+          const{error:sessErr}=await sb.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
+          if(sessErr)throw sessErr;
         }else{
-          loginEmail=loginEmail.toLowerCase();
+          const{error}=await sb.auth.signInWithPassword({email:loginId.toLowerCase(),password:pw});
+          if(error)throw error;
         }
-        const{error}=await sb.auth.signInWithPassword({email:loginEmail,password:pw});
-        if(error)throw error;
       }else{
         const metadata=accountType==="membre"
   ?{prenom,nom,paroisse,phone,whatsapp:whatsapp||phone,country,account_type:"membre"}
