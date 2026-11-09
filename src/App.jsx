@@ -112,7 +112,7 @@ import StickerPicker from "./components/StickerPicker";
 
 import VideoTrimModal from "./components/VideoTrimModal";
 import StickerDetailModal from "./components/StickerDetailModal";
-import { Sticker as StickerIcon } from "lucide-react";
+import { Sticker as StickerIcon, Wallet, Galaxy  } from "lucide-react";
 import SoundDiscBadge from "./components/SoundDiscBadge";
 import { saveDraft } from "./lib/draftsStore";
 import DraftsGallery from "./components/DraftsGallery";
@@ -10491,13 +10491,13 @@ const localToggleParticipate=async pid=>{
   </div>
 </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-  <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:14,padding:"9px 16px",color:editing?T.goldL:T.sub,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-    <Edit2 size={14}/>{editing?"Annuler":"Modif."}
+  <Btn onClick={()=>setEditing(e=>!e)} style={{background:editing?T.goldBg:T.glass,border:`1px solid ${editing?T.gold+"55":T.border}`,borderRadius:"50%",width:38,height:38,flexShrink:0,color:editing?T.goldL:T.sub,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    {editing?<X size={18}/>:<Edit2 size={18}/>}
   </Btn>
   <Btn onClick={()=>setStickerTarget("avatar_url")} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}><StickerIcon size={18} color={T.gold}/></Btn>
-  <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{height:38,padding:"0 14px",display:"flex",alignItems:"center",gap:6,background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:14,color:T.goldL,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+  <button onClick={()=>{pushNav(()=>setShowWallet(false));setShowWallet(true);}} style={{width:38,height:38,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:T.goldBg,border:`1px solid ${T.gold}44`,borderRadius:"50%",color:T.goldL,cursor:"pointer"}}>
      
-  💰 Poche
+   <Wallet size={18}/>
 </button>
   <Btn onClick={()=>window.dispatchEvent(new CustomEvent("celeste_open_params"))} style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",background:T.glass,border:`1px solid ${T.border}`,borderRadius:"50%",flexShrink:0}}>
     <Settings size={18} color={T.gold}/>
@@ -12852,7 +12852,7 @@ setTab(t);setOpenConvId(null);setOpenUserId(null);setShowNotifs(false);setHideNa
             {[
               {id:"home",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,lb:"Accueil"},
               {id:"statuses",ic:<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>,lb:"Statuts",badge:unreadStatuses},
-              {id:"discover",ic:<span style={{fontSize:19,lineHeight:1}}>✦</span>,lb:"Découvrir"},
+              {id:"discover",ic:<Galaxy size={25} strokeWidth={1.8}/>,lb:"Découvrir"},
               {id:"messages",ic:<Mail size={21} strokeWidth={1.8}/>,lb:"Messages",badge:unread},
               {id:"profile",ic:<User size={21} strokeWidth={1.8}/>,lb:"Profil"},
             ].map(t=>(
